@@ -1,0 +1,6 @@
+{
+  "name": "Portalko",
+  "description": "Portalko - Slovenski spletni portal za novice, male oglase, lokalne dogodke in skupnost z naprednim sistemom vlog in avtentikacije.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

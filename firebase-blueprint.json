@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Portalko registered user profile and role mapping",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["superadmin", "admin", "verified", "registered", "guest"] },
+        "status": { "type": "string", "enum": ["active", "banned"] },
+        "avatar": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role", "status"]
+    },
+    "Post": {
+      "title": "Community Post or Blog",
+      "description": "Article, blog or news post published on Portalko",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "content": { "type": "string", "minLength": 5, "maxLength": 10000 },
+        "category": { "type": "string", "maxLength": 50 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorRole": { "type": "string", "maxLength": 50 },
+        "authorAvatar": { "type": "string", "maxLength": 500 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "likesCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "content", "category", "authorId", "authorName"]
+    },
+    "Ad": {
+      "title": "Classified Ad",
+      "description": "Mali oglas for goods, vehicles, real estate or services",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 5000 },
+        "category": { "type": "string", "maxLength": 50 },
+        "price": { "type": "string", "maxLength": 50 },
+        "location": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorRole": { "type": "string", "maxLength": 50 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["active", "sold", "closed"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "category", "authorId", "authorName", "status"]
+    },
+    "Event": {
+      "title": "Local Event or Concert",
+      "description": "Event calendar entry in Portalko",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 5000 },
+        "location": { "type": "string", "maxLength": 150 },
+        "eventDate": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 50 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorRole": { "type": "string", "maxLength": 50 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "isPromoted": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "location", "authorId", "authorName"]
+    },
+    "Bookmark": {
+      "title": "User Bookmark",
+      "description": "Saved post, ad, or event item for a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "maxLength": 50 },
+        "targetTitle": { "type": "string", "maxLength": 200 },
+        "targetCategory": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "targetId", "targetType"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles with role permissions"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Published community and blog posts"
+    },
+    "/ads/{adId}": {
+      "schema": "Ad",
+      "description": "Classified ads (mali oglasi)"
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Events and concerts in the event calendar"
+    },
+    "/users/{userId}/bookmarks/{bookmarkId}": {
+      "schema": "Bookmark",
+      "description": "User specific bookmarks and saved items"
+    }
+  }
+}

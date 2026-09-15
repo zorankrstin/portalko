@@ -1,0 +1,134 @@
+import React, { useState } from "react";
+import { ShareMenu } from "../ShareMenu";
+import { BookmarkButton } from "../BookmarkButton";
+import { BookOpen, Heart, MessageCircle, MoreHorizontal, Sparkles } from 'lucide-react';
+import { FirestorePost, togglePostLikeInFirestore } from "../../services/firestoreService";
+import { useAuth } from "../../contexts/AuthContext";
+
+export interface FirestorePostCardProps {
+  post: FirestorePost;
+}
+
+export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) => {
+  const { currentUser } = useAuth();
+  const [likesCount, setLikesCount] = useState(post.likesCount || 0);
+  const [hasLiked, setHasLiked] = useState(false);
+
+  const handleLike = async () => {
+    const nextLiked = !hasLiked;
+    setHasLiked(nextLiked);
+    setLikesCount(prev => nextLiked ? prev + 1 : Math.max(0, prev - 1));
+    await togglePostLikeInFirestore(post.id, nextLiked);
+  };
+
+  const bookmarkData = {
+    type: 'blog',
+    category: post.category || 'blog',
+    title: post.title,
+    author: post.authorName,
+    authorRole: post.authorRole,
+    authorAvatar: post.authorAvatar,
+    date: 'Ravno objavljeno',
+    description: post.content,
+    image: post.imageUrl,
+  };
+
+  const roleLabels: Record<string, string> = {
+    superadmin: 'Glavni skrbnik',
+    admin: 'Skrbnik',
+    verified: 'Preverjen uporabnik',
+    registered: 'Registriran',
+    guest: 'Gost',
+  };
+
+  return (
+    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm relative overflow-hidden">
+      <div className="absolute top-0 right-0 transform translate-x-2 -translate-y-2">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-bl-xl bg-primary/10 text-primary text-[11px] font-semibold tracking-wider uppercase">
+          <Sparkles className="w-3 h-3" />
+          V živo (Firebase)
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img 
+            alt={`Avatar ${post.authorName}`} 
+            className="w-10 h-10 rounded-full object-cover ring-1 ring-black/5" 
+            src={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`} 
+          />
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-label-md text-label-md font-bold text-on-surface">{post.authorName}</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
+                {roleLabels[post.authorRole] || 'Član'}
+              </span>
+            </div>
+            <div className="font-label-caps text-[11px] text-outline flex items-center gap-1">
+              <span>Ravno objavljeno</span>
+              <span>•</span>
+              <span className="capitalize">{post.category || 'Članek'}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-1 pr-16">
+          <BookmarkButton id={post.id} data={bookmarkData} />
+          <ShareMenu 
+            id={post.id}
+            title={post.title} 
+            url={window.location.href} 
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className="font-headline-sm text-title-md text-on-surface font-bold leading-snug">
+          {post.title}
+        </h2>
+        <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
+          {post.content}
+        </p>
+      </div>
+
+      {post.imageUrl && (
+        <div className="relative rounded-xl overflow-hidden aspect-[16/9] bg-surface-container max-h-80">
+          <img 
+            alt={post.title} 
+            className="w-full h-full object-cover" 
+            src={post.imageUrl} 
+            loading="lazy"
+          />
+        </div>
+      )}
+
+      {post.price && (
+        <div className="inline-flex items-center gap-2 bg-secondary/10 px-3 py-1 rounded-lg text-secondary font-bold text-sm">
+          <span>Posebna ponudba:</span>
+          <span>{post.price}</span>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between border-t border-surface-container-low pt-3 mt-1">
+        <div className="flex items-center gap-4">
+          <button 
+            type="button" 
+            onClick={handleLike}
+            className={`flex items-center gap-1.5 text-label-md font-label-md transition-colors ${hasLiked ? 'text-primary font-bold' : 'text-outline hover:text-primary'}`}
+          >
+            <Heart className={`w-4 h-4 ${hasLiked ? 'fill-primary text-primary' : ''}`} />
+            <span>{likesCount} všečkov</span>
+          </button>
+          
+          <button 
+            type="button" 
+            className="flex items-center gap-1.5 text-outline hover:text-on-surface text-label-md font-label-md transition-colors"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>{post.commentsCount || 0} komentarjev</span>
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+};

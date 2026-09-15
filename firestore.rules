@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'zoran.krstin@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+      );
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'superadmin']
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']) || isAdmin())) || isAdmin();
+      allow delete: if isAdmin();
+
+      // User bookmarks subcollection
+      match /bookmarks/{bookmarkId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // Posts Collection
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+    }
+
+    // Ads (Mali Oglasi) Collection
+    match /ads/{adId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+    }
+
+    // Events Collection
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+    }
+
+    // Connection test document
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
