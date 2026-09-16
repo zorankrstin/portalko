@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
 import { useState, useRef, useEffect } from 'react';
 import { parseSearchQuery, buildSearchQuery, SearchCategory } from '../utils/searchUtils';
+import portalkoLogo from '../assets/images/portalko_logo.png';
 
 export function Header({
   onProfileClick,
@@ -82,17 +83,25 @@ export function Header({
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-surface-container shadow-sm">
       <div className="h-16 w-full px-margin-desktop flex items-center justify-between gap-space-md">
-        <div className="flex items-center gap-2.5 flex-shrink-0 cursor-pointer group" onClick={onHomeClick} title="Portalko - Domov">
+        <a
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            onHomeClick?.();
+          }}
+          className="flex items-center flex-shrink-0 cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg py-1 transition-all"
+          title="Portalko.net - Domov"
+          aria-label="Portalko.net - Domov"
+          id="header-brand-logo-link"
+        >
           <img 
-            alt="Portalko Logotip" 
-            className="h-9.5 w-auto max-h-10 object-contain rounded-lg shadow-2xs group-hover:scale-105 transition-transform" 
-            src="/portalko_logo.jpg" 
+            alt="Portalko.net" 
+            className="h-10 sm:h-11 w-auto max-h-12 object-contain drop-shadow-2xs group-hover:scale-[1.02] transition-transform duration-200" 
+            src={portalkoLogo} 
+            id="header-brand-logo-img"
           />
-          <span className="font-headline-sm text-xl font-black tracking-tight text-primary flex items-center">
-            Portal<span className="text-secondary">ko</span>
-            <span className="ml-1.5 text-[10px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">SI</span>
-          </span>
-        </div>
+          <span className="sr-only">Portalko.net - Domov</span>
+        </a>
         <div className="hidden md:flex items-center flex-1 max-w-xl mx-space-md">
           <div className="relative w-full flex items-center bg-surface-container-low rounded-lg border border-transparent focus-within:border-outline-variant focus-within:bg-surface-container-lowest transition-all">
             {/* Category filter selector */}

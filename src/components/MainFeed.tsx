@@ -9,6 +9,7 @@ import { RssPost } from './posts/RssPost';
 import { FirestorePostCard } from './posts/FirestorePostCard';
 import { ComposeModal } from './ComposeModal';
 import { parseSearchQuery, matchesSearchAndCategory } from '../utils/searchUtils';
+import type { ViewMode } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
@@ -65,7 +66,12 @@ const DEALS_DATA = [
   }
 ];
 
-export function MainFeed({ searchQuery = '' }: { searchQuery?: string }) {
+interface MainFeedProps {
+  searchQuery?: string;
+  onViewChange?: (view: ViewMode) => void;
+}
+
+export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
   const { currentUser } = useAuth();
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeType, setComposeType] = useState<'post' | 'ad' | 'deal' | 'event'>('post');
@@ -262,49 +268,95 @@ export function MainFeed({ searchQuery = '' }: { searchQuery?: string }) {
       </div>
       
       {/* Filter vrstica za vrsto vsebine & sortiranje */}
-      <div className="bg-surface-container-lowest rounded-2xl p-2 shadow-sm border border-surface-container/50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+      <div className="bg-surface-container-lowest rounded-2xl p-1.5 sm:p-2 shadow-sm border border-surface-container/50 flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 py-0.5">
           <button 
             onClick={() => { setFilterType('all'); setPage(1); }} 
-            className={`px-3 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap shadow-sm transition-colors cursor-pointer ${filterType === 'all' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap shadow-xs transition-colors cursor-pointer ${filterType === 'all' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            id="main-filter-tab-all"
           >
             Vse objave
           </button>
           <button 
-            onClick={() => { setFilterType('news'); setPage(1); }} 
-            className={`px-3 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${filterType === 'news' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            onClick={() => { 
+              if (onViewChange) {
+                onViewChange('news');
+              } else {
+                setFilterType('news'); 
+                setPage(1); 
+              }
+            }} 
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'news' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            id="main-filter-tab-news"
           >
-            <Rss className={`w-[1em] h-[1em] text-xs ${filterType === 'news' ? 'text-on-primary' : 'text-primary'}`} /> Novice RSS
+            <Rss className={`w-3.5 h-3.5 shrink-0 ${filterType === 'news' ? 'text-on-primary' : 'text-primary'}`} />
+            <span>Novice RSS</span>
           </button>
           <button 
-            onClick={() => { setFilterType('ad'); setPage(1); }} 
-            className={`px-3 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${filterType === 'ad' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            onClick={() => { 
+              if (onViewChange) {
+                onViewChange('ads');
+              } else {
+                setFilterType('ad'); 
+                setPage(1); 
+              }
+            }} 
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'ad' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            id="main-filter-tab-ads"
           >
-            <ShoppingBag className={`w-[1em] h-[1em] text-xs ${filterType === 'ad' ? 'text-on-primary' : 'text-outline'}`} /> Oglasi
+            <Store className={`w-3.5 h-3.5 shrink-0 ${filterType === 'ad' ? 'text-on-primary' : 'text-outline'}`} />
+            <span>Oglasi</span>
           </button>
           <button 
-            onClick={() => { setFilterType('deal'); setPage(1); }} 
-            className={`px-3 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${filterType === 'deal' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            onClick={() => { 
+              if (onViewChange) {
+                onViewChange('deals');
+              } else {
+                setFilterType('deal'); 
+                setPage(1); 
+              }
+            }} 
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'deal' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            id="main-filter-tab-deals"
           >
-            <Flame className={`w-[1em] h-[1em] text-xs ${filterType === 'deal' ? 'text-on-primary' : 'text-secondary'}`} /> Popusti
+            <Percent className={`w-3.5 h-3.5 shrink-0 ${filterType === 'deal' ? 'text-on-primary' : 'text-secondary'}`} />
+            <span>Ugodnosti</span>
           </button>
           <button 
-            onClick={() => { setFilterType('event'); setPage(1); }} 
-            className={`px-3 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${filterType === 'event' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            onClick={() => { 
+              if (onViewChange) {
+                onViewChange('events');
+              } else {
+                setFilterType('event'); 
+                setPage(1); 
+              }
+            }} 
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'event' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            id="main-filter-tab-events"
           >
-            <CalendarDays className={`w-[1em] h-[1em] text-xs ${filterType === 'event' ? 'text-on-primary' : 'text-tertiary-container'}`} /> Dogodki
+            <CalendarDays className={`w-3.5 h-3.5 shrink-0 ${filterType === 'event' ? 'text-on-primary' : 'text-tertiary-container'}`} />
+            <span>Dogodki</span>
           </button>
           <button 
-            onClick={() => { setFilterType('blog'); setPage(1); }} 
-            className={`px-3 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${filterType === 'blog' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            onClick={() => { 
+              if (onViewChange) {
+                onViewChange('blog');
+              } else {
+                setFilterType('blog'); 
+                setPage(1); 
+              }
+            }} 
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'blog' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            id="main-filter-tab-blog"
           >
-            <FileText className={`w-[1em] h-[1em] text-xs ${filterType === 'blog' ? 'text-on-primary' : 'text-primary'}`} /> Blog
+            <FileText className={`w-3.5 h-3.5 shrink-0 ${filterType === 'blog' ? 'text-on-primary' : 'text-primary'}`} />
+            <span>Blog</span>
           </button>
         </div>
         
-        <div className="flex items-center gap-1.5 pl-2 sm:pl-0 sm:border-l sm:border-surface-container">
-          <ArrowUpDown className="w-[1em] h-[1em] text-outline text-base" />
-          <select className="bg-transparent font-label-md text-xs text-on-surface focus:outline-none cursor-pointer">
+        <div className="flex items-center gap-1 pl-1 sm:pl-2 sm:border-l sm:border-surface-container shrink-0">
+          <ArrowUpDown className="w-3.5 h-3.5 text-outline shrink-0" />
+          <select className="bg-transparent font-label-md text-[11px] sm:text-xs text-on-surface focus:outline-none cursor-pointer py-1">
             <option>Najnovejše</option>
             <option>Priljubljeno</option>
             <option>Največ komentarjev</option>

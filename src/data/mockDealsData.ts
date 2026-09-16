@@ -168,6 +168,7 @@ export const HERO_BENTO_DEALS: DealItem[] = [
     votes: 412,
     verifiedText: '98 % uspeh (412)',
     featured: true,
+    image: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=800&auto=format&fit=crop&q=80',
     statusTag: 'expiring',
   },
 ];
@@ -191,6 +192,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.mercator.si',
     votes: 312,
     verifiedText: 'Preverjeno (pred 12 min)',
+    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80',
     statusTag: 'expiring',
   },
   {
@@ -212,6 +214,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.terme-olimia.com',
     votes: 184,
     verifiedText: 'Preverjeno za člane',
+    image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800&auto=format&fit=crop&q=80',
     statusTag: 'exclusive',
   },
   {
@@ -233,6 +236,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.mimovrste.com',
     votes: 219,
     verifiedText: '96 % delovanje',
+    image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800&auto=format&fit=crop&q=80',
     statusTag: 'today',
   },
   {
@@ -253,6 +257,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.spar.si',
     votes: 178,
     verifiedText: 'Preverjen letak',
+    image: 'https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?w=800&auto=format&fit=crop&q=80',
     statusTag: 'today',
   },
   {
@@ -274,6 +279,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.intersport.si',
     votes: 254,
     verifiedText: 'Potrjeno v poslovalnicah',
+    image: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800&auto=format&fit=crop&q=80',
     statusTag: 'exclusive',
   },
   {
@@ -294,6 +300,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.petrol.si',
     votes: 195,
     verifiedText: 'Veljavno na vseh servisih',
+    image: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80',
     statusTag: 'normal',
   },
   {
@@ -315,6 +322,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.hervis.si',
     votes: 167,
     verifiedText: 'Preverjeno deluje (98%)',
+    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&auto=format&fit=crop&q=80',
     statusTag: 'exclusive',
   },
   {
@@ -335,6 +343,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.a1.si',
     votes: 143,
     verifiedText: 'Za nove naročnike',
+    image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800&auto=format&fit=crop&q=80',
     statusTag: 'normal',
   },
   {
@@ -356,6 +365,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.xxxlesnina.si',
     votes: 122,
     verifiedText: 'Preverjena koda',
+    image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&auto=format&fit=crop&q=80',
     statusTag: 'normal',
   },
   {
@@ -377,6 +387,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://polleosport.si',
     votes: 156,
     verifiedText: '97 % delovanje',
+    image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=800&auto=format&fit=crop&q=80',
     statusTag: 'today',
   },
   {
@@ -398,6 +409,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.dm.si',
     votes: 289,
     verifiedText: 'Aktivna ugodnost',
+    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=800&auto=format&fit=crop&q=80',
     statusTag: 'shipping',
   },
   {
@@ -419,6 +431,7 @@ export const INITIAL_DEALS: DealItem[] = [
     link: 'https://www.kompas.si',
     votes: 135,
     verifiedText: 'Preverjen kupon',
+    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80',
     statusTag: 'normal',
   }
 ];

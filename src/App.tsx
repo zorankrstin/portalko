@@ -5,6 +5,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { RightSidebarAds } from './components/RightSidebarAds';
 import { RightSidebarEvents } from './components/RightSidebarEvents';
+import { RightSidebarDeals } from './components/RightSidebarDeals';
 import { MainFeed } from './components/MainFeed';
 import { MaliOglasiFeed } from './components/MaliOglasiFeed';
 import { DogodkiFeed } from './components/DogodkiFeed';
@@ -27,57 +28,71 @@ export default function App() {
   const [isRlsModalOpen, setIsRlsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const handleViewChange = (view: ViewMode) => {
+    setCurrentView(view);
+    // Smoothly scroll window to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleHomeClick = () => {
+    setSearchQuery('');
+    handleViewChange('main');
+  };
+
   return (
     <div className="pb-20 lg:pb-0">
       <Header 
-        onProfileClick={() => setCurrentView('profile')}
-        onSavedClick={() => setCurrentView('saved')}
-        onHomeClick={() => setCurrentView('main')}
-        onAdminClick={() => setCurrentView('admin')}
+        onProfileClick={() => handleViewChange('profile')}
+        onSavedClick={() => handleViewChange('saved')}
+        onHomeClick={handleHomeClick}
+        onAdminClick={() => handleViewChange('admin')}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
       <Ticker onOpenRls={() => setIsRlsModalOpen(true)} />
       
-      <div className="max-w-7xl w-full mx-auto px-4 lg:px-margin-desktop py-space-md">
+      <div className="max-w-7xl w-full mx-auto px-4 lg:px-margin-desktop py-space-md" id="main-content-container">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
-          <LeftSidebar currentView={currentView} onViewChange={setCurrentView} />
+          <LeftSidebar currentView={currentView} onViewChange={handleViewChange} />
           {currentView === 'main' && (
             <>
-              <MainFeed searchQuery={searchQuery} />
+              <MainFeed searchQuery={searchQuery} onViewChange={handleViewChange} />
               <RightSidebar />
             </>
           )}
           {currentView === 'news' && (
             <>
-              <NewsFeed onViewChange={setCurrentView} searchQuery={searchQuery} />
+              <NewsFeed onViewChange={handleViewChange} searchQuery={searchQuery} />
               <RightSidebar />
             </>
           )}
           {currentView === 'blog' && (
             <>
-              <BlogFeed onViewChange={setCurrentView} searchQuery={searchQuery} />
+              <BlogFeed onViewChange={handleViewChange} searchQuery={searchQuery} />
               <RightSidebar />
             </>
           )}
           {currentView === 'ads' && (
             <>
-              <MaliOglasiFeed onViewChange={setCurrentView} searchQuery={searchQuery} />
+              <MaliOglasiFeed onViewChange={handleViewChange} searchQuery={searchQuery} />
               <RightSidebarAds />
             </>
           )}
           {currentView === 'events' && (
             <>
-              <DogodkiFeed onViewChange={setCurrentView} searchQuery={searchQuery} />
+              <DogodkiFeed onViewChange={handleViewChange} searchQuery={searchQuery} />
               <RightSidebarEvents />
             </>
           )}
           {currentView === 'deals' && (
-            <DealsFeed onViewChange={setCurrentView} searchQuery={searchQuery} />
+            <>
+              <DealsFeed onViewChange={handleViewChange} searchQuery={searchQuery} />
+              <RightSidebarDeals />
+            </>
           )}
           {currentView === 'profile' && (
             <>
-              <UserProfile onViewChange={setCurrentView} />
+              <UserProfile onViewChange={handleViewChange} />
               <RightSidebar />
             </>
           )}
@@ -93,7 +108,7 @@ export default function App() {
         </div>
       </div>
       
-      <BottomNav currentView={currentView} onViewChange={setCurrentView} />
+      <BottomNav currentView={currentView} onViewChange={handleViewChange} />
       <BackToTopButton />
       <RlsModal isOpen={isRlsModalOpen} onClose={() => setIsRlsModalOpen(false)} />
     </div>
