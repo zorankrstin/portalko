@@ -13,6 +13,7 @@ import type { ViewMode } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
+import { INITIAL_DEALS, DealItem } from '../data/mockDealsData';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 
 type FeedItemKind = 
@@ -20,51 +21,8 @@ type FeedItemKind =
   | { type: 'news'; data: RealNewsItem }
   | { type: 'blog'; data: typeof INITIAL_BLOG_POSTS[0] }
   | { type: 'ad'; data: typeof INITIAL_ADS[0] }
-  | { type: 'deal'; data: { id: string; title: string; discount: string; partner: string; date: string; description: string; code: string; link: string } }
+  | { type: 'deal'; data: DealItem }
   | { type: 'event'; data: typeof INITIAL_EVENTS[0] };
-
-const DEALS_DATA = [
-  {
-    id: 'deal-1',
-    title: 'Hervis Slovenija: 30% spomladanski popust na vso tekaško obutev (Nike, Salomon, Asics)',
-    discount: '-30%',
-    partner: 'Gregor H. • Preverjen partner',
-    date: 'Veljavno do 31. marca 2026',
-    description: 'Za vse registrirane člane portala je na voljo posebna ugodnost ob začetku tekaške sezone. Koda velja v spletni trgovini ter v vseh poslovalnicah po Sloveniji ob predložitvi kupona.',
-    code: 'TEK30',
-    link: 'https://www.hervis.si'
-  },
-  {
-    id: 'deal-2',
-    title: 'Big Bang: Super vikend popustov -20% na vse OLED televizorje in soundbar zvočnike',
-    discount: '-20%',
-    partner: 'Big Bang d.o.o.',
-    date: 'Veljavno do nedelje',
-    description: 'Dodatni popust na že znižane modele priznanih znamk LG, Samsung in Sony ob plačilu s kartico ali spletnim nakupom.',
-    code: 'OLED20',
-    link: 'https://www.bigbang.si'
-  },
-  {
-    id: 'deal-3',
-    title: 'Spar Slovenija: Kupon za 25% popust na en izdelek po vaši izbiri',
-    discount: '-25%',
-    partner: 'Spar Partner',
-    date: 'Veljavno ta konec tedna',
-    description: 'Izkoristite popust na najdražji izdelek v nakupovalnem vozičku ob predložitvi Spar plus kartice v vseh poslovalnicah Spar in Interspar.',
-    code: 'SPAR25',
-    link: 'https://www.spar.si'
-  },
-  {
-    id: 'deal-4',
-    title: 'Petrol e-Mobilnost: 15% popust na hitro polnjenje na avtocestnem križu',
-    discount: '-15%',
-    partner: 'Petrol Klub',
-    date: 'Veljavno do preklica',
-    description: 'Aktivirajte kodo v aplikaciji Petrol GO pred začetkom polnilne seje na katerikoli ultra-hitri polnilnici po Sloveniji.',
-    code: 'EVPORTAL15',
-    link: 'https://www.petrol.si'
-  }
-];
 
 interface MainFeedProps {
   searchQuery?: string;
@@ -122,7 +80,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       INITIAL_BLOG_POSTS.length,
       INITIAL_ADS.length,
       INITIAL_EVENTS.length,
-      DEALS_DATA.length
+      INITIAL_DEALS.length
     );
 
     // Insert any initial firestore posts at the front
@@ -134,8 +92,8 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       if (realNews[i]) items.push({ type: 'news', data: realNews[i] });
       if (INITIAL_BLOG_POSTS[i]) items.push({ type: 'blog', data: INITIAL_BLOG_POSTS[i] });
       if (INITIAL_ADS[i]) items.push({ type: 'ad', data: INITIAL_ADS[i] });
-      if (DEALS_DATA[i % DEALS_DATA.length] && i % 2 === 0) {
-        items.push({ type: 'deal', data: DEALS_DATA[i % DEALS_DATA.length] });
+      if (INITIAL_DEALS[i % INITIAL_DEALS.length] && i % 2 === 0) {
+        items.push({ type: 'deal', data: INITIAL_DEALS[i % INITIAL_DEALS.length] });
       }
       if (INITIAL_EVENTS[i]) items.push({ type: 'event', data: INITIAL_EVENTS[i] });
     }
@@ -440,10 +398,18 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   title={deal.title}
                   discount={deal.discount}
                   author={deal.partner}
+                  authorRole={deal.partnerRole}
+                  authorAvatar={deal.partnerAvatar}
                   date={deal.date}
                   description={deal.description}
                   code={deal.code}
                   link={deal.link}
+                  image={deal.image}
+                  categoryName={deal.categoryName}
+                  region={deal.region}
+                  verifiedText={deal.verifiedText}
+                  featured={deal.featured}
+                  votesCount={deal.votes}
                 />
               );
             }

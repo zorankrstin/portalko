@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
-import { BookOpen, Heart, MessageCircle, MoreHorizontal, Sparkles } from 'lucide-react';
+import { Heart, MessageCircle, Sparkles } from 'lucide-react';
 import { FirestorePost, togglePostLikeInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
+import { AdPost } from "./AdPost";
+import { DealPost } from "./DealPost";
+import { EventPost } from "./EventPost";
 
 export interface FirestorePostCardProps {
   post: FirestorePost;
@@ -13,6 +16,84 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
   const { currentUser } = useAuth();
   const [likesCount, setLikesCount] = useState(post.likesCount || 0);
   const [hasLiked, setHasLiked] = useState(false);
+
+  // If the Firestore post is specifically marked as an ad, deal, or event, render in that category's layout
+  if (post.category === 'ad') {
+    return (
+      <div className="relative">
+        <div className="absolute top-2 right-2 z-10">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/90 backdrop-blur-xs text-white text-[10px] font-semibold tracking-wider uppercase">
+            <Sparkles className="w-2.5 h-2.5" />
+            V živo
+          </span>
+        </div>
+        <AdPost
+          id={post.id}
+          title={post.title}
+          price={post.price || "Po dogovoru"}
+          author={post.authorName}
+          location="Slovenija"
+          date="Ravno objavljeno"
+          description={post.content}
+          categoryName="Mali oglas"
+          image={post.imageUrl}
+        />
+      </div>
+    );
+  }
+
+  if (post.category === 'deal') {
+    return (
+      <div className="relative">
+        <div className="absolute top-2 right-2 z-10">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary/90 backdrop-blur-xs text-on-secondary text-[10px] font-semibold tracking-wider uppercase">
+            <Sparkles className="w-2.5 h-2.5" />
+            V živo
+          </span>
+        </div>
+        <DealPost
+          id={post.id}
+          title={post.title}
+          discount={post.price || "Ugodnost"}
+          author={post.authorName}
+          authorRole="Partner"
+          authorAvatar={post.authorAvatar}
+          date="Aktualno"
+          description={post.content}
+          image={post.imageUrl}
+          categoryName="Ugodnost"
+          region="Slovenija"
+          verifiedText="Preverjeno"
+        />
+      </div>
+    );
+  }
+
+  if (post.category === 'event') {
+    return (
+      <div className="relative">
+        <div className="absolute top-2 right-2 z-10">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/90 backdrop-blur-xs text-white text-[10px] font-semibold tracking-wider uppercase">
+            <Sparkles className="w-2.5 h-2.5" />
+            V živo
+          </span>
+        </div>
+        <EventPost
+          id={post.id}
+          title={post.title}
+          organizer={post.authorName}
+          categoryName="Dogodek"
+          location="Slovenija"
+          date="Kmalu"
+          month="AKT"
+          day="!"
+          price={post.price || "Vstop prost"}
+          description={post.content}
+          image={post.imageUrl}
+        />
+      </div>
+    );
+  }
 
   const handleLike = async () => {
     const nextLiked = !hasLiked;
@@ -75,7 +156,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
         <div className="flex items-center gap-1 pr-16">
           <BookmarkButton id={post.id} data={bookmarkData} />
           <ShareMenu 
-            id={post.id}
+            id={post.id} 
             title={post.title} 
             url={window.location.href} 
           />

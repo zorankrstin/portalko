@@ -118,7 +118,7 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
 
     // Ugodnosti / Popusti (DealPost)
     if (itemCat.includes('deal') || itemCat.includes('popust') || id.startsWith('deal')) {
-      return <DealPost key={id} id={id} />;
+      return <DealPost key={id} id={id} {...item} />;
     }
 
     // Blog & Default

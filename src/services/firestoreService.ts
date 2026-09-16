@@ -88,6 +88,10 @@ export async function syncUserProfile(user: User): Promise<void> {
         role: user.role,
         status: user.status,
         avatar: user.avatar || '',
+        bio: user.bio || '',
+        username: user.username || '',
+        socialLinks: user.socialLinks || [],
+        profileMenu: user.profileMenu || [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -96,6 +100,10 @@ export async function syncUserProfile(user: User): Promise<void> {
         name: user.name,
         email: user.email,
         avatar: user.avatar || '',
+        bio: user.bio !== undefined ? user.bio : (existing.data().bio || ''),
+        username: user.username !== undefined ? user.username : (existing.data().username || ''),
+        socialLinks: user.socialLinks !== undefined ? user.socialLinks : (existing.data().socialLinks || []),
+        profileMenu: user.profileMenu !== undefined ? user.profileMenu : (existing.data().profileMenu || []),
         updatedAt: new Date().toISOString(),
       });
     }
@@ -122,6 +130,10 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         role: (data.role || 'registered') as Role,
         status: (data.status || 'active') as 'active' | 'banned',
         avatar: data.avatar,
+        bio: data.bio,
+        username: data.username,
+        socialLinks: data.socialLinks,
+        profileMenu: data.profileMenu,
       };
     }
     return null;
@@ -148,6 +160,10 @@ export async function fetchUsersList(): Promise<User[]> {
         role: (data.role || 'registered') as Role,
         status: (data.status || 'active') as 'active' | 'banned',
         avatar: data.avatar,
+        bio: data.bio,
+        username: data.username,
+        socialLinks: data.socialLinks,
+        profileMenu: data.profileMenu,
       };
     });
   } catch (error) {
@@ -173,6 +189,10 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           role: (data.role || 'registered') as Role,
           status: (data.status || 'active') as 'active' | 'banned',
           avatar: data.avatar,
+          bio: data.bio,
+          username: data.username,
+          socialLinks: data.socialLinks,
+          profileMenu: data.profileMenu,
         };
       });
       onUsers(users);

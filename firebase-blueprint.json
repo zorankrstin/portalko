@@ -11,6 +11,10 @@
         "role": { "type": "string", "enum": ["superadmin", "admin", "verified", "registered", "guest"] },
         "status": { "type": "string", "enum": ["active", "banned"] },
         "avatar": { "type": "string", "maxLength": 500 },
+        "bio": { "type": "string", "maxLength": 2000 },
+        "username": { "type": "string", "maxLength": 50 },
+        "socialLinks": { "type": "array" },
+        "profileMenu": { "type": "array" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },

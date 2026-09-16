@@ -5,6 +5,50 @@ import { syncUserProfile, updateUserInFirestore, fetchUserProfile } from '../ser
 
 export type Role = 'superadmin' | 'admin' | 'verified' | 'registered' | 'guest';
 
+export type SocialPlatform = 
+  | 'website'
+  | 'facebook'
+  | 'instagram'
+  | 'linkedin'
+  | 'twitter'
+  | 'youtube'
+  | 'tiktok'
+  | 'github'
+  | 'telegram'
+  | 'custom';
+
+export interface SocialLink {
+  id: string;
+  platform: SocialPlatform;
+  url: string;
+  label?: string;
+}
+
+export interface ProfileMenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+  type: 'builtIn' | 'custom' | 'externalLink';
+  builtInTab?: 'posts' | 'saved' | 'settings';
+  content?: string;
+  url?: string;
+  visible: boolean;
+  order: number;
+}
+
+export const DEFAULT_PROFILE_MENU: ProfileMenuItem[] = [
+  { id: 'menu-posts', label: 'Moje objave', icon: 'FileText', type: 'builtIn', builtInTab: 'posts', visible: true, order: 1 },
+  { id: 'menu-saved', label: 'Shranjeno', icon: 'Bookmark', type: 'builtIn', builtInTab: 'saved', visible: true, order: 2 },
+  { id: 'menu-about', label: 'O meni', icon: 'User', type: 'custom', content: 'Pozdravljeni na mojem profilu na Portalko.net! Tukaj delim zanimive objave, novice ter predloge za slovensko skupnost.', visible: true, order: 3 },
+  { id: 'menu-settings', label: 'Nastavitve računa', icon: 'Settings', type: 'builtIn', builtInTab: 'settings', visible: true, order: 4 },
+];
+
+export const DEFAULT_SOCIAL_LINKS: SocialLink[] = [
+  { id: 's1', platform: 'website', url: 'https://portalko.net', label: 'Portalko.net' },
+  { id: 's2', platform: 'linkedin', url: 'https://linkedin.com', label: 'LinkedIn' },
+  { id: 's3', platform: 'twitter', url: 'https://x.com', label: 'X (Twitter)' },
+];
+
 export interface User {
   id: string;
   name: string;
@@ -12,9 +56,13 @@ export interface User {
   role: Role;
   status: 'active' | 'banned';
   avatar?: string;
+  bio?: string;
+  username?: string;
   password?: string;
   authProvider?: 'credentials' | 'google';
   googleId?: string;
+  socialLinks?: SocialLink[];
+  profileMenu?: ProfileMenuItem[];
 }
 
 const DEFAULT_USERS: User[] = [
@@ -25,6 +73,14 @@ const DEFAULT_USERS: User[] = [
     role: 'superadmin', 
     status: 'active', 
     avatar: 'https://ui-avatars.com/api/?name=Zoran+Krstin&background=7C3AED&color=fff',
+    bio: 'Navdušenec nad tehnologijo, športom in dobro kavo. Redni obiskovalec dogodkov v Ljubljani in okolici. Vedno za dobro debato.',
+    username: '@zorankrstin',
+    socialLinks: [
+      { id: 's1', platform: 'website', url: 'https://portalko.net', label: 'Portalko.net' },
+      { id: 's2', platform: 'linkedin', url: 'https://linkedin.com/in/zorankrstin', label: 'LinkedIn' },
+      { id: 's3', platform: 'twitter', url: 'https://x.com/zorankrstin', label: 'X (Twitter)' },
+    ],
+    profileMenu: DEFAULT_PROFILE_MENU,
     password: 'admin123',
     authProvider: 'google',
     googleId: 'g_zoran_krstin'
@@ -36,6 +92,12 @@ const DEFAULT_USERS: User[] = [
     role: 'admin', 
     status: 'active', 
     avatar: 'https://lh3.googleusercontent.com/aida/AEtjO1WzgwshpYtUlUT6B6hzTtlscXMkpKFYIjPiStIYfRrhCOV_MJeKV53x2D-tigu5SbHyESMyvILulBOUHZNfXTh6f8BRNGoWAkmZGhTeSWRB6n0Yw7IQRI0B91gU_U5KeEaSv6GZGH_W05qE5EOybPtK8yTXIY8KRAN88q_810UgS5RUyRmLSTI-zFjGHDUBCI7ELn7zCVDuy5Hy1SYdchdHKbBPfokQqaaMmc3liYXq_mNFC7yqQPYrfuA',
+    bio: 'Urednik novic in tehnološki navdušenec.',
+    username: '@luka_n',
+    socialLinks: [
+      { id: 's1', platform: 'website', url: 'https://portalko.net', label: 'Portalko.net' },
+    ],
+    profileMenu: DEFAULT_PROFILE_MENU,
     password: 'geslo123'
   },
   { 
@@ -45,6 +107,12 @@ const DEFAULT_USERS: User[] = [
     role: 'verified', 
     status: 'active', 
     avatar: 'https://ui-avatars.com/api/?name=Maja+Zupan&background=F59E0B&color=fff',
+    bio: 'Kulinarični blog in doživetja po Sloveniji.',
+    username: '@maja_zupan',
+    socialLinks: [
+      { id: 's1', platform: 'instagram', url: 'https://instagram.com', label: 'Instagram' },
+    ],
+    profileMenu: DEFAULT_PROFILE_MENU,
     password: 'geslo123'
   },
   { 
@@ -54,6 +122,9 @@ const DEFAULT_USERS: User[] = [
     role: 'registered', 
     status: 'banned', 
     avatar: 'https://ui-avatars.com/api/?name=Janez+Horvat&background=EF4444&color=fff',
+    bio: 'Član skupnosti.',
+    username: '@janez_h',
+    profileMenu: DEFAULT_PROFILE_MENU,
     password: 'geslo123'
   },
 ];

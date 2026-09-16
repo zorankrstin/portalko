@@ -93,6 +93,7 @@ export function DealsFeed({ onViewChange, searchQuery = '' }: DealsFeedProps) {
           partnerRole: 'Uporabniški predlog',
           partnerInitial: (p.authorName || 'Č')[0].toUpperCase(),
           partnerLogoBg: 'bg-primary text-on-primary',
+          partnerAvatar: p.authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.authorName || 'clan')}`,
           category: 'tehnika' as const,
           categoryName: 'Skupnost',
           region: p.location || 'Vsa Slovenija',
@@ -233,6 +234,7 @@ export function DealsFeed({ onViewChange, searchQuery = '' }: DealsFeedProps) {
       partnerRole: 'Uporabniški predlog',
       partnerInitial: modalForm.store.substring(0, 2).toUpperCase(),
       partnerLogoBg: 'bg-primary text-on-primary',
+      partnerAvatar: currentUser?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(modalForm.store)}`,
       category: modalForm.category,
       categoryName: modalForm.category === 'tehnika' ? 'Tehnika & Elektronika' :
                     modalForm.category === 'prehrana' ? 'Prehrana & Trgovine' :
@@ -628,15 +630,26 @@ export function DealsFeed({ onViewChange, searchQuery = '' }: DealsFeedProps) {
                   <div>
                     {/* Header Row: Partner info, role, and actions */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-label-lg text-xs sm:text-sm font-bold text-on-surface">
-                          {deal.partner}
-                        </span>
-                        {deal.partnerRole && (
-                          <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold">
-                            {deal.partnerRole}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img 
+                          src={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`} 
+                          alt={deal.partner}
+                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 shrink-0 shadow-xs"
+                          loading="lazy"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`;
+                          }}
+                        />
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className="font-label-lg text-xs sm:text-sm font-bold text-on-surface truncate">
+                            {deal.partner}
                           </span>
-                        )}
+                          {deal.partnerRole && (
+                            <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold shrink-0">
+                              {deal.partnerRole}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
                       <div className="flex items-center gap-1 shrink-0">
@@ -647,10 +660,19 @@ export function DealsFeed({ onViewChange, searchQuery = '' }: DealsFeedProps) {
                             category: 'deals',
                             title: deal.title,
                             price: deal.discount,
+                            discount: deal.discount,
                             author: deal.partner,
+                            authorRole: deal.partnerRole,
+                            authorAvatar: deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`,
                             date: deal.date,
                             description: deal.description,
                             image: dealImg,
+                            code: deal.code,
+                            link: deal.link,
+                            votesCount: currentVotes,
+                            categoryName: deal.categoryName,
+                            region: deal.region,
+                            verifiedText: deal.verifiedText,
                           }}
                         />
                         <ShareMenu id={deal.id} title={deal.title} />

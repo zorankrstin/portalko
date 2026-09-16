@@ -1,24 +1,67 @@
-import { useState } from 'react';
-import { Camera, Edit2, Shield, Bell, Settings, FileText, UserCog, Mail, Key, Bookmark, LogIn, UserPlus, Check, AlertCircle, Eye, EyeOff, Crown, UserCheck } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { 
+  Camera, 
+  Edit2, 
+  Shield, 
+  Bell, 
+  Settings, 
+  FileText, 
+  UserCog, 
+  Mail, 
+  Key, 
+  Bookmark, 
+  LogIn, 
+  UserPlus, 
+  Check, 
+  AlertCircle, 
+  Eye, 
+  EyeOff, 
+  Crown, 
+  UserCheck,
+  LogOut,
+  Share2,
+  Sliders,
+  Plus,
+  ExternalLink,
+  Trash2,
+  Edit3
+} from 'lucide-react';
 import { SavedPostsTab } from './SavedPostsTab';
 import { BlogPost } from './posts/BlogPost';
 import { AdPost } from './posts/AdPost';
 import { EventPost } from './posts/EventPost';
-import { useAuth } from '../contexts/AuthContext';
-import { LogOut } from 'lucide-react';
+import { 
+  useAuth, 
+  DEFAULT_PROFILE_MENU, 
+  DEFAULT_SOCIAL_LINKS, 
+  ProfileMenuItem, 
+  SocialLink 
+} from '../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
+import { SocialLinksDisplay, getPlatformIcon, getPlatformLabel } from './profile/SocialLinksDisplay';
+import { SocialLinksEditorModal } from './profile/SocialLinksEditorModal';
+import { ProfileMenuEditorModal, getMenuTabIcon } from './profile/ProfileMenuEditorModal';
+import { CustomTabContent } from './profile/CustomTabContent';
 import portalkoLogo from '../assets/images/portalko_logo.png';
 
 export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => void }) {
   const { currentUser, logout, updateUser, changePassword } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'saved' | 'settings'>('posts');
+  const [activeTabId, setActiveTabId] = useState<string>('posts');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
 
+  // Modals for social links and profile menu
+  const [isSocialEditorOpen, setIsSocialEditorOpen] = useState(false);
+  const [isMenuEditorOpen, setIsMenuEditorOpen] = useState(false);
+
   // Edit profile state
   const [nameInput, setNameInput] = useState(currentUser?.name || '');
-  const [usernameInput, setUsernameInput] = useState(`@${currentUser?.name?.toLowerCase().replace(/\s+/g, '_') || 'uporabnik'}`);
-  const [bioInput, setBioInput] = useState('Navdušenec nad tehnologijo, športom in dobro kavo. Redni obiskovalec dogodkov v Ljubljani in okolici. Vedno za dobro debato.');
+  const [usernameInput, setUsernameInput] = useState(
+    currentUser?.username || `@${currentUser?.name?.toLowerCase().replace(/\s+/g, '_') || 'uporabnik'}`
+  );
+  const [bioInput, setBioInput] = useState(
+    currentUser?.bio || 'Navdušenec nad tehnologijo, športom in dobro kavo. Redni obiskovalec dogodkov v Ljubljani in okolici. Vedno za dobro debato.'
+  );
   const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
 
   // Password update state
@@ -30,6 +73,15 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
+
+  // Update inputs if currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      setNameInput(currentUser.name || '');
+      setUsernameInput(currentUser.username || `@${currentUser.name?.toLowerCase().replace(/\s+/g, '_') || 'uporabnik'}`);
+      if (currentUser.bio) setBioInput(currentUser.bio);
+    }
+  }, [currentUser]);
 
   if (!currentUser) {
     return (
@@ -78,10 +130,44 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
 
   const handleSaveProfile = () => {
     if (nameInput.trim()) {
-      updateUser(currentUser.id, { name: nameInput.trim() });
+      updateUser(currentUser.id, { 
+        name: nameInput.trim(),
+        username: usernameInput.trim(),
+        bio: bioInput.trim(),
+      });
       setProfileSaveSuccess(true);
       setTimeout(() => setProfileSaveSuccess(false), 2500);
     }
+  };
+
+  // User profile menu and social links
+  const userSocialLinks = currentUser.socialLinks || DEFAULT_SOCIAL_LINKS;
+  const userProfileMenu = (currentUser.profileMenu && currentUser.profileMenu.length > 0)
+    ? currentUser.profileMenu
+    : DEFAULT_PROFILE_MENU;
+
+  const sortedMenuTabs = [...userProfileMenu].sort((a, b) => a.order - b.order);
+  const visibleTabs = sortedMenuTabs.filter(t => t.visible !== false);
+
+  const currentTab = sortedMenuTabs.find(
+    t => t.id === activeTabId || (t.type === 'builtIn' && t.builtInTab === activeTabId)
+  ) || sortedMenuTabs[0];
+
+  const handleSaveSocialLinks = (newLinks: SocialLink[]) => {
+    updateUser(currentUser.id, { socialLinks: newLinks });
+    setProfileSaveSuccess(true);
+    setTimeout(() => setProfileSaveSuccess(false), 2500);
+  };
+
+  const handleSaveProfileMenu = (newMenu: ProfileMenuItem[]) => {
+    updateUser(currentUser.id, { profileMenu: newMenu });
+    setProfileSaveSuccess(true);
+    setTimeout(() => setProfileSaveSuccess(false), 2500);
+  };
+
+  const handleQuickDeleteSocialLink = (id: string) => {
+    const updated = userSocialLinks.filter(l => l.id !== id);
+    handleSaveSocialLinks(updated);
   };
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
@@ -129,25 +215,37 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
 
         <div className="flex-1 min-w-0 z-10">
           <div className="flex flex-col gap-1.5">
-            <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2">
-              {currentUser.name}
-              {currentUser.role === 'superadmin' ? (
-                <span className="bg-purple-600 text-white rounded-full p-1 shadow-sm" title="Superadmin">
-                  <Crown className="w-3.5 h-3.5" />
-                </span>
-              ) : currentUser.role === 'admin' ? (
-                <span className="bg-error text-white rounded-full p-1 shadow-sm" title="Administrator">
-                  <Shield className="w-3.5 h-3.5" />
-                </span>
-              ) : currentUser.role === 'verified' ? (
-                <span className="bg-secondary text-on-secondary rounded-full p-1 shadow-sm" title="Preverjen">
-                  <UserCheck className="w-3.5 h-3.5" />
-                </span>
-              ) : null}
-            </h1>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2">
+                {currentUser.name}
+                {currentUser.role === 'superadmin' ? (
+                  <span className="bg-purple-600 text-white rounded-full p-1 shadow-sm" title="Superadmin">
+                    <Crown className="w-3.5 h-3.5" />
+                  </span>
+                ) : currentUser.role === 'admin' ? (
+                  <span className="bg-error text-white rounded-full p-1 shadow-sm" title="Administrator">
+                    <Shield className="w-3.5 h-3.5" />
+                  </span>
+                ) : currentUser.role === 'verified' ? (
+                  <span className="bg-secondary text-on-secondary rounded-full p-1 shadow-sm" title="Preverjen">
+                    <UserCheck className="w-3.5 h-3.5" />
+                  </span>
+                ) : null}
+              </h1>
+              <span className="text-xs font-medium text-outline">
+                {usernameInput}
+              </span>
+            </div>
             <p className="font-body-md text-on-surface-variant max-w-2xl text-xs sm:text-sm">
               {bioInput}
             </p>
+
+            {/* Social Media Links Display in Header */}
+            <SocialLinksDisplay 
+              socialLinks={userSocialLinks} 
+              canEdit={true} 
+              onEditClick={() => setIsSocialEditorOpen(true)} 
+            />
           </div>
           
           <div className="flex items-center gap-6 mt-4">
@@ -168,11 +266,14 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
         
         <div className="shrink-0 self-start sm:self-center z-10 flex sm:flex-col gap-2">
           <button 
-            onClick={() => setActiveTab('settings')}
+            onClick={() => {
+              const settingsTab = sortedMenuTabs.find(t => t.builtInTab === 'settings');
+              setActiveTabId(settingsTab ? settingsTab.id : 'settings');
+            }}
             className="px-4 py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md font-semibold transition-colors flex items-center gap-2"
           >
             <Edit2 className="w-[1em] h-[1em] text-sm text-primary" />
-            <span>Uredi</span>
+            <span>Uredi profil</span>
           </button>
           <button 
             onClick={() => { logout(); onViewChange('main'); }}
@@ -185,47 +286,54 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-surface-container px-2">
-        <button 
-          onClick={() => setActiveTab('posts')}
-          className={`px-4 py-3 font-label-md text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'posts' 
-              ? 'border-primary text-primary' 
-              : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low/50 rounded-t-lg'
-          }`}
+      {/* Customizable Profile Menu Tabs */}
+      <div className="flex items-center justify-between border-b border-surface-container px-2 overflow-x-auto no-scrollbar gap-2">
+        <div className="flex items-center gap-1 min-w-max">
+          {visibleTabs.map((tab) => {
+            const isActive = currentTab?.id === tab.id || (tab.type === 'builtIn' && currentTab?.builtInTab === tab.builtInTab);
+
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.type === 'externalLink' && tab.url) {
+                    window.open(tab.url, '_blank', 'noopener,noreferrer');
+                  } else {
+                    setActiveTabId(tab.id);
+                  }
+                }}
+                className={`px-4 py-3 font-label-md text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+                  isActive 
+                    ? 'border-primary text-primary' 
+                    : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low/50 rounded-t-lg'
+                }`}
+                title={tab.label}
+              >
+                {getMenuTabIcon(tab.icon, "w-4 h-4")}
+                <span>{tab.label}</span>
+                {tab.type === 'externalLink' && (
+                  <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsMenuEditorOpen(true)}
+          className="shrink-0 px-3 py-1.5 my-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-outline hover:text-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 border border-surface-container/60 shadow-2xs"
+          title="Prilagodi profilni meni in zavihke"
         >
-          <FileText className="w-[1em] h-[1em]" />
-          Moje objave
-        </button>
-        
-        <button 
-          onClick={() => setActiveTab('saved')}
-          className={`px-4 py-3 font-label-md text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'saved' 
-              ? 'border-primary text-primary' 
-              : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low/50 rounded-t-lg'
-          }`}
-        >
-          <Bookmark className="w-[1em] h-[1em] text-base" />
-          <span>Shranjeno</span>
-        </button>
-        <button 
-          onClick={() => setActiveTab('settings')}
-          className={`px-4 py-3 font-label-md text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'settings' 
-              ? 'border-primary text-primary' 
-              : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low/50 rounded-t-lg'
-          }`}
-        >
-          <Settings className="w-[1em] h-[1em]" />
-          Nastavitve računa
+          <Sliders className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Prilagodi meni</span>
         </button>
       </div>
 
       {/* Tab Content */}
       <div className="pt-2">
-        {activeTab === 'posts' && (
+        {/* Built-in Posts */}
+        {currentTab?.type === 'builtIn' && currentTab.builtInTab === 'posts' && (
           <div className="flex flex-col gap-space-md">
             <h2 className="font-headline-sm text-lg font-bold text-on-surface px-1">Nedavne objave</h2>
             <BlogPost id="blog-profile" />
@@ -234,11 +342,22 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
           </div>
         )}
 
-        {activeTab === 'saved' && (
+        {/* Built-in Saved */}
+        {currentTab?.type === 'builtIn' && currentTab.builtInTab === 'saved' && (
           <SavedPostsTab />
         )}
 
-        {activeTab === 'settings' && (
+        {/* Custom or External Link Tab */}
+        {(currentTab?.type === 'custom' || currentTab?.type === 'externalLink') && (
+          <CustomTabContent 
+            item={currentTab} 
+            canEdit={true} 
+            onEditItem={() => setIsMenuEditorOpen(true)} 
+          />
+        )}
+
+        {/* Built-in Settings */}
+        {currentTab?.type === 'builtIn' && currentTab.builtInTab === 'settings' && (
           <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-8">
             {profileSaveSuccess && (
               <div className="p-3 rounded-xl bg-secondary/15 border border-secondary/30 text-secondary text-sm flex items-center gap-2 animate-in fade-in duration-200">
@@ -305,6 +424,157 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
                 >
                   Shrani spremembe
                 </button>
+              </div>
+            </section>
+
+            {/* Družbena omrežja in povezave */}
+            <section className="flex flex-col gap-4">
+              <div className="flex items-center justify-between pb-2 border-b border-surface-container-low">
+                <div className="flex items-center gap-2">
+                  <Share2 className="w-[1em] h-[1em] text-primary text-lg" />
+                  <div>
+                    <h3 className="font-headline-sm text-base font-bold text-on-surface">Družbena omrežja in povezave</h3>
+                    <p className="font-body-sm text-xs text-on-surface-variant">
+                      Povezave do vaših profilov (Instagram, LinkedIn, X, spletna stran...), vidne na vašem profilu
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSocialEditorOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-label-md text-xs font-bold transition-colors flex items-center gap-1.5 border border-primary/20"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Upravljaj povezave</span>
+                </button>
+              </div>
+
+              {userSocialLinks.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed border-surface-container bg-surface-container-low/30 text-center flex flex-col items-center gap-2">
+                  <p className="text-xs text-on-surface-variant">Nimate še dodanih družbenih omrežij ali povezav.</p>
+                  <button
+                    type="button"
+                    onClick={() => setIsSocialEditorOpen(true)}
+                    className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary-container transition-colors"
+                  >
+                    Dodaj prvo povezavo
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {userSocialLinks.map((link) => {
+                    const formattedUrl = link.url.startsWith('http') ? link.url : `https://${link.url}`;
+                    return (
+                      <div 
+                        key={link.id} 
+                        className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low border border-surface-container hover:border-surface-container-highest transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="p-2 rounded-lg bg-surface-container-highest text-primary shrink-0">
+                            {getPlatformIcon(link.platform, "w-4 h-4")}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-on-surface truncate">
+                              {link.label || getPlatformLabel(link.platform)}
+                            </p>
+                            <p className="text-[11px] text-outline truncate">{formattedUrl}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <a
+                            href={formattedUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors"
+                            title="Odpri povezavo"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickDeleteSocialLink(link.id)}
+                            className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors"
+                            title="Odstrani"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Profilni meni & Navigacija */}
+            <section className="flex flex-col gap-4">
+              <div className="flex items-center justify-between pb-2 border-b border-surface-container-low">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-[1em] h-[1em] text-primary text-lg" />
+                  <div>
+                    <h3 className="font-headline-sm text-base font-bold text-on-surface">Profilni meni & Navigacija</h3>
+                    <p className="font-body-sm text-xs text-on-surface-variant">
+                      Prilagodite zavihke na svojem profilu, dodajte nove strani ali spremenite vrstni red
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMenuEditorOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-label-md text-xs font-bold transition-colors flex items-center gap-1.5 border border-primary/20"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Prilagodi profilni meni</span>
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {sortedMenuTabs.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                      item.visible
+                        ? 'border-surface-container bg-surface-container-low/60'
+                        : 'border-surface-container/50 bg-surface-container-low/20 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-surface-container-highest text-primary">
+                        {getMenuTabIcon(item.icon, "w-4 h-4")}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-on-surface">{item.label}</p>
+                          {item.type === 'builtIn' ? (
+                            <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-surface-container text-outline">
+                              Sistemski
+                            </span>
+                          ) : item.type === 'externalLink' ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-secondary/10 text-secondary">
+                              Povezava
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-primary/10 text-primary">
+                              Po meri
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-outline">
+                          {item.visible ? 'Viden v profilnem meniju' : 'Skrit iz profilnega menija'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsMenuEditorOpen(true)}
+                      className="px-2.5 py-1 rounded-lg text-outline hover:text-primary hover:bg-surface-container text-xs font-medium transition-colors"
+                    >
+                      Uredi
+                    </button>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -512,6 +782,24 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
           </div>
         )}
       </div>
+
+      {/* Social Links Editor Modal */}
+      <SocialLinksEditorModal
+        isOpen={isSocialEditorOpen}
+        onClose={() => setIsSocialEditorOpen(false)}
+        socialLinks={userSocialLinks}
+        onSave={handleSaveSocialLinks}
+      />
+
+      {/* Profile Menu Editor Modal */}
+      <ProfileMenuEditorModal
+        isOpen={isMenuEditorOpen}
+        onClose={() => setIsMenuEditorOpen(false)}
+        menuItems={userProfileMenu}
+        onSave={handleSaveProfileMenu}
+      />
+
+      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} initialMode={authModalMode} />
     </main>
   );
 }

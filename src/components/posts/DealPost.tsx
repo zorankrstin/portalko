@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
-import { Ticket, Copy, Check, ArrowRight } from 'lucide-react';
+import { Copy, Check, ArrowRight, Sparkles, CheckCircle2, Clock, MapPin, ThumbsUp } from 'lucide-react';
 
 export interface DealPostProps {
   id?: string;
@@ -9,33 +9,56 @@ export interface DealPostProps {
   discount?: string;
   author?: string;
   authorRole?: string;
+  authorAvatar?: string;
   date?: string;
   description?: string;
   code?: string;
   link?: string;
   votesCount?: number;
+  image?: string;
+  categoryName?: string;
+  region?: string;
+  verifiedText?: string;
+  featured?: boolean;
 }
 
 export const DealPost: React.FC<DealPostProps> = ({ 
   id = "default",
   title = "Hervis Slovenija: 30% spomladanski popust na vso tekaško obutev (Nike, Salomon, Asics)",
   discount = "-30%",
-  author = "Gregor H.",
+  author = "Hervis Slovenija",
   authorRole = "Preverjen partner",
+  authorAvatar,
   date = "Veljavno do konca meseca",
   description = "Za vse registrirane člane portala je na voljo posebna ugodnost ob začetku tekaške sezone. Koda velja v spletni trgovini ter v vseh poslovalnicah po Sloveniji ob predložitvi digitalnega kupona.",
   code = "TEK30",
   link = "https://www.hervis.si",
-  votesCount = 142
+  votesCount = 142,
+  image = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&auto=format&fit=crop&q=80",
+  categoryName = "Šport & Obutev",
+  region = "Vsa Slovenija / Splet",
+  verifiedText = "Preverjeno danes",
+  featured = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [votes, setVotes] = useState(votesCount);
   const [hasVoted, setHasVoted] = useState(false);
 
+  const avatarSrc = authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`;
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (code) {
+      navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleVote = () => {
+    if (!hasVoted) {
+      setVotes(v => v + 1);
+      setHasVoted(true);
+    }
   };
 
   const bookmarkData = {
@@ -43,82 +66,174 @@ export const DealPost: React.FC<DealPostProps> = ({
     category: 'deals',
     title,
     price: discount,
+    discount,
     author,
+    authorRole,
+    authorAvatar: avatarSrc,
     date,
     description,
+    image,
+    code,
+    link,
+    votesCount: votes,
+    categoryName,
+    region,
+    verifiedText,
   };
 
   return (
-    <article className="bg-gradient-to-br from-surface-container-lowest via-surface-container-lowest to-secondary-fixed/20 rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm border-l-4 border-l-secondary">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-secondary text-on-secondary flex items-center justify-center font-black text-sm">
-            {discount}
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h3 className="font-headline-sm text-sm font-bold text-on-surface">{author}</h3>
-              <span className="font-label-caps text-label-caps bg-secondary-fixed text-on-secondary-fixed px-2 py-0.5 rounded font-bold">{authorRole}</span>
-            </div>
-            <p className="font-body-sm text-xs text-outline">{date}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="bg-tertiary text-on-tertiary font-label-caps text-label-caps px-2.5 py-1 rounded-full uppercase font-bold tracking-wider animate-pulse hidden sm:inline-flex">
-            Ekskluzivno
+    <article 
+      className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/60 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group"
+    >
+      {/* PHOTO CONTAINER */}
+      <div className="sm:w-52 md:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden">
+        <img 
+          src={image} 
+          alt={title}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent sm:hidden"></div>
+        
+        {/* Badges on image */}
+        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+          <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
+            {categoryName}
           </span>
-          <BookmarkButton id={id} data={bookmarkData} />
-          <ShareMenu id={id} />
+          {featured && (
+            <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5" />
+              Top
+            </span>
+          )}
+        </div>
+
+        <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-secondary text-on-secondary font-bold text-xs shadow-md">
+          {discount}
         </div>
       </div>
-      
-      <div className="flex flex-col gap-1.5">
-        <h4 className="font-headline-md text-xl font-bold text-on-surface">
-          {title}
-        </h4>
-        <p className="font-body-md text-body-md text-on-surface-variant">
-          {description}
-        </p>
-      </div>
-      
-      <div className="bg-surface-container-low rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 border-dashed border-2 border-secondary/40">
-        <div className="flex items-center gap-2">
-          <Ticket className="w-[1em] h-[1em] text-secondary text-xl" />
-          <div className="flex flex-col">
-            <span className="font-label-caps text-label-caps text-outline uppercase">Promocijska koda</span>
-            <span className="font-headline-sm text-lg font-mono font-bold tracking-wider text-secondary">{code}</span>
+
+      {/* CONTENT AREA */}
+      <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-3">
+        <div>
+          {/* Header Row: Partner info, role, and actions */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img 
+                src={avatarSrc} 
+                alt={author}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 shrink-0 shadow-xs"
+                loading="lazy"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`;
+                }}
+              />
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span className="font-label-lg text-xs sm:text-sm font-bold text-on-surface truncate">
+                  {author}
+                </span>
+                {authorRole && (
+                  <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold shrink-0">
+                    {authorRole}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-1 shrink-0">
+              <BookmarkButton 
+                id={id} 
+                data={bookmarkData}
+              />
+              <ShareMenu id={id} title={title} />
+            </div>
           </div>
+
+          {/* Title */}
+          <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover:text-primary transition-colors leading-snug">
+            {title}
+          </h3>
+
+          {/* Description */}
+          <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
+            {description}
+          </p>
         </div>
-        <button 
-          onClick={handleCopy}
-          className="px-3 py-1.5 rounded-lg bg-surface-container-highest hover:bg-surface-container-high text-on-surface font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-        >
-          {copied ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
-          <span>{copied ? 'Kopirano!' : 'Kopiraj kodo'}</span>
-        </button>
-      </div>
-      
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-        <div className="flex items-center gap-1 bg-surface-container rounded-xl p-1">
-          <button 
-            onClick={() => {
-              if (!hasVoted) {
-                setVotes(v => v + 1);
-                setHasVoted(true);
-              }
-            }}
-            className="px-3 py-1 rounded-lg bg-surface-container-lowest hover:bg-secondary-fixed text-on-surface font-label-md text-xs font-bold transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
-          >
-            <span className="text-secondary text-sm">▲</span>
-            <span>{votes} glasov</span>
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-body-sm text-xs text-outline">Preverjeno deluje (98%)</span>
-          <a className="px-4 py-2 rounded-xl bg-secondary hover:bg-on-secondary-container text-on-secondary font-label-md text-label-md font-semibold transition-all shadow-sm flex items-center gap-1" href={link} rel="noopener noreferrer" target="_blank">
-            <span>Uveljavi popust</span>
-            <ArrowRight className="w-[1em] h-[1em] text-sm" />
-          </a>
+
+        {/* Metadata & Actions Row */}
+        <div className="space-y-2.5 pt-2 border-t border-surface-container-low">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-outline font-label-md text-[11px]">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              {verifiedText && (
+                <span className="flex items-center gap-1 text-secondary font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{verifiedText}</span>
+                </span>
+              )}
+              <span>•</span>
+              <span className="flex items-center gap-1 text-error font-medium">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{date}</span>
+              </span>
+              {region && (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center gap-1 truncate max-w-[140px]">
+                    <MapPin className="w-3 h-3 text-outline shrink-0" />
+                    <span>{region}</span>
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Upvote button */}
+            <button
+              onClick={handleVote}
+              disabled={hasVoted}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                hasVoted 
+                  ? 'bg-secondary/10 text-secondary' 
+                  : 'bg-surface-container-low hover:bg-surface-container text-on-surface'
+              }`}
+              title="Glasuj za to ugodnost"
+            >
+              <ThumbsUp className={`w-3.5 h-3.5 ${hasVoted ? 'fill-current' : ''}`} />
+              <span>{votes}</span>
+            </button>
+          </div>
+
+          {/* Promo Code or Direct Link CTA */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+            {code ? (
+              <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60">
+                <span className="font-label-caps text-[10px] text-outline uppercase font-bold">Koda:</span>
+                <span className="font-mono font-bold text-primary px-2 py-0.5 bg-surface-container-lowest rounded select-all text-xs border border-surface-container">
+                  {code}
+                </span>
+                <button 
+                  onClick={handleCopy}
+                  className="p-1 text-outline hover:text-primary transition-colors cursor-pointer" 
+                  title="Kopiraj kodo" 
+                  type="button"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+                {copied && <span className="text-[10px] font-bold text-secondary">Kopirano!</span>}
+              </div>
+            ) : (
+              <span className="text-xs text-outline italic">Koda ni potrebna (akcija)</span>
+            )}
+
+            <a 
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs ml-auto"
+            >
+              <span>Uveljavi popust</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
         </div>
       </div>
     </article>
