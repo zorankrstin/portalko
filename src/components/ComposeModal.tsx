@@ -1,8 +1,9 @@
-import { X, Image as ImageIcon, Link as LinkIcon, MapPin, Smile, Loader2, CheckCircle } from 'lucide-react';
+import { X, Image as ImageIcon, Link as LinkIcon, MapPin, Smile, Loader2, CheckCircle, Crown, Shield, UserCheck, User as UserIcon, AlertTriangle, LogIn } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { RichTextEditor } from './RichTextEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { createPostInFirestore, createAdInFirestore, createEventInFirestore } from '../services/firestoreService';
+import { LoginModal } from './LoginModal';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
 
@@ -28,6 +29,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -49,12 +51,21 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
   if (!isOpen) return null;
 
+  const isGuestOrUnauth = !currentUser || currentUser.role === 'guest';
+  const canPost = !isGuestOrUnauth && ['superadmin', 'admin', 'verified', 'registered'].includes(currentUser?.role || '');
+  const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+
   const authorName = currentUser ? currentUser.name : 'Gost';
   const authorAvatar = currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=7C3AED&color=fff`;
   const authorRole = currentUser?.role || 'guest';
   const authorId = currentUser?.id || 'guest_user';
 
   const handleSubmit = async () => {
+    if (!canPost) {
+      setErrorMsg('Za objavljanje morate biti prijavljeni z vlogo: Registriran uporabnik, Preverjen uporabnik ali Skrbnik.');
+      return;
+    }
+
     if (!title.trim()) {
       setErrorMsg('Prosimo, vnesite naslov objave.');
       return;
@@ -66,6 +77,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
     setIsSubmitting(true);
     setErrorMsg('');
+    // Real posting enabled: registered users, verified users, admin and superadmin publish live
+    const initialStatus = 'published';
+    const initialAdStatus = 'active';
 
     try {
       if (postType === 'post' || postType === 'deal') {
@@ -79,6 +93,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorAvatar,
           imageUrl: imageUrl || undefined,
           price: postType === 'deal' ? (discount || undefined) : undefined,
+          status: initialStatus,
           likesCount: 0,
           commentsCount: 0,
         });
@@ -93,7 +108,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorName,
           authorRole,
           imageUrl: imageUrl || undefined,
-          status: 'active',
+          status: initialAdStatus,
         });
       } else if (postType === 'event') {
         await createEventInFirestore({
@@ -106,18 +121,19 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorName,
           authorRole,
           imageUrl: imageUrl || undefined,
+          status: initialStatus,
           isPromoted: false,
         });
       }
 
-      setSuccessMsg('Objava je bila uspešno shranjena v Firebase!');
+      setSuccessMsg('Vaša objava je bila uspešno objavljena in je takoj vidna vsem obiskovalcem!');
       onPostCreated?.();
       setTimeout(() => {
         onClose();
-      }, 900);
+      }, 1200);
     } catch (err: any) {
       console.error('Error creating post in Firestore:', err);
-      setErrorMsg('Prišlo je do napake pri shranjevanju. Preverite povezavo.');
+      setErrorMsg('Prišlo je do napake pri shranjevanju. Preverite povezavo ali pravice.');
     } finally {
       setIsSubmitting(false);
     }
@@ -136,11 +152,34 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           </h2>
           <button 
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-surface-container text-outline hover:text-on-surface transition-colors"
+            className="p-1 rounded-lg hover:bg-surface-container text-outline hover:text-on-surface transition-colors cursor-pointer"
           >
             <X className="w-[1em] h-[1em] text-2xl" />
           </button>
         </div>
+
+        {/* Warning banner for guests / unauthenticated users */}
+        {!canPost && (
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-on-surface">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-800 dark:text-amber-300">Prijava je obvezna za objavo vsebin</p>
+                <p className="text-on-surface-variant text-[11px] mt-0.5">
+                  Objavljanje je omogočeno članom skupnosti: <strong>registrirani</strong>, <strong>preverjeni</strong> uporabniki ter <strong>skrbniki</strong>.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsLoginModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Prijava / Registracija</span>
+            </button>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs">
@@ -151,7 +190,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         {successMsg && (
           <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-700 text-xs flex items-center gap-2">
             <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-            <span>{successMsg}</span>
+            <span className="font-semibold">{successMsg}</span>
           </div>
         )}
 
@@ -164,8 +203,28 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             />
             <div>
               <div className="font-label-md text-sm font-bold text-on-surface">{authorName}</div>
-              <div className="font-label-caps text-[10px] text-outline uppercase tracking-wider">
-                Objavlja kot: {authorRole === 'superadmin' ? 'Glavni skrbnik' : authorRole === 'admin' ? 'Skrbnik' : authorRole === 'verified' ? 'Preverjen uporabnik' : 'Uporabnik'}
+              <div className="font-label-caps text-[11px] flex items-center gap-1.5 mt-0.5">
+                {authorRole === 'superadmin' ? (
+                  <span className="inline-flex items-center gap-1 text-purple-700 bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300 px-2 py-0.5 rounded font-bold">
+                    <Crown className="w-3 h-3" /> Glavni skrbnik • Samodejna takojšnja objava
+                  </span>
+                ) : authorRole === 'admin' ? (
+                  <span className="inline-flex items-center gap-1 text-red-700 bg-red-100 dark:bg-red-950/40 dark:text-red-300 px-2 py-0.5 rounded font-bold">
+                    <Shield className="w-3 h-3" /> Skrbnik • Samodejna takojšnja objava
+                  </span>
+                ) : authorRole === 'verified' ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 px-2 py-0.5 rounded font-bold">
+                    <UserCheck className="w-3 h-3" /> Preverjen uporabnik • Samodejna takojšnja objava
+                  </span>
+                ) : authorRole === 'registered' ? (
+                  <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5 rounded font-bold">
+                    <UserIcon className="w-3 h-3" /> Registriran uporabnik • Samodejna takojšnja objava
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-outline px-2 py-0.5 rounded bg-surface-container">
+                    Gost (potrebna prijava za objavo)
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -290,8 +349,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             </div>
             <button 
               onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-semibold shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+              disabled={isSubmitting || !canPost}
+              className={`px-6 py-2.5 rounded-xl font-label-md text-sm font-semibold shadow-md transition-all flex items-center gap-2 ${
+                canPost 
+                  ? 'bg-primary hover:bg-primary-container text-on-primary cursor-pointer' 
+                  : 'bg-surface-container-high text-outline cursor-not-allowed opacity-60'
+              } disabled:opacity-50`}
+              title={!canPost ? 'Prijavite se za objavljanje' : 'Oddaj objavo'}
             >
               {isSubmitting ? (
                 <>
@@ -299,12 +363,18 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                   <span>Shranjevanje...</span>
                 </>
               ) : (
-                <span>Objavi</span>
+                <span>{isAdminOrSuper ? 'Objavi zdaj' : 'Pošlji v pregled'}</span>
               )}
             </button>
           </div>
         </div>
       </div>
+
+      <LoginModal 
+        isOpen={isLoginModalOpen} 
+        onClose={() => setIsLoginModalOpen(false)} 
+        initialMode="login" 
+      />
     </div>
   );
 }

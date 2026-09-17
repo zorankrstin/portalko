@@ -26,7 +26,6 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
-  const [regRole, setRegRole] = useState<Role>('registered');
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -82,7 +81,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
       name: regName,
       email: regEmail,
       password: regPassword,
-      role: regRole,
+      role: 'registered',
     });
 
     if (!res.success) {
@@ -90,14 +89,13 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
       return;
     }
 
-    setSuccessMsg(`Račun za ${res.user?.name} (${res.user?.role}) uspešno ustvarjen! Prijavljeni ste.`);
+    setSuccessMsg(`Račun za ${res.user?.name} uspešno ustvarjen! Prijavljeni ste.`);
     setTimeout(() => {
       onClose();
       // Reset form
       setRegName('');
       setRegEmail('');
       setRegPassword('');
-      setRegRole('registered');
       setSuccessMsg('');
     }, 800);
   };
@@ -347,12 +345,12 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
               <div className="flex flex-col gap-2">
                 <GoogleAuthButton
                   mode="register"
-                  selectedRole={regRole}
+                  selectedRole="registered"
                   onSuccess={(user, isNewUser) => {
                     if (isNewUser) {
-                      setSuccessMsg(`Google račun uspešno registriran kot ${user.name} (${user.role})! Prijavljeni ste.`);
+                      setSuccessMsg(`Google račun uspešno registriran kot ${user.name}! Prijavljeni ste.`);
                     } else {
-                      setSuccessMsg(`Prijavljeni z obstoječim Google računom kot ${user.name} (${user.role})!`);
+                      setSuccessMsg(`Prijavljeni z obstoječim Google računom kot ${user.name}!`);
                     }
                     setTimeout(() => {
                       onClose();
@@ -426,161 +424,12 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                 </div>
               </div>
 
-              {/* Role selection section */}
-              <div className="flex flex-col gap-2 pt-1">
-                <div className="flex items-center justify-between">
-                  <label className="font-label-md text-xs font-semibold text-on-surface">
-                    Vloga / raven dostopa
-                  </label>
-                  <span className="text-[11px] text-outline">
-                    Izberite pravice za vaš račun
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  {/* Superadmin Card */}
-                  <label 
-                    className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                      regRole === 'superadmin'
-                        ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/30 ring-1 ring-purple-500'
-                        : 'border-surface-container bg-surface-container-lowest hover:bg-surface-container-low'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      value="superadmin"
-                      checked={regRole === 'superadmin'}
-                      onChange={() => setRegRole('superadmin')}
-                      className="mt-1 accent-purple-600"
-                    />
-                    <div className="flex flex-col flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <Crown className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                        <span className="font-bold text-xs text-purple-700 dark:text-purple-300">
-                          Superadmin (Glavni administrator)
-                        </span>
-                        <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 bg-purple-600 text-white rounded-full">
-                          Polne pravice
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">
-                        Popoln dostop do nadzorne plošče administratorja, upravljanje vlog, moderiranje portala in konfiguracija.
-                      </p>
-                    </div>
-                  </label>
-
-                  {/* Standard Registered User */}
-                  <label 
-                    className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                      regRole === 'registered'
-                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                        : 'border-surface-container bg-surface-container-lowest hover:bg-surface-container-low'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      value="registered"
-                      checked={regRole === 'registered'}
-                      onChange={() => setRegRole('registered')}
-                      className="mt-1 accent-primary"
-                    />
-                    <div className="flex flex-col flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <User className="w-4 h-4 text-primary" />
-                        <span className="font-bold text-xs text-on-surface">
-                          Registrirani uporabnik
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">
-                        Objava malih oglasov, blog člankov in dogodkov na portalu.
-                      </p>
-                    </div>
-                  </label>
-
-                  {/* Verified User */}
-                  <label 
-                    className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                      regRole === 'verified'
-                        ? 'border-secondary bg-secondary/5 ring-1 ring-secondary'
-                        : 'border-surface-container bg-surface-container-lowest hover:bg-surface-container-low'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      value="verified"
-                      checked={regRole === 'verified'}
-                      onChange={() => setRegRole('verified')}
-                      className="mt-1 accent-secondary"
-                    />
-                    <div className="flex flex-col flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <UserCheck className="w-4 h-4 text-secondary" />
-                        <span className="font-bold text-xs text-on-surface">
-                          Preverjeni uporabnik
-                        </span>
-                        <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 bg-secondary/15 text-secondary rounded-md">
-                          Preverjen
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">
-                        Vse standardne pravice + možnost dodajanja ugodnosti, kuponov in popustov.
-                      </p>
-                    </div>
-                  </label>
-
-                  {/* Admin */}
-                  <label 
-                    className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                      regRole === 'admin'
-                        ? 'border-error bg-error/5 ring-1 ring-error'
-                        : 'border-surface-container bg-surface-container-lowest hover:bg-surface-container-low'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      value="admin"
-                      checked={regRole === 'admin'}
-                      onChange={() => setRegRole('admin')}
-                      className="mt-1 accent-error"
-                    />
-                    <div className="flex flex-col flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <Shield className="w-4 h-4 text-error" />
-                        <span className="font-bold text-xs text-on-surface">
-                          Sistemski Administrator
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">
-                        Nadzor nad objavami, RSS viri in moderiranje vsebin.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
               <button
                 type="submit"
-                className={`w-full mt-2 py-3 rounded-xl text-white font-label-md text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 ${
-                  regRole === 'superadmin'
-                    ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'
-                    : 'bg-primary hover:bg-primary-container shadow-primary/20'
-                }`}
+                className="w-full mt-2 py-3 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2"
               >
-                {regRole === 'superadmin' ? (
-                  <>
-                    <Crown className="w-4 h-4" />
-                    <span>Registriraj se kot Superadmin</span>
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="w-4 h-4" />
-                    <span>Ustvari račun in se prijavi</span>
-                  </>
-                )}
+                <UserPlus className="w-4 h-4" />
+                <span>Ustvari račun in se prijavi</span>
               </button>
 
               <div className="pt-2 text-center">

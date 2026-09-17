@@ -178,52 +178,6 @@ export function GoogleAuthButton({ mode, selectedRole = 'registered', onSuccess,
               </p>
             </div>
 
-            {/* Role selector for registration */}
-            {mode === 'register' && (
-              <div className="px-4 pt-3 pb-1 bg-surface-container-low/40 border-b border-surface-container-low">
-                <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block mb-1.5">
-                  Izberite vlogo ob registraciji:
-                </label>
-                <div className="grid grid-cols-2 gap-1.5 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => setCustomRole('registered')}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors ${customRole === 'registered' ? 'bg-primary text-on-primary' : 'bg-surface-container hover:bg-surface-container-high text-on-surface'}`}
-                  >
-                    <span>Registriran</span>
-                    {customRole === 'registered' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomRole('verified')}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors ${customRole === 'verified' ? 'bg-primary text-on-primary' : 'bg-surface-container hover:bg-surface-container-high text-on-surface'}`}
-                  >
-                    <span>Preverjen</span>
-                    {customRole === 'verified' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomRole('admin')}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors ${customRole === 'admin' ? 'bg-primary text-on-primary' : 'bg-surface-container hover:bg-surface-container-high text-on-surface'}`}
-                  >
-                    <span>Administrator</span>
-                    {customRole === 'admin' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomRole('superadmin')}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors ${customRole === 'superadmin' ? 'bg-purple-700 text-white' : 'bg-surface-container hover:bg-surface-container-high text-on-surface'}`}
-                  >
-                    <span className="flex items-center gap-1">
-                      <Crown className="w-3 h-3 text-amber-400" />
-                      Superadmin
-                    </span>
-                    {customRole === 'superadmin' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Account List */}
             <div className="p-4 flex flex-col gap-2 max-h-72 overflow-y-auto no-scrollbar">
               {/* Primary User Account: Zoran Krstin */}

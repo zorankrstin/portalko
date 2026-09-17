@@ -63,6 +63,9 @@ export interface User {
   googleId?: string;
   socialLinks?: SocialLink[];
   profileMenu?: ProfileMenuItem[];
+  verificationRequested?: boolean;
+  verificationRequestedAt?: string;
+  verificationNote?: string;
 }
 
 const DEFAULT_USERS: User[] = [
@@ -157,6 +160,8 @@ interface AuthContextType {
   register: (data: RegisterData) => { success: boolean; error?: string; user?: User };
   loginOrRegisterWithGoogle: (data: GoogleAuthData) => { success: boolean; error?: string; user?: User; isNewUser: boolean };
   signInWithGoogleFirebase: () => Promise<{ success: boolean; error?: string; user?: User }>;
+  requestVerification: (userId: string, note?: string) => { success: boolean; error?: string };
+  cancelVerificationRequest: (userId: string) => { success: boolean; error?: string };
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -480,6 +485,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const requestVerification = (userId: string, note?: string) => {
+    updateUser(userId, {
+      verificationRequested: true,
+      verificationRequestedAt: new Date().toISOString(),
+      verificationNote: note || '',
+    });
+    return { success: true };
+  };
+
+  const cancelVerificationRequest = (userId: string) => {
+    updateUser(userId, {
+      verificationRequested: false,
+      verificationNote: '',
+    });
+    return { success: true };
+  };
+
   if (!isLoaded) return null;
 
   return (
@@ -494,7 +516,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       changePassword, 
       register,
       loginOrRegisterWithGoogle,
-      signInWithGoogleFirebase
+      signInWithGoogleFirebase,
+      requestVerification,
+      cancelVerificationRequest
     }}>
       {children}
     </AuthContext.Provider>

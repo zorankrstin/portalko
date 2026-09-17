@@ -1,5 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Rss, Trash2, Plus, Users, FileText, Shield, Search, Filter, CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, RefreshCw, ExternalLink, Globe } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Settings, Rss, Trash2, Plus, Users, FileText, Shield, Search, Filter, 
+  CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
+  RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
+  Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
+  UserCheck, X
+} from 'lucide-react';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { 
   RssFeedConfig, 
@@ -8,6 +14,23 @@ import {
   saveAdminRssFeeds, 
   validateRssFeedUrl 
 } from '../services/rssService';
+import { 
+  FirestorePost, 
+  FirestoreAd, 
+  FirestoreEvent, 
+  subscribeToPosts, 
+  subscribeToAds, 
+  subscribeToEvents,
+  approveItemInFirestore,
+  rejectItemInFirestore,
+  deletePostInFirestore,
+  deleteAdInFirestore,
+  deleteEventInFirestore,
+  updatePostInFirestore,
+  updateAdInFirestore,
+  updateEventInFirestore
+} from '../services/firestoreService';
+import { EditPostModal, EditablePostItem, EditableItemType } from './posts/EditPostModal';
 
 export type { RssFeedConfig };
 
@@ -16,7 +39,7 @@ interface AdminPost {
   title: string;
   author: string;
   type: 'blog' | 'ad' | 'event' | 'deal';
-  status: 'published' | 'pending' | 'removed';
+  status: 'published' | 'pending' | 'removed' | 'rejected';
   date: string;
 }
 
@@ -29,7 +52,7 @@ const MOCK_POSTS: AdminPost[] = [
 
 export function AdminDashboard() {
   const { users, currentUser, updateUser, register } = useAuth();
-  const [activeTab, setActiveTab] = useState<'rss' | 'users' | 'posts'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'approvals' | 'posts' | 'rss'>('approvals');
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
 
@@ -40,6 +63,202 @@ export function AdminDashboard() {
   const [newUserRole, setNewUserRole] = useState<Role>('registered');
   const [addUserError, setAddUserError] = useState('');
   const [addUserSuccess, setAddUserSuccess] = useState('');
+
+  // Firestore Live Posts & Subscriptions
+  const [firestorePosts, setFirestorePosts] = useState<FirestorePost[]>([]);
+  const [firestoreAds, setFirestoreAds] = useState<FirestoreAd[]>([]);
+  const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
+  const [isPostsLoading, setIsPostsLoading] = useState(true);
+
+  // Edit Modal State
+  const [editingItem, setEditingItem] = useState<EditablePostItem | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Post search & filters
+  const [postSearchQuery, setPostSearchQuery] = useState('');
+  const [postTypeFilter, setPostTypeFilter] = useState<string>('all');
+  const [postStatusFilter, setPostStatusFilter] = useState<string>('all');
+  const [userFilterRole, setUserFilterRole] = useState<string>('all');
+  const [actionFeedback, setActionFeedback] = useState<{ id: string; message: string; type: 'success' | 'error' } | null>(null);
+
+  const pendingVerifications = useMemo(() => {
+    return users.filter(u => u.verificationRequested);
+  }, [users]);
+
+  const handleApproveVerification = (userId: string, userName: string) => {
+    updateUser(userId, {
+      role: 'verified',
+      verificationRequested: false,
+      verificationNote: '',
+    });
+    setActionFeedback({
+      id: userId,
+      message: `Uporabnik ${userName} je bil uspešno verificiran (vloga Preverjen)!`,
+      type: 'success',
+    });
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
+  const handleRejectVerification = (userId: string, userName: string) => {
+    updateUser(userId, {
+      verificationRequested: false,
+    });
+    setActionFeedback({
+      id: userId,
+      message: `Zahtevek za verifikacijo uporabnika ${userName} je bil zavrnjen.`,
+      type: 'success',
+    });
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
+  useEffect(() => {
+    const unsubPosts = subscribeToPosts((posts) => {
+      setFirestorePosts(posts);
+      setIsPostsLoading(false);
+    });
+    const unsubAds = subscribeToAds((ads) => {
+      setFirestoreAds(ads);
+    });
+    const unsubEvents = subscribeToEvents((events) => {
+      setFirestoreEvents(events);
+    });
+
+    return () => {
+      unsubPosts();
+      unsubAds();
+      unsubEvents();
+    };
+  }, []);
+
+  // Map all content into a unified list
+  const allUnifiedItems = useMemo<EditablePostItem[]>(() => {
+    const items: EditablePostItem[] = [];
+
+    firestorePosts.forEach(p => {
+      const isDeal = p.category === 'deal' || !!p.price;
+      items.push({
+        id: p.id,
+        type: isDeal ? 'deal' : 'post',
+        title: p.title,
+        content: p.content,
+        category: p.category,
+        authorName: p.authorName || 'Uporabnik',
+        authorRole: p.authorRole,
+        status: p.status || 'published',
+        imageUrl: p.imageUrl,
+        price: p.price,
+        location: p.location,
+        rejectionReason: p.rejectionReason,
+      });
+    });
+
+    firestoreAds.forEach(a => {
+      const normalizedStatus = (a.status === 'active' || a.status === 'sold' || a.status === 'closed') 
+        ? 'published' 
+        : (a.status as any || 'published');
+      items.push({
+        id: a.id,
+        type: 'ad',
+        title: a.title,
+        content: a.description,
+        category: a.category,
+        authorName: a.authorName || 'Uporabnik',
+        authorRole: a.authorRole,
+        status: normalizedStatus,
+        imageUrl: a.imageUrl,
+        price: a.price,
+        location: a.location,
+        rejectionReason: a.rejectionReason,
+      });
+    });
+
+    firestoreEvents.forEach(e => {
+      items.push({
+        id: e.id,
+        type: 'event',
+        title: e.title,
+        content: e.description,
+        category: e.category,
+        authorName: e.authorName || 'Uporabnik',
+        authorRole: e.authorRole,
+        status: e.status || 'published',
+        imageUrl: e.imageUrl,
+        price: e.price,
+        location: e.location,
+        eventDate: e.eventDate || e.date,
+        rejectionReason: e.rejectionReason,
+      });
+    });
+
+    return items;
+  }, [firestorePosts, firestoreAds, firestoreEvents]);
+
+  // Pending approval items
+  const pendingItems = useMemo(() => {
+    return allUnifiedItems.filter(item => item.status === 'pending');
+  }, [allUnifiedItems]);
+
+  // Filtered posts for all posts manager
+  const filteredPosts = useMemo(() => {
+    return allUnifiedItems.filter(item => {
+      const matchesSearch = 
+        !postSearchQuery ||
+        item.title.toLowerCase().includes(postSearchQuery.toLowerCase()) ||
+        item.authorName.toLowerCase().includes(postSearchQuery.toLowerCase()) ||
+        item.category.toLowerCase().includes(postSearchQuery.toLowerCase());
+      
+      const matchesType = postTypeFilter === 'all' || item.type === postTypeFilter;
+      const matchesStatus = postStatusFilter === 'all' || item.status === postStatusFilter;
+
+      return matchesSearch && matchesType && matchesStatus;
+    });
+  }, [allUnifiedItems, postSearchQuery, postTypeFilter, postStatusFilter]);
+
+  const handleApproveItem = async (item: EditablePostItem) => {
+    try {
+      await approveItemInFirestore(item.id, item.type);
+      setActionFeedback({ id: item.id, message: `Objava "${item.title}" je uspešno odobrena!`, type: 'success' });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err: any) {
+      setActionFeedback({ id: item.id, message: 'Napaka pri odobritvi objave.', type: 'error' });
+    }
+  };
+
+  const handleRejectItem = async (item: EditablePostItem) => {
+    const reason = window.prompt('Vnesite razlog za zavrnitev (viden avtorju):', 'Vsebina ne ustreza pravilom skupnosti');
+    if (reason === null) return; // User cancelled prompt
+
+    try {
+      await rejectItemInFirestore(item.id, item.type, reason.trim() || undefined);
+      setActionFeedback({ id: item.id, message: `Objava "${item.title}" je bila zavrnjena.`, type: 'success' });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err: any) {
+      setActionFeedback({ id: item.id, message: 'Napaka pri zavrnitvi objave.', type: 'error' });
+    }
+  };
+
+  const handleDeleteItem = async (item: EditablePostItem) => {
+    if (!window.confirm(`Ali ste prepričani, da želite trajno izbrisati objavo "${item.title}"?`)) return;
+
+    try {
+      if (item.type === 'ad') {
+        await deleteAdInFirestore(item.id);
+      } else if (item.type === 'event') {
+        await deleteEventInFirestore(item.id);
+      } else {
+        await deletePostInFirestore(item.id);
+      }
+      setActionFeedback({ id: item.id, message: `Objava "${item.title}" je bila izbrisana.`, type: 'success' });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err: any) {
+      setActionFeedback({ id: item.id, message: 'Napaka pri brisanju objave.', type: 'error' });
+    }
+  };
+
+  const handleEditItem = (item: EditablePostItem) => {
+    setEditingItem(item);
+    setIsEditModalOpen(true);
+  };
 
   // RSS State
   const [feeds, setFeeds] = useState<RssFeedConfig[]>(() => getAdminRssFeeds());
@@ -92,22 +311,51 @@ export function AdminDashboard() {
   const renderTabs = () => (
     <div className="flex flex-wrap gap-2 mb-4 border-b border-surface-container-low pb-3">
       <button 
-        onClick={() => setActiveTab('users')}
-        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 ${activeTab === 'users' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'}`}
+        onClick={() => setActiveTab('approvals')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'approvals' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
       >
-        <Users className="w-[1em] h-[1em]" /> Uporabniki
+        <Clock className="w-4 h-4" />
+        <span>Odobritev objav</span>
+        {pendingItems.length > 0 && (
+          <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-[#D28E3D] text-white shadow-xs">
+            {pendingItems.length}
+          </span>
+        )}
       </button>
       <button 
         onClick={() => setActiveTab('posts')}
-        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 ${activeTab === 'posts' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'}`}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'posts' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
       >
-        <FileText className="w-[1em] h-[1em]" /> Objavljene vsebine
+        <FileText className="w-4 h-4" />
+        <span>Vse objave & Urejanje</span>
+        <span className="text-xs opacity-75">({allUnifiedItems.length})</span>
+      </button>
+      <button 
+        onClick={() => setActiveTab('users')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'users' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <Users className="w-4 h-4" />
+        <span>Uporabniki</span>
+        {pendingVerifications.length > 0 && (
+          <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-amber-500 text-white shadow-xs" title={`${pendingVerifications.length} čaka na verifikacijo`}>
+            {pendingVerifications.length}
+          </span>
+        )}
       </button>
       <button 
         onClick={() => setActiveTab('rss')}
-        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 ${activeTab === 'rss' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'}`}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'rss' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
       >
-        <Rss className="w-[1em] h-[1em]" /> RSS Viri
+        <Rss className="w-4 h-4" />
+        <span>RSS Viri</span>
       </button>
     </div>
   );
@@ -137,14 +385,27 @@ export function AdminDashboard() {
                 <h3 className="font-headline-sm text-base font-bold text-on-surface">Upravljanje uporabnikov</h3>
                 <p className="text-xs text-outline">Skupaj registriranih uporabnikov: {users.length}</p>
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-64">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <select
+                  value={userFilterRole}
+                  onChange={(e) => setUserFilterRole(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-transparent focus:border-primary focus:outline-none text-xs font-semibold text-on-surface cursor-pointer"
+                >
+                  <option value="all">Vsi uporabniki ({users.length})</option>
+                  <option value="verification">⭐ Čakajo na verifikacijo ({pendingVerifications.length})</option>
+                  <option value="registered">Registrirani ({users.filter(u => u.role === 'registered').length})</option>
+                  <option value="verified">Preverjeni ({users.filter(u => u.role === 'verified').length})</option>
+                  <option value="admin">Administratorji ({users.filter(u => u.role === 'admin').length})</option>
+                  <option value="superadmin">Superadmini ({users.filter(u => u.role === 'superadmin').length})</option>
+                </select>
+
+                <div className="relative flex-1 sm:w-56">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
                   <input 
                     type="text" 
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
-                    placeholder="Išči po imenu, e-pošti, vlogi..." 
+                    placeholder="Išči po imenu, e-pošti..." 
                     className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-surface-container-low border border-transparent focus:border-primary focus:outline-none text-sm font-body-sm" 
                   />
                   {userSearchQuery && (
@@ -171,6 +432,30 @@ export function AdminDashboard() {
                 )}
               </div>
             </div>
+
+            {/* Pending Verifications Notice Banner */}
+            {pendingVerifications.length > 0 && userFilterRole !== 'verification' && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200">
+                  <UserCheck className="w-5 h-5 text-amber-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">
+                      {pendingVerifications.length} {pendingVerifications.length === 1 ? 'uporabnik čaka' : 'uporabnikov čaka'} na potrditev verifikacije.
+                    </span>
+                    <p className="text-[11px] text-on-surface-variant">
+                      Uporabniki z vlogo »Preverjen« imajo polno zaupanje in označbo preverjenega profila.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUserFilterRole('verification')}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors shrink-0 shadow-2xs cursor-pointer"
+                >
+                  Prikaži čakajoče ({pendingVerifications.length})
+                </button>
+              </div>
+            )}
 
             {/* Modal for adding user as superadmin */}
             {isAddUserOpen && (
@@ -288,31 +573,56 @@ export function AdminDashboard() {
                 <tbody className="divide-y divide-surface-container-low">
                   {users
                     .filter(user => {
+                      if (userFilterRole === 'verification' && !user.verificationRequested) return false;
+                      if (userFilterRole !== 'all' && userFilterRole !== 'verification' && user.role !== userFilterRole) return false;
                       if (!userSearchQuery) return true;
                       const q = userSearchQuery.toLowerCase();
                       return (
                         user.name.toLowerCase().includes(q) ||
                         user.email.toLowerCase().includes(q) ||
-                        user.role.toLowerCase().includes(q)
+                        user.role.toLowerCase().includes(q) ||
+                        (user.verificationNote && user.verificationNote.toLowerCase().includes(q))
                       );
                     })
                     .map(user => {
                       const isSuperadmin = currentUser?.role === 'superadmin';
+                      const canManageVerification = isSuperadmin || currentUser?.role === 'admin';
+
                       return (
-                        <tr key={user.id} className="hover:bg-surface-container-lowest transition-colors">
+                        <tr key={user.id} className={`hover:bg-surface-container-lowest transition-colors ${user.verificationRequested ? 'bg-amber-500/5' : ''}`}>
                           <td className="p-3">
-                            <div className="flex items-center gap-2.5">
-                              <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                            <div className="flex items-start gap-2.5">
+                              <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
                               <div className="flex flex-col min-w-0">
                                 <span className="font-bold text-sm text-on-surface flex items-center gap-1">
                                   {user.name}
                                   {user.role === 'superadmin' && <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />}
+                                  {user.role === 'verified' && <CheckCircle className="w-3.5 h-3.5 text-secondary" />}
                                 </span>
                                 <span className="text-xs text-outline truncate">{user.email}</span>
+
+                                {user.verificationRequested && (
+                                  <div className="mt-1.5 flex flex-col gap-1">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40 w-max">
+                                      <UserCheck className="w-3 h-3 text-amber-600" />
+                                      Zahteva verifikacijo
+                                      {user.verificationRequestedAt && (
+                                        <span className="opacity-75 font-normal">
+                                          ({new Date(user.verificationRequestedAt).toLocaleDateString('sl-SI')})
+                                        </span>
+                                      )}
+                                    </span>
+                                    {user.verificationNote && (
+                                      <p className="text-[11px] text-on-surface-variant bg-surface-container-low p-2 rounded-lg border border-surface-container/60 max-w-sm">
+                                        <strong className="text-on-surface">Utemeljitev:</strong> {user.verificationNote}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 align-top">
                             {isSuperadmin && user.id !== currentUser?.id ? (
                               <select
                                 value={user.role}
@@ -335,24 +645,52 @@ export function AdminDashboard() {
                               </span>
                             )}
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 align-top">
                             {user.status === 'active' ? (
                               <span className="flex items-center gap-1 text-xs text-secondary font-medium"><CheckCircle className="w-3 h-3" /> Aktiven</span>
                             ) : (
                               <span className="flex items-center gap-1 text-xs text-error font-medium"><XCircle className="w-3 h-3" /> Baniran</span>
                             )}
                           </td>
-                          <td className="p-3 text-right">
-                            {isSuperadmin && user.id !== currentUser?.id ? (
-                              <button 
-                                onClick={() => updateUser(user.id, { status: user.status === 'active' ? 'banned' : 'active' })}
-                                className={`px-3 py-1 rounded text-xs font-bold ${user.status === 'active' ? 'bg-error/10 text-error hover:bg-error/20' : 'bg-secondary/10 text-secondary hover:bg-secondary/20'}`}
-                              >
-                                {user.status === 'active' ? 'Blokiraj' : 'Odblokiraj'}
-                              </button>
-                            ) : (
-                              <button className="p-1.5 text-outline hover:text-primary transition-colors rounded-lg hover:bg-primary/10" title="Ni pravic za urejanje"><MoreVertical className="w-4 h-4" /></button>
-                            )}
+                          <td className="p-3 text-right align-top">
+                            <div className="flex flex-col items-end gap-1.5">
+                              {user.verificationRequested && canManageVerification && (
+                                <div className="flex items-center gap-1">
+                                  <button 
+                                    type="button"
+                                    onClick={() => handleApproveVerification(user.id, user.name)}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                                    title="Potrdi verifikacijo (dodelitev vloge Preverjen)"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Potrdi verifikacijo</span>
+                                  </button>
+                                  <button 
+                                    type="button"
+                                    onClick={() => handleRejectVerification(user.id, user.name)}
+                                    className="p-1 rounded-lg bg-surface-container hover:bg-surface-container-high text-outline hover:text-error transition-colors cursor-pointer"
+                                    title="Zavrni zahtevek"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+
+                              {isSuperadmin && user.id !== currentUser?.id && (
+                                <button 
+                                  onClick={() => updateUser(user.id, { status: user.status === 'active' ? 'banned' : 'active' })}
+                                  className={`px-3 py-1 rounded text-xs font-bold ${user.status === 'active' ? 'bg-error/10 text-error hover:bg-error/20' : 'bg-secondary/10 text-secondary hover:bg-secondary/20'}`}
+                                >
+                                  {user.status === 'active' ? 'Blokiraj' : 'Odblokiraj'}
+                                </button>
+                              )}
+
+                              {(!isSuperadmin || user.id === currentUser?.id) && !user.verificationRequested && (
+                                <button className="p-1.5 text-outline hover:text-primary transition-colors rounded-lg hover:bg-primary/10" title="Brez dodatnih akcij">
+                                  <MoreVertical className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -363,57 +701,372 @@ export function AdminDashboard() {
           </div>
         )}
 
-        {/* Tab Content: Posts */}
+        {/* Action feedback notification */}
+        {actionFeedback && (
+          <div className={`p-3 rounded-xl flex items-center justify-between text-xs font-semibold animate-in fade-in duration-200 mb-2 ${
+            actionFeedback.type === 'success' ? 'bg-secondary/10 border border-secondary/20 text-secondary' : 'bg-error/10 border border-error/20 text-error'
+          }`}>
+            <div className="flex items-center gap-2">
+              {actionFeedback.type === 'success' ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+              <span>{actionFeedback.message}</span>
+            </div>
+            <button onClick={() => setActionFeedback(null)} className="p-1 hover:opacity-75 cursor-pointer">
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Tab Content: Approvals (Odobritev objav) */}
+        {activeTab === 'approvals' && (
+          <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-surface-container-low">
+              <div>
+                <h3 className="font-headline-sm text-lg font-bold text-on-surface flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-[#D28E3D]" />
+                  <span>Čakalna vrsta za odobritev objav</span>
+                  {pendingItems.length > 0 && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#D28E3D] text-white font-extrabold">
+                      {pendingItems.length} v čakanju
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-outline mt-0.5">
+                  Preglejte nove objave uporabnikov, jih uredite po potrebi, ter odobrite ali zavrnite pred javno objavo.
+                </p>
+              </div>
+
+              {pendingItems.length > 0 && (
+                <div className="text-xs text-on-surface-variant font-medium bg-surface-container-low px-3 py-1.5 rounded-xl border border-surface-container">
+                  Skrbniške pravice: <strong>{currentUser?.role}</strong>
+                </div>
+              )}
+            </div>
+
+            {pendingItems.length === 0 ? (
+              <div className="py-12 px-4 rounded-2xl bg-surface-container-low/50 border border-dashed border-surface-container flex flex-col items-center justify-center text-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center">
+                  <CheckCheck className="w-7 h-7" />
+                </div>
+                <div>
+                  <h4 className="font-headline-sm text-base font-bold text-on-surface">Vse objave so pregledane!</h4>
+                  <p className="text-xs text-outline max-w-md mt-1">
+                    Trenutno ni novih objav uporabnikov, ki bi čakale na vašo odobritev. Vse obstoječe vsebine si lahko ogledate v zavihku "Vse objave".
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('posts')}
+                  className="mt-2 px-4 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container text-on-surface font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Prikaži vse objave ({allUnifiedItems.length})
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pendingItems.map((item) => (
+                  <div 
+                    key={item.id} 
+                    className="bg-surface-container-lowest rounded-2xl p-4 border border-[#D28E3D]/30 hover:border-[#D28E3D] shadow-xs flex flex-col justify-between gap-3 transition-all"
+                  >
+                    <div className="flex flex-col gap-2.5">
+                      {/* Card Header: Type, Category, Date */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full ${
+                            item.type === 'ad' ? 'bg-primary/10 text-primary' :
+                            item.type === 'event' ? 'bg-secondary/10 text-secondary' :
+                            item.type === 'deal' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                            'bg-surface-container-high text-on-surface-variant'
+                          }`}>
+                            {item.type === 'ad' ? 'Mali oglas' :
+                             item.type === 'event' ? 'Dogodek' :
+                             item.type === 'deal' ? 'Ugodnost' : 'Članek / Objava'}
+                          </span>
+                          <span className="text-[11px] font-medium text-outline px-2 py-0.5 rounded-md bg-surface-container-low">
+                            {item.category}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-semibold text-[#D28E3D] flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                          <Clock className="w-3 h-3" /> Čaka na potrditev
+                        </span>
+                      </div>
+
+                      {/* Title & Author */}
+                      <div>
+                        <h4 className="font-bold text-sm text-on-surface line-clamp-2">{item.title}</h4>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-outline">
+                          <span>Avtor: <strong className="text-on-surface">{item.authorName}</strong></span>
+                          {item.authorRole && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-surface-container text-on-surface-variant">
+                              {item.authorRole}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Content excerpt */}
+                      {item.content && (
+                        <p className="text-xs text-on-surface-variant line-clamp-3 bg-surface-container-low/40 p-2.5 rounded-xl border border-surface-container-low">
+                          {item.content}
+                        </p>
+                      )}
+
+                      {/* Meta pills */}
+                      <div className="flex flex-wrap gap-2 text-[11px] text-outline">
+                        {item.price && (
+                          <span className="flex items-center gap-1 font-semibold text-primary bg-primary/5 px-2 py-0.5 rounded-md">
+                            <Tag className="w-3 h-3" /> {item.price}
+                          </span>
+                        )}
+                        {item.location && (
+                          <span className="flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-md">
+                            <MapPin className="w-3 h-3" /> {item.location}
+                          </span>
+                        )}
+                        {item.eventDate && (
+                          <span className="flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-md">
+                            <Calendar className="w-3 h-3" /> {item.eventDate}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Image preview */}
+                      {item.imageUrl && (
+                        <div className="relative w-full h-24 rounded-xl overflow-hidden bg-surface-container border border-surface-container">
+                          <img src={item.imageUrl} alt="Slika" className="w-full h-full object-cover" onError={() => {}} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Actions */}
+                    <div className="flex items-center justify-between gap-2 pt-3 border-t border-surface-container-low mt-1">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleApproveItem(item)}
+                          className="px-3.5 py-1.5 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                          title="Odobri in objavi takoj"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Odobri</span>
+                        </button>
+                        <button
+                          onClick={() => handleEditItem(item)}
+                          className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-container text-on-surface font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Uredi pred odobritvijo"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-primary" />
+                          <span>Uredi</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleRejectItem(item)}
+                          className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                          title="Zavrni objavo"
+                        >
+                          <Ban className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(item)}
+                          className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                          title="Trajno izbriši"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab Content: All Posts & Edit (Vse objave & Urejanje) */}
         {activeTab === 'posts' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="font-headline-sm text-base font-bold text-on-surface">Vse objave</h3>
-              <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-label-md text-xs flex items-center gap-1.5 transition-colors">
-                  <Filter className="w-3 h-3" /> Filtriraj
-                </button>
+              <div>
+                <h3 className="font-headline-sm text-base font-bold text-on-surface flex items-center gap-2">
+                  <span>Vse objave v sistemu</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-semibold">
+                    {filteredPosts.length} od {allUnifiedItems.length}
+                  </span>
+                </h3>
+                <p className="text-xs text-outline">
+                  Kot admin ali superadmin lahko urejate, spreminjate statuse in brišete vse objave.
+                </p>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                {/* Search */}
+                <div className="relative flex-1 sm:w-48">
+                  <Search className="w-3.5 h-3.5 text-outline absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={postSearchQuery}
+                    onChange={(e) => setPostSearchQuery(e.target.value)}
+                    placeholder="Išči po naslovu..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-surface-container-low text-xs text-on-surface border border-surface-container outline-none focus:border-primary"
+                  />
+                </div>
+
+                {/* Type filter */}
+                <select
+                  value={postTypeFilter}
+                  onChange={(e) => setPostTypeFilter(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-xl bg-surface-container-low text-xs text-on-surface border border-surface-container outline-none cursor-pointer"
+                >
+                  <option value="all">Vsi tipi</option>
+                  <option value="post">Članki</option>
+                  <option value="ad">Mali oglasi</option>
+                  <option value="event">Dogodki</option>
+                  <option value="deal">Ugodnosti</option>
+                </select>
+
+                {/* Status filter */}
+                <select
+                  value={postStatusFilter}
+                  onChange={(e) => setPostStatusFilter(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-xl bg-surface-container-low text-xs text-on-surface border border-surface-container outline-none cursor-pointer"
+                >
+                  <option value="all">Vsi statusi</option>
+                  <option value="published">Objavljeno / Aktivno</option>
+                  <option value="pending">V čakanju</option>
+                  <option value="rejected">Zavrnjeno</option>
+                </select>
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-surface-container">
+            {/* Posts Table */}
+            <div className="overflow-x-auto rounded-xl border border-surface-container bg-surface-container-lowest">
               <table className="w-full text-left border-collapse">
-                <thead className="bg-surface-container-low/50">
+                <thead className="bg-surface-container-low/60">
                   <tr>
-                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Naslov & Avtor</th>
-                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Tip</th>
+                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Naslov & Vsebina</th>
+                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Avtor</th>
+                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Tip & Kategorija</th>
                     <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Status</th>
-                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Datum</th>
-                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold text-right">Akcije</th>
+                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold text-right">Skrbniške akcije</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
-                  {MOCK_POSTS.map(post => (
-                    <tr key={post.id} className="hover:bg-surface-container-lowest transition-colors">
-                      <td className="p-3">
-                        <div className="flex flex-col max-w-[200px] sm:max-w-xs">
-                          <span className="font-bold text-sm text-on-surface truncate">{post.title}</span>
-                          <span className="text-xs text-outline">{post.author}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-xs uppercase font-semibold text-outline">
-                        {post.type}
-                      </td>
-                      <td className="p-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          post.status === 'published' ? 'bg-secondary/10 text-secondary' : 
-                          post.status === 'pending' ? 'bg-[#D28E3D]/10 text-[#D28E3D]' : 'bg-error/10 text-error'
-                        }`}>
-                          {post.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-xs text-on-surface-variant">
-                        {post.date}
-                      </td>
-                      <td className="p-3 text-right">
-                        <button className="p-1.5 text-outline hover:text-error transition-colors rounded-lg hover:bg-error/10" title="Odstrani objavo"><Trash2 className="w-4 h-4" /></button>
+                  {filteredPosts.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-6 text-center text-xs text-outline">
+                        Nobena objava ne ustreza izbranim filtrom.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredPosts.map(post => (
+                      <tr key={post.id} className="hover:bg-surface-container-low/40 transition-colors">
+                        <td className="p-3">
+                          <div className="flex items-center gap-2.5 max-w-xs sm:max-w-md">
+                            {post.imageUrl && (
+                              <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-surface-container border border-surface-container">
+                                <img src={post.imageUrl} alt="" className="w-full h-full object-cover" onError={() => {}} />
+                              </div>
+                            )}
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-sm text-on-surface truncate">{post.title}</span>
+                              <span className="text-xs text-outline truncate">{post.content || 'Brez opisa'}</span>
+                              {(post.price || post.location) && (
+                                <span className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+                                  {post.price && `${post.price} `}{post.location && `• ${post.location}`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-xs text-on-surface">{post.authorName}</span>
+                            {post.authorRole && (
+                              <span className="text-[10px] text-outline">{post.authorRole}</span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className={`inline-block text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full w-max ${
+                              post.type === 'ad' ? 'bg-primary/10 text-primary' :
+                              post.type === 'event' ? 'bg-secondary/10 text-secondary' :
+                              post.type === 'deal' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                              'bg-surface-container-high text-on-surface-variant'
+                            }`}>
+                              {post.type === 'ad' ? 'Oglas' :
+                               post.type === 'event' ? 'Dogodek' :
+                               post.type === 'deal' ? 'Ugodnost' : 'Članek'}
+                            </span>
+                            <span className="text-[11px] text-outline">{post.category}</span>
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={post.status}
+                              onChange={(e) => {
+                                const newStatus = e.target.value as any;
+                                if (newStatus === 'published') {
+                                  handleApproveItem(post);
+                                } else if (newStatus === 'rejected') {
+                                  handleRejectItem(post);
+                                } else if (newStatus === 'pending') {
+                                  if (post.type === 'ad') updateAdInFirestore(post.id, { status: 'pending' as any });
+                                  else if (post.type === 'event') updateEventInFirestore(post.id, { status: 'pending' });
+                                  else updatePostInFirestore(post.id, { status: 'pending' });
+                                }
+                              }}
+                              className={`text-[11px] font-bold py-1 px-2 rounded-lg border outline-none cursor-pointer transition-colors ${
+                                post.status === 'published' || post.status === 'active'
+                                  ? 'bg-secondary/10 text-secondary border-secondary/30'
+                                  : post.status === 'pending'
+                                  ? 'bg-[#D28E3D]/10 text-[#D28E3D] border-[#D28E3D]/40'
+                                  : 'bg-error/10 text-error border-error/30'
+                              }`}
+                            >
+                              <option value="published">Objavljeno</option>
+                              <option value="pending">V čakanju</option>
+                              <option value="rejected">Zavrnjeno</option>
+                            </select>
+                          </div>
+                        </td>
+
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {post.status === 'pending' && (
+                              <button
+                                onClick={() => handleApproveItem(post)}
+                                className="p-1.5 text-secondary hover:bg-secondary/10 rounded-lg transition-colors cursor-pointer"
+                                title="Hitro odobri"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => handleEditItem(post)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-surface-container-high hover:bg-surface-container text-on-surface rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                              title="Uredi celotno objavo"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-primary" />
+                              <span>Uredi</span>
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteItem(post)}
+                              className="p-1.5 text-outline hover:text-error hover:bg-error/10 transition-colors rounded-lg cursor-pointer"
+                              title="Odstrani objavo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -599,6 +1252,21 @@ export function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Edit Post Modal for Admin & Superadmin */}
+      <EditPostModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        item={editingItem}
+        onSaved={() => {
+          setActionFeedback({
+            id: 'edit-saved',
+            message: `Spremembe za "${editingItem?.title}" so bile uspešno shranjene!`,
+            type: 'success',
+          });
+          setTimeout(() => setActionFeedback(null), 4000);
+        }}
+      />
     </div>
   );
 }

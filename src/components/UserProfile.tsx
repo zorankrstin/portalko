@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Camera, 
   Edit2, 
@@ -24,12 +24,28 @@ import {
   Plus,
   ExternalLink,
   Trash2,
-  Edit3
+  Edit3,
+  Clock,
+  CheckCircle,
+  Ban
 } from 'lucide-react';
 import { SavedPostsTab } from './SavedPostsTab';
 import { BlogPost } from './posts/BlogPost';
 import { AdPost } from './posts/AdPost';
 import { EventPost } from './posts/EventPost';
+import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
+import { ComposeModal } from './ComposeModal';
+import { 
+  subscribeToPosts, 
+  subscribeToAds, 
+  subscribeToEvents, 
+  FirestorePost, 
+  FirestoreAd, 
+  FirestoreEvent,
+  deletePostInFirestore,
+  deleteAdInFirestore,
+  deleteEventInFirestore 
+} from '../services/firestoreService';
 import { 
   useAuth, 
   DEFAULT_PROFILE_MENU, 
@@ -45,10 +61,15 @@ import { CustomTabContent } from './profile/CustomTabContent';
 import portalkoLogo from '../assets/images/portalko_logo.png';
 
 export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => void }) {
-  const { currentUser, logout, updateUser, changePassword } = useAuth();
+  const { currentUser, logout, updateUser, changePassword, requestVerification, cancelVerificationRequest } = useAuth();
   const [activeTabId, setActiveTabId] = useState<string>('posts');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+
+  // Verification request modal state
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [verificationNoteInput, setVerificationNoteInput] = useState('');
+  const [verificationSuccessMsg, setVerificationSuccessMsg] = useState('');
 
   // Modals for social links and profile menu
   const [isSocialEditorOpen, setIsSocialEditorOpen] = useState(false);
@@ -82,6 +103,113 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
       if (currentUser.bio) setBioInput(currentUser.bio);
     }
   }, [currentUser]);
+
+  // User real posts state
+  const [userFirestorePosts, setUserFirestorePosts] = useState<FirestorePost[]>([]);
+  const [userFirestoreAds, setUserFirestoreAds] = useState<FirestoreAd[]>([]);
+  const [userFirestoreEvents, setUserFirestoreEvents] = useState<FirestoreEvent[]>([]);
+  const [editingPostItem, setEditingPostItem] = useState<EditablePostItem | null>(null);
+  const [isEditPostModalOpen, setIsEditPostModalOpen] = useState(false);
+  const [isComposeModalOpen, setIsComposeModalOpen] = useState(false);
+
+  useEffect(() => {
+    const unsubP = subscribeToPosts((posts) => {
+      setUserFirestorePosts(posts);
+    });
+    const unsubA = subscribeToAds((ads) => {
+      setUserFirestoreAds(ads);
+    });
+    const unsubE = subscribeToEvents((events) => {
+      setUserFirestoreEvents(events);
+    });
+    return () => {
+      unsubP();
+      unsubA();
+      unsubE();
+    };
+  }, []);
+
+  const myItems = useMemo<EditablePostItem[]>(() => {
+    if (!currentUser) return [];
+    const list: EditablePostItem[] = [];
+
+    userFirestorePosts.forEach(p => {
+      const isMine = p.authorId === currentUser.id || (currentUser.name && p.authorName === currentUser.name);
+      if (isMine) {
+        list.push({
+          id: p.id,
+          type: p.category === 'deal' ? 'deal' : 'post',
+          title: p.title,
+          content: p.content,
+          category: p.category,
+          authorName: p.authorName,
+          authorRole: p.authorRole,
+          status: p.status || 'published',
+          imageUrl: p.imageUrl,
+          price: p.price,
+          location: p.location,
+          rejectionReason: p.rejectionReason,
+        });
+      }
+    });
+
+    userFirestoreAds.forEach(a => {
+      const isMine = a.authorId === currentUser.id || (currentUser.name && a.authorName === currentUser.name);
+      if (isMine) {
+        list.push({
+          id: a.id,
+          type: 'ad',
+          title: a.title,
+          content: a.description,
+          category: a.category,
+          authorName: a.authorName,
+          authorRole: a.authorRole,
+          status: (a.status === 'sold' || a.status === 'closed') ? 'archived' : (a.status as 'active' | 'pending' | 'rejected' | 'archived'),
+          imageUrl: a.imageUrl,
+          price: a.price,
+          location: a.location,
+          rejectionReason: a.rejectionReason,
+        });
+      }
+    });
+
+    userFirestoreEvents.forEach(e => {
+      const isMine = e.authorId === currentUser.id || (currentUser.name && e.authorName === currentUser.name);
+      if (isMine) {
+        list.push({
+          id: e.id,
+          type: 'event',
+          title: e.title,
+          content: e.description,
+          category: e.category,
+          authorName: e.authorName,
+          authorRole: e.authorRole,
+          status: e.status || 'published',
+          imageUrl: e.imageUrl,
+          price: e.price,
+          location: e.location,
+          rejectionReason: e.rejectionReason,
+        });
+      }
+    });
+
+    return list;
+  }, [userFirestorePosts, userFirestoreAds, userFirestoreEvents, currentUser]);
+
+  const handleDeleteMyItem = async (item: EditablePostItem) => {
+    if (!window.confirm(`Ali res želite izbrisati objavo "${item.title}"?`)) return;
+    try {
+      if (item.type === 'ad') {
+        await deleteAdInFirestore(item.id);
+      } else if (item.type === 'event') {
+        await deleteEventInFirestore(item.id);
+      } else {
+        await deletePostInFirestore(item.id);
+      }
+    } catch (err) {
+      console.error('Napaka pri brisanju objave:', err);
+    }
+  };
 
   if (!currentUser) {
     return (
@@ -138,6 +266,23 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
       setProfileSaveSuccess(true);
       setTimeout(() => setProfileSaveSuccess(false), 2500);
     }
+  };
+
+  const handleRequestVerificationSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    requestVerification(currentUser.id, verificationNoteInput);
+    setVerificationSuccessMsg('Zahtevek za verifikacijo računa je bil uspešno poslan skrbnikom!');
+    setTimeout(() => {
+      setIsVerificationModalOpen(false);
+      setVerificationSuccessMsg('');
+      setVerificationNoteInput('');
+    }, 1200);
+  };
+
+  const handleCancelVerificationRequest = () => {
+    if (!currentUser) return;
+    cancelVerificationRequest(currentUser.id);
   };
 
   // User profile menu and social links
@@ -250,7 +395,7 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
           
           <div className="flex items-center gap-6 mt-4">
             <div className="flex flex-col">
-              <span className="font-headline-sm text-lg font-bold text-on-surface">142</span>
+              <span className="font-headline-sm text-lg font-bold text-on-surface">{myItems.length}</span>
               <span className="font-label-md text-xs text-outline uppercase tracking-wider">Objav</span>
             </div>
             <div className="flex flex-col">
@@ -285,6 +430,60 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
           </button>
         </div>
       </div>
+
+      {/* Verification Request Banner for Registered Users */}
+      {currentUser.role === 'registered' && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-secondary/10 via-surface-container-low to-surface-container-low border border-secondary/25 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-secondary/15 text-secondary shrink-0 mt-0.5 sm:mt-0">
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-headline-sm text-sm font-bold text-on-surface">
+                  Verifikacija računa (Preverjeni uporabnik)
+                </h3>
+                {currentUser.verificationRequested ? (
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Čaka na pregled skrbnika
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-surface-container text-outline">
+                    Registrirani član
+                  </span>
+                )}
+              </div>
+              <p className="font-body-sm text-xs text-on-surface-variant mt-0.5 max-w-2xl">
+                {currentUser.verificationRequested
+                  ? `Vaš zahtevek za preverjenega uporabnika je bil poslan ${currentUser.verificationRequestedAt ? new Date(currentUser.verificationRequestedAt).toLocaleDateString('sl-SI') : ''} in je v obravnavi. Po potrditvi prejmete značko Preverjen.`
+                  : 'Pridobite uradno značko preverjenega uporabnika, večje zaupanje skupnosti ter možnost objavljanja ugodnosti, popustov in kuponov.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="shrink-0 flex items-center gap-2">
+            {currentUser.verificationRequested ? (
+              <button
+                type="button"
+                onClick={handleCancelVerificationRequest}
+                className="px-3.5 py-1.5 text-xs text-outline hover:text-error hover:bg-error/10 rounded-xl transition-colors font-medium"
+              >
+                Prekliči zahtevek
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsVerificationModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Zahtevaj verifikacijo</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Customizable Profile Menu Tabs */}
       <div className="flex items-center justify-between border-b border-surface-container px-2 overflow-x-auto no-scrollbar gap-2">
@@ -335,10 +534,129 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
         {/* Built-in Posts */}
         {currentTab?.type === 'builtIn' && currentTab.builtInTab === 'posts' && (
           <div className="flex flex-col gap-space-md">
-            <h2 className="font-headline-sm text-lg font-bold text-on-surface px-1">Nedavne objave</h2>
-            <BlogPost id="blog-profile" />
-            <EventPost id="event-profile" />
-            <AdPost id="ad-profile" />
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <h2 className="font-headline-sm text-lg font-bold text-on-surface">Moje objave</h2>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  Pregled vseh vaših objavljenih in čakajočih vsebin
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsComposeModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Nova objava</span>
+              </button>
+            </div>
+
+            {myItems.length === 0 ? (
+              <div className="bg-surface-container-lowest rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3 border border-surface-container/50">
+                <FileText className="w-10 h-10 text-outline/40" />
+                <div>
+                  <h3 className="font-bold text-on-surface text-base">Še nimate oddanih objav</h3>
+                  <p className="text-on-surface-variant text-xs mt-1 max-w-sm">
+                    Delite novico, ustvarite mali oglas, objavite dogodek ali ugodnost za skupnost Portalko.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsComposeModalOpen(true)}
+                  className="mt-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Ustvari prvo objavo</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {myItems.map((item) => (
+                  <div
+                    key={`${item.type}-${item.id}`}
+                    className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs flex flex-col sm:flex-row gap-4 justify-between"
+                  >
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {item.imageUrl && (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover shrink-0 border border-surface-container"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-surface-container text-on-surface-variant">
+                            {item.type === 'ad' ? 'Mali oglas' : item.type === 'event' ? 'Dogodek' : item.type === 'deal' ? 'Ugodnost' : 'Članek / Novica'}
+                          </span>
+                          {item.category && (
+                            <span className="text-[10px] text-outline">
+                              • {item.category}
+                            </span>
+                          )}
+                          {/* Status Badge */}
+                          {item.status === 'pending' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                              <Clock className="w-2.5 h-2.5" />
+                              Čaka na odobritev
+                            </span>
+                          )}
+                          {(item.status === 'published' || item.status === 'active') && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                              <CheckCircle className="w-2.5 h-2.5" />
+                              Objavljeno
+                            </span>
+                          )}
+                          {item.status === 'rejected' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-error/15 text-error border border-error/30">
+                              <Ban className="w-2.5 h-2.5" />
+                              Zavrnjeno
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="font-bold text-on-surface text-sm sm:text-base line-clamp-1">
+                          {item.title}
+                        </h3>
+                        <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">
+                          {item.content}
+                        </p>
+
+                        {item.status === 'rejected' && item.rejectionReason && (
+                          <div className="mt-2 text-[11px] text-error bg-error/10 border border-error/20 rounded-lg p-2">
+                            <span className="font-semibold">Razlog za zavrnitev:</span> {item.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex sm:flex-col items-center sm:items-end justify-end gap-2 shrink-0 border-t sm:border-t-0 border-surface-container pt-2 sm:pt-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingPostItem(item);
+                          setIsEditPostModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Uredi vsebino"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-primary" />
+                        <span>Uredi</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMyItem(item)}
+                        className="px-3 py-1.5 rounded-lg bg-error/10 hover:bg-error/20 text-error text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Izbriši objavo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Izbriši</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -372,16 +690,39 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
                 <UserCog className="w-[1em] h-[1em] text-primary text-lg" />
                 <h3 className="font-headline-sm text-base font-bold text-on-surface">Osebni podatki</h3>
               </div>
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-2 p-3 rounded-xl bg-surface-container-low/50 border border-surface-container">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-on-surface-variant font-bold">Vloga v sistemu:</span>
                   <span className="text-xs uppercase font-bold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                     {currentUser.role}
                   </span>
+                  {currentUser.role === 'registered' && (
+                    currentUser.verificationRequested ? (
+                      <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 font-semibold ml-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        Zahtevek za verifikacijo v pregledu
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsVerificationModalOpen(true)}
+                        className="text-xs text-secondary hover:underline font-bold flex items-center gap-1 ml-1"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        Zahtevaj preverjanje računa
+                      </button>
+                    )
+                  )}
+                  {currentUser.role === 'verified' && (
+                    <span className="text-xs text-secondary flex items-center gap-1 font-bold ml-1">
+                      <UserCheck className="w-3.5 h-3.5" />
+                      Preverjen račun
+                    </span>
+                  )}
                 </div>
                 <button 
                   onClick={() => { logout(); onViewChange('main'); }} 
-                  className="px-3.5 py-1.5 rounded-xl bg-error/10 hover:bg-error/20 text-error font-label-md text-xs font-bold flex items-center gap-1.5 transition-colors border border-error/20"
+                  className="px-3.5 py-1.5 rounded-xl bg-error/10 hover:bg-error/20 text-error font-label-md text-xs font-bold flex items-center gap-1.5 transition-colors border border-error/20 self-start sm:self-auto"
                   title="Odjava iz računa"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -798,6 +1139,104 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
         menuItems={userProfileMenu}
         onSave={handleSaveProfileMenu}
       />
+
+      {/* Edit Post Modal for user's own posts */}
+      <EditPostModal
+        isOpen={isEditPostModalOpen}
+        onClose={() => {
+          setIsEditPostModalOpen(false);
+          setEditingPostItem(null);
+        }}
+        item={editingPostItem}
+      />
+
+      {/* Compose Modal */}
+      <ComposeModal
+        isOpen={isComposeModalOpen}
+        onClose={() => setIsComposeModalOpen(false)}
+        initialType="post"
+      />
+
+      {/* Verification Request Modal */}
+      {isVerificationModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div 
+            className="w-full max-w-md bg-surface-container-lowest border border-surface-container rounded-2xl shadow-2xl p-6 flex flex-col gap-4 animate-scaleUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-secondary/15 text-secondary">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-headline-sm text-base font-bold text-on-surface">
+                    Zahteva za preverjanje računa
+                  </h3>
+                  <p className="font-body-sm text-xs text-on-surface-variant">
+                    Status: Preverjeni uporabnik (Verified)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVerificationModalOpen(false)}
+                className="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {verificationSuccessMsg ? (
+              <div className="p-4 rounded-xl bg-secondary/10 border border-secondary/20 text-secondary text-sm flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 shrink-0" />
+                <span>{verificationSuccessMsg}</span>
+              </div>
+            ) : (
+              <form onSubmit={handleRequestVerificationSubmit} className="flex flex-col gap-4">
+                <div className="p-3 rounded-xl bg-surface-container-low text-xs text-on-surface-variant leading-relaxed flex flex-col gap-1.5">
+                  <p className="font-semibold text-on-surface">Prednosti preverjenega uporabnika:</p>
+                  <ul className="list-disc list-inside space-y-1 text-on-surface-variant">
+                    <li>Značka preverjenosti ob vašem imenu</li>
+                    <li>Objavljanje posebnih ugodnosti, popustov in kuponov</li>
+                    <li>Večje zaupanje kupcev in bralcev</li>
+                  </ul>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-label-md text-xs font-semibold text-on-surface">
+                    Razlog ali opis dejavnosti (neobvezno)
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Npr. podjetje, spletna stran, dejavnost ali zakaj želite status preverjenega uporabnika..."
+                    value={verificationNoteInput}
+                    onChange={(e) => setVerificationNoteInput(e.target.value)}
+                    className="p-3 rounded-xl bg-surface-container-low border border-surface-container text-xs text-on-surface focus:border-primary outline-none resize-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-surface-container-low">
+                  <button
+                    type="button"
+                    onClick={() => setIsVerificationModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-on-surface-variant hover:bg-surface-container transition-colors"
+                  >
+                    Prekliči
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>Pošlji zahtevek</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} initialMode={authModalMode} />
     </main>

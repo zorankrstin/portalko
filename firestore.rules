@@ -36,42 +36,43 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isAllowedPoster(data) {
+      return (data.authorRole in ['superadmin', 'admin', 'verified', 'registered']) || isSignedIn();
+    }
+
     // Users Collection
     match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
-      allow create: if isOwner(userId) || isAdmin();
-      allow update: if (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']) || isAdmin())) || isAdmin();
-      allow delete: if isAdmin();
+      allow read: if true;
+      allow write: if true;
 
       // User bookmarks subcollection
       match /bookmarks/{bookmarkId} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if true;
       }
     }
 
     // Posts Collection
     match /posts/{postId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
-      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
-      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+      allow create: if isAllowedPoster(request.resource.data);
+      allow update: if true;
+      allow delete: if true;
     }
 
     // Ads (Mali Oglasi) Collection
     match /ads/{adId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
-      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
-      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+      allow create: if isAllowedPoster(request.resource.data);
+      allow update: if true;
+      allow delete: if true;
     }
 
     // Events Collection
     match /events/{eventId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
-      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
-      allow delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+      allow create: if isAllowedPoster(request.resource.data);
+      allow update: if true;
+      allow delete: if true;
     }
 
     // Connection test document

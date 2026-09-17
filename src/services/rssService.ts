@@ -217,18 +217,71 @@ async function fetchFeedViaCorsProxy(feed: RssFeedConfig): Promise<RealNewsItem[
 }
 
 /**
- * Fetch a single feed with fallback
+ * Fallback parser using codetabs proxy
+ */
+async function fetchFeedViaCodetabsProxy(feed: RssFeedConfig): Promise<RealNewsItem[]> {
+  const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(feed.url)}`;
+  const response = await fetch(proxyUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} from codetabs proxy`);
+  }
+  const text = await response.text();
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, 'text/xml');
+  const parseError = xml.querySelector('parsererror');
+  if (parseError) {
+    throw new Error('XML parsing failed');
+  }
+
+  const items: RealNewsItem[] = [];
+  const itemNodes = xml.querySelectorAll('item, entry');
+
+  itemNodes.forEach((node, idx) => {
+    const title = node.querySelector('title')?.textContent || '';
+    let link = node.querySelector('link')?.textContent || node.querySelector('link')?.getAttribute('href') || '';
+    const description = node.querySelector('description, summary, content')?.textContent || '';
+    const pubDate = node.querySelector('pubDate, updated, published')?.textContent || '';
+    const enclosureLink = node.querySelector('enclosure')?.getAttribute('url') || '';
+    let thumbnail = enclosureLink;
+    if (!thumbnail) {
+      const match = description.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i);
+      if (match) thumbnail = match[1];
+    }
+
+    if (title && isValidArticleLink(link)) {
+      items.push({
+        id: `rss-${feed.id}-codetabs-${idx}`,
+        title: cleanHtmlText(title),
+        link: link.trim(),
+        description: cleanHtmlText(description),
+        pubDate: pubDate || new Date().toISOString(),
+        sourceName: feed.name,
+        thumbnail: thumbnail || undefined,
+        category: 'Slovenija',
+        feedId: feed.id
+      });
+    }
+  });
+
+  return items;
+}
+
+/**
+ * Fetch a single feed with multiple fallbacks
  */
 export async function fetchSingleFeed(feed: RssFeedConfig): Promise<RealNewsItem[]> {
   try {
     return await fetchFeedViaRss2Json(feed);
   } catch (err1) {
-    console.warn(`rss2json failed for ${feed.name} (${feed.url}), trying CORS proxy fallback...`, err1);
     try {
       return await fetchFeedViaCorsProxy(feed);
     } catch (err2) {
-      console.error(`Both fetch methods failed for ${feed.name}:`, err2);
-      return [];
+      try {
+        return await fetchFeedViaCodetabsProxy(feed);
+      } catch (err3) {
+        console.warn(`All online proxy methods failed for ${feed.name}. Gracefully skipping.`);
+        return [];
+      }
     }
   }
 }

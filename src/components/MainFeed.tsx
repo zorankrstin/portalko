@@ -11,13 +11,15 @@ import { ComposeModal } from './ComposeModal';
 import { parseSearchQuery, matchesSearchAndCategory } from '../utils/searchUtils';
 import type { ViewMode } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
+import { subscribeToPosts, subscribeToAds, subscribeToEvents, FirestorePost, FirestoreAd, FirestoreEvent } from '../services/firestoreService';
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
 import { INITIAL_DEALS, DealItem } from '../data/mockDealsData';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 
 type FeedItemKind = 
   | { type: 'firestore'; data: FirestorePost }
+  | { type: 'firestore_ad'; data: FirestoreAd }
+  | { type: 'firestore_event'; data: FirestoreEvent }
   | { type: 'news'; data: RealNewsItem }
   | { type: 'blog'; data: typeof INITIAL_BLOG_POSTS[0] }
   | { type: 'ad'; data: typeof INITIAL_ADS[0] }
@@ -37,13 +39,26 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
   const [filterType, setFilterType] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [firestorePosts, setFirestorePosts] = useState<FirestorePost[]>([]);
+  const [firestoreAds, setFirestoreAds] = useState<FirestoreAd[]>([]);
+  const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
   const [realNews, setRealNews] = useState<RealNewsItem[]>([]);
 
   useEffect(() => {
-    const unsub = subscribeToPosts((posts) => {
+    const unsubPosts = subscribeToPosts((posts) => {
       setFirestorePosts(posts);
     });
-    return () => unsub();
+    const unsubAds = subscribeToAds((ads) => {
+      setFirestoreAds(ads);
+    });
+    const unsubEvents = subscribeToEvents((events) => {
+      setFirestoreEvents(events);
+    });
+
+    return () => {
+      unsubPosts();
+      unsubAds();
+      unsubEvents();
+    };
   }, []);
 
   useEffect(() => {
@@ -73,8 +88,36 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
   // Construct an interleaved master list of content for the landing page
   const masterFeedItems = useMemo(() => {
     const items: FeedItemKind[] = [];
+    const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
-    // Interleave real news, blog, ad, deal, event, and firestore posts
+    // Insert live firestore posts (checking approval visibility)
+    firestorePosts.forEach(fp => {
+      if (fp.status && fp.status !== 'published') {
+        const isAuthor = currentUser?.id === fp.authorId || (currentUser?.name && currentUser.name === fp.authorName);
+        if (!isAdminOrSuper && !isAuthor) return;
+      }
+      items.push({ type: 'firestore', data: fp });
+    });
+
+    // Insert live firestore ads
+    firestoreAds.forEach(fa => {
+      if (fa.status && fa.status !== 'active') {
+        const isAuthor = currentUser?.id === fa.authorId || (currentUser?.name && currentUser.name === fa.authorName);
+        if (!isAdminOrSuper && !isAuthor) return;
+      }
+      items.push({ type: 'firestore_ad', data: fa });
+    });
+
+    // Insert live firestore events
+    firestoreEvents.forEach(fe => {
+      if (fe.status && fe.status !== 'published') {
+        const isAuthor = currentUser?.id === fe.authorId || (currentUser?.name && currentUser.name === fe.authorName);
+        if (!isAdminOrSuper && !isAuthor) return;
+      }
+      items.push({ type: 'firestore_event', data: fe });
+    });
+
+    // Interleave real news, blog, ad, deal, event, and mock feed
     const maxLen = Math.max(
       realNews.length,
       INITIAL_BLOG_POSTS.length,
@@ -82,11 +125,6 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       INITIAL_EVENTS.length,
       INITIAL_DEALS.length
     );
-
-    // Insert any initial firestore posts at the front
-    firestorePosts.forEach(fp => {
-      items.push({ type: 'firestore', data: fp });
-    });
 
     for (let i = 0; i < maxLen; i++) {
       if (realNews[i]) items.push({ type: 'news', data: realNews[i] });
@@ -99,17 +137,39 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
     }
 
     return items;
-  }, [firestorePosts, realNews]);
+  }, [firestorePosts, firestoreAds, firestoreEvents, realNews, currentUser]);
 
   // Filter based on search query and active tab
   const filteredItems = useMemo(() => {
     return masterFeedItems.filter(item => {
       // 1. Filter by category tab
       if (filterType === 'news' && item.type !== 'news') return false;
-      if (filterType === 'ad' && item.type !== 'ad') return false;
-      if (filterType === 'deal' && item.type !== 'deal') return false;
-      if (filterType === 'event' && item.type !== 'event') return false;
-      if (filterType === 'blog' && item.type !== 'blog') return false;
+      
+      if (filterType === 'ad') {
+        const isAd = item.type === 'ad' || 
+          item.type === 'firestore_ad' || 
+          (item.type === 'firestore' && item.data.category === 'ad');
+        if (!isAd) return false;
+      }
+
+      if (filterType === 'deal') {
+        const isDeal = item.type === 'deal' || 
+          (item.type === 'firestore' && item.data.category === 'deal');
+        if (!isDeal) return false;
+      }
+
+      if (filterType === 'event') {
+        const isEvent = item.type === 'event' || 
+          item.type === 'firestore_event' || 
+          (item.type === 'firestore' && item.data.category === 'event');
+        if (!isEvent) return false;
+      }
+
+      if (filterType === 'blog') {
+        const isBlog = item.type === 'blog' || 
+          (item.type === 'firestore' && (!item.data.category || item.data.category === 'blog' || item.data.category === 'post'));
+        if (!isBlog) return false;
+      }
 
       // 2. Filter by search query
       if (!searchQuery.trim()) return true;
@@ -120,6 +180,12 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       if (item.type === 'firestore') {
         textToMatch = `${item.data.title} ${item.data.content} ${item.data.authorName} ${item.data.category || ''}`;
         cat = item.data.category || 'all';
+      } else if (item.type === 'firestore_ad') {
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.authorName} ${item.data.category || ''} ${item.data.location || ''}`;
+        cat = 'ads';
+      } else if (item.type === 'firestore_event') {
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.authorName} ${item.data.category || ''} ${item.data.location || ''}`;
+        cat = 'events';
       } else if (item.type === 'news') {
         textToMatch = `${item.data.title} ${item.data.description} ${item.data.sourceName} ${item.data.category || ''}`;
         cat = 'news';
@@ -158,6 +224,10 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
         if (result.length >= currentLimit) break;
         if (item.type === 'firestore') {
           result.push({ type: 'firestore', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
+        } else if (item.type === 'firestore_ad') {
+          result.push({ type: 'firestore_ad', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
+        } else if (item.type === 'firestore_event') {
+          result.push({ type: 'firestore_event', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
         } else if (item.type === 'news') {
           result.push({ type: 'news', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
         } else if (item.type === 'blog') {
@@ -176,7 +246,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
   }, [filteredItems, currentLimit]);
 
   const userAvatar = currentUser?.avatar || "https://lh3.googleusercontent.com/aida/AEtjO1WzgwshpYtUlUT6B6hzTtlscXMkpKFYIjPiStIYfRrhCOV_MJeKV53x2D-tigu5SbHyESMyvILulBOUHZNfXTh6f8BRNGoWAkmZGhTeSWRB6n0Yw7IQRI0B91gU_U5KeEaSv6GZGH_W05qE5EOybPtK8yTXIY8KRAN88q_810UgS5RUyRmLSTI-zFjGHDUBCI7ELn7zCVDuy5Hy1SYdchdHKbBPfokQqaaMmc3liYXq_mNFC7yqQPYrfuA";
-  const firstName = currentUser ? currentUser.name.split(' ')[0] : 'Luka';
+  const firstName = currentUser ? currentUser.name.split(' ')[0] : 'obiskovalec';
 
   return (
     <main className="lg:col-span-6 flex flex-col gap-space-md">
@@ -188,7 +258,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
             onClick={() => openCompose('post')}
             className="flex-1 bg-surface-container-low hover:bg-surface-container rounded-xl px-4 py-2.5 text-outline text-body-md font-body-md cursor-pointer transition-colors flex items-center justify-between"
           >
-            <span>Kaj bi želeli deliti danes, {firstName}?</span>
+            <span>{currentUser ? `Kaj bi želeli deliti danes, ${firstName}?` : 'Kaj bi želeli deliti danes? (Delite novico, oglas ali dogodek)...'}</span>
             <Edit2 className="w-[1em] h-[1em] text-outline text-lg" />
           </div>
         </div>
@@ -332,6 +402,43 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
           visibleItems.map((item, idx) => {
             if (item.type === 'firestore') {
               return <FirestorePostCard key={`fp-${item.data.id}-${idx}`} post={item.data} />;
+            }
+            if (item.type === 'firestore_ad') {
+              const ad = item.data;
+              return (
+                <AdPost
+                  key={`f-ad-${ad.id}-${idx}`}
+                  id={ad.id}
+                  title={ad.title}
+                  price={ad.price}
+                  author={ad.authorName}
+                  authorInitials={ad.authorName.slice(0, 2).toUpperCase()}
+                  location={ad.location || 'Slovenija'}
+                  date="Ravno objavljeno"
+                  description={ad.description}
+                  categoryName={ad.category || 'Mali oglas'}
+                  image={ad.imageUrl}
+                />
+              );
+            }
+            if (item.type === 'firestore_event') {
+              const ev = item.data;
+              return (
+                <EventPost
+                  key={`f-ev-${ev.id}-${idx}`}
+                  id={ev.id}
+                  title={ev.title}
+                  organizer={ev.authorName}
+                  categoryName={ev.category || 'Dogodek'}
+                  location={ev.location || 'Slovenija'}
+                  date={ev.eventDate || ev.date || 'Ravno objavljeno'}
+                  month="AKT"
+                  day="★"
+                  price={ev.price || 'Vstop prost'}
+                  description={ev.description}
+                  image={ev.imageUrl}
+                />
+              );
             }
             if (item.type === 'news') {
               const news = item.data;

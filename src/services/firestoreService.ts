@@ -28,6 +28,8 @@ export interface FirestorePost {
   imageUrl?: string;
   price?: string;
   location?: string;
+  status?: 'published' | 'pending' | 'rejected' | 'archived';
+  rejectionReason?: string;
   likesCount?: number;
   commentsCount?: number;
   createdAt?: any;
@@ -46,7 +48,8 @@ export interface FirestoreAd {
   authorName: string;
   authorRole?: string;
   imageUrl?: string;
-  status: 'active' | 'sold' | 'closed';
+  status: 'active' | 'sold' | 'closed' | 'pending' | 'rejected';
+  rejectionReason?: string;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -65,6 +68,8 @@ export interface FirestoreEvent {
   authorRole?: string;
   imageUrl?: string;
   isPromoted?: boolean;
+  status?: 'published' | 'pending' | 'rejected';
+  rejectionReason?: string;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -134,6 +139,9 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         username: data.username,
         socialLinks: data.socialLinks,
         profileMenu: data.profileMenu,
+        verificationRequested: data.verificationRequested,
+        verificationRequestedAt: data.verificationRequestedAt,
+        verificationNote: data.verificationNote,
       };
     }
     return null;
@@ -164,6 +172,9 @@ export async function fetchUsersList(): Promise<User[]> {
         username: data.username,
         socialLinks: data.socialLinks,
         profileMenu: data.profileMenu,
+        verificationRequested: data.verificationRequested,
+        verificationRequestedAt: data.verificationRequestedAt,
+        verificationNote: data.verificationNote,
       };
     });
   } catch (error) {
@@ -193,6 +204,9 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           username: data.username,
           socialLinks: data.socialLinks,
           profileMenu: data.profileMenu,
+          verificationRequested: data.verificationRequested,
+          verificationRequestedAt: data.verificationRequestedAt,
+          verificationNote: data.verificationNote,
         };
       });
       onUsers(users);
@@ -262,6 +276,19 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
   }
 }
 
+export async function updatePostInFirestore(postId: string, data: Partial<FirestorePost>): Promise<void> {
+  const path = `posts/${postId}`;
+  try {
+    const postRef = doc(db, 'posts', postId);
+    await updateDoc(postRef, {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
 export async function deletePostInFirestore(postId: string): Promise<void> {
   const path = `posts/${postId}`;
   try {
@@ -328,6 +355,19 @@ export async function createAdInFirestore(ad: Omit<FirestoreAd, 'id'> & { id?: s
   }
 }
 
+export async function updateAdInFirestore(adId: string, data: Partial<FirestoreAd>): Promise<void> {
+  const path = `ads/${adId}`;
+  try {
+    const adRef = doc(db, 'ads', adId);
+    await updateDoc(adRef, {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
 export async function deleteAdInFirestore(adId: string): Promise<void> {
   const path = `ads/${adId}`;
   try {
@@ -377,12 +417,49 @@ export async function createEventInFirestore(event: Omit<FirestoreEvent, 'id'> &
   }
 }
 
+export async function updateEventInFirestore(eventId: string, data: Partial<FirestoreEvent>): Promise<void> {
+  const path = `events/${eventId}`;
+  try {
+    const eventRef = doc(db, 'events', eventId);
+    await updateDoc(eventRef, {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
 export async function deleteEventInFirestore(eventId: string): Promise<void> {
   const path = `events/${eventId}`;
   try {
     await deleteDoc(doc(db, 'events', eventId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// ---------------- APPROVAL WORKFLOW HELPERS ----------------
+
+export type ApprovalContentType = 'post' | 'ad' | 'event' | 'deal';
+
+export async function approveItemInFirestore(id: string, type: ApprovalContentType): Promise<void> {
+  if (type === 'ad') {
+    await updateAdInFirestore(id, { status: 'active', rejectionReason: undefined });
+  } else if (type === 'event') {
+    await updateEventInFirestore(id, { status: 'published', rejectionReason: undefined });
+  } else {
+    await updatePostInFirestore(id, { status: 'published', rejectionReason: undefined });
+  }
+}
+
+export async function rejectItemInFirestore(id: string, type: ApprovalContentType, reason?: string): Promise<void> {
+  if (type === 'ad') {
+    await updateAdInFirestore(id, { status: 'rejected', rejectionReason: reason || 'Zavrnjeno s strani skrbnika' });
+  } else if (type === 'event') {
+    await updateEventInFirestore(id, { status: 'rejected', rejectionReason: reason || 'Zavrnjeno s strani skrbnika' });
+  } else {
+    await updatePostInFirestore(id, { status: 'rejected', rejectionReason: reason || 'Zavrnjeno s strani skrbnika' });
   }
 }
 
