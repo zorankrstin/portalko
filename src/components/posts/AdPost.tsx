@@ -50,12 +50,20 @@ export const AdPost: React.FC<AdPostProps> = ({
   return (
     <article className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/50 shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row">
       {displayImage && (
-        <div className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative">
-          <img alt={title} className="w-full h-full object-cover" src={displayImage} />
+        <a 
+          href={`#ad-${id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.hash = `ad-${id}`;
+          }}
+          className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
+          title="Odpri samostojno stran tega malega oglasa"
+        >
+          <img alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={displayImage} />
           <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
             {displayCategory}
           </span>
-        </div>
+        </a>
       )}
       <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
         <div>
@@ -69,17 +77,46 @@ export const AdPost: React.FC<AdPostProps> = ({
               <ShareMenu id={id} title={title} />
             </div>
           </div>
-          <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1">{title}</h3>
+          <a
+            href={`#ad-${id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.hash = `ad-${id}`;
+            }}
+            className="block group/title cursor-pointer"
+          >
+            <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
+              {title}
+            </h3>
+          </a>
           <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{description}</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
           <span className="flex items-center gap-1">
             <MapPin className="w-3.5 h-3.5 text-primary" /> {location} • {date}
           </span>
-          <button className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer">
-            <Phone className="w-3.5 h-3.5" />
-            <span>Kontakt</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href={`#ad-${id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.hash = `ad-${id}`;
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+              title="Poglej celotno stran oglasa"
+            >
+              <span>Stran oglasa</span>
+            </a>
+            <button 
+              onClick={() => {
+                window.location.hash = `ad-${id}`;
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>Kontakt</span>
+            </button>
+          </div>
         </div>
       </div>
     </article>

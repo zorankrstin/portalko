@@ -3,9 +3,15 @@ import {
   Zap, Copy, Check, CheckCircle2, Calculator, ShieldCheck, 
   BookOpen, ExternalLink, Bell, Percent, Sparkles 
 } from 'lucide-react';
-import { TOP_VOUCHER_CODES, CATALOGUES_DATA } from '../data/mockDealsData';
+import { TOP_VOUCHER_CODES, CATALOGUES_DATA, INITIAL_DEALS } from '../data/mockDealsData';
+import { PostDetailTarget } from '../types';
+import { scrollToPageTop } from '../utils/scrollUtils';
 
-export function RightSidebarDeals() {
+interface RightSidebarDealsProps {
+  onNavigatePost?: (target: PostDetailTarget) => void;
+}
+
+export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {}) {
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [emailInput, setEmailInput] = useState('');
   const [subscribed, setSubscribed] = useState(false);
@@ -15,6 +21,16 @@ export function RightSidebarDeals() {
     sports: false,
     tourism: true,
   });
+
+  const handleOpenDeal = (id: string, e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (onNavigatePost) {
+      onNavigatePost({ type: 'deal', id });
+    } else {
+      window.location.hash = `deal-${id}`;
+    }
+    scrollToPageTop();
+  };
 
   const handleCopy = (code: string, id: string) => {
     navigator.clipboard.writeText(code);
@@ -42,6 +58,47 @@ export function RightSidebarDeals() {
   return (
     <aside className="hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
       
+      {/* 0. VROČE UGODNOSTI */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Percent className="w-4 h-4 text-primary" />
+            <h3 className="font-headline-sm text-sm font-bold text-on-surface">Vroče ugodnosti</h3>
+          </div>
+          <span className="px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-caps text-[10px] uppercase font-bold">
+            Aktualno
+          </span>
+        </div>
+        <div className="space-y-2.5">
+          {INITIAL_DEALS.slice(0, 3).map(deal => (
+            <a
+              key={deal.id}
+              href={`#deal-${deal.id}`}
+              onClick={(e) => handleOpenDeal(deal.id, e)}
+              className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center gap-3 group border border-surface-container/50 cursor-pointer"
+              title={`Odpri ugodnost: ${deal.title}`}
+            >
+              {deal.image && (
+                <img 
+                  src={deal.image} 
+                  alt={deal.title} 
+                  className="w-12 h-12 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform" 
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-label-caps text-[10px] text-primary font-bold">{deal.partner}</span>
+                  <span className="font-mono text-[11px] font-bold text-secondary">{deal.discount}</span>
+                </div>
+                <h4 className="font-label-md text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors">
+                  {deal.title}
+                </h4>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+
       {/* 1. TOP KODE TEDNA */}
       <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3.5">
         <div className="flex items-center justify-between">

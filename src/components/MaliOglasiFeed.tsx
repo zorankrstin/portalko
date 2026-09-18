@@ -6,13 +6,15 @@ import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { subscribeToAds, FirestoreAd } from '../services/firestoreService';
 import { ComposeModal } from './ComposeModal';
 import { INITIAL_ADS, MockAdItem } from '../data/mockFeedData';
+import { PostDetailTarget } from '../types';
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
+  onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
-export function MaliOglasiFeed({ onViewChange, searchQuery = '' }: MaliOglasiFeedProps) {
+export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost }: MaliOglasiFeedProps) {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [firestoreAds, setFirestoreAds] = useState<FirestoreAd[]>([]);
@@ -205,12 +207,20 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '' }: MaliOglasiFee
               return (
                 <article key={ad.id} className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/50 shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row">
                   {ad.imageUrl && (
-                    <div className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative">
-                      <img alt={ad.title} className="w-full h-full object-cover" src={ad.imageUrl} />
+                    <a 
+                      href={`#ad-${ad.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.hash = `ad-${ad.id}`;
+                      }}
+                      className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
+                      title="Odpri samostojno stran tega oglasa"
+                    >
+                      <img alt={ad.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={ad.imageUrl} />
                       <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider shadow-sm">
                         {ad.category || 'Oglas'}
                       </span>
-                    </div>
+                    </a>
                   )}
                   <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
                     <div>
@@ -232,17 +242,46 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '' }: MaliOglasiFee
                           <ShareMenu id={ad.id} title={ad.title} />
                         </div>
                       </div>
-                      <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1">{ad.title}</h3>
+                      <a
+                        href={`#ad-${ad.id}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.hash = `ad-${ad.id}`;
+                        }}
+                        className="block group/title cursor-pointer"
+                      >
+                        <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
+                          {ad.title}
+                        </h3>
+                      </a>
                       <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{ad.description}</p>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-primary" /> {ad.location || 'Slovenija'} • {ad.authorName}
                       </span>
-                      <button className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer">
-                        <Phone className="w-3.5 h-3.5" />
-                        <span>Kontaktiraj prodajalca</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`#ad-${ad.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.location.hash = `ad-${ad.id}`;
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+                          title="Poglej celotno stran oglasa"
+                        >
+                          <span>Stran oglasa</span>
+                        </a>
+                        <button 
+                          onClick={() => {
+                            window.location.hash = `ad-${ad.id}`;
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>Kontaktiraj prodajalca</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -252,12 +291,20 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '' }: MaliOglasiFee
             const ad = item.data;
             return (
               <article key={ad.id} className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/50 shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row">
-                <div className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative">
-                  <img alt={ad.title} className="w-full h-full object-cover" src={ad.image} />
+                <a 
+                  href={`#ad-${ad.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.location.hash = `ad-${ad.id}`;
+                  }}
+                  className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
+                  title="Odpri samostojno stran tega oglasa"
+                >
+                  <img alt={ad.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={ad.image} />
                   <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
                     {ad.categoryName}
                   </span>
-                </div>
+                </a>
                 <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
                   <div>
                     <div className="flex items-start justify-between gap-2">
@@ -278,17 +325,46 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '' }: MaliOglasiFee
                         <ShareMenu id={ad.id} title={ad.title} />
                       </div>
                     </div>
-                    <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1">{ad.title}</h3>
+                    <a
+                      href={`#ad-${ad.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.hash = `ad-${ad.id}`;
+                      }}
+                      className="block group/title cursor-pointer"
+                    >
+                      <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
+                        {ad.title}
+                      </h3>
+                    </a>
                     <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{ad.description}</p>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-primary" /> {ad.location} • {ad.date}
                     </span>
-                    <button className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer">
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>Kontakt</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`#ad-${ad.id}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.hash = `ad-${ad.id}`;
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+                        title="Poglej celotno stran oglasa"
+                      >
+                        <span>Stran oglasa</span>
+                      </a>
+                      <button 
+                        onClick={() => {
+                          window.location.hash = `ad-${ad.id}`;
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Kontakt</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>

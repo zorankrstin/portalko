@@ -4,13 +4,16 @@ import App from './App.tsx';
 import './index.css';
 import { BookmarkProvider } from './contexts/BookmarkContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
-      <BookmarkProvider>
-      <App />
-    </BookmarkProvider>
+      <NotificationProvider>
+        <BookmarkProvider>
+          <App />
+        </BookmarkProvider>
+      </NotificationProvider>
     </AuthProvider>
   </StrictMode>,
 );

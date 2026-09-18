@@ -61,13 +61,21 @@ export const EventPost: React.FC<EventPostProps> = ({
   return (
     <article className="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col sm:flex-row">
       {image && (
-        <div className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative">
-          <img alt={title} className="w-full h-full object-cover" src={image} />
+        <a 
+          href={`#event-${id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.hash = `event-${id}`;
+          }}
+          className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
+          title="Odpri samostojno stran tega dogodka"
+        >
+          <img alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={image} />
           <div className="absolute top-2 left-2 bg-surface-container-lowest/90 backdrop-blur-md rounded-xl p-1.5 text-center min-w-[44px] shadow-sm border border-black/5">
             <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{month}</div>
             <div className="text-base font-black text-on-surface leading-none mt-0.5">{day}</div>
           </div>
-        </div>
+        </a>
       )}
       <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
         <div>
@@ -83,9 +91,18 @@ export const EventPost: React.FC<EventPostProps> = ({
               <ShareMenu id={id} title={title} />
             </div>
           </div>
-          <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1">
-            {title}
-          </h3>
+          <a
+            href={`#event-${id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.hash = `event-${id}`;
+            }}
+            className="block group/title cursor-pointer"
+          >
+            <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
+              {title}
+            </h3>
+          </a>
           <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">
             {description}
           </p>
@@ -96,6 +113,17 @@ export const EventPost: React.FC<EventPostProps> = ({
           </span>
           <div className="flex items-center gap-2">
             <span className="font-headline-sm text-sm font-bold text-primary">{price || 'Vstop prost'}</span>
+            <a
+              href={`#event-${id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.hash = `event-${id}`;
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+              title="Poglej celotno stran dogodka"
+            >
+              <span>Stran dogodka</span>
+            </a>
             <button 
               onClick={handleInterest}
               className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer ${

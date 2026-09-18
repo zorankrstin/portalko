@@ -86,7 +86,15 @@ export const DealPost: React.FC<DealPostProps> = ({
       className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/60 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group"
     >
       {/* PHOTO CONTAINER */}
-      <div className="sm:w-52 md:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden">
+      <a 
+        href={`#deal-${id}`}
+        onClick={(e) => {
+          e.preventDefault();
+          window.location.hash = `deal-${id}`;
+        }}
+        className="sm:w-52 md:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden block cursor-pointer"
+        title="Odpri samostojno stran te ugodnosti"
+      >
         <img 
           src={image} 
           alt={title}
@@ -111,7 +119,7 @@ export const DealPost: React.FC<DealPostProps> = ({
         <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-secondary text-on-secondary font-bold text-xs shadow-md">
           {discount}
         </div>
-      </div>
+      </a>
 
       {/* CONTENT AREA */}
       <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-3">
@@ -150,9 +158,18 @@ export const DealPost: React.FC<DealPostProps> = ({
           </div>
 
           {/* Title */}
-          <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover:text-primary transition-colors leading-snug">
-            {title}
-          </h3>
+          <a
+            href={`#deal-${id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.hash = `deal-${id}`;
+            }}
+            className="block group/title cursor-pointer"
+          >
+            <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover/title:text-primary transition-colors leading-snug">
+              {title}
+            </h3>
+          </a>
 
           {/* Description */}
           <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
@@ -224,15 +241,28 @@ export const DealPost: React.FC<DealPostProps> = ({
               <span className="text-xs text-outline italic">Koda ni potrebna (akcija)</span>
             )}
 
-            <a 
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs ml-auto"
-            >
-              <span>Uveljavi popust</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </a>
+            <div className="flex items-center gap-2 ml-auto">
+              <a
+                href={`#deal-${id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.hash = `deal-${id}`;
+                }}
+                className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+                title="Odpri celotno stran te ugodnosti s komentarji"
+              >
+                <span>Stran objave</span>
+              </a>
+              <a 
+                href={link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs"
+              >
+                <span>Uveljavi popust</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
         </div>
       </div>

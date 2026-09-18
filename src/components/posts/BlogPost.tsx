@@ -1,7 +1,7 @@
 import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
-import { BookOpen, MoreHorizontal, Camera, Heart, MessageCircle, Eye } from 'lucide-react';
+import { BookOpen, MoreHorizontal, Camera, Heart, MessageCircle, Eye, ArrowRight } from 'lucide-react';
 
 export interface BlogPostProps {
   id?: string;
@@ -20,6 +20,7 @@ export interface BlogPostProps {
   commentsCount?: string;
   viewsCount?: string;
   tags?: string[];
+  onNavigatePost?: (target: { type: 'blog'; id: string }) => void;
 }
 
 export const BlogPost: React.FC<BlogPostProps> = ({ 
@@ -39,8 +40,19 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   commentsCount = "19 komentarjev",
   viewsCount = "1.420 ogledov",
   tags = ["turizem", "slovenija", "izlet", "socaValley"],
+  onNavigatePost,
 }) => {
   const finalDesc = excerpt || description;
+
+  const handleOpenDetail = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (onNavigatePost) {
+      onNavigatePost({ type: 'blog', id });
+    } else {
+      window.location.hash = `blog-${id}`;
+    }
+  };
+
   const bookmarkData = {
     type: 'blog',
     category: 'blog',
@@ -57,7 +69,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   };
 
   return (
-    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm">
+    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm group/article">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img className="w-11 h-11 rounded-full object-cover ring-1 ring-black/5" src={authorAvatar} alt={author} />
@@ -82,7 +94,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             <BookOpen className="w-[1em] h-[1em] text-xs" /> Blog
           </span>
           <BookmarkButton id={id} data={bookmarkData} />
-          <ShareMenu id={id} />
+          <ShareMenu id={id} title={title} />
           <button className="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container" type="button">
             <MoreHorizontal className="w-[1em] h-[1em] text-lg" />
           </button>
@@ -90,21 +102,33 @@ export const BlogPost: React.FC<BlogPostProps> = ({
       </div>
       
       <div className="flex flex-col gap-2">
-        <h4 className="font-headline-md text-headline-md text-on-surface hover:text-primary cursor-pointer transition-colors">
-          {title}
-        </h4>
+        <a 
+          href={`#blog-${id}`}
+          onClick={handleOpenDetail}
+          className="block group/title cursor-pointer"
+          title="Odpri samostojno stran članka"
+        >
+          <h4 className="font-headline-md text-headline-md font-bold text-on-surface group-hover/title:text-primary transition-colors">
+            {title}
+          </h4>
+        </a>
         <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3">
           {finalDesc}
         </p>
       </div>
       
       {image && (
-        <div className="relative rounded-xl overflow-hidden h-72 w-full bg-surface-container">
-          <img className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" src={image} alt={title} />
+        <a
+          href={`#blog-${id}`}
+          onClick={handleOpenDetail}
+          className="relative rounded-xl overflow-hidden h-72 w-full bg-surface-container block cursor-pointer group/img"
+          title="Odpri samostojno stran članka"
+        >
+          <img className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" src={image} alt={title} />
           <div className="absolute bottom-3 left-3 bg-inverse-surface/80 backdrop-blur-sm text-inverse-on-surface px-2.5 py-1 rounded-lg font-label-md text-xs flex items-center gap-1.5">
             <Camera className="w-[1em] h-[1em] text-xs text-secondary-fixed" /> {readTime} {photoCount ? `• ${photoCount}` : ''}
           </div>
-        </div>
+        </a>
       )}
       
       {tags && tags.length > 0 && (
@@ -119,11 +143,17 @@ export const BlogPost: React.FC<BlogPostProps> = ({
       
       <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-surface-container-low">
         <div className="flex items-center gap-4 text-on-surface-variant font-label-md text-xs">
-          <button className="flex items-center gap-1.5 hover:text-primary transition-colors">
+          <button 
+            onClick={handleOpenDetail}
+            className="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer"
+          >
             <Heart className="w-[1em] h-[1em] text-base" />
             <span>{likesCount}</span>
           </button>
-          <button className="flex items-center gap-1.5 hover:text-primary transition-colors">
+          <button 
+            onClick={handleOpenDetail}
+            className="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer"
+          >
             <MessageCircle className="w-[1em] h-[1em] text-base" />
             <span>{commentsCount}</span>
           </button>
@@ -131,6 +161,18 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             <Eye className="w-[1em] h-[1em] text-base" />
             <span>{viewsCount}</span>
           </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <a
+            href={`#blog-${id}`}
+            onClick={handleOpenDetail}
+            className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container"
+            title="Preberi celoten članek"
+          >
+            <span>Preberi članek</span>
+            <ArrowRight className="w-3.5 h-3.5 text-primary" />
+          </a>
         </div>
       </div>
     </article>

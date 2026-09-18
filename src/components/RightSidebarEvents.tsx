@@ -1,6 +1,22 @@
 import { CalendarDays, Bookmark, Megaphone, MapPin, Search, Calendar, Map, Check, ChevronDown, PlusCircle, Star, Music, Bike, Theater, PartyPopper, Flame, Building, Users, Clock, Navigation } from 'lucide-react';
+import { PostDetailTarget } from '../types';
+import { scrollToPageTop } from '../utils/scrollUtils';
 
-export function RightSidebarEvents() {
+interface RightSidebarEventsProps {
+  onNavigatePost?: (target: PostDetailTarget) => void;
+}
+
+export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) {
+  const handleOpenEvent = (id: string, e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (onNavigatePost) {
+      onNavigatePost({ type: 'event', id });
+    } else {
+      window.location.hash = `event-${id}`;
+    }
+    scrollToPageTop();
+  };
+
   return (
     <aside className="hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
       {/* 1. Mini Koledar prireditev */}
@@ -39,26 +55,47 @@ export function RightSidebarEvents() {
           <span className="font-label-caps text-label-caps text-outline">Ljubljana</span>
         </div>
         <div className="flex flex-col gap-2.5">
-          <a className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors" href="#">
+          <a 
+            className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer" 
+            href="#event-event-1"
+            onClick={(e) => handleOpenEvent('event-1', e)}
+            title="Odpri dogodek: Cankarjev teden"
+          >
             <div className="flex items-center justify-between text-[11px] text-outline">
-              <span className="font-bold text-primary">Danes • 20:00</span>
+              <span className="font-bold text-primary">Petek • 19:30</span>
               <Bookmark className="w-[1em] h-[1em] text-sm group-hover:text-primary" />
             </div>
-            <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">Stand-up večer: Slovenska scena v Cvetličarni</p>
+            <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">
+              Cankarjev teden: Otvoritveni koncert Simfoničnega orkestra RTV Slovenija
+            </p>
           </a>
-          <a className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors" href="#">
+          <a 
+            className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer" 
+            href="#event-event-3"
+            onClick={(e) => handleOpenEvent('event-3', e)}
+            title="Odpri dogodek: Odprta kuhna"
+          >
             <div className="flex items-center justify-between text-[11px] text-outline">
-              <span className="font-bold text-secondary">Jutri • 18:30</span>
+              <span className="font-bold text-secondary">Petek • 10:00</span>
               <Bookmark className="w-[1em] h-[1em] text-sm group-hover:text-primary" />
             </div>
-            <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">Odprta kuhna: Prvo spomladansko odprtje na Pogačarjevem trgu</p>
+            <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">
+              Odprta kuhna Ljubljana - Otvoritev sezone 2025 na Pogačarjevem trgu
+            </p>
           </a>
-          <a className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors" href="#">
+          <a 
+            className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer" 
+            href="#event-event-2"
+            onClick={(e) => handleOpenEvent('event-2', e)}
+            title="Odpri dogodek: Siddharta"
+          >
             <div className="flex items-center justify-between text-[11px] text-outline">
-              <span className="font-bold text-tertiary-container">Sobota • 21:00</span>
+              <span className="font-bold text-tertiary-container">Sobota • 20:00</span>
               <Bookmark className="w-[1em] h-[1em] text-sm group-hover:text-primary" />
             </div>
-            <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">Elektronski večer: Kurzschluss club edition</p>
+            <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">
+              Siddharta - Ekskluzivni akustični koncert 'Izštekani' v Kinu Šiška
+            </p>
           </a>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
-import { Heart, MessageCircle, Sparkles, Clock, Edit3, Check, Ban } from 'lucide-react';
+import { Heart, MessageCircle, Sparkles, Clock, Edit3, Check, Ban, ArrowRight } from 'lucide-react';
 import { FirestorePost, togglePostLikeInFirestore, approveItemInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
 import { AdPost } from "./AdPost";
@@ -228,23 +228,41 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="font-headline-sm text-title-md text-on-surface font-bold leading-snug">
-          {post.title}
-        </h2>
+        <a
+          href={`#blog-${post.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.hash = `blog-${post.id}`;
+          }}
+          className="block group/title cursor-pointer"
+          title="Odpri samostojno stran članka"
+        >
+          <h2 className="font-headline-sm text-title-md text-on-surface font-bold leading-snug group-hover/title:text-primary transition-colors">
+            {post.title}
+          </h2>
+        </a>
         <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
           {post.content}
         </p>
       </div>
 
       {post.imageUrl && (
-        <div className="relative rounded-xl overflow-hidden aspect-[16/9] bg-surface-container max-h-80">
+        <a
+          href={`#blog-${post.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.hash = `blog-${post.id}`;
+          }}
+          className="relative rounded-xl overflow-hidden aspect-[16/9] bg-surface-container max-h-80 block cursor-pointer group/img"
+          title="Odpri samostojno stran članka"
+        >
           <img 
             alt={post.title} 
-            className="w-full h-full object-cover" 
+            className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" 
             src={post.imageUrl} 
             loading="lazy"
           />
-        </div>
+        </a>
       )}
 
       {post.price && (
@@ -254,24 +272,43 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
         </div>
       )}
 
-      <div className="flex items-center justify-between border-t border-surface-container-low pt-3 mt-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low pt-3 mt-1">
         <div className="flex items-center gap-4">
           <button 
             type="button" 
             onClick={handleLike}
-            className={`flex items-center gap-1.5 text-label-md font-label-md transition-colors ${hasLiked ? 'text-primary font-bold' : 'text-outline hover:text-primary'}`}
+            className={`flex items-center gap-1.5 text-label-md font-label-md transition-colors cursor-pointer ${hasLiked ? 'text-primary font-bold' : 'text-outline hover:text-primary'}`}
           >
             <Heart className={`w-4 h-4 ${hasLiked ? 'fill-primary text-primary' : ''}`} />
             <span>{likesCount} všečkov</span>
           </button>
           
-          <button 
-            type="button" 
-            className="flex items-center gap-1.5 text-outline hover:text-on-surface text-label-md font-label-md transition-colors"
+          <a 
+            href={`#blog-${post.id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.hash = `blog-${post.id}`;
+            }}
+            className="flex items-center gap-1.5 text-outline hover:text-on-surface text-label-md font-label-md transition-colors cursor-pointer"
           >
             <MessageCircle className="w-4 h-4" />
             <span>{post.commentsCount || 0} komentarjev</span>
-          </button>
+          </a>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <a
+            href={`#blog-${post.id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.hash = `blog-${post.id}`;
+            }}
+            className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container"
+            title="Preberi celoten članek"
+          >
+            <span>Preberi članek</span>
+            <ArrowRight className="w-3.5 h-3.5 text-primary" />
+          </a>
         </div>
       </div>
 

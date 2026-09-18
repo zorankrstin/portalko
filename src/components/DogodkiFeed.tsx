@@ -6,13 +6,15 @@ import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { subscribeToEvents, FirestoreEvent } from '../services/firestoreService';
 import { ComposeModal } from './ComposeModal';
 import { INITIAL_EVENTS, MockEventItem } from '../data/mockFeedData';
+import { PostDetailTarget } from '../types';
 
 interface DogodkiFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
+  onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
-export function DogodkiFeed({ onViewChange, searchQuery = '' }: DogodkiFeedProps) {
+export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: DogodkiFeedProps) {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -195,17 +197,34 @@ export function DogodkiFeed({ onViewChange, searchQuery = '' }: DogodkiFeedProps
                 <article key={event.id} className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-3">
                   <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                     <div className="flex items-start gap-3 flex-1">
-                      <div className="w-14 h-14 rounded-2xl bg-primary-container text-on-primary-container flex flex-col items-center justify-center font-bold shrink-0 border border-primary/20">
+                      <a 
+                        href={`#event-${event.id}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.hash = `event-${event.id}`;
+                        }}
+                        className="w-14 h-14 rounded-2xl bg-primary-container text-on-primary-container flex flex-col items-center justify-center font-bold shrink-0 border border-primary/20 cursor-pointer hover:opacity-90 transition-opacity"
+                        title="Odpri samostojno stran dogodka"
+                      >
                         <span className="text-[10px] uppercase font-label-caps">DOG</span>
                         <span className="text-base font-headline-lg font-black leading-none mt-0.5">★</span>
-                      </div>
+                      </a>
                       <div className="flex flex-col gap-1 flex-1">
                         <span className="font-label-caps text-[10px] text-outline uppercase font-semibold">
                           {event.category || 'Dogodek'} • {event.location || 'Slovenija'}
                         </span>
-                        <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2">
-                          {event.title}
-                        </h3>
+                        <a
+                          href={`#event-${event.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.location.hash = `event-${event.id}`;
+                          }}
+                          className="block group/title cursor-pointer"
+                        >
+                          <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 group-hover/title:text-primary transition-colors">
+                            {event.title}
+                          </h3>
+                        </a>
                         <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-0.5">
                           {event.description}
                         </p>
@@ -232,9 +251,22 @@ export function DogodkiFeed({ onViewChange, searchQuery = '' }: DogodkiFeedProps
                     <span className="flex items-center gap-1 text-primary font-semibold">
                       <Calendar className="w-3.5 h-3.5" /> {event.eventDate || event.date || 'Ravno objavljeno'}
                     </span>
-                    <span className="font-headline-sm text-sm font-bold text-on-surface">
-                      {event.price || 'Vstop prost'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-headline-sm text-sm font-bold text-on-surface">
+                        {event.price || 'Vstop prost'}
+                      </span>
+                      <a
+                        href={`#event-${event.id}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.hash = `event-${event.id}`;
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+                        title="Poglej celotno stran dogodka"
+                      >
+                        <span>Stran dogodka</span>
+                      </a>
+                    </div>
                   </div>
                 </article>
               );
@@ -244,13 +276,21 @@ export function DogodkiFeed({ onViewChange, searchQuery = '' }: DogodkiFeedProps
             return (
               <article key={event.id} className="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col sm:flex-row">
                 {event.image && (
-                  <div className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative">
-                    <img alt={event.title} className="w-full h-full object-cover" src={event.image} />
+                  <a 
+                    href={`#event-${event.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.location.hash = `event-${event.id}`;
+                    }}
+                    className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
+                    title="Odpri samostojno stran dogodka"
+                  >
+                    <img alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={event.image} />
                     <div className="absolute top-2 left-2 bg-surface-container-lowest/90 backdrop-blur-md rounded-xl p-1.5 text-center min-w-[44px] shadow-sm border border-black/5">
                       <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{event.month}</div>
                       <div className="text-base font-black text-on-surface leading-none mt-0.5">{event.day}</div>
                     </div>
-                  </div>
+                  </a>
                 )}
                 <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
                   <div>
@@ -275,9 +315,18 @@ export function DogodkiFeed({ onViewChange, searchQuery = '' }: DogodkiFeedProps
                         <ShareMenu id={event.id} title={event.title} />
                       </div>
                     </div>
-                    <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1">
-                      {event.title}
-                    </h3>
+                    <a
+                      href={`#event-${event.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.hash = `event-${event.id}`;
+                      }}
+                      className="block group/title cursor-pointer"
+                    >
+                      <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
+                        {event.title}
+                      </h3>
+                    </a>
                     <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">
                       {event.description}
                     </p>
@@ -288,6 +337,17 @@ export function DogodkiFeed({ onViewChange, searchQuery = '' }: DogodkiFeedProps
                     </span>
                     <div className="flex items-center gap-2">
                       <span className="font-headline-sm text-sm font-bold text-primary">{event.price || 'Vstop prost'}</span>
+                      <a
+                        href={`#event-${event.id}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.hash = `event-${event.id}`;
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+                        title="Poglej celotno stran dogodka"
+                      >
+                        <span>Stran dogodka</span>
+                      </a>
                       <button className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer">
                         <Star className="w-3 h-3" />
                         <span>Zanima me ({event.interestedCount})</span>

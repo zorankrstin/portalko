@@ -7,11 +7,14 @@ import { useState, useRef, useEffect } from 'react';
 import { parseSearchQuery, buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import portalkoLogo from '../assets/images/portalko_logo.png';
 
+import { PostDetailTarget } from '../types';
+
 export function Header({
   onProfileClick,
   onSavedClick,
   onHomeClick,
   onAdminClick,
+  onNavigatePost,
   searchQuery,
   onSearchChange
 }: {
@@ -19,6 +22,7 @@ export function Header({
   onSavedClick?: () => void;
   onHomeClick?: () => void;
   onAdminClick?: () => void;
+  onNavigatePost?: (target: PostDetailTarget) => void;
   searchQuery?: string;
   onSearchChange?: (q: string) => void;
 }) {
@@ -178,7 +182,7 @@ export function Header({
               </span>
             )}
           </button>
-          <NotificationCenter />
+          <NotificationCenter onNavigatePost={onNavigatePost} />
 
           {currentUser ? (
             <div className="relative" ref={userMenuRef}>

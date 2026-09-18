@@ -1,9 +1,65 @@
-import { Rocket, ShieldCheck, Lock, TrendingUp, Link as LinkIcon } from 'lucide-react';
+import { Rocket, ShieldCheck, Lock, TrendingUp, Link as LinkIcon, ShoppingBag } from 'lucide-react';
+import { PostDetailTarget } from '../types';
+import { INITIAL_ADS } from '../data/mockFeedData';
+import { scrollToPageTop } from '../utils/scrollUtils';
 
-export function RightSidebarAds() {
+interface RightSidebarAdsProps {
+  onNavigatePost?: (target: PostDetailTarget) => void;
+}
+
+export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
+  const handleOpenAd = (id: string, e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (onNavigatePost) {
+      onNavigatePost({ type: 'ad', id });
+    } else {
+      window.location.hash = `ad-${id}`;
+    }
+    scrollToPageTop();
+  };
+
   return (
     <aside className="hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
       
+      {/* Priporočeni mali oglasi */}
+      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
+        <div className="flex items-center justify-between pb-1 border-b border-surface-container-low">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="w-4 h-4 text-primary" />
+            <h3 className="font-headline-sm text-sm font-bold text-on-surface">Priporočeni oglasi</h3>
+          </div>
+          <span className="font-label-caps text-[10px] uppercase font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Aktualno</span>
+        </div>
+        <div className="flex flex-col gap-2 pt-1">
+          {INITIAL_ADS.slice(0, 3).map(ad => (
+            <a
+              key={ad.id}
+              href={`#ad-${ad.id}`}
+              onClick={(e) => handleOpenAd(ad.id, e)}
+              className="group flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent hover:border-surface-container/60"
+              title={`Odpri oglas: ${ad.title}`}
+            >
+              {ad.image && (
+                <img 
+                  src={ad.image} 
+                  alt={ad.title} 
+                  className="w-12 h-12 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform"
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-headline-sm text-xs font-bold text-primary">{ad.price}</span>
+                  <span className="font-label-caps text-[10px] text-outline truncate">{ad.location}</span>
+                </div>
+                <h4 className="font-label-md text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors mt-0.5">
+                  {ad.title}
+                </h4>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+
       {/* Hitrejša prodaja */}
       <div className="bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-2xl p-space-md shadow-md flex flex-col gap-3 relative overflow-hidden">
         <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-surface-container-lowest/10 rounded-full blur-xl pointer-events-none"></div>

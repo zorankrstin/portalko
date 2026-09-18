@@ -6,13 +6,15 @@ import { ComposeModal } from './ComposeModal';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { INITIAL_BLOG_POSTS, MockBlogItem } from '../data/mockFeedData';
+import type { PostDetailTarget } from '../types';
 
 interface BlogFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
+  onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
-export function BlogFeed({ onViewChange, searchQuery = '' }: BlogFeedProps) {
+export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: BlogFeedProps) {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string>('all');
@@ -189,6 +191,7 @@ export function BlogFeed({ onViewChange, searchQuery = '' }: BlogFeedProps) {
                 commentsCount={`${post.commentsCount} komentarjev`}
                 viewsCount={`${post.viewsCount} ogledov`}
                 tags={post.tags}
+                onNavigatePost={onNavigatePost}
               />
             );
           })
