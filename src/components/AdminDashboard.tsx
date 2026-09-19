@@ -47,12 +47,12 @@ const MOCK_POSTS: AdminPost[] = [
   { id: 'p1', title: 'Potep po dolini Soče: 5 skritih kotičkov', author: 'Maja Zupan', type: 'blog', status: 'published', date: '12. Sep 2026' },
   { id: 'p2', title: 'Prodam Audi A4 2.0 TDI', author: 'Janez Horvat', type: 'ad', status: 'removed', date: '11. Sep 2026' },
   { id: 'p3', title: 'Koncert Joker Out', author: 'Kino Šiška', type: 'event', status: 'published', date: '10. Sep 2026' },
-  { id: 'p4', title: '-20% popust na pnevmatike', author: 'Vulkanizerstvo', type: 'deal', status: 'pending', date: '09. Sep 2026' },
+  { id: 'p4', title: '-20% popust na pnevmatike', author: 'Vulkanizerstvo', type: 'deal', status: 'published', date: '09. Sep 2026' },
 ];
 
 export function AdminDashboard() {
   const { users, currentUser, updateUser, register } = useAuth();
-  const [activeTab, setActiveTab] = useState<'users' | 'approvals' | 'posts' | 'rss'>('approvals');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'rss'>('posts');
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
 
@@ -310,20 +310,6 @@ export function AdminDashboard() {
 
   const renderTabs = () => (
     <div className="flex flex-wrap gap-2 mb-4 border-b border-surface-container-low pb-3">
-      <button 
-        onClick={() => setActiveTab('approvals')}
-        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
-          activeTab === 'approvals' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
-        }`}
-      >
-        <Clock className="w-4 h-4" />
-        <span>Odobritev objav</span>
-        {pendingItems.length > 0 && (
-          <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-[#D28E3D] text-white shadow-xs">
-            {pendingItems.length}
-          </span>
-        )}
-      </button>
       <button 
         onClick={() => setActiveTab('posts')}
         className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
@@ -716,172 +702,6 @@ export function AdminDashboard() {
           </div>
         )}
 
-        {/* Tab Content: Approvals (Odobritev objav) */}
-        {activeTab === 'approvals' && (
-          <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-surface-container-low">
-              <div>
-                <h3 className="font-headline-sm text-lg font-bold text-on-surface flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-[#D28E3D]" />
-                  <span>Čakalna vrsta za odobritev objav</span>
-                  {pendingItems.length > 0 && (
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#D28E3D] text-white font-extrabold">
-                      {pendingItems.length} v čakanju
-                    </span>
-                  )}
-                </h3>
-                <p className="text-xs text-outline mt-0.5">
-                  Preglejte nove objave uporabnikov, jih uredite po potrebi, ter odobrite ali zavrnite pred javno objavo.
-                </p>
-              </div>
-
-              {pendingItems.length > 0 && (
-                <div className="text-xs text-on-surface-variant font-medium bg-surface-container-low px-3 py-1.5 rounded-xl border border-surface-container">
-                  Skrbniške pravice: <strong>{currentUser?.role}</strong>
-                </div>
-              )}
-            </div>
-
-            {pendingItems.length === 0 ? (
-              <div className="py-12 px-4 rounded-2xl bg-surface-container-low/50 border border-dashed border-surface-container flex flex-col items-center justify-center text-center gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center">
-                  <CheckCheck className="w-7 h-7" />
-                </div>
-                <div>
-                  <h4 className="font-headline-sm text-base font-bold text-on-surface">Vse objave so pregledane!</h4>
-                  <p className="text-xs text-outline max-w-md mt-1">
-                    Trenutno ni novih objav uporabnikov, ki bi čakale na vašo odobritev. Vse obstoječe vsebine si lahko ogledate v zavihku "Vse objave".
-                  </p>
-                </div>
-                <button
-                  onClick={() => setActiveTab('posts')}
-                  className="mt-2 px-4 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container text-on-surface font-semibold text-xs transition-colors cursor-pointer"
-                >
-                  Prikaži vse objave ({allUnifiedItems.length})
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {pendingItems.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="bg-surface-container-lowest rounded-2xl p-4 border border-[#D28E3D]/30 hover:border-[#D28E3D] shadow-xs flex flex-col justify-between gap-3 transition-all"
-                  >
-                    <div className="flex flex-col gap-2.5">
-                      {/* Card Header: Type, Category, Date */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full ${
-                            item.type === 'ad' ? 'bg-primary/10 text-primary' :
-                            item.type === 'event' ? 'bg-secondary/10 text-secondary' :
-                            item.type === 'deal' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
-                            'bg-surface-container-high text-on-surface-variant'
-                          }`}>
-                            {item.type === 'ad' ? 'Mali oglas' :
-                             item.type === 'event' ? 'Dogodek' :
-                             item.type === 'deal' ? 'Ugodnost' : 'Članek / Objava'}
-                          </span>
-                          <span className="text-[11px] font-medium text-outline px-2 py-0.5 rounded-md bg-surface-container-low">
-                            {item.category}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-semibold text-[#D28E3D] flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                          <Clock className="w-3 h-3" /> Čaka na potrditev
-                        </span>
-                      </div>
-
-                      {/* Title & Author */}
-                      <div>
-                        <h4 className="font-bold text-sm text-on-surface line-clamp-2">{item.title}</h4>
-                        <div className="flex items-center gap-2 mt-1 text-xs text-outline">
-                          <span>Avtor: <strong className="text-on-surface">{item.authorName}</strong></span>
-                          {item.authorRole && (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-surface-container text-on-surface-variant">
-                              {item.authorRole}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Content excerpt */}
-                      {item.content && (
-                        <p className="text-xs text-on-surface-variant line-clamp-3 bg-surface-container-low/40 p-2.5 rounded-xl border border-surface-container-low">
-                          {item.content}
-                        </p>
-                      )}
-
-                      {/* Meta pills */}
-                      <div className="flex flex-wrap gap-2 text-[11px] text-outline">
-                        {item.price && (
-                          <span className="flex items-center gap-1 font-semibold text-primary bg-primary/5 px-2 py-0.5 rounded-md">
-                            <Tag className="w-3 h-3" /> {item.price}
-                          </span>
-                        )}
-                        {item.location && (
-                          <span className="flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-md">
-                            <MapPin className="w-3 h-3" /> {item.location}
-                          </span>
-                        )}
-                        {item.eventDate && (
-                          <span className="flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-md">
-                            <Calendar className="w-3 h-3" /> {item.eventDate}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Image preview */}
-                      {item.imageUrl && (
-                        <div className="relative w-full h-24 rounded-xl overflow-hidden bg-surface-container border border-surface-container">
-                          <img src={item.imageUrl} alt="Slika" className="w-full h-full object-cover" onError={() => {}} />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Card Actions */}
-                    <div className="flex items-center justify-between gap-2 pt-3 border-t border-surface-container-low mt-1">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleApproveItem(item)}
-                          className="px-3.5 py-1.5 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                          title="Odobri in objavi takoj"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Odobri</span>
-                        </button>
-                        <button
-                          onClick={() => handleEditItem(item)}
-                          className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-container text-on-surface font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                          title="Uredi pred odobritvijo"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-primary" />
-                          <span>Uredi</span>
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleRejectItem(item)}
-                          className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
-                          title="Zavrni objavo"
-                        >
-                          <Ban className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteItem(item)}
-                          className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
-                          title="Trajno izbriši"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Tab Content: All Posts & Edit (Vse objave & Urejanje) */}
         {activeTab === 'posts' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -933,7 +753,6 @@ export function AdminDashboard() {
                 >
                   <option value="all">Vsi statusi</option>
                   <option value="published">Objavljeno / Aktivno</option>
-                  <option value="pending">V čakanju</option>
                   <option value="rejected">Zavrnjeno</option>
                 </select>
               </div>
@@ -1008,29 +827,22 @@ export function AdminDashboard() {
                         <td className="p-3">
                           <div className="flex items-center gap-1.5">
                             <select
-                              value={post.status}
+                              value={post.status === 'active' ? 'published' : post.status}
                               onChange={(e) => {
                                 const newStatus = e.target.value as any;
                                 if (newStatus === 'published') {
                                   handleApproveItem(post);
                                 } else if (newStatus === 'rejected') {
                                   handleRejectItem(post);
-                                } else if (newStatus === 'pending') {
-                                  if (post.type === 'ad') updateAdInFirestore(post.id, { status: 'pending' as any });
-                                  else if (post.type === 'event') updateEventInFirestore(post.id, { status: 'pending' });
-                                  else updatePostInFirestore(post.id, { status: 'pending' });
                                 }
                               }}
                               className={`text-[11px] font-bold py-1 px-2 rounded-lg border outline-none cursor-pointer transition-colors ${
                                 post.status === 'published' || post.status === 'active'
                                   ? 'bg-secondary/10 text-secondary border-secondary/30'
-                                  : post.status === 'pending'
-                                  ? 'bg-[#D28E3D]/10 text-[#D28E3D] border-[#D28E3D]/40'
                                   : 'bg-error/10 text-error border-error/30'
                               }`}
                             >
                               <option value="published">Objavljeno</option>
-                              <option value="pending">V čakanju</option>
                               <option value="rejected">Zavrnjeno</option>
                             </select>
                           </div>
@@ -1038,15 +850,6 @@ export function AdminDashboard() {
 
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {post.status === 'pending' && (
-                              <button
-                                onClick={() => handleApproveItem(post)}
-                                className="p-1.5 text-secondary hover:bg-secondary/10 rounded-lg transition-colors cursor-pointer"
-                                title="Hitro odobri"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                            )}
                             <button 
                               onClick={() => handleEditItem(post)}
                               className="px-2.5 py-1 text-xs font-semibold bg-surface-container-high hover:bg-surface-container text-on-surface rounded-lg transition-colors flex items-center gap-1 cursor-pointer"

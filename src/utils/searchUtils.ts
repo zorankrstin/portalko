@@ -111,11 +111,11 @@ export function buildSearchQuery(category: SearchCategory, text: string = ''): s
   
   const categoryTokenMap: Record<SearchCategory, string> = {
     all: '',
-    ads: 'kategorija:oglasi',
     news: 'kategorija:novice',
+    ads: 'kategorija:oglasi',
+    deals: 'kategorija:ugodnosti',
     events: 'kategorija:dogodki',
     blog: 'kategorija:blog',
-    deals: 'kategorija:popusti',
   };
 
   const token = categoryTokenMap[category];
@@ -160,6 +160,7 @@ function normalizeCategory(category: string): SearchCategory {
   if (CATEGORY_MAP[lower]) return CATEGORY_MAP[lower];
   if (lower.includes('oglas') || lower.includes('ad')) return 'ads';
   if (lower.includes('novic') || lower.includes('news') || lower.includes('rss')) return 'news';
+  if (lower.includes('ugodnost') || lower.includes('popust') || lower.includes('deal') || lower.includes('kupon')) return 'deals';
   if (lower.includes('dogod') || lower.includes('event')) return 'events';
   if (lower.includes('blog') || lower.includes('post')) return 'blog';
   return 'all';

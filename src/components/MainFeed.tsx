@@ -90,9 +90,9 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
     const items: FeedItemKind[] = [];
     const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
-    // Insert live firestore posts (checking approval visibility)
+    // Insert live firestore posts (published live without admin approval; only hide if rejected/archived)
     firestorePosts.forEach(fp => {
-      if (fp.status && fp.status !== 'published') {
+      if (fp.status === 'rejected' || fp.status === 'archived') {
         const isAuthor = currentUser?.id === fp.authorId || (currentUser?.name && currentUser.name === fp.authorName);
         if (!isAdminOrSuper && !isAuthor) return;
       }
@@ -101,7 +101,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
 
     // Insert live firestore ads
     firestoreAds.forEach(fa => {
-      if (fa.status && fa.status !== 'active') {
+      if (fa.status === 'rejected' || fa.status === 'sold' || fa.status === 'closed') {
         const isAuthor = currentUser?.id === fa.authorId || (currentUser?.name && currentUser.name === fa.authorName);
         if (!isAdminOrSuper && !isAuthor) return;
       }
@@ -110,7 +110,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
 
     // Insert live firestore events
     firestoreEvents.forEach(fe => {
-      if (fe.status && fe.status !== 'published') {
+      if (fe.status === 'rejected') {
         const isAuthor = currentUser?.id === fe.authorId || (currentUser?.name && currentUser.name === fe.authorName);
         if (!isAdminOrSuper && !isAuthor) return;
       }
@@ -197,7 +197,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
         cat = 'ads';
       } else if (item.type === 'deal') {
         textToMatch = `${item.data.title} ${item.data.description} ${item.data.partner} ${item.data.code}`;
-        cat = 'ads';
+        cat = 'deals';
       } else if (item.type === 'event') {
         textToMatch = `${item.data.title} ${item.data.description} ${item.data.categoryName} ${item.data.location} ${item.data.organizer}`;
         cat = 'events';

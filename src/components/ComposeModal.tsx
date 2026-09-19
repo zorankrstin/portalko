@@ -363,7 +363,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                   <span>Shranjevanje...</span>
                 </>
               ) : (
-                <span>{isAdminOrSuper ? 'Objavi zdaj' : 'Pošlji v pregled'}</span>
+                <span>Objavi zdaj</span>
               )}
             </button>
           </div>

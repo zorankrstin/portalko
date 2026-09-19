@@ -120,8 +120,9 @@ export function Header({
                 aria-label="Filtriraj iskanje po kategoriji"
               >
                 <option value="all">Vse kategorije</option>
-                <option value="ads">Mali oglasi</option>
                 <option value="news">Novice</option>
+                <option value="ads">Mali oglasi</option>
+                <option value="deals">Ugodnosti</option>
                 <option value="events">Dogodki</option>
                 <option value="blog">Blog</option>
               </select>
@@ -138,11 +139,12 @@ export function Header({
                 }}
                 className="w-full bg-transparent pl-2.5 pr-8 py-2 font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none" 
                 placeholder={
-                  category === 'ads' ? 'Išči po malih oglasih...' :
                   category === 'news' ? 'Išči po novicah in virih...' :
+                  category === 'ads' ? 'Išči po malih oglasih...' :
+                  category === 'deals' ? 'Išči po ugodnostih in popustih...' :
                   category === 'events' ? 'Išči po dogodkih...' :
                   category === 'blog' ? 'Išči po blog zapisih...' :
-                  'Išči po objavah, novicah, oglasih, dogodkih...'
+                  'Išči po objavah, novicah, oglasih, ugodnostih, dogodkih...'
                 }
                 type="text" 
               />

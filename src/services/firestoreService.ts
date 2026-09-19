@@ -6,6 +6,7 @@ import {
   getDocs, 
   updateDoc, 
   deleteDoc, 
+  deleteField,
   onSnapshot, 
   query, 
   orderBy, 
@@ -15,6 +16,39 @@ import {
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { User, Role } from '../contexts/AuthContext';
 import { SavedItemData } from '../contexts/BookmarkContext';
+
+/**
+ * Sanitizes an object before calling Firestore updateDoc:
+ * - Converts `rejectionReason: undefined` (or any other field where undefined signifies removal) into `deleteField()`
+ * - Strips out any remaining `undefined` properties so Firestore updateDoc never throws "Unsupported field value: undefined"
+ */
+export function sanitizeUpdateData(data: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) {
+      if (key === 'rejectionReason') {
+        result[key] = deleteField();
+      }
+      // Omit all other undefined fields so Firestore doesn't reject them
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+/**
+ * Strips out keys with undefined values before setDoc.
+ */
+export function cleanDataForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
 
 export interface FirestorePost {
   id: string;
@@ -219,17 +253,40 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
   }
 }
 
-export async function updateUserInFirestore(userId: string, data: Partial<User>): Promise<void> {
+export async function updateUserInFirestore(userId: string, data: Partial<User>, fallbackUser?: User): Promise<void> {
   if (!auth.currentUser) {
     return;
   }
   const path = `users/${userId}`;
   try {
     const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, {
-      ...data,
-      updatedAt: new Date().toISOString(),
-    });
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      const base: Partial<User> = fallbackUser || {};
+      const fullDoc = {
+        id: userId,
+        name: data.name || base.name || (userId === 'u2' ? 'Luka Novak' : userId === 'u3' ? 'Maja Zupan' : userId === 'u4' ? 'Janez Horvat' : 'Uporabnik'),
+        email: data.email || base.email || `${userId}@portalko.net`,
+        role: data.role || base.role || 'registered',
+        status: data.status || base.status || 'active',
+        avatar: data.avatar !== undefined ? data.avatar : (base.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || base.name || userId)}&background=7C3AED&color=fff`),
+        bio: data.bio !== undefined ? data.bio : (base.bio || ''),
+        username: data.username !== undefined ? data.username : (base.username || `@${userId}`),
+        socialLinks: data.socialLinks !== undefined ? data.socialLinks : (base.socialLinks || []),
+        profileMenu: data.profileMenu !== undefined ? data.profileMenu : (base.profileMenu || []),
+        verificationRequested: data.verificationRequested !== undefined ? data.verificationRequested : (base.verificationRequested || false),
+        verificationRequestedAt: data.verificationRequestedAt !== undefined ? data.verificationRequestedAt : (base.verificationRequestedAt || ''),
+        verificationNote: data.verificationNote !== undefined ? data.verificationNote : (base.verificationNote || ''),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(userRef, cleanDataForFirestore(fullDoc));
+    } else {
+      await updateDoc(userRef, sanitizeUpdateData({
+        ...data,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -268,7 +325,7 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
       likesCount: post.likesCount || 0,
       commentsCount: post.commentsCount || 0,
     };
-    await setDoc(postRef, newPost);
+    await setDoc(postRef, cleanDataForFirestore(newPost));
     return postRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
@@ -280,10 +337,32 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
   const path = `posts/${postId}`;
   try {
     const postRef = doc(db, 'posts', postId);
-    await updateDoc(postRef, {
-      ...data,
-      updatedAt: new Date().toISOString(),
-    });
+    const snap = await getDoc(postRef);
+    if (!snap.exists()) {
+      await setDoc(postRef, cleanDataForFirestore({
+        id: postId,
+        title: data.title || 'Objava',
+        content: data.content || '',
+        category: data.category || 'splosno',
+        authorId: data.authorId || auth.currentUser?.uid || 'admin',
+        authorName: data.authorName || auth.currentUser?.displayName || 'Uredništvo',
+        authorRole: data.authorRole || 'superadmin',
+        status: data.status || 'published',
+        imageUrl: data.imageUrl || '',
+        price: data.price || '',
+        location: data.location || '',
+        likesCount: data.likesCount || 0,
+        commentsCount: data.commentsCount || 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...data,
+      }));
+    } else {
+      await updateDoc(postRef, sanitizeUpdateData({
+        ...data,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -347,7 +426,7 @@ export async function createAdInFirestore(ad: Omit<FirestoreAd, 'id'> & { id?: s
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await setDoc(adRef, newAd);
+    await setDoc(adRef, cleanDataForFirestore(newAd));
     return adRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
@@ -359,10 +438,31 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
   const path = `ads/${adId}`;
   try {
     const adRef = doc(db, 'ads', adId);
-    await updateDoc(adRef, {
-      ...data,
-      updatedAt: new Date().toISOString(),
-    });
+    const snap = await getDoc(adRef);
+    if (!snap.exists()) {
+      await setDoc(adRef, cleanDataForFirestore({
+        id: adId,
+        title: data.title || 'Mali oglas',
+        description: data.description || '',
+        category: data.category || 'razno',
+        price: data.price || 'Po dogovoru',
+        location: data.location || 'Slovenija',
+        phone: data.phone || '',
+        authorId: data.authorId || auth.currentUser?.uid || 'admin',
+        authorName: data.authorName || auth.currentUser?.displayName || 'Uporabnik',
+        authorRole: data.authorRole || 'superadmin',
+        imageUrl: data.imageUrl || '',
+        status: data.status || 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...data,
+      }));
+    } else {
+      await updateDoc(adRef, sanitizeUpdateData({
+        ...data,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -409,7 +509,7 @@ export async function createEventInFirestore(event: Omit<FirestoreEvent, 'id'> &
       updatedAt: new Date().toISOString(),
       isPromoted: event.isPromoted || false,
     };
-    await setDoc(eventRef, newEvent);
+    await setDoc(eventRef, cleanDataForFirestore(newEvent));
     return eventRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
@@ -421,10 +521,32 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
   const path = `events/${eventId}`;
   try {
     const eventRef = doc(db, 'events', eventId);
-    await updateDoc(eventRef, {
-      ...data,
-      updatedAt: new Date().toISOString(),
-    });
+    const snap = await getDoc(eventRef);
+    if (!snap.exists()) {
+      await setDoc(eventRef, cleanDataForFirestore({
+        id: eventId,
+        title: data.title || 'Dogodek',
+        description: data.description || '',
+        category: data.category || 'dogodki',
+        eventDate: data.eventDate || new Date().toISOString().split('T')[0],
+        location: data.location || 'Ljubljana',
+        price: data.price || 'Vstop prost',
+        authorId: data.authorId || auth.currentUser?.uid || 'admin',
+        authorName: data.authorName || auth.currentUser?.displayName || 'Organizator',
+        authorRole: data.authorRole || 'superadmin',
+        imageUrl: data.imageUrl || '',
+        status: data.status || 'published',
+        isPromoted: data.isPromoted || false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...data,
+      }));
+    } else {
+      await updateDoc(eventRef, sanitizeUpdateData({
+        ...data,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }

@@ -3,7 +3,8 @@ import {
   ArrowLeft, Share2, Copy, Check, ExternalLink, Calendar, MapPin, 
   ThumbsUp, Tag, ShieldCheck, User, Clock, MessageSquare, 
   Phone, Send, Heart, AlertTriangle, Sparkles, CheckCircle2, 
-  CalendarPlus, Bookmark, Eye, ChevronRight, Store, ArrowRight
+  CalendarPlus, Bookmark, Eye, ChevronRight, Store, ArrowRight,
+  Edit3, Trash2
 } from 'lucide-react';
 import { PostDetailTarget, ViewMode } from '../types';
 import { BookmarkButton } from './BookmarkButton';
@@ -12,7 +13,18 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { INITIAL_DEALS, HERO_BENTO_DEALS, DealItem } from '../data/mockDealsData';
 import { INITIAL_EVENTS, INITIAL_ADS, INITIAL_BLOG_POSTS, MockEventItem, MockAdItem, MockBlogItem } from '../data/mockFeedData';
-import { subscribeToPosts, subscribeToEvents, subscribeToAds, FirestorePost, FirestoreEvent, FirestoreAd } from '../services/firestoreService';
+import { 
+  subscribeToPosts, 
+  subscribeToEvents, 
+  subscribeToAds, 
+  FirestorePost, 
+  FirestoreEvent, 
+  FirestoreAd,
+  deletePostInFirestore,
+  deleteAdInFirestore,
+  deleteEventInFirestore
+} from '../services/firestoreService';
+import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
 import { BookOpen } from 'lucide-react';
 import { scrollToPageTop } from '../utils/scrollUtils';
 
@@ -85,6 +97,9 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
           description: fs.content,
           discount: fs.price || 'Ugodnost',
           partner: fs.authorName,
+          authorName: fs.authorName,
+          authorId: fs.authorId,
+          status: fs.status,
           partnerRole: fs.authorRole,
           partnerAvatar: fs.authorAvatar,
           date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes',
@@ -114,10 +129,14 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
           description: fs.description,
           location: fs.location,
           date: fs.eventDate,
+          eventDate: fs.eventDate,
           month: 'DOG',
           day: '★',
           price: 'Vstop prost',
           organizer: fs.authorName,
+          authorName: fs.authorName,
+          authorId: fs.authorId,
+          status: fs.status,
           categoryName: fs.category || 'Dogodek v živo',
           image: fs.imageUrl || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=1000&auto=format&fit=crop&q=80',
           interestedCount: 42,
@@ -142,6 +161,9 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
           location: fs.location,
           date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes',
           author: fs.authorName,
+          authorName: fs.authorName,
+          authorId: fs.authorId,
+          status: fs.status,
           categoryName: fs.category || 'Mali oglas',
           image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
           authorInitials: fs.authorName.slice(0, 2).toUpperCase(),
@@ -164,6 +186,9 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
           description: fs.content,
           content: fs.content,
           author: fs.authorName,
+          authorName: fs.authorName,
+          authorId: fs.authorId,
+          status: fs.status,
           authorRole: fs.authorRole || 'Član skupnosti',
           authorAvatar: fs.authorAvatar,
           date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Ravno objavljeno',
@@ -401,9 +426,53 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
     photoCount: itemData.photoCount,
   };
 
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+  const isAuthor = Boolean(currentUser?.id && itemData.authorId && currentUser.id === itemData.authorId);
+  const canManage = isAdminOrSuper || isAuthor;
+
+  const handleDeletePost = async () => {
+    if (!window.confirm(`Ali ste prepričani, da želite izbrisati objavo "${itemData.title}"?`)) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      if (target.type === 'ad') {
+        await deleteAdInFirestore(itemData.id);
+      } else if (target.type === 'event') {
+        await deleteEventInFirestore(itemData.id);
+      } else {
+        await deletePostInFirestore(itemData.id);
+      }
+      onBack();
+    } catch (e) {
+      console.error('Napaka pri brisanju objave:', e);
+      alert('Prišlo je do napake pri brisanju.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const editableItem: EditablePostItem = {
+    id: itemData.id,
+    title: itemData.title,
+    content: itemData.description || itemData.content || '',
+    category: target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'blog',
+    type: target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'post',
+    status: (itemData.status || 'published') as any,
+    imageUrl: itemData.image,
+    price: itemData.price || itemData.discount,
+    location: itemData.location || itemData.region,
+    eventDate: itemData.eventDate || itemData.date,
+    authorName: itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor',
+    authorId: itemData.authorId,
+  };
+
   return (
     <main className="lg:col-span-6 flex flex-col gap-space-md animate-in fade-in duration-200">
-      {/* Top Breadcrumbs & Action Bar */}
+      {/* Top Breadcrumbs & Back Navigation */}
       <div className="bg-surface-container-lowest rounded-2xl p-3 sm:p-4 border border-surface-container/60 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-outline overflow-hidden">
           <button
@@ -417,30 +486,6 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
           <span className="hidden sm:inline font-medium text-on-surface-variant shrink-0">{feedCategoryName}</span>
           <span className="hidden md:inline opacity-40">/</span>
           <span className="hidden md:inline text-on-surface font-semibold truncate max-w-[200px] xl:max-w-xs">{itemData.title}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Copy Direct Permalink */}
-          <button
-            onClick={handleCopyLink}
-            className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs font-semibold text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1.5 cursor-pointer"
-            title="Kopiraj neposredno povezavo do te strani objave"
-          >
-            {copiedLink ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-secondary" />
-                <span className="text-secondary font-bold">Povezava kopirana!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-outline" />
-                <span className="hidden sm:inline">Kopiraj povezavo</span>
-              </>
-            )}
-          </button>
-
-          <BookmarkButton id={itemData.id} data={bookmarkData} />
-          <ShareMenu id={itemData.id} title={itemData.title} />
         </div>
       </div>
 
@@ -519,6 +564,72 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
             </div>
           </div>
         )}
+
+        {/* Action Buttons: Kopiraj povezavo, Shrani, Deli (positioned below featured photo) */}
+        <div className="px-4 py-3 sm:px-6 bg-surface-container-lowest border-b border-surface-container/60 flex items-center justify-between flex-wrap gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Kopiraj povezavo */}
+            <button
+              id="btn-post-copy-link"
+              onClick={handleCopyLink}
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
+              title="Kopiraj neposredno povezavo do te objave"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-4 h-4 text-secondary" />
+                  <span className="text-secondary font-bold">Povezava kopirana!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 text-outline" />
+                  <span>Kopiraj povezavo</span>
+                </>
+              )}
+            </button>
+
+            {/* Shrani */}
+            <BookmarkButton
+              id={itemData.id}
+              data={bookmarkData}
+              showLabel={true}
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
+            />
+
+            {/* Deli */}
+            <ShareMenu
+              id={itemData.id}
+              title={itemData.title}
+              showLabel={true}
+              dropDirection="down"
+              buttonClassName="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
+            />
+          </div>
+
+          {/* Admin & Author actions: Uredi in Izbriši */}
+          {canManage && (
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(true)}
+                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-high hover:bg-surface-container text-xs sm:text-sm font-semibold text-on-surface flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 shadow-2xs"
+                title="Uredi objavo"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-primary" />
+                <span>Uredi</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDeletePost}
+                disabled={isDeleting}
+                className="p-2 rounded-xl text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer border border-surface-container/60"
+                title="Izbriši objavo"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Post Content Body */}
         <div className="p-4 sm:p-6 md:p-8 flex flex-col gap-6">
@@ -999,6 +1110,16 @@ export function PostDetailPage({ target, onBack, onNavigatePost, onViewChange }:
           ))}
         </div>
       </section>
+
+      {/* Admin / Author Edit Modal */}
+      {isEditModalOpen && (
+        <EditPostModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          item={editableItem}
+          onSaved={() => setIsEditModalOpen(false)}
+        />
+      )}
     </main>
   );
 }

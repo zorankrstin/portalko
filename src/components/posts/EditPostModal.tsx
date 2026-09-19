@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, AlertCircle, Save, Check, Ban, Eye, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, Sparkles, Trash2, Loader2 } from 'lucide-react';
 import { 
   FirestorePost, 
   FirestoreAd, 
   FirestoreEvent, 
   updatePostInFirestore, 
   updateAdInFirestore, 
-  updateEventInFirestore 
+  updateEventInFirestore,
+  deletePostInFirestore,
+  deleteAdInFirestore,
+  deleteEventInFirestore
 } from '../../services/firestoreService';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
@@ -19,6 +22,7 @@ export interface EditablePostItem {
   category: string;
   authorName: string;
   authorRole?: string;
+  authorId?: string;
   status: 'published' | 'active' | 'pending' | 'rejected' | 'archived';
   imageUrl?: string;
   price?: string;
@@ -44,8 +48,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [location, setLocation] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
-
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -68,6 +72,31 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
   if (!isOpen || !item) return null;
 
+  const handleDelete = async () => {
+    if (!item) return;
+    if (!window.confirm(`Ali ste prepričani, da želite dokončno izbrisati objavo "${item.title}"?`)) {
+      return;
+    }
+    setIsDeleting(true);
+    setErrorMsg('');
+    try {
+      if (item.type === 'ad') {
+        await deleteAdInFirestore(item.id);
+      } else if (item.type === 'event') {
+        await deleteEventInFirestore(item.id);
+      } else {
+        await deletePostInFirestore(item.id);
+      }
+      onSaved?.();
+      onClose();
+    } catch (err: any) {
+      console.error('Napaka pri brisanju objave:', err);
+      setErrorMsg(err?.message || 'Napaka pri brisanju objave.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleSave = async (overrideStatus?: 'published' | 'pending' | 'rejected') => {
     if (!title.trim()) {
       setErrorMsg('Naslov objave ne sme biti prazen.');
@@ -89,7 +118,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           category: category.trim(),
           price: price.trim() || 'Po dogovoru',
           location: location.trim() || 'Slovenija',
-          imageUrl: imageUrl.trim() || undefined,
+          imageUrl: imageUrl.trim() || '',
           status: adStatus as any,
           rejectionReason: targetStatus === 'rejected' ? (rejectionReason.trim() || 'Zavrnjeno s strani skrbnika') : undefined,
         });
@@ -98,10 +127,10 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           title: title.trim(),
           description: content.trim(),
           category: category.trim(),
-          price: price.trim() || undefined,
+          price: price.trim() || '',
           location: location.trim() || 'Ljubljana',
-          eventDate: eventDate.trim() || undefined,
-          imageUrl: imageUrl.trim() || undefined,
+          eventDate: eventDate.trim() || '',
+          imageUrl: imageUrl.trim() || '',
           status: targetStatus as any,
           rejectionReason: targetStatus === 'rejected' ? (rejectionReason.trim() || 'Zavrnjeno s strani skrbnika') : undefined,
         });
@@ -111,9 +140,9 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           title: title.trim(),
           content: content.trim(),
           category: category.trim(),
-          price: price.trim() || undefined,
-          location: location.trim() || undefined,
-          imageUrl: imageUrl.trim() || undefined,
+          price: price.trim() || '',
+          location: location.trim() || '',
+          imageUrl: imageUrl.trim() || '',
           status: targetStatus as any,
           rejectionReason: targetStatus === 'rejected' ? (rejectionReason.trim() || 'Zavrnjeno s strani skrbnika') : undefined,
         });
@@ -192,8 +221,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         <div className="flex flex-col gap-4 text-xs">
           {/* Status selection */}
           <div className="bg-surface-container-low p-3.5 rounded-xl border border-surface-container/60 flex flex-col gap-2">
-            <label className="font-label-caps uppercase font-bold text-on-surface">Status objave & Odobritev</label>
-            <div className="grid grid-cols-3 gap-2">
+            <label className="font-label-caps uppercase font-bold text-on-surface">Status objave</label>
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setStatus('published')}
@@ -204,19 +233,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                 }`}
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Odobreno (Objavi)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatus('pending')}
-                className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  status === 'pending'
-                    ? 'bg-[#D28E3D] text-white shadow-xs'
-                    : 'bg-surface-container-lowest text-on-surface-variant border border-surface-container hover:bg-surface-container'
-                }`}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>V čakanju</span>
+                <span>Objavljeno (Aktivno)</span>
               </button>
               <button
                 type="button"
@@ -228,18 +245,18 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                 }`}
               >
                 <Ban className="w-3.5 h-3.5" />
-                <span>Zavrni</span>
+                <span>Zavrnjeno / Umaknjeno</span>
               </button>
             </div>
 
             {status === 'rejected' && (
               <div className="flex flex-col gap-1 mt-1">
-                <label className="text-[11px] text-error font-medium">Razlog za zavrnitev (viden avtorju):</label>
+                <label className="text-[11px] text-error font-medium">Razlog za umik/zavrnitev (viden avtorju):</label>
                 <input
                   type="text"
                   value={rejectionReason}
                   onChange={e => setRejectionReason(e.target.value)}
-                  placeholder="Npr. vsebina krši pravila skupnosti ali manjka opis"
+                  placeholder="Npr. vsebina krši pravila skupnosti ali je neustrezna"
                   className="w-full px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-error/30 text-xs text-on-surface outline-none focus:border-error"
                 />
               </div>
@@ -344,28 +361,20 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         {/* Footer actions */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-surface-container-low mt-2">
           <div className="flex items-center gap-2">
-            {status === 'pending' && (
-              <>
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => handleSave('published')}
-                  className="px-3.5 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Odobri in objavi</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => handleSave('rejected')}
-                  className="px-3 py-2 rounded-xl bg-error/10 hover:bg-error/20 text-error font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <Ban className="w-4 h-4" />
-                  <span>Zavrni</span>
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              disabled={isSubmitting || isDeleting}
+              onClick={handleDelete}
+              className="px-3.5 py-2 rounded-xl bg-error/10 hover:bg-error/20 text-error font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              title="Dokončno izbriši objavo iz baze"
+            >
+              {isDeleting ? (
+                <Loader2 className="w-4 h-4 animate-spin text-error" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              <span>Izbriši objavo</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2 ml-auto">

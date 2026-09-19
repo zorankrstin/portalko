@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
-import { Heart, MessageCircle, Sparkles, Clock, Edit3, Check, Ban, ArrowRight } from 'lucide-react';
-import { FirestorePost, togglePostLikeInFirestore, approveItemInFirestore } from "../../services/firestoreService";
+import { Heart, MessageCircle, Sparkles, Edit3, Check, Ban, ArrowRight, Trash2, Loader2 } from 'lucide-react';
+import { FirestorePost, togglePostLikeInFirestore, deletePostInFirestore, deleteAdInFirestore, deleteEventInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
 import { AdPost } from "./AdPost";
 import { DealPost } from "./DealPost";
@@ -18,17 +18,39 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
   const [likesCount, setLikesCount] = useState(post.likesCount || 0);
   const [hasLiked, setHasLiked] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
   const isAuthor = currentUser?.id === post.authorId;
   const canEdit = isAdminOrSuper || isAuthor;
 
-  // If post is pending or rejected and current user is neither admin nor author, do not display
-  if (post.status && post.status !== 'published') {
+  // Only hide post if it was explicitly rejected or archived, unless viewed by admin or author
+  if (post.status === 'rejected' || post.status === 'archived') {
     if (!canEdit) {
       return null;
     }
   }
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Ali ste prepričani, da želite izbrisati objavo "${post.title}"?`)) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      if (post.category === 'ad') {
+        await deleteAdInFirestore(post.id);
+      } else if (post.category === 'event') {
+        await deleteEventInFirestore(post.id);
+      } else {
+        await deletePostInFirestore(post.id);
+      }
+    } catch (err) {
+      console.error('Napaka pri brisanju objave:', err);
+      alert('Prišlo je do napake pri brisanju objave.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const editableItem: EditablePostItem = {
     id: post.id,
@@ -152,25 +174,6 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
 
   return (
     <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm relative overflow-hidden">
-      {/* Status banner for pending posts */}
-      {post.status === 'pending' && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-center justify-between text-xs text-[#D28E3D]">
-          <div className="flex items-center gap-1.5 font-bold">
-            <Clock className="w-4 h-4 shrink-0 animate-pulse" />
-            <span>Objava je v čakanju na odobritev s strani skrbnika</span>
-          </div>
-          {isAdminOrSuper && (
-            <button
-              onClick={() => approveItemInFirestore(post.id, post.category === 'deal' ? 'deal' : 'post')}
-              className="px-2.5 py-1 rounded-lg bg-secondary text-on-secondary font-bold text-xs flex items-center gap-1 hover:bg-secondary/90 transition-colors cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Odobri zdaj</span>
-            </button>
-          )}
-        </div>
-      )}
-
       {post.status === 'rejected' && (
         <div className="bg-error/10 border border-error/20 rounded-xl p-2.5 text-xs text-error flex items-center gap-2">
           <Ban className="w-4 h-4 shrink-0" />
@@ -209,14 +212,28 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
         
         <div className="flex items-center gap-1 pr-16">
           {canEdit && (
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="px-2 py-1 rounded-lg text-xs font-semibold bg-surface-container-low hover:bg-surface-container text-on-surface flex items-center gap-1 transition-colors cursor-pointer mr-1"
-              title="Uredi objavo"
-            >
-              <Edit3 className="w-3.5 h-3.5 text-primary" />
-              <span className="hidden sm:inline">Uredi</span>
-            </button>
+            <div className="flex items-center gap-1 mr-1">
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="px-2 py-1 rounded-lg text-xs font-semibold bg-surface-container-low hover:bg-surface-container text-on-surface flex items-center gap-1 transition-colors cursor-pointer"
+                title="Uredi objavo"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-primary" />
+                <span className="hidden sm:inline">Uredi</span>
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="p-1 rounded-lg text-xs font-semibold bg-surface-container-low hover:bg-error/15 text-outline hover:text-error flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50"
+                title="Izbriši objavo"
+              >
+                {isDeleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-error" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
           )}
           <BookmarkButton id={post.id} data={bookmarkData} />
           <ShareMenu 

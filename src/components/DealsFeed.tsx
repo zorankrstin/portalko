@@ -33,6 +33,7 @@ import { ShareMenu } from './ShareMenu';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, createPostInFirestore } from '../services/firestoreService';
 import { PostDetailTarget } from '../types';
+import { matchesSearchAndCategory } from '../utils/searchUtils';
 
 interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -153,18 +154,21 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     return counts;
   }, [combinedDeals]);
 
-  // Combined search term (app header search + local deals search)
-  const activeSearch = (searchQuery + ' ' + localSearch).trim().toLowerCase();
-
   // Filter deals
   const filteredDeals = useMemo(() => {
     return combinedDeals.filter(deal => {
-      // 1. Search text
-      if (activeSearch) {
-        const text = `${deal.title} ${deal.partner} ${deal.description} ${deal.categoryName} ${deal.region} ${deal.code || ''}`.toLowerCase();
-        const terms = activeSearch.split(/\s+/).filter(Boolean);
-        const matchesAllTerms = terms.every(t => text.includes(t));
-        if (!matchesAllTerms) return false;
+      const textToMatch = `${deal.title} ${deal.partner} ${deal.description} ${deal.categoryName} ${deal.region} ${deal.code || ''}`;
+      
+      // 1. App-level searchQuery filter (category + terms)
+      if (searchQuery && !matchesSearchAndCategory(textToMatch, 'deals', searchQuery)) {
+        return false;
+      }
+
+      // 2. Local deals search input filter
+      if (localSearch.trim()) {
+        const lowerText = textToMatch.toLowerCase();
+        const terms = localSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (!terms.every(t => lowerText.includes(t))) return false;
       }
 
       // 2. Status filter
@@ -206,7 +210,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       }
       return 0; // default order
     });
-  }, [combinedDeals, activeSearch, selectedStatus, selectedCategory, selectedRegion, selectedType, sortOption, votesMap]);
+  }, [combinedDeals, searchQuery, localSearch, selectedStatus, selectedCategory, selectedRegion, selectedType, sortOption, votesMap]);
 
   // Pagination (10 items per page)
   const PAGE_SIZE = 10;

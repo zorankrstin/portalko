@@ -25,7 +25,25 @@ const MessengerIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export function ShareMenu({ url, id, title = "Preveri to objavo!" }: { url?: string, id?: string, title?: string }) {
+export interface ShareMenuProps {
+  url?: string;
+  id?: string;
+  title?: string;
+  className?: string;
+  buttonClassName?: string;
+  showLabel?: boolean;
+  dropDirection?: 'up' | 'down';
+}
+
+export function ShareMenu({ 
+  url, 
+  id, 
+  title = "Preveri to objavo!", 
+  className = '', 
+  buttonClassName = '', 
+  showLabel = false,
+  dropDirection = 'up'
+}: ShareMenuProps) {
   const shareUrl = url || (id ? `${window.location.origin}${window.location.pathname}?post=${id}` : window.location.href);
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -85,22 +103,23 @@ export function ShareMenu({ url, id, title = "Preveri to objavo!" }: { url?: str
   };
 
   return (
-    <div className="relative inline-block" ref={menuRef}>
+    <div className={`relative inline-block ${className}`} ref={menuRef}>
       <button 
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors flex items-center justify-center" 
+        className={buttonClassName || "p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors flex items-center justify-center"}
         title="Deli"
         type="button"
       >
-        <Share2 className="w-[1em] h-[1em] text-lg" />
+        <Share2 className="w-4 h-4 text-outline" />
+        {showLabel && <span className="text-on-surface-variant font-medium">Deli</span>}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 bottom-full mb-2 w-48 bg-surface-container-lowest rounded-xl shadow-elevation-3 border border-surface-container py-1 z-[100] flex flex-col gap-0.5">
+        <div className={`absolute right-0 ${dropDirection === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} w-48 bg-surface-container-lowest rounded-xl shadow-elevation-3 border border-surface-container py-1 z-[100] flex flex-col gap-0.5`}>
           <button 
             onClick={(e) => {
               e.preventDefault();

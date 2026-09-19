@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Header } from './components/Header';
-import { Ticker } from './components/Ticker';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { RightSidebarAds } from './components/RightSidebarAds';
@@ -152,7 +151,6 @@ export default function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
-      <Ticker onOpenRls={() => setIsRlsModalOpen(true)} />
       
       <div className="max-w-7xl w-full mx-auto px-4 lg:px-margin-desktop py-space-md" id="main-content-container">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">

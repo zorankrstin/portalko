@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
-import { syncUserProfile, updateUserInFirestore, fetchUserProfile } from '../services/firestoreService';
+import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers } from '../services/firestoreService';
 
 export type Role = 'superadmin' | 'admin' | 'verified' | 'registered' | 'guest';
 
@@ -68,7 +68,7 @@ export interface User {
   verificationNote?: string;
 }
 
-const DEFAULT_USERS: User[] = [
+export const DEFAULT_USERS: User[] = [
   { 
     id: 'u1', 
     name: 'Zoran Krstin', 
@@ -202,17 +202,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setIsLoaded(true);
 
+    let unsubUsers: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser && fbUser.email) {
         const email = fbUser.email.toLowerCase();
         const profile = await fetchUserProfile(fbUser.uid);
+        let activeProfile: User;
         if (profile && profile.status === 'active') {
+          activeProfile = profile;
           setCurrentUser(profile);
           localStorage.setItem('portal_current_user_id', profile.id);
         } else {
           const isSuper = email === 'zoran.krstin@gmail.com';
           const defaultRole: Role = isSuper ? 'superadmin' : 'registered';
-          const newProfile: User = {
+          activeProfile = {
             id: fbUser.uid,
             name: fbUser.displayName || email.split('@')[0],
             email,
@@ -222,14 +226,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             authProvider: 'google',
             googleId: fbUser.uid,
           };
-          setCurrentUser(newProfile);
-          localStorage.setItem('portal_current_user_id', newProfile.id);
-          syncUserProfile(newProfile).catch(console.error);
+          setCurrentUser(activeProfile);
+          localStorage.setItem('portal_current_user_id', activeProfile.id);
+          syncUserProfile(activeProfile).catch(console.error);
+        }
+
+        // Align users list so that the logged-in user is recognized with proper ID
+        setUsers(prev => {
+          const updated = prev.map(u => {
+            if (u.email.toLowerCase() === email || (email === 'zoran.krstin@gmail.com' && u.id === 'u1')) {
+              return { ...u, ...activeProfile, id: activeProfile.id };
+            }
+            return u;
+          });
+          if (!updated.some(u => u.id === activeProfile.id)) {
+            updated.unshift(activeProfile);
+          }
+          localStorage.setItem('portal_users', JSON.stringify(updated));
+          return updated;
+        });
+
+        // Subscribe to live user updates from Firestore
+        if (unsubUsers) unsubUsers();
+        unsubUsers = subscribeToUsers((firestoreUsers) => {
+          if (firestoreUsers && firestoreUsers.length > 0) {
+            setUsers(prev => {
+              const map = new Map<string, User>();
+              DEFAULT_USERS.forEach(u => map.set(u.id, u));
+              prev.forEach(u => map.set(u.id, u));
+              firestoreUsers.forEach(u => {
+                const existing = map.get(u.id);
+                map.set(u.id, existing ? { ...existing, ...u } : u);
+              });
+              const merged = Array.from(map.values());
+              localStorage.setItem('portal_users', JSON.stringify(merged));
+              return merged;
+            });
+          }
+        });
+      } else {
+        if (unsubUsers) {
+          unsubUsers();
+          unsubUsers = null;
         }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (unsubUsers) unsubUsers();
+    };
   }, []);
 
   const loginWithCredentials = (email: string, password: string) => {
@@ -296,7 +342,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUser = (id: string, data: Partial<User>) => {
-    updateUserInFirestore(id, data).catch(console.error);
+    const targetUser = users.find(u => u.id === id) || DEFAULT_USERS.find(u => u.id === id);
+    updateUserInFirestore(id, data, targetUser).catch(console.error);
     setUsers(prev => {
       const newUsers = prev.map(u => u.id === id ? { ...u, ...data } : u);
       localStorage.setItem('portal_users', JSON.stringify(newUsers));
