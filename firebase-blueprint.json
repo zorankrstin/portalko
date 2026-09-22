@@ -105,6 +105,23 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "userId", "targetId", "targetType"]
+    },
+    "Category": {
+      "title": "Category and Subcategories",
+      "description": "Taxonomy category with subcategories for ads, events, blog and deals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "section": { "type": "string", "enum": ["ads", "events", "blog", "deals"] },
+        "icon": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 500 },
+        "subcategories": { "type": "array" },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "section"]
     }
   },
   "firestore": {
@@ -123,6 +140,10 @@
     "/events/{eventId}": {
       "schema": "Event",
       "description": "Events and concerts in the event calendar"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Taxonomy categories and subcategories managed by admins"
     },
     "/users/{userId}/bookmarks/{bookmarkId}": {
       "schema": "Bookmark",

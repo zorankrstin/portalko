@@ -56,7 +56,11 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
   }, [calcCategories]);
 
   return (
-    <aside className="hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
+    <aside 
+      id="right-sidebar" 
+      data-sidebar="right" 
+      className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
+    >
       
       {/* 0. VROČE UGODNOSTI */}
       <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3">

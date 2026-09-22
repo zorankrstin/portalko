@@ -11,6 +11,8 @@ import {
   deleteAdInFirestore,
   deleteEventInFirestore
 } from '../../services/firestoreService';
+import { PromotionConfig, PromotionBadgeType } from '../../types';
+import { PromotedBadge } from '../common/PromotedBadge';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -20,15 +22,21 @@ export interface EditablePostItem {
   title: string;
   content: string;
   category: string;
+  categoryName?: string;
   authorName: string;
   authorRole?: string;
   authorId?: string;
+  authorAvatar?: string;
   status: 'published' | 'active' | 'pending' | 'rejected' | 'archived';
   imageUrl?: string;
   price?: string;
   location?: string;
   eventDate?: string;
   rejectionReason?: string;
+  isPromoted?: boolean;
+  promotion?: PromotionConfig;
+  promotedUntil?: string;
+  promotionBadgeType?: PromotionBadgeType;
 }
 
 interface EditPostModalProps {
@@ -36,6 +44,7 @@ interface EditPostModalProps {
   onClose: () => void;
   item: EditablePostItem | null;
   onSaved?: () => void;
+  onOpenPromotion?: (item: EditablePostItem) => void;
 }
 
 export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, item, onSaved }) => {
@@ -57,7 +66,16 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     if (isOpen && item) {
       setTitle(item.title || '');
       setContent(item.content || '');
-      setCategory(item.category || '');
+      const isDealItem = item.type === 'deal' || 
+                         item.category === 'deal' || 
+                         item.category === 'ugodnosti' || 
+                         item.category?.startsWith('deal') ||
+                         item.categoryName === 'Ugodnosti' || 
+                         item.categoryName === 'Ugodnost';
+      const initialCat = isDealItem 
+        ? (item.category && item.category !== 'blog' && item.category !== 'post' ? item.category : 'deal')
+        : (item.category || '');
+      setCategory(initialCat);
       const normalizedStatus = item.status === 'active' ? 'published' : (item.status || 'published');
       setStatus(normalizedStatus as any);
       setImageUrl(item.imageUrl || '');
@@ -115,35 +133,68 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         await updateAdInFirestore(item.id, {
           title: title.trim(),
           description: content.trim(),
-          category: category.trim(),
+          category: category.trim() || item.category || 'ostalo',
+          categoryName: item.categoryName,
           price: price.trim() || 'Po dogovoru',
           location: location.trim() || 'Slovenija',
           imageUrl: imageUrl.trim() || '',
           status: adStatus as any,
+          authorId: item.authorId,
+          authorName: item.authorName,
+          authorRole: item.authorRole,
+          authorAvatar: item.authorAvatar,
           rejectionReason: targetStatus === 'rejected' ? (rejectionReason.trim() || 'Zavrnjeno s strani skrbnika') : undefined,
         });
       } else if (item.type === 'event') {
         await updateEventInFirestore(item.id, {
           title: title.trim(),
           description: content.trim(),
-          category: category.trim(),
+          category: category.trim() || item.category || 'dogodki',
+          categoryName: item.categoryName,
           price: price.trim() || '',
           location: location.trim() || 'Ljubljana',
           eventDate: eventDate.trim() || '',
           imageUrl: imageUrl.trim() || '',
           status: targetStatus as any,
+          authorId: item.authorId,
+          authorName: item.authorName,
+          authorRole: item.authorRole,
+          authorAvatar: item.authorAvatar,
           rejectionReason: targetStatus === 'rejected' ? (rejectionReason.trim() || 'Zavrnjeno s strani skrbnika') : undefined,
         });
       } else {
         // Post or Deal
+        const isDeal = item.type === 'deal' || 
+                       item.category === 'deal' || 
+                       item.category === 'ugodnosti' || 
+                       item.category?.startsWith('deal') || 
+                       item.categoryName === 'Ugodnosti' || 
+                       item.categoryName === 'Ugodnost' ||
+                       Boolean(item.price && !item.eventDate);
+
+        // STRICT REQUIREMENT: The edited post must always stay in same original category
+        const cleanedCat = category.trim();
+        const preservedCategory = isDeal
+          ? (cleanedCat && cleanedCat !== 'blog' && cleanedCat !== 'post' && cleanedCat !== 'splosno' ? cleanedCat : (item.category && item.category !== 'blog' && item.category !== 'post' ? item.category : 'deal'))
+          : (cleanedCat && cleanedCat !== 'splosno' ? cleanedCat : (item.category || 'splosno'));
+
+        const preservedCategoryName = isDeal
+          ? (item.categoryName && item.categoryName !== 'Blog' ? item.categoryName : 'Ugodnosti')
+          : item.categoryName;
+
         await updatePostInFirestore(item.id, {
           title: title.trim(),
           content: content.trim(),
-          category: category.trim(),
-          price: price.trim() || '',
-          location: location.trim() || '',
-          imageUrl: imageUrl.trim() || '',
+          category: preservedCategory,
+          categoryName: preservedCategoryName,
+          price: price.trim() || item.price || '',
+          location: location.trim() || item.location || '',
+          imageUrl: imageUrl.trim() || item.imageUrl || '',
           status: targetStatus as any,
+          authorId: item.authorId,
+          authorName: item.authorName,
+          authorRole: item.authorRole,
+          authorAvatar: item.authorAvatar,
           rejectionReason: targetStatus === 'rejected' ? (rejectionReason.trim() || 'Zavrnjeno s strani skrbnika') : undefined,
         });
       }
@@ -219,6 +270,61 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
         {/* Form fields */}
         <div className="flex flex-col gap-4 text-xs">
+          {/* Original author indicator */}
+          <div className="px-3.5 py-2 rounded-xl bg-surface-container-low border border-surface-container/70 flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-on-surface">Izvirni avtor:</span>
+              <span className="font-bold text-primary">{item.authorName || 'Uporabnik'}</span>
+              {item.authorRole && (
+                <span className="text-[10px] text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
+                  {item.authorRole}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-outline font-medium italic">
+              Avtor ostaja nespremenjen
+            </span>
+          </div>
+
+          {/* Promotion / Featured Status Banner */}
+          <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-xs text-on-surface">Izpostavljenost objave</span>
+                  {item.isPromoted ? (
+                    <PromotedBadge type={item.promotionBadgeType || item.promotion?.badgeType || 'PROMO'} size="sm" />
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-outline font-medium">
+                      Navadna objava
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-outline truncate">
+                  {item.isPromoted && item.promotedUntil
+                    ? `Aktivno do: ${new Date(item.promotedUntil).toLocaleDateString('sl-SI')}`
+                    : 'Izpostavite objavo na vrhu seznama z značko PROMO ali OGLAS.'}
+                </p>
+              </div>
+            </div>
+            {onOpenPromotion && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenPromotion(item);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-xs shrink-0 transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{item.isPromoted ? 'Uredi promocijo' : 'Nastavi PROMO'}</span>
+              </button>
+            )}
+          </div>
+
           {/* Status selection */}
           <div className="bg-surface-container-low p-3.5 rounded-xl border border-surface-container/60 flex flex-col gap-2">
             <label className="font-label-caps uppercase font-bold text-on-surface">Status objave</label>
@@ -279,13 +385,20 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           {/* Category */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <label className="font-label-caps uppercase font-semibold text-outline">Kategorija</label>
+              <div className="flex items-center justify-between">
+                <label className="font-label-caps uppercase font-semibold text-outline">Kategorija</label>
+                {(item.type === 'deal' || item.category === 'deal' || item.category === 'ugodnosti' || item.categoryName === 'Ugodnosti') && (
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                    Ugodnosti
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
-                placeholder="Npr. Tehnika, Šport, Nepremičnine..."
+                placeholder={item.type === 'deal' ? "Ugodnosti / Popusti" : "Npr. Tehnika, Šport, Nepremičnine..."}
               />
             </div>
 

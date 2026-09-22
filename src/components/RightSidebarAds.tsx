@@ -19,7 +19,11 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
   };
 
   return (
-    <aside className="hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
+    <aside 
+      id="right-sidebar" 
+      data-sidebar="right" 
+      className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
+    >
       
       {/* Priporočeni mali oglasi */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">

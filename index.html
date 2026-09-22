@@ -1,12 +1,78 @@
 <!doctype html>
-<html lang="en">
+<html lang="sl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Portalko - Skupnost in Mali Oglasi</title>
-    <meta name="description" content="Portalko - Slovenski spletni portal za novice, male oglase, lokalne dogodke in skupnost z naprednim sistemom vlog in avtentikacije." />
-    <meta property="og:title" content="Portalko - Skupnost in Mali Oglasi" />
-    <meta property="og:description" content="Portalko - Slovenski spletni portal za novice, male oglase, lokalne dogodke in skupnost z naprednim sistemom vlog in avtentikacije." />
+    <title>Portalko – Slovenski portal za novice, male oglase in dogodke</title>
+    <meta name="description" content="Portalko je osrednji slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke, ugodnosti in popuste ter skupnost po vsej Sloveniji." />
+    <meta name="keywords" content="Portalko, mali oglasi, novice Slovenija, dogodki Slovenija, kuponi, popusti, ugodnosti, Ljubljana, Maribor, Celje, Kranj, Koper, Novo mesto, slovenski portal" />
+    <meta name="author" content="Portalko Skupnost" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- GEO & Local Search Optimization for Slovenia -->
+    <meta name="geo.region" content="SI" />
+    <meta name="geo.placename" content="Slovenija" />
+    <meta name="geo.position" content="46.1512;14.9955" />
+    <meta name="ICBM" content="46.1512, 14.9955" />
+    <meta name="geo.country" content="SI" />
+
+    <!-- OpenGraph Social Cards -->
+    <meta property="og:site_name" content="Portalko" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="sl_SI" />
+    <meta property="og:title" content="Portalko – Slovenski portal za novice, male oglase in dogodke" />
+    <meta property="og:description" content="Portalko je osrednji slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke, ugodnosti in popuste ter skupnost po vsej Sloveniji." />
+    <meta property="og:image" content="/favicon.png" />
+    <link rel="canonical" href="https://portalko.net" />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Portalko – Slovenski portal za novice, male oglase in dogodke" />
+    <meta name="twitter:description" content="Portalko je osrednji slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke, ugodnosti in popuste ter skupnost po vsej Sloveniji." />
+    <meta name="twitter:image" content="/favicon.png" />
+
+    <!-- Schema.org JSON-LD Structured Data for Portalko -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://portalko.net/#website",
+          "url": "https://portalko.net",
+          "name": "Portalko",
+          "alternateName": "Portalko.net",
+          "description": "Slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke in ugodnosti.",
+          "inLanguage": "sl-SI",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://portalko.net/?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "NewsMediaOrganization",
+          "@id": "https://portalko.net/#organization",
+          "name": "Portalko",
+          "url": "https://portalko.net",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://portalko.net/favicon.png"
+          },
+          "address": {
+            "@type": "PostalAddress",
+            "addressCountry": "SI",
+            "addressLocality": "Ljubljana"
+          },
+          "areaServed": {
+            "@type": "Country",
+            "name": "Slovenija"
+          }
+        }
+      ]
+    }
+    </script>
+
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

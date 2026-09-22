@@ -14,7 +14,11 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <aside className="hidden lg:block lg:col-span-3 sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
+    <aside 
+      id="left-sidebar" 
+      data-sidebar="left" 
+      className="sidebar-scrollable hidden lg:block lg:col-span-3 sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
+    >
       <div className="flex flex-col gap-space-md">
       
       {/* Glavna navigacija vira */}
@@ -22,7 +26,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         <a 
           className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'main' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('main'); }}
-          href="#"
+          href="#domov"
         >
           <span className="flex items-center gap-2.5">
             <LayoutList className="w-[1em] h-[1em] text-lg" />
@@ -32,7 +36,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         <a 
           className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'news' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('news'); }}
-          href="#"
+          href="#novice"
         >
           <span className="flex items-center gap-2.5">
             <Network className={`w-[1em] h-[1em] text-lg ${currentView === 'news' ? '' : 'text-primary'}`} />
@@ -42,7 +46,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         <a 
           className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'ads' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('ads'); }}
-          href="#"
+          href="#mali-oglasi"
         >
           <span className="flex items-center gap-2.5">
             <Store className={`w-[1em] h-[1em] text-lg ${currentView === 'ads' ? '' : 'text-outline'}`} />
@@ -62,7 +66,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         <a 
           className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'events' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('events'); }}
-          href="#"
+          href="#dogodki"
         >
           <span className="flex items-center gap-2.5">
             <Calendar className={`w-[1em] h-[1em] text-lg ${currentView === 'events' ? '' : 'text-tertiary-container'}`} />
@@ -72,7 +76,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         <a 
           className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'blog' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('blog'); }}
-          href="#"
+          href="#blog"
         >
           <span className="flex items-center gap-2.5">
             <FileText className={`w-[1em] h-[1em] text-lg ${currentView === 'blog' ? '' : 'text-outline'}`} />
@@ -82,14 +86,14 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         <a 
           className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'saved' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('saved'); }}
-          href="#"
+          href="#shranjeno"
         >
           <span className="flex items-center gap-2.5">
             <Bookmark className={`w-[1em] h-[1em] text-lg ${currentView === 'saved' ? '' : 'text-primary'}`} />
             <span>Shranjeno</span>
           </span>
         </a>
-        <a className="flex items-center justify-between px-3 py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-lg text-label-lg transition-colors" href="#">
+        <a className="flex items-center justify-between px-3 py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-lg text-label-lg transition-colors" href="#imenik">
           <span className="flex items-center gap-2.5">
             <Network className="w-[1em] h-[1em] text-lg text-outline" />
             <span>Spletni imenik</span>
@@ -100,7 +104,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
           <a 
             className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'admin' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
             onClick={(e) => { e.preventDefault(); onViewChange('admin'); }}
-            href="#"
+            href="#admin"
           >
             <span className="flex items-center gap-2.5">
               <Settings className="w-[1em] h-[1em] text-lg text-error" />

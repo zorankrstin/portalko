@@ -27,8 +27,11 @@ import {
   Edit3,
   Clock,
   CheckCircle,
-  Ban
+  Ban,
+  ArrowLeft
 } from 'lucide-react';
+import { AuthorProfileTarget, PostDetailTarget, ViewMode } from '../types';
+import { PublicAuthorProfile } from './profile/PublicAuthorProfile';
 import { SavedPostsTab } from './SavedPostsTab';
 import { BlogPost } from './posts/BlogPost';
 import { AdPost } from './posts/AdPost';
@@ -60,7 +63,19 @@ import { ProfileMenuEditorModal, getMenuTabIcon } from './profile/ProfileMenuEdi
 import { CustomTabContent } from './profile/CustomTabContent';
 import portalkoLogo from '../assets/images/portalko_logo.png';
 
-export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => void }) {
+export interface UserProfileProps {
+  onViewChange: (view: ViewMode) => void;
+  targetAuthor?: AuthorProfileTarget | null;
+  onClearTargetAuthor?: () => void;
+  onNavigatePost?: (target: PostDetailTarget) => void;
+}
+
+export function UserProfile({ 
+  onViewChange, 
+  targetAuthor, 
+  onClearTargetAuthor, 
+  onNavigatePost 
+}: UserProfileProps) {
   const { currentUser, logout, updateUser, changePassword, requestVerification, cancelVerificationRequest } = useAuth();
   const [activeTabId, setActiveTabId] = useState<string>('posts');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -132,18 +147,45 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
   const myItems = useMemo<EditablePostItem[]>(() => {
     if (!currentUser) return [];
     const list: EditablePostItem[] = [];
+    const isCurrentUserAdmin = currentUser.role === 'superadmin' || currentUser.role === 'admin';
 
     userFirestorePosts.forEach(p => {
-      const isMine = p.authorId === currentUser.id || (currentUser.name && p.authorName === currentUser.name);
+      const isMockOrSystemDeal = p.id.startsWith('deal-') || p.id.startsWith('hero-bento-');
+      const isMockBlog = p.id.startsWith('blog-') || p.id.startsWith('p-');
+      const isPartnerAuthor = p.authorId?.startsWith('partner-') || p.authorId?.startsWith('author-');
+      
+      let isMine = false;
+      if (p.authorId === currentUser.id) {
+        // If currentUser is admin/superadmin, do not claim mock deals/blogs/partner items or items with different authors
+        if (isCurrentUserAdmin && (isMockOrSystemDeal || isMockBlog || isPartnerAuthor || (p.authorName && p.authorName !== currentUser.name && p.authorName !== 'Superadmin'))) {
+          isMine = false;
+        } else {
+          isMine = true;
+        }
+      } else if (!isCurrentUserAdmin && currentUser.name && p.authorName === currentUser.name) {
+        isMine = true;
+      }
+
       if (isMine) {
+        const isDeal = p.category === 'deal' || 
+                       p.category === 'ugodnosti' || 
+                       p.category?.startsWith('deal') || 
+                       p.categoryName === 'Ugodnosti' || 
+                       p.categoryName === 'Ugodnost' ||
+                       p.id.startsWith('deal-') || 
+                       p.id.startsWith('hero-bento-') || 
+                       !!p.price;
         list.push({
           id: p.id,
-          type: p.category === 'deal' ? 'deal' : 'post',
+          type: isDeal ? 'deal' : 'post',
           title: p.title,
           content: p.content,
-          category: p.category,
+          category: isDeal ? (p.category && p.category !== 'blog' && p.category !== 'post' ? p.category : 'deal') : p.category,
+          categoryName: isDeal ? (p.categoryName || 'Ugodnosti') : p.categoryName,
           authorName: p.authorName,
+          authorId: p.authorId,
           authorRole: p.authorRole,
+          authorAvatar: p.authorAvatar,
           status: p.status || 'published',
           imageUrl: p.imageUrl,
           price: p.price,
@@ -154,7 +196,19 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
     });
 
     userFirestoreAds.forEach(a => {
-      const isMine = a.authorId === currentUser.id || (currentUser.name && a.authorName === currentUser.name);
+      const isMockAd = a.id.startsWith('ad-');
+      const isAuthorAd = a.authorId?.startsWith('author-');
+      let isMine = false;
+      if (a.authorId === currentUser.id) {
+        if (isCurrentUserAdmin && (isMockAd || isAuthorAd || (a.authorName && a.authorName !== currentUser.name && a.authorName !== 'Superadmin'))) {
+          isMine = false;
+        } else {
+          isMine = true;
+        }
+      } else if (!isCurrentUserAdmin && currentUser.name && a.authorName === currentUser.name) {
+        isMine = true;
+      }
+
       if (isMine) {
         list.push({
           id: a.id,
@@ -162,8 +216,11 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
           title: a.title,
           content: a.description,
           category: a.category,
+          categoryName: a.categoryName,
           authorName: a.authorName,
+          authorId: a.authorId,
           authorRole: a.authorRole,
+          authorAvatar: a.authorAvatar,
           status: (a.status === 'sold' || a.status === 'closed') ? 'archived' : (a.status as 'active' | 'pending' | 'rejected' | 'archived'),
           imageUrl: a.imageUrl,
           price: a.price,
@@ -174,7 +231,19 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
     });
 
     userFirestoreEvents.forEach(e => {
-      const isMine = e.authorId === currentUser.id || (currentUser.name && e.authorName === currentUser.name);
+      const isMockEvent = e.id.startsWith('event-');
+      const isOrganizerEvent = e.authorId?.startsWith('organizer-');
+      let isMine = false;
+      if (e.authorId === currentUser.id) {
+        if (isCurrentUserAdmin && (isMockEvent || isOrganizerEvent || (e.authorName && e.authorName !== currentUser.name && e.authorName !== 'Superadmin'))) {
+          isMine = false;
+        } else {
+          isMine = true;
+        }
+      } else if (!isCurrentUserAdmin && currentUser.name && e.authorName === currentUser.name) {
+        isMine = true;
+      }
+
       if (isMine) {
         list.push({
           id: e.id,
@@ -182,12 +251,16 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
           title: e.title,
           content: e.description,
           category: e.category,
+          categoryName: e.categoryName,
           authorName: e.authorName,
+          authorId: e.authorId,
           authorRole: e.authorRole,
+          authorAvatar: e.authorAvatar,
           status: e.status || 'published',
           imageUrl: e.imageUrl,
           price: e.price,
           location: e.location,
+          eventDate: e.eventDate || e.date,
           rejectionReason: e.rejectionReason,
         });
       }
@@ -211,9 +284,30 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
     }
   };
 
+  // Check if viewing another specific author
+  const isViewingOtherAuthor = Boolean(
+    targetAuthor &&
+    targetAuthor.name &&
+    (!currentUser || (
+      (targetAuthor.id && currentUser.id !== targetAuthor.id) ||
+      (!targetAuthor.id && currentUser.name?.toLowerCase().trim() !== targetAuthor.name.toLowerCase().trim())
+    ))
+  );
+
+  if (isViewingOtherAuthor && targetAuthor) {
+    return (
+      <PublicAuthorProfile
+        targetAuthor={targetAuthor}
+        onBack={onClearTargetAuthor ? onClearTargetAuthor : () => onViewChange('main')}
+        onNavigatePost={onNavigatePost}
+        onViewChange={onViewChange}
+      />
+    );
+  }
+
   if (!currentUser) {
     return (
-      <main className="lg:col-span-6 flex flex-col gap-space-md">
+      <div className="flex flex-col gap-space-md">
         <div className="bg-surface-container-lowest rounded-2xl p-8 shadow-sm border border-surface-container/50 text-center flex flex-col items-center gap-4">
           <img src={portalkoLogo} alt="Portalko.net" className="w-16 h-16 rounded-2xl object-contain shadow-xs border border-surface-container/60" />
           <div className="max-w-md">
@@ -252,7 +346,7 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
           </div>
         </div>
         <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} initialMode={authModalMode} />
-      </main>
+      </div>
     );
   }
 
@@ -342,7 +436,7 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
   };
 
   return (
-    <main className="lg:col-span-6 flex flex-col gap-space-md">
+    <div className="flex flex-col gap-space-md">
       {/* Profile Header */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 relative overflow-hidden flex flex-col sm:flex-row gap-6 items-start sm:items-center">
         <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
@@ -1239,6 +1333,6 @@ export function UserProfile({ onViewChange }: { onViewChange: (view: 'main') => 
       )}
 
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} initialMode={authModalMode} />
-    </main>
+    </div>
   );
 }

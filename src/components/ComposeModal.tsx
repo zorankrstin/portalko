@@ -1,9 +1,28 @@
-import { X, Image as ImageIcon, Link as LinkIcon, MapPin, Smile, Loader2, CheckCircle, Crown, Shield, UserCheck, User as UserIcon, AlertTriangle, LogIn } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { 
+  X, 
+  Image as ImageIcon, 
+  Link as LinkIcon, 
+  MapPin, 
+  Smile, 
+  Loader2, 
+  CheckCircle, 
+  Crown, 
+  Shield, 
+  UserCheck, 
+  User as UserIcon, 
+  AlertTriangle, 
+  LogIn,
+  Layers,
+  Tag,
+  Globe
+} from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import { RichTextEditor } from './RichTextEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { createPostInFirestore, createAdInFirestore, createEventInFirestore } from '../services/firestoreService';
 import { LoginModal } from './LoginModal';
+import { useCategories } from '../hooks/useCategories';
+import { CategorySection, SLOVENIA_REGIONS } from '../services/categoryService';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
 
@@ -20,34 +39,75 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [price, setPrice] = useState('');
-  const [category, setCategory] = useState('Tehnika');
   const [discount, setDiscount] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [location, setLocation] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('all');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
+  // Map post type to taxonomy section
+  const sectionMap: Record<PostType, CategorySection> = useMemo(() => ({
+    post: 'blog',
+    ad: 'ads',
+    deal: 'deals',
+    event: 'events',
+  }), []);
+
+  const currentSection = sectionMap[postType];
+  const { categories } = useCategories(currentSection);
+
+  // Initialize or reset selections when modal opens or postType changes
   useEffect(() => {
     if (isOpen) {
       setPostType(initialType);
       setTitle('');
       setContent('');
       setPrice('');
-      setCategory(initialType === 'ad' ? 'Avto-moto' : 'Splošno');
       setDiscount('');
       setPromoCode('');
       setEventDate('');
       setLocation('');
+      setSelectedRegion('all');
       setImageUrl('');
       setErrorMsg('');
       setSuccessMsg('');
       setIsSubmitting(false);
     }
   }, [isOpen, initialType]);
+
+  // When categories change or postType changes, ensure category selection is valid
+  useEffect(() => {
+    if (categories.length > 0) {
+      if (!selectedCategoryId || !categories.some(c => c.id === selectedCategoryId)) {
+        setSelectedCategoryId(categories[0].id);
+        const firstSub = categories[0].subcategories?.[0]?.id || '';
+        setSelectedSubcategoryId(firstSub);
+      }
+    }
+  }, [categories, selectedCategoryId]);
+
+  // Selected category object
+  const activeCategory = useMemo(() => {
+    return categories.find(c => c.id === selectedCategoryId) || categories[0] || null;
+  }, [categories, selectedCategoryId]);
+
+  // Handle category change
+  const handleCategoryChange = (catId: string) => {
+    setSelectedCategoryId(catId);
+    const cat = categories.find(c => c.id === catId);
+    if (cat && cat.subcategories && cat.subcategories.length > 0) {
+      setSelectedSubcategoryId(cat.subcategories[0].id);
+    } else {
+      setSelectedSubcategoryId('');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -77,16 +137,32 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
     setIsSubmitting(true);
     setErrorMsg('');
-    // Real posting enabled: registered users, verified users, admin and superadmin publish live
+
     const initialStatus = 'published';
     const initialAdStatus = 'active';
+
+    const chosenCat = activeCategory;
+    const chosenSub = chosenCat?.subcategories?.find(s => s.id === selectedSubcategoryId);
+    const chosenRegionObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
+
+    const categorySlug = chosenCat?.id || 'splosno';
+    const categoryName = chosenCat?.name || 'Splošno';
+    const subcategorySlug = chosenSub?.id || '';
+    const subcategoryName = chosenSub?.name || '';
+    const regionName = chosenRegionObj?.name || (selectedRegion === 'all' ? 'Vsa Slovenija' : selectedRegion);
+    const finalLocation = location.trim() || (chosenRegionObj ? chosenRegionObj.cities[0] : 'Slovenija');
 
     try {
       if (postType === 'post' || postType === 'deal') {
         await createPostInFirestore({
           title: title.trim(),
           content: content.trim() || title.trim(),
-          category: postType === 'deal' ? 'deal' : (category || 'blog'),
+          category: postType === 'deal' ? 'deal' : categorySlug,
+          categoryName: postType === 'deal' ? 'Ugodnosti' : categoryName,
+          subcategory: subcategorySlug || undefined,
+          subcategoryName: subcategoryName || undefined,
+          region: regionName,
+          location: finalLocation,
           authorId,
           authorName,
           authorRole,
@@ -101,9 +177,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         await createAdInFirestore({
           title: title.trim(),
           description: content.trim() || title.trim(),
-          category: category || 'Splošno',
+          category: categorySlug,
+          categoryName,
+          subcategory: subcategorySlug || undefined,
+          subcategoryName: subcategoryName || undefined,
           price: price.trim() || 'Po dogovoru',
-          location: location.trim() || 'Slovenija',
+          location: finalLocation,
+          region: regionName,
           authorId,
           authorName,
           authorRole,
@@ -114,9 +194,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         await createEventInFirestore({
           title: title.trim(),
           description: content.trim() || title.trim(),
-          location: location.trim() || 'Ljubljana',
+          location: finalLocation,
+          region: regionName,
           eventDate: eventDate || new Date().toISOString().split('T')[0],
-          category: category || 'Dogodek',
+          category: categorySlug,
+          categoryName,
+          subcategory: subcategorySlug || undefined,
+          subcategoryName: subcategoryName || undefined,
           authorId,
           authorName,
           authorRole,
@@ -148,7 +232,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
           <h2 className="font-headline-sm text-lg font-bold text-on-surface flex items-center gap-2">
             <span>Nova objava</span>
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-primary/10 text-primary">Firebase Firestore</span>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-primary/10 text-primary">Kategorizirano</span>
           </h2>
           <button 
             onClick={onClose}
@@ -206,29 +290,30 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               <div className="font-label-caps text-[11px] flex items-center gap-1.5 mt-0.5">
                 {authorRole === 'superadmin' ? (
                   <span className="inline-flex items-center gap-1 text-purple-700 bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300 px-2 py-0.5 rounded font-bold">
-                    <Crown className="w-3 h-3" /> Glavni skrbnik • Samodejna takojšnja objava
+                    <Crown className="w-3 h-3" /> Glavni skrbnik
                   </span>
                 ) : authorRole === 'admin' ? (
                   <span className="inline-flex items-center gap-1 text-red-700 bg-red-100 dark:bg-red-950/40 dark:text-red-300 px-2 py-0.5 rounded font-bold">
-                    <Shield className="w-3 h-3" /> Skrbnik • Samodejna takojšnja objava
+                    <Shield className="w-3 h-3" /> Skrbnik
                   </span>
                 ) : authorRole === 'verified' ? (
                   <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 px-2 py-0.5 rounded font-bold">
-                    <UserCheck className="w-3 h-3" /> Preverjen uporabnik • Samodejna takojšnja objava
+                    <UserCheck className="w-3 h-3" /> Preverjen uporabnik
                   </span>
                 ) : authorRole === 'registered' ? (
                   <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5 rounded font-bold">
-                    <UserIcon className="w-3 h-3" /> Registriran uporabnik • Samodejna takojšnja objava
+                    <UserIcon className="w-3 h-3" /> Registriran uporabnik
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-outline px-2 py-0.5 rounded bg-surface-container">
-                    Gost (potrebna prijava za objavo)
+                    Gost
                   </span>
                 )}
               </div>
             </div>
           </div>
 
+          {/* Section / Post Type selector */}
           <div className="flex flex-col gap-1.5">
             <label className="font-label-caps text-xs text-outline uppercase tracking-wider">Vrsta objave</label>
             <select 
@@ -236,13 +321,14 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               onChange={(e) => setPostType(e.target.value as PostType)}
               className="bg-surface-container-low text-on-surface font-label-md text-sm px-3 py-2.5 rounded-lg border border-transparent focus:outline-none focus:border-primary cursor-pointer"
             >
-              <option value="post">Blog / Članek</option>
-              <option value="ad">Mali oglas</option>
-              <option value="deal">Ugodnost / Popust</option>
-              <option value="event">Dogodek</option>
+              <option value="ad">🛍️ Mali oglas (Mali oglasi)</option>
+              <option value="event">📅 Dogodek (Dogodki & Prireditve)</option>
+              <option value="post">📝 Blog / Članek (Blog & Članki)</option>
+              <option value="deal">🏷️ Ugodnost / Popust (Ugodnosti & Kuponi)</option>
             </select>
           </div>
 
+          {/* Title input */}
           <div className="flex flex-col gap-1.5">
             <input 
               type="text" 
@@ -253,26 +339,107 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             />
           </div>
 
+          {/* DYNAMIC CATEGORY & SUBCATEGORY ROW */}
+          <div className="p-3 bg-surface-container-low/70 rounded-xl border border-surface-container flex flex-col gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Category Select */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-primary" />
+                  <span>Kategorija *</span>
+                </label>
+                <select
+                  value={selectedCategoryId}
+                  onChange={e => handleCategoryChange(e.target.value)}
+                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.icon || '📁'} {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subcategory Select */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-primary" />
+                  <span>Podkategorija</span>
+                </label>
+                <select
+                  value={selectedSubcategoryId}
+                  onChange={e => setSelectedSubcategoryId(e.target.value)}
+                  disabled={!activeCategory || !activeCategory.subcategories || activeCategory.subcategories.length === 0}
+                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer disabled:opacity-50"
+                >
+                  {(!activeCategory?.subcategories || activeCategory.subcategories.length === 0) ? (
+                    <option value="">(Brez podkategorij)</option>
+                  ) : (
+                    activeCategory.subcategories.map(sub => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            </div>
+
+            {/* LOCALIZATION & REGION ROW */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-surface-container/60">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-primary" />
+                  <span>Regija (Slovenija)</span>
+                </label>
+                <select
+                  value={selectedRegion}
+                  onChange={e => {
+                    setSelectedRegion(e.target.value);
+                    const reg = SLOVENIA_REGIONS.find(r => r.id === e.target.value);
+                    if (reg && !location) {
+                      setLocation(reg.cities[0]);
+                    }
+                  }}
+                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="all">Vsa Slovenija</option>
+                  {SLOVENIA_REGIONS.map(reg => (
+                    <option key={reg.id} value={reg.id}>
+                      {reg.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
+                  <span>Kraj / Točna lokacija</span>
+                </label>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={e => setLocation(e.target.value)}
+                  placeholder="npr. Ljubljana, Maribor, Koper..."
+                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs text-on-surface border border-surface-container focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Type-specific inputs */}
           {postType === 'ad' && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-outline">Cena predmeta / nepremičnine</label>
               <input 
                 type="text" 
                 value={price}
                 onChange={e => setPrice(e.target.value)}
-                placeholder="Cena (€)"
+                placeholder="Cena (npr. 150 € ali Po dogovoru)"
                 className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
               />
-              <select 
-                value={category}
-                onChange={e => setCategory(e.target.value)}
-                className="bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors"
-              >
-                <option value="Avto-moto">Avto-moto</option>
-                <option value="Nepremičnine">Nepremičnine</option>
-                <option value="Tehnika">Tehnika</option>
-                <option value="Dom in vrt">Dom in vrt</option>
-                <option value="Šport">Šport</option>
-              </select>
             </div>
           )}
 
@@ -282,14 +449,14 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 type="text" 
                 value={discount}
                 onChange={e => setDiscount(e.target.value)}
-                placeholder="Višina popusta (npr. 20%)"
+                placeholder="Višina popusta (npr. -25%)"
                 className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
               />
               <input 
                 type="text" 
                 value={promoCode}
                 onChange={e => setPromoCode(e.target.value)}
-                placeholder="Promocijska koda"
+                placeholder="Koda kupona (neobvezno)"
                 className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
               />
             </div>
@@ -297,24 +464,30 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
           {postType === 'event' && (
             <div className="grid grid-cols-2 gap-3">
-              <input 
-                type="date" 
-                value={eventDate}
-                onChange={e => setEventDate(e.target.value)}
-                className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
-              />
-              <input 
-                type="text" 
-                value={location}
-                onChange={e => setLocation(e.target.value)}
-                placeholder="Lokacija dogodka"
-                className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
-              />
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-outline">Datum dogodka</label>
+                <input 
+                  type="date" 
+                  value={eventDate}
+                  onChange={e => setEventDate(e.target.value)}
+                  className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-transparent" 
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-outline">Vstopnina / Cena</label>
+                <input 
+                  type="text" 
+                  value={price}
+                  onChange={e => setPrice(e.target.value)}
+                  placeholder="npr. Brezplačno ali 15 €"
+                  className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-transparent" 
+                />
+              </div>
             </div>
           )}
 
           <div className="flex flex-col gap-1.5">
-            <RichTextEditor placeholder="O čem želite pisati?" onChange={setContent} />
+            <RichTextEditor placeholder="Podrobnejši opis objave..." onChange={setContent} />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -322,7 +495,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               type="text" 
               value={imageUrl}
               onChange={e => setImageUrl(e.target.value)}
-              placeholder="Povezava do slike (neobvezno)..."
+              placeholder="Povezava do naslovne slike (neobvezno)..."
               className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
             />
           </div>
@@ -339,9 +512,6 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               </button>
               <button type="button" className="p-2 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface transition-colors" title="Dodaj povezavo">
                 <LinkIcon className="w-[1em] h-[1em] text-lg" />
-              </button>
-              <button type="button" className="p-2 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface transition-colors" title="Dodaj lokacijo">
-                <MapPin className="w-[1em] h-[1em] text-lg" />
               </button>
               <button type="button" className="p-2 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface transition-colors" title="Dodaj emoji">
                 <Smile className="w-[1em] h-[1em] text-lg" />

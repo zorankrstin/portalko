@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
+import { ReportButton } from "../ReportButton";
 import { Heart, MessageCircle, Sparkles, Edit3, Check, Ban, ArrowRight, Trash2, Loader2 } from 'lucide-react';
 import { FirestorePost, togglePostLikeInFirestore, deletePostInFirestore, deleteAdInFirestore, deleteEventInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
@@ -8,6 +9,8 @@ import { AdPost } from "./AdPost";
 import { DealPost } from "./DealPost";
 import { EventPost } from "./EventPost";
 import { EditPostModal, EditablePostItem } from "./EditPostModal";
+import { PromotedBadge } from "../common/PromotedBadge";
+import { isItemActivelyPromoted } from "../../services/promotionService";
 
 export interface FirestorePostCardProps {
   post: FirestorePost;
@@ -52,14 +55,26 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
     }
   };
 
+  const isDeal = post.category === 'deal' || 
+                 post.category === 'ugodnosti' || 
+                 post.category?.startsWith('deal') || 
+                 post.categoryName === 'Ugodnosti' || 
+                 post.categoryName === 'Ugodnost' ||
+                 post.id.startsWith('deal-') || 
+                 post.id.startsWith('hero-bento-') ||
+                 Boolean(post.price && post.category !== 'ad' && post.category !== 'event');
+
   const editableItem: EditablePostItem = {
     id: post.id,
-    type: post.category === 'deal' ? 'deal' : 'post',
+    type: isDeal ? 'deal' : post.category === 'ad' ? 'ad' : post.category === 'event' ? 'event' : 'post',
     title: post.title,
     content: post.content,
-    category: post.category,
+    category: isDeal ? (post.category && post.category !== 'blog' && post.category !== 'post' ? post.category : 'deal') : post.category,
+    categoryName: isDeal ? (post.categoryName || 'Ugodnosti') : post.categoryName,
     authorName: post.authorName,
+    authorId: post.authorId,
     authorRole: post.authorRole,
+    authorAvatar: post.authorAvatar,
     status: post.status || 'published',
     imageUrl: post.imageUrl,
     price: post.price,
@@ -68,10 +83,18 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
   };
 
   // If the Firestore post is specifically marked as an ad, deal, or event, render in that category's layout
+  const isPostPromoted = Boolean(
+    post.promotion
+      ? isItemActivelyPromoted(post.promotion, isDeal ? 'deals' : post.category === 'ad' ? 'ads' : post.category === 'event' ? 'events' : 'blog')
+      : (post.isPromoted && (!post.promotedUntil || new Date(post.promotedUntil).getTime() > Date.now()))
+  );
+  const promoBadge = post.promotionBadgeType || post.promotion?.badgeType || 'PROMO';
+
   if (post.category === 'ad') {
     return (
       <div className="relative">
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+          {isPostPromoted && <PromotedBadge type={promoBadge} size="sm" />}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/90 backdrop-blur-xs text-white text-[10px] font-semibold tracking-wider uppercase">
             <Sparkles className="w-2.5 h-2.5" />
             V živo
@@ -87,15 +110,18 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           description={post.content}
           categoryName="Mali oglas"
           image={post.imageUrl}
+          isPromoted={isPostPromoted}
+          promotionBadgeType={promoBadge}
         />
       </div>
     );
   }
 
-  if (post.category === 'deal') {
+  if (isDeal) {
     return (
       <div className="relative">
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+          {isPostPromoted && <PromotedBadge type={promoBadge} size="sm" />}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary/90 backdrop-blur-xs text-on-secondary text-[10px] font-semibold tracking-wider uppercase">
             <Sparkles className="w-2.5 h-2.5" />
             V živo
@@ -106,14 +132,16 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           title={post.title}
           discount={post.price || "Ugodnost"}
           author={post.authorName}
-          authorRole="Partner"
+          authorRole={post.authorRole || "Partner"}
           authorAvatar={post.authorAvatar}
           date="Aktualno"
           description={post.content}
           image={post.imageUrl}
-          categoryName="Ugodnost"
-          region="Slovenija"
+          categoryName={post.categoryName || "Ugodnosti"}
+          region={post.location || "Slovenija"}
           verifiedText="Preverjeno"
+          isPromoted={isPostPromoted}
+          promotionBadgeType={promoBadge}
         />
       </div>
     );
@@ -122,7 +150,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
   if (post.category === 'event') {
     return (
       <div className="relative">
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+          {isPostPromoted && <PromotedBadge type={promoBadge} size="sm" />}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/90 backdrop-blur-xs text-white text-[10px] font-semibold tracking-wider uppercase">
             <Sparkles className="w-2.5 h-2.5" />
             V živo
@@ -140,6 +169,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           price={post.price || "Vstop prost"}
           description={post.content}
           image={post.imageUrl}
+          isPromoted={isPostPromoted}
+          promotionBadgeType={promoBadge}
         />
       </div>
     );
@@ -172,8 +203,13 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
     guest: 'Gost',
   };
 
+  const isActivelyPromoted = post.isPromoted && (!post.promotedUntil || new Date(post.promotedUntil).getTime() > Date.now());
+  const badgeType = post.promotionBadgeType || post.promotion?.badgeType || 'PROMO';
+
   return (
-    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm relative overflow-hidden">
+    <article className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border hover:shadow-md transition-shadow flex flex-col gap-space-sm relative overflow-hidden ${
+      isActivelyPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
+    }`}>
       {post.status === 'rejected' && (
         <div className="bg-error/10 border border-error/20 rounded-xl p-2.5 text-xs text-error flex items-center gap-2">
           <Ban className="w-4 h-4 shrink-0" />
@@ -181,7 +217,12 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
         </div>
       )}
 
-      <div className="absolute top-0 right-0 transform translate-x-2 -translate-y-2">
+      <div className="absolute top-0 right-0 transform translate-x-2 -translate-y-2 flex items-center gap-1">
+        {isActivelyPromoted && (
+          <div className="mr-2 mt-3">
+            <PromotedBadge type={badgeType} size="sm" />
+          </div>
+        )}
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-bl-xl bg-primary/10 text-primary text-[11px] font-semibold tracking-wider uppercase">
           <Sparkles className="w-3 h-3" />
           V živo (Firebase)
@@ -190,14 +231,26 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img 
-            alt={`Avatar ${post.authorName}`} 
-            className="w-10 h-10 rounded-full object-cover ring-1 ring-black/5" 
-            src={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`} 
-          />
+          <a
+            href={`#author-${encodeURIComponent(post.authorName.replace(/\s+/g, '_'))}`}
+            className="group/author shrink-0 focus:outline-none"
+            title={`Ogled profila avtorja: ${post.authorName}`}
+          >
+            <img 
+              alt={`Avatar ${post.authorName}`} 
+              className="w-10 h-10 rounded-full object-cover ring-1 ring-black/5 group-hover/author:ring-2 group-hover/author:ring-primary transition-all" 
+              src={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`} 
+            />
+          </a>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-label-md text-label-md font-bold text-on-surface">{post.authorName}</span>
+              <a
+                href={`#author-${encodeURIComponent(post.authorName.replace(/\s+/g, '_'))}`}
+                className="font-label-md text-label-md font-bold text-on-surface hover:text-primary hover:underline transition-colors"
+                title={`Ogled profila avtorja: ${post.authorName}`}
+              >
+                {post.authorName}
+              </a>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
                 {roleLabels[post.authorRole] || 'Član'}
               </span>
@@ -238,8 +291,15 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           <BookmarkButton id={post.id} data={bookmarkData} />
           <ShareMenu 
             id={post.id} 
+            type={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
             title={post.title} 
-            url={window.location.href} 
+            description={post.content}
+          />
+          <ReportButton 
+            targetId={post.id}
+            targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'post'}
+            targetTitle={post.title}
+            targetAuthor={post.authorName}
           />
         </div>
       </div>
@@ -311,6 +371,15 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
             <MessageCircle className="w-4 h-4" />
             <span>{post.commentsCount || 0} komentarjev</span>
           </a>
+
+          <ShareMenu
+            id={post.id}
+            type={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
+            title={post.title}
+            description={post.content}
+            showLabel={true}
+            buttonClassName="flex items-center gap-1.5 text-outline hover:text-primary text-label-md font-label-md transition-colors cursor-pointer"
+          />
         </div>
 
         <div className="flex items-center gap-2">

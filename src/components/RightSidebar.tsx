@@ -44,7 +44,11 @@ export function RightSidebar() {
   const s = (timeLeft % 60).toString().padStart(2, '0');
 
   return (
-    <aside className="hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
+    <aside 
+      id="right-sidebar" 
+      data-sidebar="right" 
+      className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
+    >
       
       {/* VREME WIDGET */}
       <Weather />

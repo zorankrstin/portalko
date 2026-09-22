@@ -4,8 +4,10 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X
+  UserCheck, X, Flag
 } from 'lucide-react';
+import { ReportsManager } from './admin/ReportsManager';
+import { subscribeToReports } from '../services/reportService';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { 
   RssFeedConfig, 
@@ -31,6 +33,24 @@ import {
   updateEventInFirestore
 } from '../services/firestoreService';
 import { EditPostModal, EditablePostItem, EditableItemType } from './posts/EditPostModal';
+import { PromotionModal, PromotableItemData } from './common/PromotionModal';
+import { PromotedBadge } from './common/PromotedBadge';
+import { setItemPromotionInFirestore, removeItemPromotionInFirestore } from '../services/firestoreService';
+import { PromotionConfig } from '../types';
+import { CategoryManager } from './admin/CategoryManager';
+import { 
+  CategoryItem, 
+  SubCategory, 
+  useCategories 
+} from '../hooks/useCategories';
+import { 
+  updateCategory, 
+  updateSubcategory, 
+  addCategory, 
+  addSubcategory, 
+  deleteCategory, 
+  deleteSubcategory 
+} from '../services/categoryService';
 
 export type { RssFeedConfig };
 
@@ -52,7 +72,8 @@ const MOCK_POSTS: AdminPost[] = [
 
 export function AdminDashboard() {
   const { users, currentUser, updateUser, register } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'rss'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'rss' | 'reports'>('posts');
+  const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
 
@@ -74,12 +95,115 @@ export function AdminDashboard() {
   const [editingItem, setEditingItem] = useState<EditablePostItem | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
+  // Promotion Modal State
+  const [promotingItem, setPromotingItem] = useState<PromotableItemData | null>(null);
+  const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
+
   // Post search & filters
   const [postSearchQuery, setPostSearchQuery] = useState('');
   const [postTypeFilter, setPostTypeFilter] = useState<string>('all');
   const [postStatusFilter, setPostStatusFilter] = useState<string>('all');
   const [userFilterRole, setUserFilterRole] = useState<string>('all');
   const [actionFeedback, setActionFeedback] = useState<{ id: string; message: string; type: 'success' | 'error' } | null>(null);
+
+  // Category & Subcategory State Management in AdminDashboard
+  // Uses functional updates that merge new items with the existing list instead of replacing the entire array
+  const { allCategories: hookCategories } = useCategories();
+  const [adminCategories, setAdminCategories] = useState<CategoryItem[]>(hookCategories);
+
+  // Synchronize when hookCategories changes, merging safely into existing state to prevent data loss
+  useEffect(() => {
+    setAdminCategories(prev => {
+      const mergedMap = new Map<string, CategoryItem>();
+      prev.forEach(c => mergedMap.set(c.id, c));
+      hookCategories.forEach(c => mergedMap.set(c.id, { ...mergedMap.get(c.id), ...c }));
+      return Array.from(mergedMap.values()).sort((a, b) => (a.order || 0) - (b.order || 0));
+    });
+  }, [hookCategories]);
+
+  // When a category is edited: merge updated fields into existing item without overwriting or replacing the entire array
+  const handleAdminUpdateCategory = async (categoryId: string, data: Partial<CategoryItem>) => {
+    setAdminCategories(prevList => 
+      prevList.map(item => 
+        item.id === categoryId 
+          ? { ...item, ...data, updatedAt: new Date().toISOString() } 
+          : item
+      )
+    );
+    await updateCategory(categoryId, data);
+  };
+
+  // When a subcategory is edited: merge updated fields into the target category's subcategories list
+  const handleAdminUpdateSubcategory = async (categoryId: string, subcategoryId: string, data: Partial<SubCategory>) => {
+    setAdminCategories(prevList => 
+      prevList.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        const updatedSubs = (cat.subcategories || []).map(sub => 
+          sub.id === subcategoryId ? { ...sub, ...data } : sub
+        );
+        return { 
+          ...cat, 
+          subcategories: updatedSubs, 
+          updatedAt: new Date().toISOString() 
+        };
+      })
+    );
+    await updateSubcategory(categoryId, subcategoryId, data);
+  };
+
+  // When a category is added: merge new item into existing array
+  const handleAdminAddCategory = async (catData: Omit<CategoryItem, 'createdAt' | 'updatedAt'>) => {
+    const created = await addCategory(catData);
+    setAdminCategories(prevList => {
+      const exists = prevList.some(item => item.id === created.id);
+      if (exists) {
+        return prevList.map(item => item.id === created.id ? { ...item, ...created } : item);
+      }
+      return [...prevList, created];
+    });
+    return created;
+  };
+
+  // When a subcategory is added: merge new subcategory into existing category's subcategories array
+  const handleAdminAddSubcategory = async (categoryId: string, sub: SubCategory) => {
+    setAdminCategories(prevList => 
+      prevList.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        const currentSubs = cat.subcategories || [];
+        const exists = currentSubs.some(s => s.id === sub.id);
+        const updatedSubs = exists
+          ? currentSubs.map(s => s.id === sub.id ? { ...s, ...sub } : s)
+          : [...currentSubs, sub];
+        return { 
+          ...cat, 
+          subcategories: updatedSubs, 
+          updatedAt: new Date().toISOString() 
+        };
+      })
+    );
+    await addSubcategory(categoryId, sub);
+  };
+
+  // Category deletion: remove only the target category, keeping all others intact
+  const handleAdminDeleteCategory = async (categoryId: string) => {
+    setAdminCategories(prevList => prevList.filter(item => item.id !== categoryId));
+    await deleteCategory(categoryId);
+  };
+
+  // Subcategory deletion: remove only target subcategory from target category
+  const handleAdminDeleteSubcategory = async (categoryId: string, subcategoryId: string) => {
+    setAdminCategories(prevList => 
+      prevList.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        return {
+          ...cat,
+          subcategories: (cat.subcategories || []).filter(s => s.id !== subcategoryId),
+          updatedAt: new Date().toISOString()
+        };
+      })
+    );
+    await deleteSubcategory(categoryId, subcategoryId);
+  };
 
   const pendingVerifications = useMemo(() => {
     return users.filter(u => u.verificationRequested);
@@ -122,11 +246,16 @@ export function AdminDashboard() {
     const unsubEvents = subscribeToEvents((events) => {
       setFirestoreEvents(events);
     });
+    const unsubReports = subscribeToReports((reportsList) => {
+      const pending = reportsList.filter(r => r.status === 'pending').length;
+      setPendingReportsCount(pending);
+    });
 
     return () => {
       unsubPosts();
       unsubAds();
       unsubEvents();
+      unsubReports();
     };
   }, []);
 
@@ -135,20 +264,34 @@ export function AdminDashboard() {
     const items: EditablePostItem[] = [];
 
     firestorePosts.forEach(p => {
-      const isDeal = p.category === 'deal' || !!p.price;
+      const isDeal = p.category === 'deal' || 
+                     p.category === 'ugodnosti' || 
+                     p.category?.startsWith('deal') || 
+                     p.categoryName === 'Ugodnosti' || 
+                     p.categoryName === 'Ugodnost' ||
+                     p.id.startsWith('deal-') || 
+                     p.id.startsWith('hero-bento-') || 
+                     !!p.price;
       items.push({
         id: p.id,
         type: isDeal ? 'deal' : 'post',
         title: p.title,
         content: p.content,
-        category: p.category,
+        category: isDeal ? (p.category && p.category !== 'blog' && p.category !== 'post' ? p.category : 'deal') : p.category,
+        categoryName: isDeal ? (p.categoryName || 'Ugodnosti') : p.categoryName,
         authorName: p.authorName || 'Uporabnik',
+        authorId: p.authorId,
         authorRole: p.authorRole,
+        authorAvatar: p.authorAvatar,
         status: p.status || 'published',
         imageUrl: p.imageUrl,
         price: p.price,
         location: p.location,
         rejectionReason: p.rejectionReason,
+        isPromoted: p.isPromoted,
+        promotion: p.promotion,
+        promotedUntil: p.promotedUntil,
+        promotionBadgeType: p.promotionBadgeType,
       });
     });
 
@@ -162,13 +305,20 @@ export function AdminDashboard() {
         title: a.title,
         content: a.description,
         category: a.category,
+        categoryName: a.categoryName,
         authorName: a.authorName || 'Uporabnik',
+        authorId: a.authorId,
         authorRole: a.authorRole,
+        authorAvatar: a.authorAvatar,
         status: normalizedStatus,
         imageUrl: a.imageUrl,
         price: a.price,
         location: a.location,
         rejectionReason: a.rejectionReason,
+        isPromoted: a.isPromoted,
+        promotion: a.promotion,
+        promotedUntil: a.promotedUntil,
+        promotionBadgeType: a.promotionBadgeType,
       });
     });
 
@@ -179,14 +329,21 @@ export function AdminDashboard() {
         title: e.title,
         content: e.description,
         category: e.category,
+        categoryName: e.categoryName,
         authorName: e.authorName || 'Uporabnik',
+        authorId: e.authorId,
         authorRole: e.authorRole,
+        authorAvatar: e.authorAvatar,
         status: e.status || 'published',
         imageUrl: e.imageUrl,
         price: e.price,
         location: e.location,
         eventDate: e.eventDate || e.date,
         rejectionReason: e.rejectionReason,
+        isPromoted: e.isPromoted,
+        promotion: e.promotion,
+        promotedUntil: e.promotedUntil,
+        promotionBadgeType: e.promotionBadgeType,
       });
     });
 
@@ -258,6 +415,68 @@ export function AdminDashboard() {
   const handleEditItem = (item: EditablePostItem) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
+  };
+
+  const handlePromoteItem = (item: EditablePostItem) => {
+    // Determine target section
+    let targetSection: 'ads' | 'events' | 'blog' | 'deals' = 'blog';
+    if (item.type === 'ad') targetSection = 'ads';
+    else if (item.type === 'event') targetSection = 'events';
+    else if (item.type === 'deal') targetSection = 'deals';
+
+    setPromotingItem({
+      id: item.id,
+      type: item.type,
+      title: item.title,
+      category: item.category,
+      categoryName: item.categoryName,
+      targetSection,
+      promotion: item.promotion,
+      isPromoted: item.isPromoted,
+      promotedUntil: item.promotedUntil,
+      promotionBadgeType: item.promotionBadgeType,
+    });
+    setIsPromotionModalOpen(true);
+  };
+
+  const handleSavePromotion = async (id: string, type: 'post' | 'ad' | 'event' | 'deal', config: PromotionConfig) => {
+    try {
+      await setItemPromotionInFirestore(id, type, config);
+      setActionFeedback({
+        id: id,
+        message: `Objavi je bila uspešno nastavljena promocija (${config.badgeType})!`,
+        type: 'success',
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('Error setting promotion:', err);
+      setActionFeedback({
+        id: id,
+        message: 'Napaka pri shranjevanju promocije.',
+        type: 'error',
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    }
+  };
+
+  const handleRemovePromotion = async (id: string, type: 'post' | 'ad' | 'event' | 'deal') => {
+    try {
+      await removeItemPromotionInFirestore(id, type);
+      setActionFeedback({
+        id: id,
+        message: `Promocija za objavo je bila odstranjena.`,
+        type: 'success',
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('Error removing promotion:', err);
+      setActionFeedback({
+        id: id,
+        message: 'Napaka pri odstranjevanju promocije.',
+        type: 'error',
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    }
   };
 
   // RSS State
@@ -335,6 +554,15 @@ export function AdminDashboard() {
         )}
       </button>
       <button 
+        onClick={() => setActiveTab('categories')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'categories' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <Layers className="w-4 h-4" />
+        <span>Kategorije & Podkategorije</span>
+      </button>
+      <button 
         onClick={() => setActiveTab('rss')}
         className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
           activeTab === 'rss' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
@@ -343,11 +571,25 @@ export function AdminDashboard() {
         <Rss className="w-4 h-4" />
         <span>RSS Viri</span>
       </button>
+      <button 
+        onClick={() => setActiveTab('reports')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'reports' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <Flag className="w-4 h-4" />
+        <span>Prijave vsebine</span>
+        {pendingReportsCount > 0 && (
+          <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-error text-white shadow-xs animate-pulse" title={`${pendingReportsCount} neobravnavanih prijav`}>
+            {pendingReportsCount}
+          </span>
+        )}
+      </button>
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-space-md lg:col-span-9">
+    <div className="flex flex-col gap-space-md">
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
         
         {/* Header */}
@@ -788,11 +1030,26 @@ export function AdminDashboard() {
                               </div>
                             )}
                             <div className="flex flex-col min-w-0">
-                              <span className="font-bold text-sm text-on-surface truncate">{post.title}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-sm text-on-surface truncate">{post.title}</span>
+                                {post.isPromoted && (
+                                  <PromotedBadge 
+                                    type={post.promotionBadgeType || post.promotion?.badgeType || 'PROMO'} 
+                                    size="sm" 
+                                    showSparkle={false}
+                                  />
+                                )}
+                              </div>
                               <span className="text-xs text-outline truncate">{post.content || 'Brez opisa'}</span>
-                              {(post.price || post.location) && (
-                                <span className="text-[11px] text-on-surface-variant font-medium mt-0.5">
-                                  {post.price && `${post.price} `}{post.location && `• ${post.location}`}
+                              {(post.price || post.location || (post.isPromoted && post.promotedUntil)) && (
+                                <span className="text-[11px] text-on-surface-variant font-medium mt-0.5 flex items-center gap-1 flex-wrap">
+                                  {post.price && <span>{post.price}</span>}
+                                  {post.location && <span>• {post.location}</span>}
+                                  {post.isPromoted && post.promotedUntil && (
+                                    <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                      • Do {new Date(post.promotedUntil).toLocaleDateString('sl-SI')}
+                                    </span>
+                                  )}
                                 </span>
                               )}
                             </div>
@@ -850,6 +1107,18 @@ export function AdminDashboard() {
 
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handlePromoteItem(post)}
+                              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer ${
+                                post.isPromoted 
+                                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500/30' 
+                                  : 'bg-surface-container-high hover:bg-surface-container text-on-surface'
+                              }`}
+                              title={post.isPromoted ? 'Uredi promocijo (PROMO / OGLAS)' : 'Nastavi promocijo (PROMO / OGLAS)'}
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                              <span className="hidden sm:inline">{post.isPromoted ? 'Promocija' : 'Promoviraj'}</span>
+                            </button>
                             <button 
                               onClick={() => handleEditItem(post)}
                               className="px-2.5 py-1 text-xs font-semibold bg-surface-container-high hover:bg-surface-container text-on-surface rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
@@ -874,6 +1143,19 @@ export function AdminDashboard() {
               </table>
             </div>
           </div>
+        )}
+
+        {/* Tab Content: Categories & Subcategories */}
+        {activeTab === 'categories' && (
+          <CategoryManager 
+            categories={adminCategories}
+            onUpdateCategory={handleAdminUpdateCategory}
+            onUpdateSubcategory={handleAdminUpdateSubcategory}
+            onAddCategory={handleAdminAddCategory}
+            onAddSubcategory={handleAdminAddSubcategory}
+            onDeleteCategory={handleAdminDeleteCategory}
+            onDeleteSubcategory={handleAdminDeleteSubcategory}
+          />
         )}
 
         {/* Tab Content: RSS */}
@@ -1054,6 +1336,13 @@ export function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* Tab Content: Reports */}
+        {activeTab === 'reports' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <ReportsManager />
+          </div>
+        )}
       </div>
 
       {/* Edit Post Modal for Admin & Superadmin */}
@@ -1061,6 +1350,7 @@ export function AdminDashboard() {
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         item={editingItem}
+        onOpenPromotion={(item) => handlePromoteItem(item)}
         onSaved={() => {
           setActionFeedback({
             id: 'edit-saved',
@@ -1069,6 +1359,18 @@ export function AdminDashboard() {
           });
           setTimeout(() => setActionFeedback(null), 4000);
         }}
+      />
+
+      {/* Promotion Modal for Admin & Superadmin */}
+      <PromotionModal
+        isOpen={isPromotionModalOpen}
+        onClose={() => {
+          setIsPromotionModalOpen(false);
+          setPromotingItem(null);
+        }}
+        item={promotingItem}
+        onSavePromotion={handleSavePromotion}
+        onRemovePromotion={handleRemovePromotion}
       />
     </div>
   );

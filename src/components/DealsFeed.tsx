@@ -30,10 +30,16 @@ import {
 } from '../data/mockDealsData';
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
+import { ReportButton } from './ReportButton';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, createPostInFirestore } from '../services/firestoreService';
 import { PostDetailTarget } from '../types';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
+import { useCategories } from '../hooks/useCategories';
+import { SLOVENIA_REGIONS } from '../services/categoryService';
+import { PromotedBadge } from './common/PromotedBadge';
+import { isItemActivelyPromoted } from '../services/promotionService';
+import { PromotionConfig, PromotionBadgeType } from '../types';
 
 interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -57,11 +63,15 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   const [localSearch, setLocalSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [sortOption, setSortOption] = useState<string>('featured');
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Dynamic categories
+  const { categories } = useCategories('deals');
   
   // Interactive state
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
@@ -88,18 +98,20 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   useEffect(() => {
     const unsub = subscribeToPosts((posts) => {
       const dealPosts = posts
-        .filter(p => p.category === 'deal')
+        .filter(p => p.category === 'deal' || p.category === 'ugodnosti' || p.category?.startsWith('deal') || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost' || p.id.startsWith('deal-') || p.id.startsWith('hero-bento-'))
         .map(p => ({
           id: p.id,
           title: p.title,
           partner: p.authorName || 'Član skupnosti',
-          partnerRole: 'Uporabniški predlog',
+          partnerRole: p.authorRole || 'Uporabniški predlog',
           partnerInitial: (p.authorName || 'Č')[0].toUpperCase(),
           partnerLogoBg: 'bg-primary text-on-primary',
           partnerAvatar: p.authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.authorName || 'clan')}`,
-          category: 'tehnika' as const,
-          categoryName: 'Skupnost',
-          region: p.location || 'Vsa Slovenija',
+          category: (p.category === 'deal' ? 'tehnika' : (p.category || 'tehnika')) as any,
+          categoryName: p.categoryName || 'Ugodnosti',
+          subcategory: p.subcategory || '',
+          subcategoryName: p.subcategoryName || '',
+          region: p.region || p.location || 'Vsa Slovenija',
           discount: p.price || 'Ugodnost',
           dealType: 'code' as const,
           dealTypeName: 'Uporabniški kupon',
@@ -111,6 +123,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           verifiedText: 'Članski predlog',
           statusTag: 'today' as const,
           image: p.imageUrl || CATEGORY_IMAGE_FALLBACKS.tehnika,
+          isPromoted: p.isPromoted,
+          promotedUntil: p.promotedUntil,
+          promotionBadgeType: p.promotionBadgeType,
+          promotion: p.promotion,
         }));
       setUserDeals(dealPosts);
     });
@@ -135,29 +151,44 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     }));
   };
 
-  // Combine initial curated deals + any user submitted deals + hero deals
+  // Active Category Object
+  const activeCategoryObj = useMemo(() => {
+    if (selectedCategory === 'all') return null;
+    return categories.find(c => c.id === selectedCategory) || null;
+  }, [categories, selectedCategory]);
+
+  const handleCategorySelect = (catId: string) => {
+    setSelectedCategory(catId);
+    setSelectedSubcategory('all');
+    setPage(1);
+  };
+
+  // Combine initial curated deals + any user submitted deals + hero deals (with deduplication)
   const combinedDeals = useMemo(() => {
-    return [...HERO_BENTO_DEALS, ...userDeals, ...INITIAL_DEALS];
+    const userDealIds = new Set(userDeals.map(d => d.id));
+    const dedupedHero = HERO_BENTO_DEALS.filter(d => !userDealIds.has(d.id));
+    const dedupedInitial = INITIAL_DEALS.filter(d => !userDealIds.has(d.id));
+    return [...userDeals, ...dedupedHero, ...dedupedInitial];
   }, [userDeals]);
 
   // Dynamic category counts
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {
       all: combinedDeals.length,
-      tehnika: combinedDeals.filter(d => d.category === 'tehnika').length,
-      prehrana: combinedDeals.filter(d => d.category === 'prehrana').length,
-      turizem: combinedDeals.filter(d => d.category === 'turizem').length,
-      sport: combinedDeals.filter(d => d.category === 'sport').length,
-      dom: combinedDeals.filter(d => d.category === 'dom').length,
-      avto: combinedDeals.filter(d => d.category === 'avto').length,
     };
+    for (const cat of categories) {
+      counts[cat.id] = combinedDeals.filter(d => 
+        d.category === cat.id || 
+        (d.categoryName && d.categoryName.toLowerCase().includes(cat.name.toLowerCase()))
+      ).length;
+    }
     return counts;
-  }, [combinedDeals]);
+  }, [combinedDeals, categories]);
 
   // Filter deals
   const filteredDeals = useMemo(() => {
     return combinedDeals.filter(deal => {
-      const textToMatch = `${deal.title} ${deal.partner} ${deal.description} ${deal.categoryName} ${deal.region} ${deal.code || ''}`;
+      const textToMatch = `${deal.title} ${deal.partner} ${deal.description} ${deal.categoryName} ${(deal as any).subcategoryName || ''} ${deal.region} ${deal.code || ''}`;
       
       // 1. App-level searchQuery filter (category + terms)
       if (searchQuery && !matchesSearchAndCategory(textToMatch, 'deals', searchQuery)) {
@@ -171,16 +202,32 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         if (!terms.every(t => lowerText.includes(t))) return false;
       }
 
-      // 2. Status filter
+      // 3. Status filter
       if (selectedStatus === 'expiring' && deal.statusTag !== 'expiring') return false;
       if (selectedStatus === 'today' && deal.statusTag !== 'today') return false;
       if (selectedStatus === 'exclusive' && deal.statusTag !== 'exclusive') return false;
       if (selectedStatus === 'shipping' && deal.statusTag !== 'shipping') return false;
 
-      // 3. Category filter
-      if (selectedCategory !== 'all' && deal.category !== selectedCategory) return false;
+      // 4. Category filter
+      if (selectedCategory !== 'all') {
+        const matchesCat = deal.category === selectedCategory ||
+          (activeCategoryObj && (
+            deal.category?.toLowerCase() === activeCategoryObj.name.toLowerCase() ||
+            (deal.categoryName && deal.categoryName.toLowerCase().includes(activeCategoryObj.name.toLowerCase()))
+          ));
+        if (!matchesCat) return false;
+      }
 
-      // 4. Region filter
+      // 5. Subcategory filter
+      if (selectedSubcategory !== 'all') {
+        const subId = (deal as any).subcategory;
+        const subName = (deal as any).subcategoryName;
+        const matchesSub = subId === selectedSubcategory ||
+          (subName && subName.toLowerCase() === selectedSubcategory.toLowerCase());
+        if (!matchesSub) return false;
+      }
+
+      // 6. Region filter
       if (selectedRegion !== 'all') {
         const regLower = selectedRegion.toLowerCase();
         if (!deal.region.toLowerCase().includes(regLower) && !deal.region.toLowerCase().includes('vsa slo')) {
@@ -188,7 +235,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         }
       }
 
-      // 5. Deal type filter
+      // 7. Deal type filter
       if (selectedType !== 'all') {
         if (selectedType === 'code' && deal.dealType !== 'code') return false;
         if (selectedType === 'flyer' && deal.dealType !== 'flyer' && deal.dealType !== 'sale') return false;
@@ -198,6 +245,26 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
       return true;
     }).sort((a, b) => {
+      // Helper to check promotion status
+      const checkDealPromoted = (deal: any): boolean => {
+        if (deal.promotion) {
+          return isItemActivelyPromoted(deal.promotion, 'ugodnosti', selectedCategory, selectedSubcategory);
+        }
+        if (deal.isPromoted) {
+          if (deal.promotedUntil) {
+            return new Date(deal.promotedUntil).getTime() > Date.now();
+          }
+          return true;
+        }
+        return false;
+      };
+
+      const aPromoted = checkDealPromoted(a);
+      const bPromoted = checkDealPromoted(b);
+
+      if (aPromoted && !bPromoted) return -1;
+      if (!aPromoted && bPromoted) return 1;
+
       if (sortOption === 'highest_discount') {
         const numA = parseInt(a.discount.replace(/[^0-9]/g, '')) || 0;
         const numB = parseInt(b.discount.replace(/[^0-9]/g, '')) || 0;
@@ -210,7 +277,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       }
       return 0; // default order
     });
-  }, [combinedDeals, searchQuery, localSearch, selectedStatus, selectedCategory, selectedRegion, selectedType, sortOption, votesMap]);
+  }, [combinedDeals, searchQuery, localSearch, selectedStatus, selectedCategory, selectedSubcategory, activeCategoryObj, selectedRegion, selectedType, sortOption, votesMap]);
 
   // Pagination (10 items per page)
   const PAGE_SIZE = 10;
@@ -304,21 +371,16 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   };
 
   return (
-    <main className="lg:col-span-6 flex flex-col gap-space-md">
+    <div className="flex flex-col gap-space-md">
       
       {/* 1. STANDARD HEADER (MATCHING DOGODKI & MALI OGLASI) */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-full blur-2xl pointer-events-none"></div>
-        <nav className="flex items-center gap-2 font-label-md text-xs text-outline">
-          <a className="hover:text-primary transition-colors cursor-pointer" onClick={() => onViewChange('main')}>Domov</a>
-          <span>/</span>
-          <span className="text-primary font-semibold">Ugodnosti in popusti</span>
-        </nav>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1 flex-1 min-w-[240px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <Percent className="w-[1em] h-[1em] text-secondary shrink-0" />
-              <span>Ugodnosti &amp; popusti</span>
+              <span>Ugodnosti in popusti v Sloveniji</span>
             </h1>
             <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
               Preverjene kode, akcije in popusti za nakupe v slovenskih trgovinah ter na spletu.
@@ -392,10 +454,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           </button>
         </div>
 
-        {/* Category Rail with Counters */}
+        {/* Category Rail with Dynamic Categories */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
           <button 
-            onClick={() => { setSelectedCategory('all'); setPage(1); }}
+            onClick={() => handleCategorySelect('all')}
             className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
               selectedCategory === 'all' 
                 ? 'bg-primary text-on-primary font-bold' 
@@ -403,96 +465,65 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             }`}
             type="button"
           >
-            <span>Vse kategorije</span>
+            <span>Vse ugodnosti</span>
             <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-surface-container-highest text-on-surface-variant'}`}>
               {categoryCounts.all}
             </span>
           </button>
-          <button 
-            onClick={() => { setSelectedCategory('tehnika'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
-              selectedCategory === 'tehnika' 
-                ? 'bg-primary text-on-primary font-bold' 
-                : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <span>📱 Tehnika</span>
-            <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-surface-container text-outline">
-              {categoryCounts.tehnika}
-            </span>
-          </button>
-          <button 
-            onClick={() => { setSelectedCategory('prehrana'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
-              selectedCategory === 'prehrana' 
-                ? 'bg-primary text-on-primary font-bold' 
-                : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <span>🛒 Prehrana</span>
-            <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-surface-container text-outline">
-              {categoryCounts.prehrana}
-            </span>
-          </button>
-          <button 
-            onClick={() => { setSelectedCategory('turizem'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
-              selectedCategory === 'turizem' 
-                ? 'bg-primary text-on-primary font-bold' 
-                : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <span>🏔️ Turizem</span>
-            <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-surface-container text-outline">
-              {categoryCounts.turizem}
-            </span>
-          </button>
-          <button 
-            onClick={() => { setSelectedCategory('sport'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
-              selectedCategory === 'sport' 
-                ? 'bg-primary text-on-primary font-bold' 
-                : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <span>👕 Šport</span>
-            <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-surface-container text-outline">
-              {categoryCounts.sport}
-            </span>
-          </button>
-          <button 
-            onClick={() => { setSelectedCategory('dom'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
-              selectedCategory === 'dom' 
-                ? 'bg-primary text-on-primary font-bold' 
-                : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <span>🏡 Dom &amp; Vrt</span>
-            <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-surface-container text-outline">
-              {categoryCounts.dom}
-            </span>
-          </button>
-          <button 
-            onClick={() => { setSelectedCategory('avto'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
-              selectedCategory === 'avto' 
-                ? 'bg-primary text-on-primary font-bold' 
-                : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <span>🚗 Avto</span>
-            <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-surface-container text-outline">
-              {categoryCounts.avto}
-            </span>
-          </button>
+          {categories.map(cat => (
+            <button 
+              key={cat.id}
+              onClick={() => handleCategorySelect(cat.id)}
+              className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
+                selectedCategory === cat.id 
+                  ? 'bg-primary text-on-primary font-bold' 
+                  : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
+              }`}
+              type="button"
+            >
+              <span>{cat.icon || '🏷️'}</span>
+              <span>{cat.name}</span>
+              {categoryCounts[cat.id] !== undefined && categoryCounts[cat.id] > 0 && (
+                <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
+                  {categoryCounts[cat.id]}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
+
+        {/* Subcategory Rail (when active category has subcategories) */}
+        {activeCategoryObj && activeCategoryObj.subcategories && activeCategoryObj.subcategories.length > 0 && (
+          <div className="bg-surface-container-low/60 p-2 rounded-xl border border-surface-container/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="text-[11px] font-semibold text-outline uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
+              <Tag className="w-3 h-3 text-primary" />
+              <span>Podkategorije:</span>
+            </div>
+            <button
+              onClick={() => { setSelectedSubcategory('all'); setPage(1); }}
+              className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
+                selectedSubcategory === 'all'
+                  ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
+                  : 'text-on-surface-variant hover:bg-surface-container'
+              }`}
+            >
+              Vse podkategorije
+            </button>
+            {activeCategoryObj.subcategories.map(sub => (
+              <button
+                key={sub.id}
+                onClick={() => { setSelectedSubcategory(sub.id); setPage(1); }}
+                className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
+                  selectedSubcategory === sub.id
+                    ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
+                    : 'text-on-surface-variant hover:bg-surface-container'
+                }`}
+              >
+                {sub.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Multi-Param Search & Select Filter Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1">
@@ -518,12 +549,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
               className="w-full appearance-none bg-surface-container-low pl-3 pr-8 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:bg-surface-container transition-colors cursor-pointer border border-surface-container/60"
             >
               <option value="all">Vsa Slovenija</option>
-              <option value="Ljubljana">Ljubljana &amp; Osrednja</option>
-              <option value="Maribor">Maribor &amp; Podravje</option>
-              <option value="Celje">Celje &amp; Savinjska</option>
-              <option value="Kranj">Kranj &amp; Gorenjska</option>
-              <option value="Koper">Koper &amp; Obala</option>
-              <option value="Novo Mesto">Novo Mesto &amp; Dolenjska</option>
+              {SLOVENIA_REGIONS.map(reg => (
+                <option key={reg.id} value={reg.id}>
+                  {reg.name}
+                </option>
+              ))}
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -597,11 +627,19 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             const hasVoted = votedSet.has(deal.id);
             const isCopied = copiedCodeId === deal.id;
             const dealImg = deal.image || CATEGORY_IMAGE_FALLBACKS[deal.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
+            const isPromoted = Boolean(
+              (deal as any).promotion 
+                ? isItemActivelyPromoted((deal as any).promotion, 'ugodnosti', selectedCategory, selectedSubcategory)
+                : ((deal as any).isPromoted && (!(deal as any).promotedUntil || new Date((deal as any).promotedUntil).getTime() > Date.now()))
+            );
+            const badgeType: PromotionBadgeType = (deal as any).promotionBadgeType || (deal as any).promotion?.badgeType || 'PROMO';
 
             return (
               <article 
                 key={deal.id}
-                className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/60 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group"
+                className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group ${
+                  isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60'
+                }`}
               >
                 {/* PHOTO CONTAINER */}
                 <a 
@@ -622,11 +660,14 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent sm:hidden"></div>
                   
                   {/* Badges on image */}
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                    {isPromoted && (
+                      <PromotedBadge type={badgeType} size="sm" />
+                    )}
                     <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
                       {deal.categoryName}
                     </span>
-                    {deal.featured && (
+                    {deal.featured && !isPromoted && (
                       <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                         <Sparkles className="w-2.5 h-2.5" />
                         Top
@@ -645,19 +686,29 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     {/* Header Row: Partner info, role, and actions */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <img 
-                          src={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`} 
-                          alt={deal.partner}
-                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 shrink-0 shadow-xs"
-                          loading="lazy"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`;
-                          }}
-                        />
+                        <a
+                          href={`#author-${encodeURIComponent(deal.partner.replace(/\s+/g, '_'))}`}
+                          className="shrink-0 group/avatar focus:outline-none"
+                          title={`Ogled profila partnerja: ${deal.partner}`}
+                        >
+                          <img 
+                            src={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`} 
+                            alt={deal.partner}
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shrink-0 shadow-xs transition-all"
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`;
+                            }}
+                          />
+                        </a>
                         <div className="flex items-center gap-2 flex-wrap min-w-0">
-                          <span className="font-label-lg text-xs sm:text-sm font-bold text-on-surface truncate">
+                          <a
+                            href={`#author-${encodeURIComponent(deal.partner.replace(/\s+/g, '_'))}`}
+                            className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
+                            title={`Ogled profila partnerja: ${deal.partner}`}
+                          >
                             {deal.partner}
-                          </span>
+                          </a>
                           {deal.partnerRole && (
                             <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold shrink-0">
                               {deal.partnerRole}
@@ -689,7 +740,14 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             verifiedText: deal.verifiedText,
                           }}
                         />
-                        <ShareMenu id={deal.id} title={deal.title} />
+                        <ShareMenu id={deal.id} type="deal" title={deal.title} description={deal.description} />
+                        <ReportButton 
+                          targetId={deal.id} 
+                          targetType="deal" 
+                          targetTitle={deal.title} 
+                          targetAuthor={deal.partner} 
+                          targetUrl={deal.link} 
+                        />
                       </div>
                     </div>
 
@@ -774,6 +832,14 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                       )}
 
                       <div className="flex items-center gap-2 ml-auto">
+                        <ShareMenu 
+                          id={deal.id} 
+                          type="deal" 
+                          title={deal.title} 
+                          description={deal.description} 
+                          showLabel={true} 
+                          buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
+                        />
                         <a 
                           href={`#deal-${deal.id}`}
                           onClick={(e) => {
@@ -992,6 +1058,6 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         </div>
       )}
 
-    </main>
+    </div>
   );
 }

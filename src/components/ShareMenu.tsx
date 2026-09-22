@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Share2, Facebook, Linkedin, Link as LinkIcon, Check } from 'lucide-react';
+import { Share2, Facebook, Linkedin, Link as LinkIcon, Check, Send, Mail } from 'lucide-react';
 
 const XIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -28,26 +28,53 @@ const MessengerIcon = ({ className }: { className?: string }) => (
 export interface ShareMenuProps {
   url?: string;
   id?: string;
+  type?: 'blog' | 'post' | 'ad' | 'event' | 'deal' | 'news';
   title?: string;
+  description?: string;
   className?: string;
   buttonClassName?: string;
   showLabel?: boolean;
+  label?: string;
   dropDirection?: 'up' | 'down';
 }
 
 export function ShareMenu({ 
   url, 
   id, 
+  type,
   title = "Preveri to objavo!", 
+  description,
   className = '', 
   buttonClassName = '', 
   showLabel = false,
+  label = 'Deli',
   dropDirection = 'up'
 }: ShareMenuProps) {
-  const shareUrl = url || (id ? `${window.location.origin}${window.location.pathname}?post=${id}` : window.location.href);
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const getShareUrl = () => {
+    if (url) return url;
+    if (!id) return window.location.href;
+    
+    const origin = window.location.origin;
+    const path = window.location.pathname;
+
+    // Check if id already has category prefix
+    if (id.startsWith('ad-') || id.startsWith('event-') || id.startsWith('deal-') || id.startsWith('blog-') || id.startsWith('post-')) {
+      return `${origin}${path}#${id}`;
+    }
+
+    if (type) {
+      const cleanType = type === 'post' ? 'blog' : type;
+      return `${origin}${path}#${cleanType}-${id}`;
+    }
+
+    return `${origin}${path}#blog-${id}`;
+  };
+
+  const shareUrl = getShareUrl();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -59,17 +86,75 @@ export function ShareMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const copyToClipboard = async () => {
+  const copyToClipboard = async (targetUrl?: string) => {
+    const textToCopy = targetUrl || shareUrl;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setCopied(true);
       setTimeout(() => {
         setCopied(false);
-        setIsOpen(false);
       }, 2000);
     } catch (err) {
       console.error('Failed to copy', err);
     }
+  };
+
+  const handleShareClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const currentShareUrl = getShareUrl();
+    const shareTitle = title || 'Portalko';
+    const shareText = description 
+      ? (description.length > 140 ? description.slice(0, 137) + '...' : description)
+      : 'Oglejte si to objavo na slovenskem portalu Portalko!';
+
+    // Check if Web Share API is supported in the browser
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      const shareData = {
+        title: shareTitle,
+        text: shareText,
+        url: currentShareUrl,
+      };
+
+      let canShareData = true;
+      if (typeof navigator.canShare === 'function') {
+        try {
+          canShareData = navigator.canShare(shareData);
+        } catch {
+          canShareData = true;
+        }
+      }
+
+      if (canShareData) {
+        try {
+          await navigator.share(shareData);
+          return;
+        } catch (err: any) {
+          if (err?.name === 'AbortError') {
+            // User cancelled the native share sheet
+            return;
+          }
+          console.warn('Native share failed or was restricted, falling back to copy & menu:', err);
+        }
+      }
+    }
+
+    // Fallback: Copy link directly to clipboard and open menu
+    await copyToClipboard(currentShareUrl);
+    setIsOpen((prev) => !prev);
   };
 
   const shareFacebook = () => {
@@ -102,37 +187,81 @@ export function ShareMenu({
     setIsOpen(false);
   };
 
+  const shareEmail = () => {
+    const subject = encodeURIComponent(`Priporočam v branje: ${title}`);
+    const body = encodeURIComponent(`Pozdravljeni,\n\nNa Portalko.net sem našel zanimivo objavo: "${title}".\n\nOgled objave:\n${shareUrl}\n\nLep pozdrav!`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    setIsOpen(false);
+  };
+
+  const hasNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
   return (
     <div className={`relative inline-block ${className}`} ref={menuRef}>
       <button 
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsOpen(!isOpen);
-        }}
-        className={buttonClassName || "p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors flex items-center justify-center"}
-        title="Deli"
+        onClick={handleShareClick}
+        className={buttonClassName || "p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors flex items-center justify-center gap-1.5 cursor-pointer"}
+        title={copied ? "Povezava kopirana!" : "Deli objavo (Web Share / Kopiraj povezavo)"}
+        aria-label="Deli objavo"
         type="button"
       >
-        <Share2 className="w-4 h-4 text-outline" />
-        {showLabel && <span className="text-on-surface-variant font-medium">Deli</span>}
+        {copied ? (
+          <Check className="w-4 h-4 text-primary shrink-0" />
+        ) : (
+          <Share2 className="w-4 h-4 text-outline hover:text-primary transition-colors shrink-0" />
+        )}
+        {showLabel && (
+          <span className={`text-on-surface-variant font-medium ${copied ? 'text-primary font-bold' : ''}`}>
+            {copied ? 'Kopirano!' : label}
+          </span>
+        )}
       </button>
 
+      {/* Floating feedback toast badge when copied without opening full menu */}
+      {copied && !isOpen && (
+        <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 rounded-md bg-inverse-surface text-inverse-on-surface text-[11px] font-semibold whitespace-nowrap shadow-md z-[110] animate-in fade-in">
+          Povezava kopirana!
+        </div>
+      )}
+
       {isOpen && (
-        <div className={`absolute right-0 ${dropDirection === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} w-48 bg-surface-container-lowest rounded-xl shadow-elevation-3 border border-surface-container py-1 z-[100] flex flex-col gap-0.5`}>
+        <div className={`absolute right-0 ${dropDirection === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} w-52 bg-surface-container-lowest rounded-xl shadow-elevation-3 border border-surface-container py-1.5 z-[100] flex flex-col gap-0.5`}>
           <button 
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               copyToClipboard();
             }} 
-            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface"
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
           >
             {copied ? <Check className="w-4 h-4 text-primary" /> : <LinkIcon className="w-4 h-4 text-on-surface-variant" />}
-            {copied ? 'Kopirano!' : 'Kopiraj povezavo'}
+            <span className={copied ? 'text-primary font-bold' : ''}>
+              {copied ? 'Kopirano v odložišče!' : 'Kopiraj povezavo'}
+            </span>
           </button>
+
+          {hasNativeShare && (
+            <button
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                  await navigator.share({
+                    title: title || 'Portalko',
+                    text: description || title || 'Preveri objavo!',
+                    url: shareUrl,
+                  });
+                  setIsOpen(false);
+                } catch {}
+              }}
+              className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-primary font-medium cursor-pointer"
+            >
+              <Send className="w-4 h-4 text-primary" />
+              <span>Sistemska delitev...</span>
+            </button>
+          )}
           
-          <div className="h-px w-full bg-surface-container my-0.5"></div>
+          <div className="h-px w-full bg-surface-container my-1"></div>
           
           <button 
             onClick={(e) => {
@@ -140,7 +269,7 @@ export function ShareMenu({
               e.stopPropagation();
               shareWhatsApp();
             }} 
-            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface"
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
           >
             <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
             WhatsApp
@@ -152,7 +281,7 @@ export function ShareMenu({
               e.stopPropagation();
               shareViber();
             }} 
-            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface"
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
           >
             <ViberIcon className="w-4 h-4 text-[#7360F2]" />
             Viber
@@ -164,7 +293,7 @@ export function ShareMenu({
               e.stopPropagation();
               shareMessenger();
             }} 
-            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface"
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
           >
             <MessengerIcon className="w-4 h-4 text-[#00B2FF]" />
             Messenger
@@ -176,7 +305,7 @@ export function ShareMenu({
               e.stopPropagation();
               shareFacebook();
             }} 
-            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface"
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
           >
             <Facebook className="w-4 h-4 text-[#1877F2]" />
             Facebook
@@ -188,10 +317,10 @@ export function ShareMenu({
               e.stopPropagation();
               shareX();
             }} 
-            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface"
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
           >
             <XIcon className="w-4 h-4 text-on-surface" />
-            X
+            X (Twitter)
           </button>
           
           <button 
@@ -200,10 +329,22 @@ export function ShareMenu({
               e.stopPropagation();
               shareLinkedIn();
             }} 
-            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface"
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
           >
             <Linkedin className="w-4 h-4 text-[#0A66C2]" />
             LinkedIn
+          </button>
+
+          <button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              shareEmail();
+            }} 
+            className="w-full px-4 py-2 text-left font-body-sm text-sm hover:bg-surface-container-low flex items-center gap-3 transition-colors text-on-surface cursor-pointer"
+          >
+            <Mail className="w-4 h-4 text-primary" />
+            E-pošta
           </button>
         </div>
       )}

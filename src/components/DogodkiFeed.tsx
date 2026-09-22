@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BookmarkButton } from "./BookmarkButton";
 import { ShareMenu } from "./ShareMenu";
-import { CalendarDays, MapPin, Search, Calendar, ChevronDown, PlusCircle, Star, Music, PartyPopper, Users, Sparkles, Flame } from 'lucide-react';
+import { ReportButton } from "./ReportButton";
+import { CalendarDays, MapPin, Search, Calendar, ChevronDown, PlusCircle, Star, Music, PartyPopper, Users, Sparkles, Flame, Tag, Layers, Globe } from 'lucide-react';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { subscribeToEvents, FirestoreEvent } from '../services/firestoreService';
 import { ComposeModal } from './ComposeModal';
 import { INITIAL_EVENTS, MockEventItem } from '../data/mockFeedData';
 import { PostDetailTarget } from '../types';
+import { useCategories } from '../hooks/useCategories';
+import { SLOVENIA_REGIONS } from '../services/categoryService';
+import { PromotedBadge } from './common/PromotedBadge';
+import { isItemActivelyPromoted } from '../services/promotionService';
 
 interface DogodkiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -18,9 +23,13 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
+  const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+
+  // Dynamic categories for events
+  const { categories } = useCategories('events');
 
   useEffect(() => {
     const unsub = subscribeToEvents((events) => {
@@ -29,22 +38,55 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
     return () => unsub();
   }, []);
 
+  const activeCategoryObj = useMemo(() => {
+    if (activeCategory === 'all') return null;
+    return categories.find(c => c.id === activeCategory) || null;
+  }, [categories, activeCategory]);
+
+  const handleCategorySelect = (catId: string) => {
+    setActiveCategory(catId);
+    setSelectedSubcategory('all');
+    setPage(1);
+  };
+
   // Filter Firestore events
   const filteredFirestore = firestoreEvents.filter(event => {
-    const textToMatch = `${event.title} ${event.description} ${event.category} ${event.location || ''}`;
+    const textToMatch = `${event.title} ${event.description} ${event.category} ${event.categoryName || ''} ${event.subcategory || ''} ${event.subcategoryName || ''} ${event.location || ''} ${event.region || ''}`;
     const matchesSearch = matchesSearchAndCategory(textToMatch, 'events', searchQuery);
+    
     const matchesCat = activeCategory === 'all' || 
-      (event.category && event.category.toLowerCase() === activeCategory.toLowerCase());
-    return matchesSearch && matchesCat;
+      event.category === activeCategory ||
+      (activeCategoryObj && (
+        event.category?.toLowerCase() === activeCategoryObj.name.toLowerCase() ||
+        event.categoryName?.toLowerCase() === activeCategoryObj.name.toLowerCase()
+      ));
+
+    const matchesSubcat = selectedSubcategory === 'all' ||
+      event.subcategory === selectedSubcategory ||
+      (event.subcategoryName && event.subcategoryName.toLowerCase() === selectedSubcategory.toLowerCase());
+
+    const matchesReg = selectedRegion === 'all' ||
+      (event.region && event.region.toLowerCase().includes(selectedRegion.toLowerCase())) ||
+      (event.location && event.location.toLowerCase().includes(selectedRegion.toLowerCase()));
+
+    return matchesSearch && matchesCat && matchesSubcat && matchesReg;
   });
 
   // Filter mock events
   const filteredMock = INITIAL_EVENTS.filter(event => {
+    if (firestoreEvents.some(f => f.id === event.id)) return false;
     const textToMatch = `${event.title} ${event.description} ${event.categoryName} ${event.location} ${event.organizer} ${event.city}`;
     const matchesSearch = matchesSearchAndCategory(textToMatch, 'events', searchQuery);
-    const matchesCat = activeCategory === 'all' || event.category === activeCategory;
-    const matchesCity = selectedCity === 'all' || event.city.toLowerCase() === selectedCity.toLowerCase();
-    return matchesSearch && matchesCat && matchesCity;
+    
+    const matchesCat = activeCategory === 'all' || 
+      event.category === activeCategory ||
+      (activeCategoryObj && event.categoryName.toLowerCase().includes(activeCategoryObj.name.toLowerCase()));
+
+    const matchesReg = selectedRegion === 'all' || 
+      event.city.toLowerCase().includes(selectedRegion.toLowerCase()) ||
+      event.location.toLowerCase().includes(selectedRegion.toLowerCase());
+
+    return matchesSearch && matchesCat && matchesReg;
   });
 
   type UnifiedEvent = 
@@ -55,6 +97,32 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
     ...filteredFirestore.map(e => ({ type: 'firestore' as const, data: e })),
     ...filteredMock.map(e => ({ type: 'mock' as const, data: e }))
   ];
+
+  // Helper to check promotion status
+  const checkEventPromoted = (item: UnifiedEvent): boolean => {
+    if (item.type !== 'firestore') return false;
+    const event = item.data;
+    if (event.promotion) {
+      return isItemActivelyPromoted(event.promotion, 'dogodki', activeCategory, selectedSubcategory);
+    }
+    if (event.isPromoted) {
+      if (event.promotedUntil) {
+        return new Date(event.promotedUntil).getTime() > Date.now();
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // Sorting: Actively promoted (PROMO / OGLAS) events are positioned FIRST in the feed
+  allEvents.sort((a, b) => {
+    const aPromoted = checkEventPromoted(a);
+    const bPromoted = checkEventPromoted(b);
+
+    if (aPromoted && !bPromoted) return -1;
+    if (!aPromoted && bPromoted) return 1;
+    return 0;
+  });
 
   const PAGE_SIZE = 10;
   const currentLimit = page * PAGE_SIZE;
@@ -102,30 +170,16 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
     }, 450);
   };
 
-  const CATEGORIES = [
-    { id: 'all', label: 'Vsi dogodki' },
-    { id: 'music', label: '🎵 Glasba & Koncerti' },
-    { id: 'culture', label: '🎭 Kultura & Teater' },
-    { id: 'sport', label: '⚽ Šport & Rekreacija' },
-    { id: 'food', label: '🍷 Gastronomija' },
-    { id: 'family', label: '🎈 Družina & Otroci' },
-  ];
-
   return (
-    <main className="lg:col-span-6 flex flex-col gap-space-md">
+    <div className="flex flex-col gap-space-md">
       {/* Header */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
-        <nav className="flex items-center gap-2 font-label-md text-xs text-outline">
-          <a className="hover:text-primary transition-colors cursor-pointer" onClick={() => onViewChange('main')}>Domov</a>
-          <span>/</span>
-          <span className="text-primary font-semibold">Dogodki & Prireditve</span>
-        </nav>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <PartyPopper className="w-[1em] h-[1em] text-primary shrink-0" />
-              <span>Dogodki & Prireditve</span>
+              <span>Dogodki in prireditve v Sloveniji</span>
             </h1>
             <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
               Koncerti, festivali, gledališke predstave, športne prireditve in kulinarična doživetja po vsej Sloveniji.
@@ -141,41 +195,82 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
         </div>
       </div>
 
-      {/* Category filters */}
+      {/* Main Categories Pills */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-        {CATEGORIES.map(cat => (
+        <button
+          onClick={() => handleCategorySelect('all')}
+          className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm cursor-pointer ${
+            activeCategory === 'all'
+              ? 'bg-primary text-on-primary font-bold'
+              : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
+          }`}
+        >
+          Vsi dogodki
+        </button>
+        {categories.map(cat => (
           <button
             key={cat.id}
-            onClick={() => { setActiveCategory(cat.id); setPage(1); }}
-            className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm ${
+            onClick={() => handleCategorySelect(cat.id)}
+            className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
               activeCategory === cat.id
                 ? 'bg-primary text-on-primary font-bold'
                 : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
             }`}
           >
-            {cat.label}
+            <span>{cat.icon || '📅'}</span>
+            <span>{cat.name}</span>
           </button>
         ))}
       </div>
 
-      {/* City & Month bar */}
+      {/* Subcategory Pills (when active category has subcategories) */}
+      {activeCategoryObj && activeCategoryObj.subcategories && activeCategoryObj.subcategories.length > 0 && (
+        <div className="bg-surface-container-low/60 p-2 rounded-xl border border-surface-container/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="text-[11px] font-semibold text-outline uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
+            <Tag className="w-3 h-3 text-primary" />
+            <span>Zvrst dogodka:</span>
+          </div>
+          <button
+            onClick={() => { setSelectedSubcategory('all'); setPage(1); }}
+            className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
+              selectedSubcategory === 'all'
+                ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
+                : 'text-on-surface-variant hover:bg-surface-container'
+            }`}
+          >
+            Vse zvrsti
+          </button>
+          {activeCategoryObj.subcategories.map(sub => (
+            <button
+              key={sub.id}
+              onClick={() => { setSelectedSubcategory(sub.id); setPage(1); }}
+              className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
+                selectedSubcategory === sub.id
+                  ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
+                  : 'text-on-surface-variant hover:bg-surface-container'
+              }`}
+            >
+              {sub.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* City & Localization Region filter */}
       <div className="bg-surface-container-lowest rounded-2xl p-3 shadow-sm border border-surface-container/50 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
           <MapPin className="w-4 h-4 text-outline shrink-0" />
           <select 
-            value={selectedCity}
-            onChange={(e) => { setSelectedCity(e.target.value); setPage(1); }}
-            className="bg-surface-container-low text-on-surface font-label-md text-xs px-2.5 py-1.5 rounded-lg focus:outline-none flex-1"
+            value={selectedRegion}
+            onChange={(e) => { setSelectedRegion(e.target.value); setPage(1); }}
+            className="bg-surface-container-low text-on-surface font-label-md text-xs px-2.5 py-1.5 rounded-lg focus:outline-none flex-1 cursor-pointer"
           >
-            <option value="all">Vsa prizorišča (Slovenija)</option>
-            <option value="ljubljana">Ljubljana</option>
-            <option value="maribor">Maribor</option>
-            <option value="celje">Celje</option>
-            <option value="kranj">Kranj</option>
-            <option value="koper">Koper & Obala</option>
-            <option value="novo mesto">Novo mesto</option>
-            <option value="bled">Bled</option>
-            <option value="ptuj">Ptuj</option>
+            <option value="all">Vsa prizorišča (Vsa Slovenija)</option>
+            {SLOVENIA_REGIONS.map(reg => (
+              <option key={reg.id} value={reg.id}>
+                {reg.name} ({reg.cities.slice(0, 2).join(', ')})
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex items-center gap-2">
@@ -183,18 +278,23 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
         </div>
       </div>
 
-      {/* 10 Event Cards initially */}
+      {/* Events List */}
       <div className="flex flex-col gap-space-md">
         {visibleEvents.length === 0 ? (
           <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50">
-            Ni najdenih dogodkov za izbrane kriterije.
+            Ni najdenih dogodkov za izbrane kriterije (kategorija, zvrst ali regija).
           </div>
         ) : (
           visibleEvents.map((item) => {
             if (item.type === 'firestore') {
               const event = item.data;
+              const isPromoted = checkEventPromoted(item);
+              const badgeType = event.promotionBadgeType || event.promotion?.badgeType || 'PROMO';
+
               return (
-                <article key={event.id} className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-3">
+                <article key={event.id} className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border hover:shadow-md transition-shadow flex flex-col gap-3 ${
+                  isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
+                }`}>
                   <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                     <div className="flex items-start gap-3 flex-1">
                       <a 
@@ -203,68 +303,142 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
                           e.preventDefault();
                           window.location.hash = `event-${event.id}`;
                         }}
-                        className="w-14 h-14 rounded-2xl bg-primary-container text-on-primary-container flex flex-col items-center justify-center font-bold shrink-0 border border-primary/20 cursor-pointer hover:opacity-90 transition-opacity"
-                        title="Odpri samostojno stran dogodka"
+                        className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex flex-col items-center justify-center shrink-0 border border-primary/20 cursor-pointer hover:scale-105 transition-transform"
+                        title="Prikaži samostojno stran tega dogodka"
                       >
-                        <span className="text-[10px] uppercase font-label-caps">DOG</span>
-                        <span className="text-base font-headline-lg font-black leading-none mt-0.5">★</span>
-                      </a>
-                      <div className="flex flex-col gap-1 flex-1">
-                        <span className="font-label-caps text-[10px] text-outline uppercase font-semibold">
-                          {event.category || 'Dogodek'} • {event.location || 'Slovenija'}
+                        <span className="font-headline-sm text-xs font-bold uppercase">
+                          {event.eventDate ? new Date(event.eventDate).toLocaleString('sl-SI', { month: 'short' }) : 'DOG'}
                         </span>
-                        <a
-                          href={`#event-${event.id}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            window.location.hash = `event-${event.id}`;
-                          }}
-                          className="block group/title cursor-pointer"
-                        >
-                          <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 group-hover/title:text-primary transition-colors">
+                        <span className="font-headline-lg text-sm font-extrabold leading-none">
+                          {event.eventDate ? new Date(event.eventDate).getDate() : '📅'}
+                        </span>
+                      </a>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          {isPromoted && (
+                            <PromotedBadge type={badgeType} size="sm" />
+                          )}
+                          <span className="px-2 py-0.5 rounded-md bg-surface-container font-label-caps text-[10px] font-bold text-outline">
+                            {event.categoryName || event.category || 'Dogodek'}
+                          </span>
+                          {event.subcategoryName && (
+                            <span className="px-2 py-0.5 rounded-md bg-primary/10 font-label-caps text-[10px] font-semibold text-primary">
+                              {event.subcategoryName}
+                            </span>
+                          )}
+                          <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-primary" /> {event.location || event.region || 'Slovenija'}
+                          </span>
+                          {event.authorName && (
+                            <>
+                              <span className="text-[10px] text-outline">•</span>
+                              <a
+                                href={`#author-${encodeURIComponent(event.authorName.replace(/\s+/g, '_'))}`}
+                                className="font-label-caps text-[10px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
+                                title={`Ogled profila organizatorja: ${event.authorName}`}
+                              >
+                                {event.authorName}
+                              </a>
+                            </>
+                          )}
+                        </div>
+                        <h2 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface hover:text-primary transition-colors cursor-pointer">
+                          <a 
+                            href={`#event-${event.id}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              window.location.hash = `event-${event.id}`;
+                            }}
+                          >
                             {event.title}
-                          </h3>
-                        </a>
-                        <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-0.5">
+                          </a>
+                        </h2>
+                        <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
                           {event.description}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 self-end sm:self-start">
+                    <div className="flex items-center gap-1 self-end sm:self-start">
                       <BookmarkButton 
-                        id={event.id} 
+                        id={event.id}
                         data={{
+                          id: event.id,
                           type: 'event',
-                          category: 'events',
                           title: event.title,
-                          price: event.price || 'Vstop prost',
-                          date: event.eventDate || event.date,
-                          location: event.location,
                           description: event.description,
-                          image: event.imageUrl,
+                          category: event.categoryName || event.category,
+                          location: event.location || event.region,
+                          eventDate: event.eventDate,
+                          price: event.price,
+                          imageUrl: event.imageUrl,
+                          author: event.authorName
                         }}
                       />
-                      <ShareMenu id={event.id} title={event.title} />
+                      <ShareMenu 
+                        title={event.title}
+                        description={event.description}
+                        type="event"
+                        id={event.id}
+                      />
+                      <ReportButton 
+                        targetId={event.id} 
+                        targetType="event" 
+                        targetTitle={event.title} 
+                        targetAuthor={event.authorName} 
+                      />
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
-                    <span className="flex items-center gap-1 text-primary font-semibold">
-                      <Calendar className="w-3.5 h-3.5" /> {event.eventDate || event.date || 'Ravno objavljeno'}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-headline-sm text-sm font-bold text-on-surface">
-                        {event.price || 'Vstop prost'}
+
+                  {event.imageUrl && (
+                    <a 
+                      href={`#event-${event.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.hash = `event-${event.id}`;
+                      }}
+                      className="w-full h-48 rounded-xl overflow-hidden bg-surface-container block cursor-pointer group"
+                      title="Poglej podrobnosti dogodka"
+                    >
+                      <img alt={event.title} className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300" src={event.imageUrl} />
+                    </a>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-label-md text-xs font-semibold text-primary">
+                        {event.price ? event.price : 'Vstop prost / Po dogovoru'}
                       </span>
-                      <a
+                      {event.authorName && (
+                        <>
+                          <span className="text-[10px] text-outline">•</span>
+                          <a
+                            href={`#author-${encodeURIComponent(event.authorName.replace(/\s+/g, '_'))}`}
+                            className="text-xs text-on-surface hover:text-primary hover:underline font-medium transition-colors"
+                            title={`Ogled profila: ${event.authorName}`}
+                          >
+                            {event.authorName}
+                          </a>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ShareMenu 
+                        title={event.title}
+                        description={event.description}
+                        type="event"
+                        id={event.id}
+                        showLabel={true}
+                        buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container inline-flex items-center gap-1"
+                      />
+                      <a 
                         href={`#event-${event.id}`}
                         onClick={(e) => {
                           e.preventDefault();
                           window.location.hash = `event-${event.id}`;
                         }}
-                        className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
-                        title="Poglej celotno stran dogodka"
+                        className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container"
                       >
-                        <span>Stran dogodka</span>
+                        Podrobnosti dogodka
                       </a>
                     </div>
                   </div>
@@ -272,9 +446,92 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
               );
             }
 
+            // Mock event item
             const event = item.data;
             return (
-              <article key={event.id} className="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col sm:flex-row">
+              <article key={event.id} className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 flex-1">
+                    <a 
+                      href={`#event-${event.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.hash = `event-${event.id}`;
+                      }}
+                      className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex flex-col items-center justify-center shrink-0 border border-primary/20 cursor-pointer hover:scale-105 transition-transform"
+                      title="Prikaži samostojno stran tega dogodka"
+                    >
+                      <span className="font-headline-sm text-xs font-bold uppercase">{event.month}</span>
+                      <span className="font-headline-lg text-sm font-extrabold leading-none">{event.day}</span>
+                    </a>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 rounded-md bg-surface-container font-label-caps text-[10px] font-bold text-outline">
+                          {event.categoryName}
+                        </span>
+                        <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-primary" /> {event.location}
+                        </span>
+                        {event.organizer && (
+                          <>
+                            <span className="text-[10px] text-outline">•</span>
+                            <a
+                              href={`#author-${encodeURIComponent(event.organizer.replace(/\s+/g, '_'))}`}
+                              className="font-label-caps text-[10px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
+                              title={`Ogled profila organizatorja: ${event.organizer}`}
+                            >
+                              {event.organizer}
+                            </a>
+                          </>
+                        )}
+                      </div>
+                      <h2 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface hover:text-primary transition-colors cursor-pointer">
+                        <a 
+                          href={`#event-${event.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.location.hash = `event-${event.id}`;
+                          }}
+                        >
+                          {event.title}
+                        </a>
+                      </h2>
+                      <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
+                        {event.description}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 self-end sm:self-start">
+                    <BookmarkButton 
+                      id={event.id}
+                      data={{
+                        id: event.id,
+                        type: 'event',
+                        title: event.title,
+                        description: event.description,
+                        category: event.categoryName,
+                        location: event.location,
+                        eventDate: `${event.day}. ${event.month}`,
+                        price: event.price,
+                        imageUrl: event.image,
+                        author: event.organizer
+                      }}
+                    />
+                    <ShareMenu 
+                      title={event.title}
+                      description={event.description}
+                      type="event"
+                      id={event.id}
+                    />
+                    <ReportButton 
+                      targetId={event.id} 
+                      targetType="event" 
+                      targetTitle={event.title} 
+                      targetAuthor={event.organizer} 
+                    />
+                  </div>
+                </div>
+
                 {event.image && (
                   <a 
                     href={`#event-${event.id}`}
@@ -282,77 +539,50 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
                       e.preventDefault();
                       window.location.hash = `event-${event.id}`;
                     }}
-                    className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
-                    title="Odpri samostojno stran dogodka"
+                    className="w-full h-48 rounded-xl overflow-hidden bg-surface-container block cursor-pointer group"
+                    title="Poglej podrobnosti dogodka"
                   >
-                    <img alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={event.image} />
-                    <div className="absolute top-2 left-2 bg-surface-container-lowest/90 backdrop-blur-md rounded-xl p-1.5 text-center min-w-[44px] shadow-sm border border-black/5">
-                      <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{event.month}</div>
-                      <div className="text-base font-black text-on-surface leading-none mt-0.5">{event.day}</div>
-                    </div>
+                    <img alt={event.title} className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300" src={event.image} />
                   </a>
                 )}
-                <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-label-caps text-[11px] text-primary font-semibold uppercase tracking-wider">
-                        {event.categoryName}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <BookmarkButton 
-                          id={event.id} 
-                          data={{
-                            type: 'event',
-                            category: 'events',
-                            title: event.title,
-                            price: event.price || 'Vstop prost',
-                            date: event.date,
-                            location: event.location,
-                            description: event.description,
-                            image: event.image,
-                          }}
-                        />
-                        <ShareMenu id={event.id} title={event.title} />
-                      </div>
-                    </div>
-                    <a
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-label-md text-xs font-semibold text-primary">
+                      {event.price}
+                    </span>
+                    {event.organizer && (
+                      <>
+                        <span className="text-[10px] text-outline">•</span>
+                        <a
+                          href={`#author-${encodeURIComponent(event.organizer.replace(/\s+/g, '_'))}`}
+                          className="text-xs text-on-surface hover:text-primary hover:underline font-medium transition-colors"
+                          title={`Ogled profila organizatorja: ${event.organizer}`}
+                        >
+                          {event.organizer}
+                        </a>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ShareMenu 
+                      title={event.title}
+                      description={event.description}
+                      type="event"
+                      id={event.id}
+                      showLabel={true}
+                      buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container inline-flex items-center gap-1"
+                    />
+                    <a 
                       href={`#event-${event.id}`}
                       onClick={(e) => {
                         e.preventDefault();
                         window.location.hash = `event-${event.id}`;
                       }}
-                      className="block group/title cursor-pointer"
+                      className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container"
                     >
-                      <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
-                        {event.title}
-                      </h3>
+                      Podrobnosti dogodka
                     </a>
-                    <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">
-                      {event.description}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-primary" /> {event.location}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-headline-sm text-sm font-bold text-primary">{event.price || 'Vstop prost'}</span>
-                      <a
-                        href={`#event-${event.id}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          window.location.hash = `event-${event.id}`;
-                        }}
-                        className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
-                        title="Poglej celotno stran dogodka"
-                      >
-                        <span>Stran dogodka</span>
-                      </a>
-                      <button className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer">
-                        <Star className="w-3 h-3" />
-                        <span>Zanima me ({event.interestedCount})</span>
-                      </button>
-                    </div>
                   </div>
                 </div>
               </article>
@@ -387,6 +617,6 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
         onClose={() => setIsComposeOpen(false)} 
         initialType="event" 
       />
-    </main>
+    </div>
   );
 }

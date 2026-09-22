@@ -74,7 +74,11 @@ export function RightSidebarBlog({ onNavigatePost }: RightSidebarBlogProps) {
   ];
 
   return (
-    <aside className="hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6">
+    <aside 
+      id="right-sidebar" 
+      data-sidebar="right" 
+      className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
+    >
       
       {/* 1. Postani avtor / Deli svojo zgodbo CTA */}
       <div className="bg-gradient-to-br from-primary/10 via-surface-container-lowest to-surface-container-lowest rounded-2xl p-4 sm:p-5 shadow-sm border border-primary/20 flex flex-col gap-3 relative overflow-hidden">

@@ -1,7 +1,10 @@
 import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
+import { ReportButton } from "../ReportButton";
 import { MapPin, Phone } from 'lucide-react';
+import { PromotedBadge } from "../common/PromotedBadge";
+import { PromotionBadgeType } from "../../types";
 
 export interface AdPostProps {
   id?: string;
@@ -17,6 +20,8 @@ export interface AdPostProps {
   image?: string;
   images?: string[];
   status?: string;
+  isPromoted?: boolean;
+  promotionBadgeType?: PromotionBadgeType;
 }
 
 export const AdPost: React.FC<AdPostProps> = ({ 
@@ -33,6 +38,8 @@ export const AdPost: React.FC<AdPostProps> = ({
   image,
   images,
   status = "Aktivno",
+  isPromoted = false,
+  promotionBadgeType = 'PROMO',
 }) => {
   const displayImage = image || (images && images.length > 0 ? images[0] : "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=600&auto=format&fit=crop&q=80");
   const displayCategory = categoryName || category || 'Oglas';
@@ -48,7 +55,9 @@ export const AdPost: React.FC<AdPostProps> = ({
   };
 
   return (
-    <article className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/50 shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row">
+    <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row ${
+      isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
+    }`}>
       {displayImage && (
         <a 
           href={`#ad-${id}`}
@@ -60,9 +69,14 @@ export const AdPost: React.FC<AdPostProps> = ({
           title="Odpri samostojno stran tega malega oglasa"
         >
           <img alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={displayImage} />
-          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
-            {displayCategory}
-          </span>
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
+            {isPromoted && (
+              <PromotedBadge type={promotionBadgeType} size="sm" />
+            )}
+            <span className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
+              {displayCategory}
+            </span>
+          </div>
         </a>
       )}
       <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
@@ -74,7 +88,13 @@ export const AdPost: React.FC<AdPostProps> = ({
                 id={id} 
                 data={bookmarkData}
               />
-              <ShareMenu id={id} title={title} />
+              <ShareMenu id={id} type="ad" title={title} description={description} />
+              <ReportButton 
+                targetId={id} 
+                targetType="ad" 
+                targetTitle={title} 
+                targetAuthor={author} 
+              />
             </div>
           </div>
           <a
@@ -92,21 +112,35 @@ export const AdPost: React.FC<AdPostProps> = ({
           <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{description}</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
-          <span className="flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5 text-primary" /> {location} • {date}
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {author && (
+              <>
+                <a
+                  href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+                  className="inline-flex items-center gap-1.5 font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
+                  title={`Ogled profila prodajalca: ${author}`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] shrink-0">
+                    {authorInitials || author.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span>{author}</span>
+                </a>
+                <span>•</span>
+              </>
+            )}
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-primary" /> {location} • {date}
+            </span>
+          </div>
           <div className="flex items-center gap-2">
-            <a
-              href={`#ad-${id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.hash = `ad-${id}`;
-              }}
-              className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
-              title="Poglej celotno stran oglasa"
-            >
-              <span>Stran oglasa</span>
-            </a>
+            <ShareMenu 
+              id={id} 
+              type="ad" 
+              title={title} 
+              description={description} 
+              showLabel={true} 
+              buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
+            />
             <button 
               onClick={() => {
                 window.location.hash = `ad-${id}`;

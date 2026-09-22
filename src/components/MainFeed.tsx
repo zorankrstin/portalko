@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Edit2, Store, Percent, Calendar, FileText, Rss, ShoppingBag, Flame, CalendarDays, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { Edit2, Store, Percent, Calendar, FileText, Rss, ShoppingBag, Flame, CalendarDays, ArrowUpDown, ChevronDown, Globe } from 'lucide-react';
 import { BlogPost } from './posts/BlogPost';
 import { AdPost } from './posts/AdPost';
 import { DealPost } from './posts/DealPost';
@@ -15,6 +15,7 @@ import { subscribeToPosts, subscribeToAds, subscribeToEvents, FirestorePost, Fir
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
 import { INITIAL_DEALS, DealItem } from '../data/mockDealsData';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
+import { isItemActivelyPromoted } from '../services/promotionService';
 
 type FeedItemKind = 
   | { type: 'firestore'; data: FirestorePost }
@@ -204,6 +205,27 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       }
 
       return matchesSearchAndCategory(textToMatch, cat, searchQuery);
+    }).sort((a, b) => {
+      const checkItemPromoted = (item: FeedItemKind): boolean => {
+        const d: any = item.data;
+        if (d.promotion) {
+          return isItemActivelyPromoted(d.promotion);
+        }
+        if (d.isPromoted) {
+          if (d.promotedUntil) {
+            return new Date(d.promotedUntil).getTime() > Date.now();
+          }
+          return true;
+        }
+        return false;
+      };
+
+      const aPromoted = checkItemPromoted(a);
+      const bPromoted = checkItemPromoted(b);
+
+      if (aPromoted && !bPromoted) return -1;
+      if (!aPromoted && bPromoted) return 1;
+      return 0;
     });
   }, [masterFeedItems, filterType, searchQuery]);
 
@@ -249,7 +271,18 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
   const firstName = currentUser ? currentUser.name.split(' ')[0] : 'obiskovalec';
 
   return (
-    <main className="lg:col-span-6 flex flex-col gap-space-md">
+    <div className="flex flex-col gap-space-md">
+      {/* Glavni naslov portala za SEO in dostopnost */}
+      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-1">
+        <h1 className="font-headline-sm text-lg sm:text-xl font-bold text-on-surface flex items-center gap-2">
+          <Globe className="w-5 h-5 text-primary shrink-0" />
+          <span>Slovenski portal – Novice, Mali oglasi in Dogodki</span>
+        </h1>
+        <p className="font-body-sm text-xs sm:text-sm text-outline">
+          Aktualna obvestila, lokalno dogajanje, ugodnosti in mali oglasi iz vseh slovenskih regij na enem mestu.
+        </p>
+      </div>
+
       {/* Hitro ustvarjanje objave (Composer Widget) */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3">
         <div className="flex items-center gap-3">
@@ -405,6 +438,11 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
             }
             if (item.type === 'firestore_ad') {
               const ad = item.data;
+              const isPromoted = Boolean(
+                ad.promotion 
+                  ? isItemActivelyPromoted(ad.promotion, 'oglasi')
+                  : (ad.isPromoted && (!ad.promotedUntil || new Date(ad.promotedUntil).getTime() > Date.now()))
+              );
               return (
                 <AdPost
                   key={`f-ad-${ad.id}-${idx}`}
@@ -418,11 +456,18 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   description={ad.description}
                   categoryName={ad.category || 'Mali oglas'}
                   image={ad.imageUrl}
+                  isPromoted={isPromoted}
+                  promotionBadgeType={ad.promotionBadgeType || ad.promotion?.badgeType}
                 />
               );
             }
             if (item.type === 'firestore_event') {
               const ev = item.data;
+              const isPromoted = Boolean(
+                ev.promotion 
+                  ? isItemActivelyPromoted(ev.promotion, 'dogodki')
+                  : (ev.isPromoted && (!ev.promotedUntil || new Date(ev.promotedUntil).getTime() > Date.now()))
+              );
               return (
                 <EventPost
                   key={`f-ev-${ev.id}-${idx}`}
@@ -437,6 +482,8 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   price={ev.price || 'Vstop prost'}
                   description={ev.description}
                   image={ev.imageUrl}
+                  isPromoted={isPromoted}
+                  promotionBadgeType={ev.promotionBadgeType || ev.promotion?.badgeType}
                 />
               );
             }
@@ -571,6 +618,6 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
         onClose={() => setIsComposeOpen(false)} 
         initialType={composeType}
       />
-    </main>
+    </div>
   );
 }

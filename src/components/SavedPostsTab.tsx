@@ -130,10 +130,10 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
       {/* Title & total count */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <div>
-          <h2 className="font-headline-sm text-xl font-bold text-on-surface flex items-center gap-2">
+          <h1 className="font-headline-sm text-xl font-bold text-on-surface flex items-center gap-2">
             <Bookmark className="w-5 h-5 text-primary" />
             Shranjene objave ({savedIds.length})
-          </h2>
+          </h1>
           <p className="font-body-sm text-xs text-outline">
             Vse vaše zaznamovane novice, oglasi, dogodki in blog zapisi na enem mestu.
           </p>

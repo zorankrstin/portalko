@@ -8,6 +8,7 @@ export interface MockBlogItem {
   location: string;
   description: string;
   image: string;
+  images?: string[];
   readTime: string;
   photoCount: string;
   likesCount: string;
@@ -28,6 +29,7 @@ export interface MockAdItem {
   categoryName: string;
   category: string;
   image: string;
+  images?: string[];
   views?: number;
 }
 
@@ -45,6 +47,7 @@ export interface MockEventItem {
   price?: string;
   description: string;
   image?: string;
+  images?: string[];
   interestedCount: string | number;
 }
 
@@ -70,6 +73,12 @@ export const INITIAL_BLOG_POSTS: MockBlogItem[] = [
     location: "Dolina Soče, Bovec",
     description: "Pomlad ob smaragdni reki ponuja popolno tišino pred glavno turistično sezono. Odkrili smo manj znane slapove, neobljudene tolmunčke v Trenti ter domačo sirarno v vasi Čezsoča, kjer še vedno ohranjajo stoletno tradicijo izdelave bovškega sira.",
     image: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1439853949127-fa647821eea0?w=1000&auto=format&fit=crop&q=80"
+    ],
     readTime: "5 min branja",
     photoCount: "8 fotografij",
     likesCount: "84",
@@ -415,6 +424,12 @@ export const INITIAL_ADS: MockAdItem[] = [
     categoryName: "Telefonija & Tehnika",
     category: "tech",
     image: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800&auto=format&fit=crop&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1580910051074-3eb694886505?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1565849904461-04a58ad377e0?w=1000&auto=format&fit=crop&q=80"
+    ],
     views: 420
   },
   {
@@ -429,6 +444,11 @@ export const INITIAL_ADS: MockAdItem[] = [
     categoryName: "Avto-moto",
     category: "auto",
     image: "https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?w=800&auto=format&fit=crop&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=1000&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1000&auto=format&fit=crop&q=80"
+    ],
     views: 980
   },
   {

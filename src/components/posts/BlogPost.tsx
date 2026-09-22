@@ -1,7 +1,10 @@
 import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
+import { ReportButton } from "../ReportButton";
 import { BookOpen, MoreHorizontal, Camera, Heart, MessageCircle, Eye, ArrowRight } from 'lucide-react';
+import { PromotedBadge } from "../common/PromotedBadge";
+import { PromotionBadgeType } from "../../types";
 
 export interface BlogPostProps {
   id?: string;
@@ -20,6 +23,8 @@ export interface BlogPostProps {
   commentsCount?: string;
   viewsCount?: string;
   tags?: string[];
+  isPromoted?: boolean;
+  promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: { type: 'blog'; id: string }) => void;
 }
 
@@ -40,6 +45,8 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   commentsCount = "19 komentarjev",
   viewsCount = "1.420 ogledov",
   tags = ["turizem", "slovenija", "izlet", "socaValley"],
+  isPromoted = false,
+  promotionBadgeType = 'PROMO',
   onNavigatePost,
 }) => {
   const finalDesc = excerpt || description;
@@ -69,13 +76,27 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   };
 
   return (
-    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm group/article">
+    <article className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border hover:shadow-md transition-shadow flex flex-col gap-space-sm group/article ${
+      isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
+    }`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img className="w-11 h-11 rounded-full object-cover ring-1 ring-black/5" src={authorAvatar} alt={author} />
+          <a
+            href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+            className="group/avatar shrink-0 focus:outline-none"
+            title={`Ogled profila avtorja: ${author}`}
+          >
+            <img className="w-11 h-11 rounded-full object-cover ring-1 ring-black/5 group-hover/avatar:ring-2 group-hover/avatar:ring-primary transition-all" src={authorAvatar} alt={author} />
+          </a>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-headline-sm text-sm font-bold text-on-surface">{author}</h3>
+              <a
+                href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+                className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors"
+                title={`Ogled profila avtorja: ${author}`}
+              >
+                {author}
+              </a>
               <span className="font-label-caps text-label-caps bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded-md">{authorRole}</span>
             </div>
             <p className="font-body-sm text-xs text-outline flex items-center gap-1">
@@ -90,11 +111,20 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {isPromoted && (
+            <PromotedBadge type={promotionBadgeType} size="sm" />
+          )}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-fixed text-on-primary-fixed font-label-caps text-label-caps font-bold">
             <BookOpen className="w-[1em] h-[1em] text-xs" /> Blog
           </span>
           <BookmarkButton id={id} data={bookmarkData} />
-          <ShareMenu id={id} title={title} />
+          <ShareMenu id={id} type="blog" title={title} description={description} />
+          <ReportButton 
+            targetId={id || ''} 
+            targetType="post" 
+            targetTitle={title || ''} 
+            targetAuthor={author} 
+          />
           <button className="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container" type="button">
             <MoreHorizontal className="w-[1em] h-[1em] text-lg" />
           </button>
@@ -161,6 +191,14 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             <Eye className="w-[1em] h-[1em] text-base" />
             <span>{viewsCount}</span>
           </span>
+          <ShareMenu
+            id={id}
+            type="blog"
+            title={title}
+            description={description}
+            showLabel={true}
+            buttonClassName="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer text-on-surface-variant font-label-md text-xs"
+          />
         </div>
 
         <div className="flex items-center gap-2">

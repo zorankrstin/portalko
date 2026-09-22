@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
+import { ReportButton } from "../ReportButton";
 import { Copy, Check, ArrowRight, Sparkles, CheckCircle2, Clock, MapPin, ThumbsUp } from 'lucide-react';
+import { PromotedBadge } from "../common/PromotedBadge";
+import { PromotionBadgeType } from "../../types";
 
 export interface DealPostProps {
   id?: string;
@@ -20,6 +23,8 @@ export interface DealPostProps {
   region?: string;
   verifiedText?: string;
   featured?: boolean;
+  isPromoted?: boolean;
+  promotionBadgeType?: PromotionBadgeType;
 }
 
 export const DealPost: React.FC<DealPostProps> = ({ 
@@ -39,6 +44,8 @@ export const DealPost: React.FC<DealPostProps> = ({
   region = "Vsa Slovenija / Splet",
   verifiedText = "Preverjeno danes",
   featured = false,
+  isPromoted = false,
+  promotionBadgeType = 'PROMO',
 }) => {
   const [copied, setCopied] = useState(false);
   const [votes, setVotes] = useState(votesCount);
@@ -83,7 +90,9 @@ export const DealPost: React.FC<DealPostProps> = ({
 
   return (
     <article 
-      className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/60 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group"
+      className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group ${
+        isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60'
+      }`}
     >
       {/* PHOTO CONTAINER */}
       <a 
@@ -104,11 +113,14 @@ export const DealPost: React.FC<DealPostProps> = ({
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent sm:hidden"></div>
         
         {/* Badges on image */}
-        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+          {isPromoted && (
+            <PromotedBadge type={promotionBadgeType} size="sm" />
+          )}
           <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
             {categoryName}
           </span>
-          {featured && (
+          {featured && !isPromoted && (
             <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
               <Sparkles className="w-2.5 h-2.5" />
               Top
@@ -127,19 +139,29 @@ export const DealPost: React.FC<DealPostProps> = ({
           {/* Header Row: Partner info, role, and actions */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
-              <img 
-                src={avatarSrc} 
-                alt={author}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 shrink-0 shadow-xs"
-                loading="lazy"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`;
-                }}
-              />
+              <a
+                href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+                className="shrink-0 group/avatar focus:outline-none"
+                title={`Ogled profila partnerja: ${author}`}
+              >
+                <img 
+                  src={avatarSrc} 
+                  alt={author}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shrink-0 shadow-xs transition-all"
+                  loading="lazy"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`;
+                  }}
+                />
+              </a>
               <div className="flex items-center gap-2 flex-wrap min-w-0">
-                <span className="font-label-lg text-xs sm:text-sm font-bold text-on-surface truncate">
+                <a
+                  href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+                  className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
+                  title={`Ogled profila partnerja: ${author}`}
+                >
                   {author}
-                </span>
+                </a>
                 {authorRole && (
                   <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold shrink-0">
                     {authorRole}
@@ -153,7 +175,13 @@ export const DealPost: React.FC<DealPostProps> = ({
                 id={id} 
                 data={bookmarkData}
               />
-              <ShareMenu id={id} title={title} />
+              <ShareMenu id={id} type="deal" title={title} description={description} />
+              <ReportButton 
+                targetId={id} 
+                targetType="deal" 
+                targetTitle={title} 
+                targetAuthor={author} 
+              />
             </div>
           </div>
 
@@ -242,6 +270,14 @@ export const DealPost: React.FC<DealPostProps> = ({
             )}
 
             <div className="flex items-center gap-2 ml-auto">
+              <ShareMenu 
+                id={id} 
+                type="deal" 
+                title={title} 
+                description={description} 
+                showLabel={true} 
+                buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
+              />
               <a
                 href={`#deal-${id}`}
                 onClick={(e) => {

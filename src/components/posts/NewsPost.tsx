@@ -53,7 +53,7 @@ export const NewsPost: React.FC<NewsPostProps> = ({
             <ExternalLink className="w-[1em] h-[1em] text-xs" />
           </a>
           <BookmarkButton id={id} data={bookmarkData} />
-          <ShareMenu id={id} />
+          <ShareMenu id={id} url={link} type="news" title={title} description={summary} />
         </div>
       </div>
       

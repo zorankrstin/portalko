@@ -16,34 +16,63 @@ import {
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { User, Role } from '../contexts/AuthContext';
 import { SavedItemData } from '../contexts/BookmarkContext';
+import { INITIAL_DEALS, HERO_BENTO_DEALS } from '../data/mockDealsData';
+import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
+import { PromotionConfig, PromotionTargetSection, PromotionBadgeType } from '../types';
 
 /**
  * Sanitizes an object before calling Firestore updateDoc:
  * - Converts `rejectionReason: undefined` (or any other field where undefined signifies removal) into `deleteField()`
- * - Strips out any remaining `undefined` properties so Firestore updateDoc never throws "Unsupported field value: undefined"
+ * - Recursively cleans nested objects and arrays so Firestore updateDoc never throws "Unsupported field value: undefined"
  */
 export function sanitizeUpdateData(data: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) {
-      if (key === 'rejectionReason') {
+      if (key === 'rejectionReason' || key === 'promotion' || key === 'promotedUntil' || key === 'promotionBadgeType') {
         result[key] = deleteField();
       }
       // Omit all other undefined fields so Firestore doesn't reject them
       continue;
     }
-    result[key] = value;
+    if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+      if (Array.isArray(value)) {
+        result[key] = value.map(item => 
+          item !== null && typeof item === 'object' && !(item instanceof Date)
+            ? cleanDataForFirestore(item)
+            : item
+        ).filter(item => item !== undefined);
+      } else {
+        // Nested object (e.g. promotion: { targetCategory: undefined, targetSubcategory: undefined })
+        result[key] = cleanDataForFirestore(value);
+      }
+    } else {
+      result[key] = value;
+    }
   }
   return result;
 }
 
 /**
- * Strips out keys with undefined values before setDoc.
+ * Strips out keys with undefined values before setDoc or as nested object sanitizer.
+ * Recursively cleans nested objects and arrays.
  */
 export function cleanDataForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
   const cleaned: Record<string, any> = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
+    if (value === undefined) continue;
+
+    if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+      if (Array.isArray(value)) {
+        cleaned[key] = value.map(item =>
+          item !== null && typeof item === 'object' && !(item instanceof Date)
+            ? cleanDataForFirestore(item)
+            : item
+        ).filter(item => item !== undefined);
+      } else {
+        cleaned[key] = cleanDataForFirestore(value);
+      }
+    } else {
       cleaned[key] = value;
     }
   }
@@ -55,17 +84,28 @@ export interface FirestorePost {
   title: string;
   content: string;
   category: string;
+  categoryName?: string;
+  subcategory?: string;
+  subcategoryName?: string;
   authorId: string;
   authorName: string;
   authorAvatar?: string;
   authorRole?: string;
   imageUrl?: string;
+  images?: string[];
+  imageUrls?: string[];
   price?: string;
   location?: string;
+  region?: string;
   status?: 'published' | 'pending' | 'rejected' | 'archived';
   rejectionReason?: string;
   likesCount?: number;
   commentsCount?: number;
+  // Promotion / Featured Post fields
+  isPromoted?: boolean;
+  promotion?: PromotionConfig;
+  promotedUntil?: string;
+  promotionBadgeType?: PromotionBadgeType;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -75,15 +115,27 @@ export interface FirestoreAd {
   title: string;
   description: string;
   category: string;
+  categoryName?: string;
+  subcategory?: string;
+  subcategoryName?: string;
   price: string;
   location: string;
+  region?: string;
   phone?: string;
   authorId: string;
   authorName: string;
   authorRole?: string;
+  authorAvatar?: string;
   imageUrl?: string;
+  images?: string[];
+  imageUrls?: string[];
   status: 'active' | 'sold' | 'closed' | 'pending' | 'rejected';
   rejectionReason?: string;
+  // Promotion / Featured Post fields
+  isPromoted?: boolean;
+  promotion?: PromotionConfig;
+  promotedUntil?: string;
+  promotionBadgeType?: PromotionBadgeType;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -93,15 +145,25 @@ export interface FirestoreEvent {
   title: string;
   description: string;
   location: string;
+  region?: string;
   eventDate?: string;
   date?: string;
   price?: string;
   category: string;
+  categoryName?: string;
+  subcategory?: string;
+  subcategoryName?: string;
   authorId: string;
   authorName: string;
   authorRole?: string;
+  authorAvatar?: string;
   imageUrl?: string;
+  images?: string[];
+  imageUrls?: string[];
   isPromoted?: boolean;
+  promotion?: PromotionConfig;
+  promotedUntil?: string;
+  promotionBadgeType?: PromotionBadgeType;
   status?: 'published' | 'pending' | 'rejected';
   rejectionReason?: string;
   createdAt?: any;
@@ -294,15 +356,53 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
 
 // ---------------- POSTS OPERATIONS ----------------
 
+export const KNOWN_ADMIN_IDS = new Set(['admin', 'u1', 'superadmin', 'AABsRoeGCgaddFMh9S2cZqN9CaG3']);
+export const KNOWN_ADMIN_NAMES = new Set(['superadmin', 'zoran krstin', 'uredništvo', 'administrator', 'admin']);
+
+export function isUserAdminIdentity(id?: string, name?: string, role?: string): boolean {
+  if (id && (KNOWN_ADMIN_IDS.has(id) || (auth.currentUser && id === auth.currentUser.uid))) return true;
+  if (name && KNOWN_ADMIN_NAMES.has(name.trim().toLowerCase())) return true;
+  if (role === 'superadmin' || role === 'admin') return true;
+  return false;
+}
+
 export function subscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () => void {
   const path = 'posts';
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
-      const posts: FirestorePost[] = snapshot.docs.map(d => ({
-        id: d.id,
-        ...(d.data() as Omit<FirestorePost, 'id'>),
-      }));
+      const allMockDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
+      const posts: FirestorePost[] = snapshot.docs.map(d => {
+        const item = {
+          id: d.id,
+          ...(d.data() as Omit<FirestorePost, 'id'>),
+        };
+        const mockDeal = allMockDeals.find(x => x.id === item.id);
+        const baseBlogId = item.id.replace(/-p\d+$/, '');
+        const mockBlog = INITIAL_BLOG_POSTS.find(x => x.id === item.id || x.id === baseBlogId);
+
+        // Sanitize mock deals if they were edited: ensure they stay in Ugodnosti and keep partner as author
+        if (mockDeal) {
+          if (item.category === 'blog' || item.category === 'post' || !item.category) {
+            item.category = mockDeal.category || 'deal';
+            item.categoryName = mockDeal.categoryName || 'Ugodnosti';
+          }
+          if (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName) {
+            item.authorName = mockDeal.partner;
+            item.authorRole = mockDeal.partnerRole || 'Preverjen trgovec';
+            item.authorAvatar = mockDeal.partnerAvatar || '';
+            item.authorId = `partner-${mockDeal.partner.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+          }
+        } else if (mockBlog) {
+          if (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName) {
+            item.authorName = mockBlog.author;
+            item.authorRole = 'Avtor';
+            item.authorAvatar = mockBlog.authorAvatar || '';
+            item.authorId = `author-${mockBlog.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+          }
+        }
+        return item;
+      });
       onPosts(posts);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
@@ -338,28 +438,129 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
   try {
     const postRef = doc(db, 'posts', postId);
     const snap = await getDoc(postRef);
+
+    const allMockDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
+    const mockDeal = allMockDeals.find(d => d.id === postId);
+    const baseBlogId = postId.replace(/-p\d+$/, '');
+    const mockBlog = INITIAL_BLOG_POSTS.find(b => b.id === postId || b.id === baseBlogId);
+
+    const isDeal = Boolean(mockDeal) || 
+                   postId.startsWith('deal-') || 
+                   postId.startsWith('hero-bento-') || 
+                   data.category === 'deal' || 
+                   data.category === 'ugodnosti' || 
+                   data.category?.startsWith('deal') || 
+                   data.categoryName === 'Ugodnosti' || 
+                   data.categoryName === 'Ugodnost' ||
+                   Boolean(data.price && data.category !== 'ad' && data.category !== 'event');
+
     if (!snap.exists()) {
-      await setDoc(postRef, cleanDataForFirestore({
+      // Determine authentic original author (NEVER default to the editing admin/superadmin!)
+      const originalAuthorName = (data.authorName && data.authorName !== auth.currentUser?.displayName && data.authorName !== 'Superadmin')
+        ? data.authorName
+        : mockDeal?.partner || mockBlog?.author || data.authorName || 'Uporabnik';
+
+      const originalAuthorId = (data.authorId && data.authorId !== auth.currentUser?.uid && data.authorId !== 'admin')
+        ? data.authorId
+        : mockDeal
+          ? `partner-${mockDeal.partner.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+          : mockBlog
+            ? `author-${mockBlog.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+            : (originalAuthorName ? `author-${originalAuthorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}` : `original-author-${postId}`);
+
+      const originalAuthorRole = (data.authorRole && data.authorRole !== 'superadmin' && data.authorRole !== 'admin')
+        ? data.authorRole
+        : mockDeal?.partnerRole || (mockBlog ? 'Avtor' : 'Član skupnosti');
+
+      const originalAuthorAvatar = data.authorAvatar || mockDeal?.partnerAvatar || (mockBlog as any)?.authorAvatar || '';
+
+      const finalCategory = isDeal
+        ? (data.category && data.category !== 'blog' && data.category !== 'post' && data.category !== 'splosno' ? data.category : (mockDeal?.category || 'deal'))
+        : (data.category && data.category !== 'splosno' ? data.category : ((mockBlog as any)?.category || data.category || 'splosno'));
+
+      const finalCategoryName = isDeal
+        ? (data.categoryName || mockDeal?.categoryName || 'Ugodnosti')
+        : (data.categoryName || (mockBlog as any)?.categoryName || 'Blog');
+
+      const newPostPayload = cleanDataForFirestore({
+        ...data,
         id: postId,
-        title: data.title || 'Objava',
-        content: data.content || '',
-        category: data.category || 'splosno',
-        authorId: data.authorId || auth.currentUser?.uid || 'admin',
-        authorName: data.authorName || auth.currentUser?.displayName || 'Uredništvo',
-        authorRole: data.authorRole || 'superadmin',
+        title: data.title || mockDeal?.title || mockBlog?.title || 'Objava',
+        content: data.content || mockDeal?.description || mockBlog?.description || '',
+        category: finalCategory,
+        categoryName: finalCategoryName,
         status: data.status || 'published',
-        imageUrl: data.imageUrl || '',
-        price: data.price || '',
-        location: data.location || '',
-        likesCount: data.likesCount || 0,
+        imageUrl: data.imageUrl || mockDeal?.image || mockBlog?.image || '',
+        price: data.price || (mockDeal ? (mockDeal.discount || (mockDeal as any).price) : '') || '',
+        location: data.location || (mockDeal ? mockDeal.region : '') || '',
+        likesCount: data.likesCount || (mockDeal?.votes) || 0,
         commentsCount: data.commentsCount || 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        ...data,
-      }));
+      });
+
+      // Strict enforcement: Original author and category cannot be overwritten
+      newPostPayload.authorId = originalAuthorId;
+      newPostPayload.authorName = originalAuthorName;
+      newPostPayload.authorRole = originalAuthorRole;
+      newPostPayload.authorAvatar = originalAuthorAvatar;
+      newPostPayload.category = finalCategory;
+      newPostPayload.categoryName = finalCategoryName;
+
+      await setDoc(postRef, newPostPayload);
     } else {
+      const existing = snap.data() as FirestorePost;
+      const safeData = { ...data };
+
+      // STRICT REQUIREMENT: Original author MUST remain the same after post has been edited by superadmin or admin
+      delete safeData.authorId;
+      delete safeData.authorName;
+      delete safeData.authorRole;
+      delete safeData.authorAvatar;
+      delete safeData.createdAt;
+
+      // STRICT REQUIREMENT: The edited post must always stay in same original category
+      const existingIsDeal = existing.category === 'deal' || 
+                             existing.category === 'ugodnosti' || 
+                             existing.category?.startsWith('deal') || 
+                             existing.categoryName === 'Ugodnosti' || 
+                             existing.categoryName === 'Ugodnost' ||
+                             isDeal;
+
+      if (existingIsDeal) {
+        // If it was in Ugodnosti, prevent it from ever being changed to 'blog' or 'post'
+        if (!safeData.category || safeData.category === 'blog' || safeData.category === 'post' || safeData.category === 'splosno') {
+          safeData.category = existing.category && existing.category !== 'blog' && existing.category !== 'post' ? existing.category : 'deal';
+        }
+        safeData.categoryName = existing.categoryName && existing.categoryName !== 'Blog' ? existing.categoryName : 'Ugodnosti';
+      } else if (existing.category) {
+        // If update provided a fallback or empty category, stay in existing category
+        if (!safeData.category || (safeData.category === 'blog' && existing.category !== 'blog')) {
+          safeData.category = existing.category;
+        }
+        if (existing.categoryName && !safeData.categoryName) {
+          safeData.categoryName = existing.categoryName;
+        }
+      }
+
+      // Auto-heal if existing doc in Firestore had author previously overwritten to admin/superadmin
+      const currentAuthorIsAdmin = isUserAdminIdentity(existing.authorId, existing.authorName, existing.authorRole);
+      if (mockDeal && (currentAuthorIsAdmin || existing.category === 'blog' || existing.category === 'post')) {
+        safeData.authorName = mockDeal.partner;
+        safeData.authorRole = mockDeal.partnerRole || 'Preverjen trgovec';
+        safeData.authorAvatar = mockDeal.partnerAvatar || '';
+        safeData.authorId = `partner-${mockDeal.partner.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        safeData.category = mockDeal.category || 'deal';
+        safeData.categoryName = mockDeal.categoryName || 'Ugodnosti';
+      } else if (mockBlog && currentAuthorIsAdmin) {
+        safeData.authorName = mockBlog.author;
+        safeData.authorRole = 'Avtor';
+        safeData.authorAvatar = mockBlog.authorAvatar || '';
+        safeData.authorId = `author-${mockBlog.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      }
+
       await updateDoc(postRef, sanitizeUpdateData({
-        ...data,
+        ...safeData,
         updatedAt: new Date().toISOString(),
       }));
     }
@@ -401,10 +602,20 @@ export function subscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void 
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
-      const ads: FirestoreAd[] = snapshot.docs.map(d => ({
-        id: d.id,
-        ...(d.data() as Omit<FirestoreAd, 'id'>),
-      }));
+      const ads: FirestoreAd[] = snapshot.docs.map(d => {
+        const item = {
+          id: d.id,
+          ...(d.data() as Omit<FirestoreAd, 'id'>),
+        };
+        const mockAd = INITIAL_ADS.find(x => x.id === item.id);
+        if (mockAd && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
+          item.authorName = mockAd.author;
+          item.authorRole = 'Uporabnik';
+          item.authorAvatar = (mockAd as any).authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockAd.author)}`;
+          item.authorId = `author-${mockAd.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        }
+        return item;
+      });
       onAds(ads);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
@@ -439,27 +650,70 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
   try {
     const adRef = doc(db, 'ads', adId);
     const snap = await getDoc(adRef);
+    const mockAd = INITIAL_ADS.find(a => a.id === adId);
+
     if (!snap.exists()) {
-      await setDoc(adRef, cleanDataForFirestore({
+      const isAuthorAdmin = isUserAdminIdentity(data.authorId, data.authorName, data.authorRole);
+      const originalAuthorName = mockAd 
+        ? mockAd.author 
+        : (data.authorName && !isAuthorAdmin ? data.authorName : 'Uporabnik');
+
+      const originalAuthorId = mockAd
+        ? `author-${mockAd.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+        : (data.authorId && !isAuthorAdmin ? data.authorId : `author-${originalAuthorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
+
+      const originalAuthorRole = (mockAd as any)?.authorRole || (data.authorRole && !isAuthorAdmin ? data.authorRole : 'Uporabnik');
+      const originalAuthorAvatar = (mockAd as any)?.authorAvatar || (data.authorAvatar && !isAuthorAdmin ? data.authorAvatar : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(originalAuthorName)}`);
+      const finalCategory = data.category && data.category !== 'splosno' ? data.category : (mockAd?.category || data.category || 'ostalo');
+
+      const payload = cleanDataForFirestore({
+        ...data,
         id: adId,
-        title: data.title || 'Mali oglas',
-        description: data.description || '',
-        category: data.category || 'razno',
-        price: data.price || 'Po dogovoru',
-        location: data.location || 'Slovenija',
+        title: data.title || mockAd?.title || 'Mali oglas',
+        description: data.description || mockAd?.description || '',
+        category: finalCategory,
+        price: data.price || mockAd?.price || 'Po dogovoru',
+        location: data.location || mockAd?.location || 'Slovenija',
         phone: data.phone || '',
-        authorId: data.authorId || auth.currentUser?.uid || 'admin',
-        authorName: data.authorName || auth.currentUser?.displayName || 'Uporabnik',
-        authorRole: data.authorRole || 'superadmin',
-        imageUrl: data.imageUrl || '',
+        imageUrl: data.imageUrl || mockAd?.image || '',
         status: data.status || 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        ...data,
-      }));
+      });
+
+      payload.authorId = originalAuthorId;
+      payload.authorName = originalAuthorName;
+      payload.authorRole = originalAuthorRole;
+      payload.authorAvatar = originalAuthorAvatar;
+      payload.category = finalCategory;
+
+      await setDoc(adRef, payload);
     } else {
+      const existing = snap.data() as FirestoreAd;
+      const safeData = { ...data };
+
+      // Strictly preserve original author & category
+      delete safeData.authorId;
+      delete safeData.authorName;
+      delete safeData.authorRole;
+      delete safeData.authorAvatar;
+      delete safeData.createdAt;
+
+      if (existing.category && (!safeData.category || safeData.category === 'ostalo' || safeData.category === 'splosno')) {
+        safeData.category = existing.category;
+      }
+
+      // Auto-heal if existing ad in Firestore was previously corrupted to admin/superadmin
+      const currentAuthorIsAdmin = isUserAdminIdentity(existing.authorId, existing.authorName, existing.authorRole);
+      if (mockAd && currentAuthorIsAdmin) {
+        safeData.authorName = mockAd.author;
+        safeData.authorRole = 'Uporabnik';
+        safeData.authorAvatar = (mockAd as any).authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockAd.author)}`;
+        safeData.authorId = `author-${mockAd.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      }
+
       await updateDoc(adRef, sanitizeUpdateData({
-        ...data,
+        ...safeData,
         updatedAt: new Date().toISOString(),
       }));
     }
@@ -484,10 +738,20 @@ export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void):
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
-      const events: FirestoreEvent[] = snapshot.docs.map(d => ({
-        id: d.id,
-        ...(d.data() as Omit<FirestoreEvent, 'id'>),
-      }));
+      const events: FirestoreEvent[] = snapshot.docs.map(d => {
+        const item = {
+          id: d.id,
+          ...(d.data() as Omit<FirestoreEvent, 'id'>),
+        };
+        const mockEvent = INITIAL_EVENTS.find(x => x.id === item.id);
+        if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
+          item.authorName = mockEvent.organizer;
+          item.authorRole = 'Organizator';
+          item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+          item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        }
+        return item;
+      });
       onEvents(events);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
@@ -522,28 +786,71 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
   try {
     const eventRef = doc(db, 'events', eventId);
     const snap = await getDoc(eventRef);
+    const mockEvent = INITIAL_EVENTS.find(e => e.id === eventId);
+
     if (!snap.exists()) {
-      await setDoc(eventRef, cleanDataForFirestore({
+      const isAuthorAdmin = isUserAdminIdentity(data.authorId, data.authorName, data.authorRole);
+      const originalAuthorName = mockEvent 
+        ? mockEvent.organizer 
+        : (data.authorName && !isAuthorAdmin ? data.authorName : 'Organizator');
+
+      const originalAuthorId = mockEvent
+        ? `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+        : (data.authorId && !isAuthorAdmin ? data.authorId : `organizer-${originalAuthorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
+
+      const originalAuthorRole = 'Organizator';
+      const originalAuthorAvatar = (mockEvent as any)?.organizerAvatar || (data.authorAvatar && !isAuthorAdmin ? data.authorAvatar : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(originalAuthorName)}`);
+      const finalCategory = data.category && data.category !== 'splosno' ? data.category : (mockEvent?.category || data.category || 'dogodki');
+
+      const payload = cleanDataForFirestore({
+        ...data,
         id: eventId,
-        title: data.title || 'Dogodek',
-        description: data.description || '',
-        category: data.category || 'dogodki',
-        eventDate: data.eventDate || new Date().toISOString().split('T')[0],
-        location: data.location || 'Ljubljana',
-        price: data.price || 'Vstop prost',
-        authorId: data.authorId || auth.currentUser?.uid || 'admin',
-        authorName: data.authorName || auth.currentUser?.displayName || 'Organizator',
-        authorRole: data.authorRole || 'superadmin',
-        imageUrl: data.imageUrl || '',
+        title: data.title || mockEvent?.title || 'Dogodek',
+        description: data.description || mockEvent?.description || '',
+        category: finalCategory,
+        eventDate: data.eventDate || mockEvent?.date || new Date().toISOString().split('T')[0],
+        location: data.location || mockEvent?.location || 'Ljubljana',
+        price: data.price || mockEvent?.price || 'Vstop prost',
+        imageUrl: data.imageUrl || mockEvent?.image || '',
         status: data.status || 'published',
         isPromoted: data.isPromoted || false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        ...data,
-      }));
+      });
+
+      payload.authorId = originalAuthorId;
+      payload.authorName = originalAuthorName;
+      payload.authorRole = originalAuthorRole;
+      payload.authorAvatar = originalAuthorAvatar;
+      payload.category = finalCategory;
+
+      await setDoc(eventRef, payload);
     } else {
+      const existing = snap.data() as FirestoreEvent;
+      const safeData = { ...data };
+
+      // Strictly preserve original author & category
+      delete safeData.authorId;
+      delete safeData.authorName;
+      delete safeData.authorRole;
+      delete safeData.authorAvatar;
+      delete safeData.createdAt;
+
+      if (existing.category && (!safeData.category || safeData.category === 'dogodki' || safeData.category === 'splosno')) {
+        safeData.category = existing.category;
+      }
+
+      // Auto-heal if existing event in Firestore was previously corrupted to admin/superadmin
+      const currentAuthorIsAdmin = isUserAdminIdentity(existing.authorId, existing.authorName, existing.authorRole);
+      if (mockEvent && currentAuthorIsAdmin) {
+        safeData.authorName = mockEvent.organizer;
+        safeData.authorRole = 'Organizator';
+        safeData.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+        safeData.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      }
+
       await updateDoc(eventRef, sanitizeUpdateData({
-        ...data,
+        ...safeData,
         updatedAt: new Date().toISOString(),
       }));
     }
@@ -582,6 +889,50 @@ export async function rejectItemInFirestore(id: string, type: ApprovalContentTyp
     await updateEventInFirestore(id, { status: 'rejected', rejectionReason: reason || 'Zavrnjeno s strani skrbnika' });
   } else {
     await updatePostInFirestore(id, { status: 'rejected', rejectionReason: reason || 'Zavrnjeno s strani skrbnika' });
+  }
+}
+
+// ---------------- PROMOTION & FEATURED OPERATIONS ----------------
+
+export async function setItemPromotionInFirestore(
+  id: string,
+  type: ApprovalContentType,
+  promo: PromotionConfig
+): Promise<void> {
+  const cleanedPromo = cleanDataForFirestore(promo) as PromotionConfig;
+  const updateData = {
+    isPromoted: cleanedPromo.isPromoted,
+    promotion: cleanedPromo,
+    promotedUntil: cleanedPromo.promotedUntil,
+    promotionBadgeType: cleanedPromo.badgeType,
+  };
+
+  if (type === 'ad') {
+    await updateAdInFirestore(id, updateData);
+  } else if (type === 'event') {
+    await updateEventInFirestore(id, updateData);
+  } else {
+    await updatePostInFirestore(id, updateData);
+  }
+}
+
+export async function removeItemPromotionInFirestore(
+  id: string,
+  type: ApprovalContentType
+): Promise<void> {
+  const updateData = {
+    isPromoted: false,
+    promotion: undefined,
+    promotedUntil: undefined,
+    promotionBadgeType: undefined,
+  };
+
+  if (type === 'ad') {
+    await updateAdInFirestore(id, updateData);
+  } else if (type === 'event') {
+    await updateEventInFirestore(id, updateData);
+  } else {
+    await updatePostInFirestore(id, updateData);
   }
 }
 

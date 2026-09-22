@@ -84,21 +84,16 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
   ];
 
   return (
-    <main className="lg:col-span-6 flex flex-col gap-space-md">
+    <div className="flex flex-col gap-space-md">
       {/* Header section */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
-        <nav className="flex items-center gap-2 font-label-md text-xs text-outline">
-          <a className="hover:text-primary transition-colors cursor-pointer" onClick={() => onViewChange('main')}>Domov</a>
-          <span>/</span>
-          <span className="text-primary font-semibold">Novice RSS</span>
-        </nav>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <div className="flex items-center gap-2">
               <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
                 <Rss className="w-[1em] h-[1em] text-primary shrink-0" />
-                <span>Novice & RSS viri v živo</span>
+                <span>Aktualne slovenske novice in RSS viri</span>
               </h1>
               <span className="flex items-center gap-1 text-[11px] bg-secondary/10 text-secondary px-2 py-0.5 rounded-full font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
@@ -212,6 +207,6 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
           Prikazane so vse pridobljene novice iz aktivnih virov ({filtered.length} novic).
         </div>
       )}
-    </main>
+    </div>
   );
 }

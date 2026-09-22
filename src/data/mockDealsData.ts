@@ -22,6 +22,7 @@ export interface DealItem {
   isSuperDeal?: boolean;
   featured?: boolean;
   image?: string;
+  images?: string[];
   statusTag?: 'expiring' | 'today' | 'exclusive' | 'shipping' | 'normal';
 }
 
@@ -150,6 +151,11 @@ export const HERO_BENTO_DEALS: DealItem[] = [
     isSuperDeal: true,
     featured: true,
     image: 'https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=800&auto=format&fit=crop&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=1000&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1000&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=1000&auto=format&fit=crop&q=80'
+    ],
     statusTag: 'exclusive',
   },
   {
@@ -172,6 +178,11 @@ export const HERO_BENTO_DEALS: DealItem[] = [
     verifiedText: '98 % uspeh (412)',
     featured: true,
     image: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=800&auto=format&fit=crop&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=1000&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=1000&auto=format&fit=crop&q=80'
+    ],
     statusTag: 'expiring',
   },
 ];

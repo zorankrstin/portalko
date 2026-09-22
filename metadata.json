@@ -1,6 +1,6 @@
 {
   "name": "Portalko",
-  "description": "Portalko - Slovenski spletni portal za novice, male oglase, lokalne dogodke in skupnost z naprednim sistemom vlog in avtentikacije.",
+  "description": "Portalko je osrednji slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke, ugodnosti in popuste ter skupnost po vsej Sloveniji.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

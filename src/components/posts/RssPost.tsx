@@ -65,9 +65,8 @@ export const RssPost: React.FC<RssPostProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          
           <BookmarkButton id={id} data={{ title, link, description, sourceName, pubDate, thumbnail, type: 'news', category: 'news' }} />
-          <ShareMenu id={id} url={link} title={title} />
+          <ShareMenu id={id} url={link} type="news" title={title} description={description} />
         </div>
       </div>
       

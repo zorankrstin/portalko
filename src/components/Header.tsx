@@ -1,4 +1,4 @@
-import { Search, MapPin, ChevronDown, Bookmark, X, Filter, LogOut, User as UserIcon, Shield, Settings, Crown, UserCheck } from 'lucide-react';
+import { Search, ChevronDown, Bookmark, X, Filter, LogOut, User as UserIcon, Shield, Settings, Crown, UserCheck } from 'lucide-react';
 import { NotificationCenter } from './NotificationCenter';
 import { useBookmarks } from '../contexts/BookmarkContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,7 +7,7 @@ import { useState, useRef, useEffect } from 'react';
 import { parseSearchQuery, buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import portalkoLogo from '../assets/images/portalko_logo.png';
 
-import { PostDetailTarget } from '../types';
+import { PostDetailTarget, ViewMode } from '../types';
 
 export function Header({
   onProfileClick,
@@ -16,7 +16,9 @@ export function Header({
   onAdminClick,
   onNavigatePost,
   searchQuery,
-  onSearchChange
+  onSearchChange,
+  activeView,
+  onSearchSubmit,
 }: {
   onProfileClick?: () => void;
   onSavedClick?: () => void;
@@ -25,17 +27,34 @@ export function Header({
   onNavigatePost?: (target: PostDetailTarget) => void;
   searchQuery?: string;
   onSearchChange?: (q: string) => void;
+  activeView?: ViewMode;
+  onSearchSubmit?: (q: string) => void;
 }) {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [userCategoryOverride, setUserCategoryOverride] = useState<SearchCategory | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const { currentUser, logout } = useAuth();
   const { savedIds } = useBookmarks();
   const savedCount = savedIds.length;
 
-  const { category, text } = parseSearchQuery(searchQuery || '');
+  const parsedSearch = parseSearchQuery(searchQuery || '');
+  
+  const activeViewCategory: SearchCategory = 
+    activeView === 'ads' ? 'ads' :
+    activeView === 'deals' ? 'deals' :
+    activeView === 'events' ? 'events' :
+    activeView === 'blog' ? 'blog' :
+    activeView === 'news' ? 'news' : 'all';
+
+  const category: SearchCategory = parsedSearch.category !== 'all'
+    ? parsedSearch.category
+    : (userCategoryOverride ?? activeViewCategory);
+
+  const text = parsedSearch.text;
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -114,6 +133,7 @@ export function Header({
                 value={category}
                 onChange={(e) => {
                   const newCat = e.target.value as SearchCategory;
+                  setUserCategoryOverride(newCat);
                   onSearchChange?.(buildSearchQuery(newCat, text));
                 }}
                 className="appearance-none bg-transparent py-2 pr-6 pl-1 font-label-md text-xs font-semibold text-on-surface cursor-pointer focus:outline-none hover:text-primary transition-colors"
@@ -137,6 +157,11 @@ export function Header({
                 onChange={(e) => {
                   onSearchChange?.(buildSearchQuery(category, e.target.value));
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onSearchSubmit?.(buildSearchQuery(category, text));
+                  }
+                }}
                 className="w-full bg-transparent pl-2.5 pr-8 py-2 font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none" 
                 placeholder={
                   category === 'news' ? 'Išči po novicah in virih...' :
@@ -148,9 +173,12 @@ export function Header({
                 }
                 type="text" 
               />
-              {(text || category !== 'all') && (
+              {(text || (parsedSearch.category !== 'all' && parsedSearch.category !== activeViewCategory)) && (
                 <button 
-                  onClick={() => onSearchChange?.('')}
+                  onClick={() => {
+                    setUserCategoryOverride(null);
+                    onSearchChange?.('');
+                  }}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors p-0.5 rounded-full hover:bg-surface-container-high"
                   aria-label="Počisti iskanje"
                   title="Počisti iskanje in filter kategorije"
@@ -162,15 +190,17 @@ export function Header({
           </div>
         </div>
         <div className="flex items-center gap-space-sm sm:gap-space-md flex-shrink-0">
-          <button className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md text-on-surface-variant" type="button">
-            <MapPin className="w-[1em] h-[1em] text-base text-primary" />
-            <span>Vsa Slovenija / Ljubljana</span>
-            <ChevronDown className="w-[1em] h-[1em] text-xs" />
+          {/* Mobile search toggle */}
+          <button
+            onClick={() => setIsMobileSearchOpen(prev => !prev)}
+            className={`md:hidden p-2 rounded-lg transition-colors ${isMobileSearchOpen ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'}`}
+            type="button"
+            aria-label="Iskanje"
+            title="Iskanje"
+          >
+            <Search className="w-5 h-5" />
           </button>
-          <div className="hidden xl:flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-caps text-label-caps uppercase">
-            <svg className="w-[1em] h-[1em] text-sm text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></svg>
-            <span>Preverjen</span>
-          </div>
+
           <button 
             onClick={onSavedClick}
             className="relative p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
@@ -304,6 +334,74 @@ export function Header({
           )}
         </div>
       </div>
+
+      {/* Mobile search bar expandable */}
+      {isMobileSearchOpen && (
+        <div className="md:hidden px-4 pb-3 pt-1 border-t border-surface-container/60 bg-surface-container-lowest animate-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center bg-surface-container-low rounded-xl border border-surface-container focus-within:border-primary focus-within:bg-surface-container-lowest transition-all">
+            <div className="relative flex items-center border-r border-surface-container pr-1 pl-2.5">
+              <select
+                value={category}
+                onChange={(e) => {
+                  const newCat = e.target.value as SearchCategory;
+                  setUserCategoryOverride(newCat);
+                  onSearchChange?.(buildSearchQuery(newCat, text));
+                }}
+                className="appearance-none bg-transparent py-2.5 pr-6 pl-1 font-label-md text-xs font-semibold text-on-surface cursor-pointer focus:outline-none hover:text-primary transition-colors"
+                aria-label="Filtriraj iskanje po kategoriji"
+              >
+                <option value="all">Vse</option>
+                <option value="news">Novice</option>
+                <option value="ads">Mali oglasi</option>
+                <option value="deals">Ugodnosti</option>
+                <option value="events">Dogodki</option>
+                <option value="blog">Blog</option>
+              </select>
+              <ChevronDown className="w-3 h-3 text-outline absolute right-2 pointer-events-none" />
+            </div>
+
+            <div className="relative flex-1 flex items-center">
+              <Search className="w-4 h-4 text-outline ml-2.5 shrink-0" />
+              <input 
+                value={text}
+                onChange={(e) => {
+                  onSearchChange?.(buildSearchQuery(category, e.target.value));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onSearchSubmit?.(buildSearchQuery(category, text));
+                    setIsMobileSearchOpen(false);
+                  }
+                }}
+                className="w-full bg-transparent pl-2 pr-8 py-2.5 font-body-sm text-xs sm:text-sm text-on-surface placeholder:text-outline focus:outline-none" 
+                placeholder={
+                  category === 'news' ? 'Išči novice...' :
+                  category === 'ads' ? 'Išči male oglase...' :
+                  category === 'deals' ? 'Išči ugodnosti...' :
+                  category === 'events' ? 'Išči dogodke...' :
+                  category === 'blog' ? 'Išči blog zapise...' :
+                  'Išči po celotnem portalu...'
+                }
+                type="text" 
+                autoFocus
+              />
+              {text && (
+                <button 
+                  onClick={() => {
+                    setUserCategoryOverride(null);
+                    onSearchChange?.('');
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface p-1 rounded-full hover:bg-surface-container-high"
+                  aria-label="Počisti iskanje"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} initialMode={authModalMode} />
     </header>
   );
