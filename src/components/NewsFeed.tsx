@@ -77,10 +77,6 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
   const dynamicFilterPills = [
     { id: 'all', label: 'Vse novice' },
     ...activeFeeds.map(feed => ({ id: feed.name, label: feed.name })),
-    { id: 'Slovenija', label: 'Slovenija' },
-    { id: 'Šport', label: 'Šport' },
-    { id: 'Gospodarstvo', label: 'Gospodarstvo' },
-    { id: 'Svet', label: 'Svet' }
   ];
 
   return (
@@ -93,16 +89,13 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
             <div className="flex items-center gap-2">
               <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
                 <Rss className="w-[1em] h-[1em] text-primary shrink-0" />
-                <span>Aktualne slovenske novice in RSS viri</span>
+                <span>Novice</span>
               </h1>
               <span className="flex items-center gap-1 text-[11px] bg-secondary/10 text-secondary px-2 py-0.5 rounded-full font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
                 V živo
               </span>
             </div>
-            <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Izključno resnične novice, neposredno pridobljene iz uradnih virov nastavljenih v nadzorni plošči. Vsak članek odpre izvirno objavo v novem oknu.
-            </p>
           </div>
           <button 
             onClick={() => loadFeeds(true)}
@@ -119,7 +112,6 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
         <div className="pt-2 border-t border-surface-container-low/60 flex flex-wrap items-center gap-1.5 text-xs text-outline">
           <span className="font-semibold text-on-surface flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-            Aktivni viri:
           </span>
           {activeFeeds.length === 0 ? (
             <span className="text-error font-medium">Ni aktivnih virov v nadzorni plošči</span>

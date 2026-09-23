@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Bold, Italic, List, ListOrdered, Link as LinkIcon, Unlink } from 'lucide-react';
+import { Bold, Italic, List, ListOrdered, Link as LinkIcon, Unlink, Image as ImageIcon, Smile } from 'lucide-react';
 
 interface RichTextEditorProps {
   placeholder?: string;
   onChange?: (content: string) => void;
+  initialContent?: string;
 }
 
-export function RichTextEditor({ placeholder = 'O čem želite pisati?', onChange }: RichTextEditorProps) {
+export function RichTextEditor({ placeholder = 'O čem želite pisati?', onChange, initialContent = '' }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -20,14 +22,15 @@ export function RichTextEditor({ placeholder = 'O čem želite pisati?', onChang
           class: 'tiptap text-primary underline cursor-pointer',
         },
       }),
+      Image,
       Placeholder.configure({
         placeholder: placeholder,
         emptyEditorClass: 'is-editor-empty',
       }),
     ],
-    content: '',
+    content: initialContent,
     onUpdate: ({ editor }) => {
-      onChange?.(editor.getText() || editor.getHTML());
+      onChange?.(editor.getHTML());
     },
     editorProps: {
       attributes: {
@@ -35,6 +38,12 @@ export function RichTextEditor({ placeholder = 'O čem želite pisati?', onChang
       },
     },
   });
+
+  useEffect(() => {
+    if (editor && initialContent !== editor.getHTML()) {
+      editor.commands.setContent(initialContent);
+    }
+  }, [editor, initialContent]);
 
   if (!editor) {
     return null;
@@ -56,7 +65,21 @@ export function RichTextEditor({ placeholder = 'O čem želite pisati?', onChang
     }
 
     // update link
-    editor.chain().focus().extendMarkRange('link').setLink({ href: newUrl }).run();
+    // Ensure the URL is valid by prepending http if needed, or at least handle the basic input
+    const urlToSet = newUrl.startsWith('http') ? newUrl : `https://${newUrl}`;
+    
+    editor.chain().focus().extendMarkRange('link').setLink({ href: urlToSet }).run();
+  };
+
+  const addImage = () => {
+    const url = window.prompt('URL slike:');
+    if (url) {
+      editor.chain().focus().setImage({ src: url }).run();
+    }
+  };
+
+  const addSmiley = (smiley: string) => {
+    editor.chain().focus().insertContent(smiley).run();
   };
 
   return (
@@ -112,6 +135,23 @@ export function RichTextEditor({ placeholder = 'O čem želite pisati?', onChang
           title="Odstrani povezavo"
         >
           <Unlink className="w-4 h-4" />
+        </button>
+        <div className="w-px h-4 bg-surface-container-high mx-1"></div>
+        <button
+          type="button"
+          onClick={addImage}
+          className="p-1.5 rounded-lg transition-colors text-on-surface-variant hover:bg-surface-container-high"
+          title="Dodaj sliko"
+        >
+          <ImageIcon className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => addSmiley('😊')}
+          className="p-1.5 rounded-lg transition-colors text-on-surface-variant hover:bg-surface-container-high"
+          title="Dodaj smeško"
+        >
+          <Smile className="w-4 h-4" />
         </button>
       </div>
       

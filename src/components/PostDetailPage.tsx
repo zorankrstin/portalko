@@ -6,6 +6,7 @@ import {
   CalendarPlus, Bookmark, Eye, ChevronRight, ChevronLeft, Store, ArrowRight,
   Edit3, Trash2, Search, X, BookOpen, Maximize2, Images
 } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { PostDetailTarget, ViewMode, AuthorProfileTarget } from '../types';
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
@@ -654,12 +655,6 @@ export function PostDetailPage({
     if (!hasVoted) {
       setVotes(v => v + 1);
       setHasVoted(true);
-      addNotification({
-        type: 'interaction',
-        title: 'Glas zabeležen!',
-        description: `Vaš glas za ugodnost "${itemData?.title}" je bil uspešno oddan.`,
-        target: { type: 'deal', id: target.id },
-      });
     }
   };
 
@@ -668,14 +663,6 @@ export function PostDetailPage({
     const nextState = !isRsvpActive;
     setIsRsvpActive(nextState);
     setRsvpCount(c => nextState ? c + 1 : c - 1);
-    if (nextState) {
-      addNotification({
-        type: 'event',
-        title: 'Prijava na dogodek!',
-        description: `Zabeležili ste interes za dogodek "${itemData?.title}". Opomnik bo poslan dan pred dogodkom.`,
-        target: { type: 'event', id: target.id },
-      });
-    }
   };
 
   // Handle blog like
@@ -683,12 +670,6 @@ export function PostDetailPage({
     if (!hasBlogLiked) {
       setBlogLikes(l => l + 1);
       setHasBlogLiked(true);
-      addNotification({
-        type: 'interaction',
-        title: 'Všečkan članek!',
-        description: `Všečkali ste blog članek "${itemData?.title}".`,
-        target: { type: 'blog', id: target.id },
-      });
     }
   };
 
@@ -733,19 +714,6 @@ export function PostDetailPage({
     setComments(prev => [...prev, newComment]);
     setNewCommentText('');
     setIsSubmittingComment(false);
-
-    // Trigger real notification in Header NotificationCenter!
-    addNotification({
-      type: 'comment',
-      title: `Nov komentar na "${itemData?.title?.slice(0, 30)}..."`,
-      description: `${authorName}: "${newComment.content.slice(0, 60)}${newComment.content.length > 60 ? '...' : ''}"`,
-      authorName,
-      authorAvatar,
-      target: {
-        type: target.type,
-        id: target.id,
-      },
-    });
   };
 
   if (!itemData) {
@@ -1743,9 +1711,10 @@ export function PostDetailPage({
             <h2 className="font-headline-md text-lg font-bold text-on-surface">
               Podrobnosti objave
             </h2>
-            <div className="font-body-lg text-sm md:text-base text-on-surface-variant leading-relaxed whitespace-pre-line">
-              {itemData.description || 'Ni dodatnega opisa za to objavo.'}
-            </div>
+            <div 
+              className="font-body-lg text-sm md:text-base text-on-surface-variant leading-relaxed tiptap"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(itemData.description || itemData.content || 'Ni dodatnega opisa za to objavo.') }}
+            />
           </div>
 
           {/* Tags & Metadata */}

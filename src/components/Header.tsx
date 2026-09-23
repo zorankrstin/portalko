@@ -5,7 +5,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
 import { useState, useRef, useEffect } from 'react';
 import { parseSearchQuery, buildSearchQuery, SearchCategory } from '../utils/searchUtils';
-import portalkoLogo from '../assets/images/portalko_logo.png';
 
 import { PostDetailTarget, ViewMode } from '../types';
 
@@ -120,7 +119,7 @@ export function Header({
           <img 
             alt="Portalko.net" 
             className="h-10 sm:h-11 w-auto max-h-12 object-contain drop-shadow-2xs group-hover:scale-[1.02] transition-transform duration-200" 
-            src={portalkoLogo} 
+            src="https://raw.githubusercontent.com/zorankrstin/portalko/main/src/assets/images/Portalko.jpg" 
             id="header-brand-logo-img"
           />
           <span className="sr-only">Portalko.net - Domov</span>
@@ -142,7 +141,7 @@ export function Header({
                 <option value="all">Vse kategorije</option>
                 <option value="news">Novice</option>
                 <option value="ads">Mali oglasi</option>
-                <option value="deals">Ugodnosti</option>
+                <option value="deals">Akcije</option>
                 <option value="events">Dogodki</option>
                 <option value="blog">Blog</option>
               </select>
@@ -353,7 +352,7 @@ export function Header({
                 <option value="all">Vse</option>
                 <option value="news">Novice</option>
                 <option value="ads">Mali oglasi</option>
-                <option value="deals">Ugodnosti</option>
+                <option value="deals">Akcije</option>
                 <option value="events">Dogodki</option>
                 <option value="blog">Blog</option>
               </select>

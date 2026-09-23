@@ -101,7 +101,7 @@ export const DealPost: React.FC<DealPostProps> = ({
           e.preventDefault();
           window.location.hash = `deal-${id}`;
         }}
-        className="sm:w-52 md:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden block cursor-pointer"
+        className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden block cursor-pointer"
         title="Odpri samostojno stran te ugodnosti"
       >
         <img 

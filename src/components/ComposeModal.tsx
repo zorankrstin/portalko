@@ -43,6 +43,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [promoCode, setPromoCode] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [location, setLocation] = useState('');
+  const [tagsString, setTagsString] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
@@ -74,6 +75,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setPromoCode('');
       setEventDate('');
       setLocation('');
+      setTagsString('');
       setSelectedRegion('all');
       setImageUrl('');
       setErrorMsg('');
@@ -172,6 +174,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           status: initialStatus,
           likesCount: 0,
           commentsCount: 0,
+          tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         });
       } else if (postType === 'ad') {
         await createAdInFirestore({
@@ -189,6 +192,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorRole,
           imageUrl: imageUrl || undefined,
           status: initialAdStatus,
+          tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         });
       } else if (postType === 'event') {
         await createEventInFirestore({
@@ -207,6 +211,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           imageUrl: imageUrl || undefined,
           status: initialStatus,
           isPromoted: false,
+          tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         });
       }
 
@@ -491,13 +496,34 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           </div>
 
           <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-outline">Oznake (Tagi) - ločene z vejico</label>
             <input 
               type="text" 
-              value={imageUrl}
-              onChange={e => setImageUrl(e.target.value)}
-              placeholder="Povezava do naslovne slike (neobvezno)..."
+              value={tagsString}
+              onChange={e => setTagsString(e.target.value)}
+              placeholder="npr. avto, prodaja, ugodno"
+              className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-outline">Naslovna slika</label>
+            <input 
+              type="file" 
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  // In a real app, you would upload this to Firebase Storage.
+                  // For now, we simulate by creating a temporary object URL.
+                  setImageUrl(URL.createObjectURL(file));
+                }
+              }}
               className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
             />
+            {imageUrl && (
+              <img src={imageUrl} alt="Preview" className="mt-2 h-32 w-full object-cover rounded-lg" />
+            )}
           </div>
 
           <div className="flex items-center justify-between border-t border-surface-container-low pt-4">

@@ -76,7 +76,7 @@ export const EventPost: React.FC<EventPostProps> = ({
             e.preventDefault();
             window.location.hash = `event-${id}`;
           }}
-          className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
+          className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
           title="Odpri samostojno stran tega dogodka"
         >
           <img alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={image} />

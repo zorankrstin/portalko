@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useNotifications, NotificationType } from '../contexts/NotificationContext';
 import { PostDetailTarget, ViewMode } from '../types';
+import { formatRelativeTime } from '../utils/dateUtils';
 
 interface NotificationCenterProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -83,7 +84,7 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
         title="Center obvestil (komentarji, interakcije, sistem)"
         aria-label="Center obvestil"
       >
-        <Bell className="w-5 h-5" />
+        <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'animate-pulse' : ''}`} />
         {unreadCount > 0 && (
           <span className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-error text-white text-[10px] font-extrabold border-2 border-surface-container-lowest animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -128,45 +129,49 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
           </div>
 
           {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-surface-container-low bg-surface-container-low/40 overflow-x-auto no-scrollbar text-xs">
+          <div className="flex items-center flex-wrap gap-1.5 px-3 py-2 border-b border-surface-container-low bg-surface-container-low/40 text-xs">
             <button
               onClick={() => setActiveFilter('all')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 activeFilter === 'all' 
-                  ? 'bg-primary text-on-primary shadow-2xs' 
+                  ? 'bg-on-surface text-surface-container-lowest shadow-2xs' 
                   : 'text-on-surface-variant hover:bg-surface-container'
               }`}
             >
+              <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
               Vse ({notifications.length})
             </button>
             <button
               onClick={() => setActiveFilter('comment')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 activeFilter === 'comment' 
-                  ? 'bg-primary text-on-primary shadow-2xs' 
+                  ? 'bg-secondary text-on-secondary shadow-2xs' 
                   : 'text-on-surface-variant hover:bg-surface-container'
               }`}
             >
+              <div className="w-1.5 h-1.5 rounded-full bg-secondary"></div>
               Komentarji ({notifications.filter(n => n.type === 'comment').length})
             </button>
             <button
               onClick={() => setActiveFilter('post')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 activeFilter === 'post' 
                   ? 'bg-primary text-on-primary shadow-2xs' 
                   : 'text-on-surface-variant hover:bg-surface-container'
               }`}
             >
+              <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
               Ugodnosti & Oglasi ({notifications.filter(n => ['deal', 'event', 'ad', 'like', 'interaction'].includes(n.type)).length})
             </button>
             <button
               onClick={() => setActiveFilter('system')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 activeFilter === 'system' 
-                  ? 'bg-primary text-on-primary shadow-2xs' 
+                  ? 'bg-tertiary text-on-tertiary shadow-2xs' 
                   : 'text-on-surface-variant hover:bg-surface-container'
               }`}
             >
+              <div className="w-1.5 h-1.5 rounded-full bg-tertiary"></div>
               Sistem
             </button>
           </div>
@@ -174,9 +179,12 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
           {/* Notifications List */}
           <div className="flex flex-col max-h-[380px] overflow-y-auto divide-y divide-surface-container-low">
             {filteredNotifications.length === 0 ? (
-              <div className="p-8 text-center text-outline text-xs flex flex-col items-center gap-2">
-                <Bell className="w-8 h-8 opacity-30" />
-                <span>Ni obvestil v tej kategoriji.</span>
+              <div className="p-10 text-center text-outline text-sm flex flex-col items-center gap-3">
+                <Bell className="w-10 h-10 opacity-20" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-on-surface-variant">Ni novih obvestil</p>
+                  <p className="text-xs">Trenutno ni nobene aktivnosti v tej kategoriji.</p>
+                </div>
               </div>
             ) : (
               filteredNotifications.map((notif) => (
@@ -195,7 +203,7 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
                       <h4 className={`text-xs truncate ${notif.read ? 'text-on-surface-variant font-medium' : 'text-on-surface font-bold'}`}>
                         {notif.title}
                       </h4>
-                      <span className="text-[10px] text-outline whitespace-nowrap">{notif.time}</span>
+                      <span className="text-[10px] text-outline whitespace-nowrap">{formatRelativeTime(notif.timestamp)}</span>
                     </div>
                     <p className="font-body-sm text-[11px] text-on-surface-variant line-clamp-2 leading-relaxed">
                       {notif.description}

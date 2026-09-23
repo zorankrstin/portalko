@@ -61,7 +61,6 @@ import { SocialLinksDisplay, getPlatformIcon, getPlatformLabel } from './profile
 import { SocialLinksEditorModal } from './profile/SocialLinksEditorModal';
 import { ProfileMenuEditorModal, getMenuTabIcon } from './profile/ProfileMenuEditorModal';
 import { CustomTabContent } from './profile/CustomTabContent';
-import portalkoLogo from '../assets/images/portalko_logo.png';
 
 export interface UserProfileProps {
   onViewChange: (view: ViewMode) => void;
@@ -309,7 +308,7 @@ export function UserProfile({
     return (
       <div className="flex flex-col gap-space-md">
         <div className="bg-surface-container-lowest rounded-2xl p-8 shadow-sm border border-surface-container/50 text-center flex flex-col items-center gap-4">
-          <img src={portalkoLogo} alt="Portalko.net" className="w-16 h-16 rounded-2xl object-contain shadow-xs border border-surface-container/60" />
+          <img src="https://raw.githubusercontent.com/zorankrstin/portalko/main/src/assets/images/Portalko.jpg" alt="Portalko.net" className="w-16 h-16 rounded-2xl object-contain shadow-xs border border-surface-container/60" />
           <div className="max-w-md">
             <h2 className="font-headline-sm text-xl font-bold text-on-surface mb-2">
               Niste prijavljeni v Portalko

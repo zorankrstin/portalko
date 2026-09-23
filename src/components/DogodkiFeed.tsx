@@ -11,6 +11,7 @@ import { PostDetailTarget } from '../types';
 import { useCategories } from '../hooks/useCategories';
 import { SLOVENIA_REGIONS } from '../services/categoryService';
 import { PromotedBadge } from './common/PromotedBadge';
+import { EventPost } from './posts/EventPost';
 import { isItemActivelyPromoted } from '../services/promotionService';
 
 interface DogodkiFeedProps {
@@ -292,300 +293,42 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
               const badgeType = event.promotionBadgeType || event.promotion?.badgeType || 'PROMO';
 
               return (
-                <article key={event.id} className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border hover:shadow-md transition-shadow flex flex-col gap-3 ${
-                  isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
-                }`}>
-                  <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1">
-                      <a 
-                        href={`#event-${event.id}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          window.location.hash = `event-${event.id}`;
-                        }}
-                        className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex flex-col items-center justify-center shrink-0 border border-primary/20 cursor-pointer hover:scale-105 transition-transform"
-                        title="Prikaži samostojno stran tega dogodka"
-                      >
-                        <span className="font-headline-sm text-xs font-bold uppercase">
-                          {event.eventDate ? new Date(event.eventDate).toLocaleString('sl-SI', { month: 'short' }) : 'DOG'}
-                        </span>
-                        <span className="font-headline-lg text-sm font-extrabold leading-none">
-                          {event.eventDate ? new Date(event.eventDate).getDate() : '📅'}
-                        </span>
-                      </a>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          {isPromoted && (
-                            <PromotedBadge type={badgeType} size="sm" />
-                          )}
-                          <span className="px-2 py-0.5 rounded-md bg-surface-container font-label-caps text-[10px] font-bold text-outline">
-                            {event.categoryName || event.category || 'Dogodek'}
-                          </span>
-                          {event.subcategoryName && (
-                            <span className="px-2 py-0.5 rounded-md bg-primary/10 font-label-caps text-[10px] font-semibold text-primary">
-                              {event.subcategoryName}
-                            </span>
-                          )}
-                          <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-primary" /> {event.location || event.region || 'Slovenija'}
-                          </span>
-                          {event.authorName && (
-                            <>
-                              <span className="text-[10px] text-outline">•</span>
-                              <a
-                                href={`#author-${encodeURIComponent(event.authorName.replace(/\s+/g, '_'))}`}
-                                className="font-label-caps text-[10px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
-                                title={`Ogled profila organizatorja: ${event.authorName}`}
-                              >
-                                {event.authorName}
-                              </a>
-                            </>
-                          )}
-                        </div>
-                        <h2 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface hover:text-primary transition-colors cursor-pointer">
-                          <a 
-                            href={`#event-${event.id}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              window.location.hash = `event-${event.id}`;
-                            }}
-                          >
-                            {event.title}
-                          </a>
-                        </h2>
-                        <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
-                          {event.description}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 self-end sm:self-start">
-                      <BookmarkButton 
-                        id={event.id}
-                        data={{
-                          id: event.id,
-                          type: 'event',
-                          title: event.title,
-                          description: event.description,
-                          category: event.categoryName || event.category,
-                          location: event.location || event.region,
-                          eventDate: event.eventDate,
-                          price: event.price,
-                          imageUrl: event.imageUrl,
-                          author: event.authorName
-                        }}
-                      />
-                      <ShareMenu 
-                        title={event.title}
-                        description={event.description}
-                        type="event"
-                        id={event.id}
-                      />
-                      <ReportButton 
-                        targetId={event.id} 
-                        targetType="event" 
-                        targetTitle={event.title} 
-                        targetAuthor={event.authorName} 
-                      />
-                    </div>
-                  </div>
-
-                  {event.imageUrl && (
-                    <a 
-                      href={`#event-${event.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.hash = `event-${event.id}`;
-                      }}
-                      className="w-full h-48 rounded-xl overflow-hidden bg-surface-container block cursor-pointer group"
-                      title="Poglej podrobnosti dogodka"
-                    >
-                      <img alt={event.title} className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300" src={event.imageUrl} />
-                    </a>
-                  )}
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-label-md text-xs font-semibold text-primary">
-                        {event.price ? event.price : 'Vstop prost / Po dogovoru'}
-                      </span>
-                      {event.authorName && (
-                        <>
-                          <span className="text-[10px] text-outline">•</span>
-                          <a
-                            href={`#author-${encodeURIComponent(event.authorName.replace(/\s+/g, '_'))}`}
-                            className="text-xs text-on-surface hover:text-primary hover:underline font-medium transition-colors"
-                            title={`Ogled profila: ${event.authorName}`}
-                          >
-                            {event.authorName}
-                          </a>
-                        </>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ShareMenu 
-                        title={event.title}
-                        description={event.description}
-                        type="event"
-                        id={event.id}
-                        showLabel={true}
-                        buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container inline-flex items-center gap-1"
-                      />
-                      <a 
-                        href={`#event-${event.id}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          window.location.hash = `event-${event.id}`;
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container"
-                      >
-                        Podrobnosti dogodka
-                      </a>
-                    </div>
-                  </div>
-                </article>
+                <EventPost
+                  key={event.id}
+                  id={event.id}
+                  title={event.title}
+                  organizer={event.authorName}
+                  categoryName={event.categoryName || event.category}
+                  location={event.location || event.region}
+                  date={`${event.day}. ${event.month}`}
+                  month={event.month}
+                  day={event.day}
+                  price={event.price}
+                  description={event.description}
+                  image={event.imageUrl}
+                  interestedCount={event.interestedCount}
+                  isPromoted={isPromoted}
+                  promotionBadgeType={badgeType}
+                />
               );
             }
 
             // Mock event item
             const event = item.data;
             return (
-              <article key={event.id} className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 flex-1">
-                    <a 
-                      href={`#event-${event.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.hash = `event-${event.id}`;
-                      }}
-                      className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex flex-col items-center justify-center shrink-0 border border-primary/20 cursor-pointer hover:scale-105 transition-transform"
-                      title="Prikaži samostojno stran tega dogodka"
-                    >
-                      <span className="font-headline-sm text-xs font-bold uppercase">{event.month}</span>
-                      <span className="font-headline-lg text-sm font-extrabold leading-none">{event.day}</span>
-                    </a>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-md bg-surface-container font-label-caps text-[10px] font-bold text-outline">
-                          {event.categoryName}
-                        </span>
-                        <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-primary" /> {event.location}
-                        </span>
-                        {event.organizer && (
-                          <>
-                            <span className="text-[10px] text-outline">•</span>
-                            <a
-                              href={`#author-${encodeURIComponent(event.organizer.replace(/\s+/g, '_'))}`}
-                              className="font-label-caps text-[10px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
-                              title={`Ogled profila organizatorja: ${event.organizer}`}
-                            >
-                              {event.organizer}
-                            </a>
-                          </>
-                        )}
-                      </div>
-                      <h2 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface hover:text-primary transition-colors cursor-pointer">
-                        <a 
-                          href={`#event-${event.id}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            window.location.hash = `event-${event.id}`;
-                          }}
-                        >
-                          {event.title}
-                        </a>
-                      </h2>
-                      <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
-                        {event.description}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 self-end sm:self-start">
-                    <BookmarkButton 
-                      id={event.id}
-                      data={{
-                        id: event.id,
-                        type: 'event',
-                        title: event.title,
-                        description: event.description,
-                        category: event.categoryName,
-                        location: event.location,
-                        eventDate: `${event.day}. ${event.month}`,
-                        price: event.price,
-                        imageUrl: event.image,
-                        author: event.organizer
-                      }}
-                    />
-                    <ShareMenu 
-                      title={event.title}
-                      description={event.description}
-                      type="event"
-                      id={event.id}
-                    />
-                    <ReportButton 
-                      targetId={event.id} 
-                      targetType="event" 
-                      targetTitle={event.title} 
-                      targetAuthor={event.organizer} 
-                    />
-                  </div>
-                </div>
-
-                {event.image && (
-                  <a 
-                    href={`#event-${event.id}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.location.hash = `event-${event.id}`;
-                    }}
-                    className="w-full h-48 rounded-xl overflow-hidden bg-surface-container block cursor-pointer group"
-                    title="Poglej podrobnosti dogodka"
-                  >
-                    <img alt={event.title} className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300" src={event.image} />
-                  </a>
-                )}
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-label-md text-xs font-semibold text-primary">
-                      {event.price}
-                    </span>
-                    {event.organizer && (
-                      <>
-                        <span className="text-[10px] text-outline">•</span>
-                        <a
-                          href={`#author-${encodeURIComponent(event.organizer.replace(/\s+/g, '_'))}`}
-                          className="text-xs text-on-surface hover:text-primary hover:underline font-medium transition-colors"
-                          title={`Ogled profila organizatorja: ${event.organizer}`}
-                        >
-                          {event.organizer}
-                        </a>
-                      </>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ShareMenu 
-                      title={event.title}
-                      description={event.description}
-                      type="event"
-                      id={event.id}
-                      showLabel={true}
-                      buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container inline-flex items-center gap-1"
-                    />
-                    <a 
-                      href={`#event-${event.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.hash = `event-${event.id}`;
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors cursor-pointer border border-surface-container"
-                    >
-                      Podrobnosti dogodka
-                    </a>
-                  </div>
-                </div>
-              </article>
+              <EventPost
+                key={event.id}
+                id={event.id}
+                title={event.title}
+                organizer={event.organizer}
+                categoryName={event.categoryName}
+                location={event.location}
+                month={event.month}
+                day={event.day}
+                price={event.price}
+                description={event.description}
+                image={event.image}
+              />
             );
           })
         )}

@@ -17,7 +17,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
     <aside 
       id="left-sidebar" 
       data-sidebar="left" 
-      className="sidebar-scrollable hidden lg:block lg:col-span-3 sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
+      className="sidebar-scrollable hidden lg:block lg:col-span-2 sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
     >
       <div className="flex flex-col gap-space-md">
       
@@ -40,7 +40,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         >
           <span className="flex items-center gap-2.5">
             <Network className={`w-[1em] h-[1em] text-lg ${currentView === 'news' ? '' : 'text-primary'}`} />
-            <span>Novice RSS</span>
+            <span>Novice</span>
           </span>
         </a>
         <a 
@@ -60,7 +60,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         >
           <span className="flex items-center gap-2.5">
             <Percent className={`w-[1em] h-[1em] text-lg ${currentView === 'deals' ? '' : 'text-secondary'}`} />
-            <span>Ugodnosti &amp; Popusti</span>
+            <span>Akcije</span>
           </span>
         </a>
         <a 
@@ -70,7 +70,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         >
           <span className="flex items-center gap-2.5">
             <Calendar className={`w-[1em] h-[1em] text-lg ${currentView === 'events' ? '' : 'text-tertiary-container'}`} />
-            <span>Dogodki & Prireditve</span>
+            <span>Dogodki</span>
           </span>
         </a>
         <a 
@@ -80,7 +80,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         >
           <span className="flex items-center gap-2.5">
             <FileText className={`w-[1em] h-[1em] text-lg ${currentView === 'blog' ? '' : 'text-outline'}`} />
-            <span>Blog & Članki</span>
+            <span>Blog</span>
           </span>
         </a>
         <a 

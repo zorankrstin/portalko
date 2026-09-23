@@ -3,6 +3,22 @@
  */
 
 /**
+ * Returns a human-readable relative timestamp string (e.g., "5 min", "2 ur", "1 dan").
+ */
+export function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const diffMins = Math.floor(diffMs / (60 * 1000));
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+
+  if (diffMins < 1) return 'Pravkar';
+  if (diffMins < 60) return `pred ${diffMins} min`;
+  if (diffHours < 24) return `pred ${diffHours} ${diffHours === 1 ? 'uro' : diffHours < 5 ? 'urami' : 'ur'}`;
+  return `pred ${diffDays} ${diffDays === 1 ? 'dnem' : 'dnevi'}`;
+}
+
+/**
  * Parses an RSS date string into a Date object.
  * Handles rss2json UTC strings (e.g. "YYYY-MM-DD HH:mm:ss" or with "UTC"),
  * ISO 8601 strings, and RFC 2822 timestamps.

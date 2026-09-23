@@ -97,6 +97,7 @@ export interface FirestorePost {
   price?: string;
   location?: string;
   region?: string;
+  tags?: string[];
   status?: 'published' | 'pending' | 'rejected' | 'archived';
   rejectionReason?: string;
   likesCount?: number;
@@ -369,7 +370,7 @@ export function isUserAdminIdentity(id?: string, name?: string, role?: string): 
 export function subscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () => void {
   const path = 'posts';
   try {
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
     return onSnapshot(q, (snapshot) => {
       const allMockDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
       const posts: FirestorePost[] = snapshot.docs.map(d => {

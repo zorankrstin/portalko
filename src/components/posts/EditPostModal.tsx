@@ -13,6 +13,7 @@ import {
 } from '../../services/firestoreService';
 import { PromotionConfig, PromotionBadgeType } from '../../types';
 import { PromotedBadge } from '../common/PromotedBadge';
+import { RichTextEditor } from '../RichTextEditor';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -47,7 +48,7 @@ interface EditPostModalProps {
   onOpenPromotion?: (item: EditablePostItem) => void;
 }
 
-export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, item, onSaved }) => {
+export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, item, onSaved, onOpenPromotion }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('');
@@ -461,11 +462,9 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           {/* Content / Description */}
           <div className="flex flex-col gap-1.5">
             <label className="font-label-caps uppercase font-semibold text-outline">Vsebina / Opis</label>
-            <textarea
-              rows={5}
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              className="w-full p-3 rounded-xl bg-surface-container-lowest border border-surface-container font-body-sm text-sm text-on-surface outline-none focus:border-primary resize-y"
+            <RichTextEditor
+              initialContent={content}
+              onChange={setContent}
               placeholder="Vnesite celotno besedilo objave..."
             />
           </div>

@@ -118,6 +118,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  const playNotificationSound = () => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime); // Low volume (subtle)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.1);
+
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.1);
+  };
+
   const addNotification = (notif: Omit<AppNotification, 'id' | 'timestamp' | 'read' | 'time'>) => {
     const newNotif: AppNotification = {
       ...notif,
@@ -127,6 +144,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       read: false,
     };
     setNotifications(prev => [newNotif, ...prev]);
+    playNotificationSound();
   };
 
   const markAsRead = (id: string) => {

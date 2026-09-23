@@ -452,7 +452,7 @@ export default function App() {
           {/* Main central content with unified Breadcrumbs */}
           <main 
             id="main-content-area"
-            className={`${currentView === 'admin' ? 'lg:col-span-9' : 'lg:col-span-6'} flex flex-col gap-space-md min-w-0 w-full`}
+            className={`${currentView === 'admin' ? 'lg:col-span-10' : 'lg:col-span-7'} flex flex-col gap-space-md min-w-0 w-full`}
           >
             <Breadcrumbs 
               currentView={currentView}

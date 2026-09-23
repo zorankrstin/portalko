@@ -10,6 +10,7 @@ import { DealPost } from "./DealPost";
 import { EventPost } from "./EventPost";
 import { EditPostModal, EditablePostItem } from "./EditPostModal";
 import { PromotedBadge } from "../common/PromotedBadge";
+import { UserDisplayName } from "../common/UserDisplayName";
 import { isItemActivelyPromoted } from "../../services/promotionService";
 
 export interface FirestorePostCardProps {
@@ -249,7 +250,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
                 className="font-label-md text-label-md font-bold text-on-surface hover:text-primary hover:underline transition-colors"
                 title={`Ogled profila avtorja: ${post.authorName}`}
               >
-                {post.authorName}
+                <UserDisplayName name={post.authorName} role={post.authorRole} />
               </a>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
                 {roleLabels[post.authorRole] || 'Član'}

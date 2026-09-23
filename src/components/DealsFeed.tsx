@@ -38,6 +38,7 @@ import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { useCategories } from '../hooks/useCategories';
 import { SLOVENIA_REGIONS } from '../services/categoryService';
 import { PromotedBadge } from './common/PromotedBadge';
+import { UserDisplayName } from './common/UserDisplayName';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { PromotionConfig, PromotionBadgeType } from '../types';
 
@@ -380,10 +381,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           <div className="flex flex-col gap-1 flex-1 min-w-[240px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <Percent className="w-[1em] h-[1em] text-secondary shrink-0" />
-              <span>Ugodnosti in popusti v Sloveniji</span>
+              <span>Akcije</span>
             </h1>
             <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Preverjene kode, akcije in popusti za nakupe v slovenskih trgovinah ter na spletu.
+              Ugodnosti, popusti, kuponi, nakupi in akcije v slovenskih trgovinah ter na spletu.
             </p>
           </div>
           <button 
@@ -707,7 +708,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
                             title={`Ogled profila partnerja: ${deal.partner}`}
                           >
-                            {deal.partner}
+                            <UserDisplayName name={deal.partner} role={deal.partnerRole} />
                           </a>
                           {deal.partnerRole && (
                             <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold shrink-0">

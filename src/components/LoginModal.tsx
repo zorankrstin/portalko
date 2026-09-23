@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { X, LogIn, UserPlus, Shield, Check, AlertCircle, UserCheck, User, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { GoogleAuthButton } from './GoogleAuthButton';
-import portalkoLogo from '../assets/images/portalko_logo.png';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -111,7 +110,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
         {/* Header - Fixed at top */}
         <div className="shrink-0 flex items-center justify-between p-4 border-b border-surface-container-low bg-surface-container-lowest">
           <div className="flex items-center gap-2.5">
-            <img src={portalkoLogo} alt="Portalko.net" className="w-8 h-8 rounded-lg object-contain shadow-2xs" />
+            <img src="https://raw.githubusercontent.com/zorankrstin/portalko/main/src/assets/images/Portalko.jpg" alt="Portalko.net" className="w-8 h-8 rounded-lg object-contain shadow-2xs" />
             <div>
               <h2 className="font-headline-sm text-base font-bold text-on-surface flex items-center gap-1.5">
                 <span className="text-primary font-black">Portalko</span>

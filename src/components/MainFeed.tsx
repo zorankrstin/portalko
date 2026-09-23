@@ -272,17 +272,6 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
 
   return (
     <div className="flex flex-col gap-space-md">
-      {/* Glavni naslov portala za SEO in dostopnost */}
-      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-1">
-        <h1 className="font-headline-sm text-lg sm:text-xl font-bold text-on-surface flex items-center gap-2">
-          <Globe className="w-5 h-5 text-primary shrink-0" />
-          <span>Slovenski portal – Novice, Mali oglasi in Dogodki</span>
-        </h1>
-        <p className="font-body-sm text-xs sm:text-sm text-outline">
-          Aktualna obvestila, lokalno dogajanje, ugodnosti in mali oglasi iz vseh slovenskih regij na enem mestu.
-        </p>
-      </div>
-
       {/* Hitro ustvarjanje objave (Composer Widget) */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3">
         <div className="flex items-center gap-3">
@@ -302,14 +291,14 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
             className="flex-1 min-w-[110px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-label-md text-xs font-semibold transition-colors cursor-pointer" type="button"
           >
             <Store className="w-[1em] h-[1em] text-primary text-base" />
-            <span>Oglas</span>
+            <span>Mali oglasi</span>
           </button>
           <button 
             onClick={() => openCompose('deal')}
             className="flex-1 min-w-[110px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-label-md text-xs font-semibold transition-colors cursor-pointer" type="button"
           >
             <Percent className="w-[1em] h-[1em] text-secondary text-base" />
-            <span>Popust</span>
+            <span>Akcije</span>
           </button>
           <button 
             onClick={() => openCompose('event')}
@@ -323,7 +312,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
             className="flex-1 min-w-[110px] flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-label-md text-xs font-semibold transition-colors cursor-pointer" type="button"
           >
             <FileText className="w-[1em] h-[1em] text-primary text-base" />
-            <span>Članek</span>
+            <span>Blog</span>
           </button>
         </div>
       </div>
@@ -415,14 +404,6 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
           </button>
         </div>
         
-        <div className="flex items-center gap-1 pl-1 sm:pl-2 sm:border-l sm:border-surface-container shrink-0">
-          <ArrowUpDown className="w-3.5 h-3.5 text-outline shrink-0" />
-          <select className="bg-transparent font-label-md text-[11px] sm:text-xs text-on-surface focus:outline-none cursor-pointer py-1">
-            <option>Najnovejše</option>
-            <option>Priljubljeno</option>
-            <option>Največ komentarjev</option>
-          </select>
-        </div>
       </div>
       
       {/* 10 Cards initially */}
@@ -506,7 +487,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
               const blog = item.data;
               return (
                 <BlogPost
-                  key={`blog-${blog.id}-${idx}`}
+                  key={`blog-post-${blog.id}-${idx}`}
                   id={blog.id}
                   title={blog.title}
                   author={blog.author}
@@ -529,7 +510,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
               const ad = item.data;
               return (
                 <AdPost
-                  key={`ad-${ad.id}-${idx}`}
+                  key={`ad-post-${ad.id}-${idx}`}
                   id={ad.id}
                   title={ad.title}
                   price={ad.price}
@@ -547,7 +528,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
               const deal = item.data;
               return (
                 <DealPost
-                  key={`deal-${deal.id}-${idx}`}
+                  key={`deal-post-${deal.id}-${idx}`}
                   id={deal.id}
                   title={deal.title}
                   discount={deal.discount}
@@ -571,7 +552,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
               const ev = item.data;
               return (
                 <EventPost
-                  key={`event-${ev.id}-${idx}`}
+                  key={`event-post-${ev.id}-${idx}`}
                   id={ev.id}
                   title={ev.title}
                   organizer={ev.organizer}
