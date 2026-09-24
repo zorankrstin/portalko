@@ -8,6 +8,9 @@ export interface PostDetailTarget {
   id: string;
   source?: 'firestore' | 'mock';
   initialData?: any;
+  titleSlug?: string;
+  categorySlug?: string;
+  subcategorySlug?: string;
 }
 
 export interface AuthorProfileTarget {
@@ -61,7 +64,7 @@ export interface ReportModalTarget {
 }
 
 // ---------------- PROMOTION & FEATURED POST TYPES ----------------
-export type PromotionTargetSection = 'all' | 'ads' | 'events' | 'blog' | 'deals';
+export type PromotionTargetSection = 'all' | 'ads' | 'events' | 'blog' | 'deals' | 'ugodnosti' | 'dogodki' | 'mali-oglasi' | 'oglasi' | 'novice';
 export type PromotionBadgeType = 'PROMO' | 'OGLAS';
 
 export interface PromotionConfig {

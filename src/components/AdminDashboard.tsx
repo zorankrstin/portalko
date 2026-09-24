@@ -4,9 +4,10 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X, Flag
+  UserCheck, X, Flag, ImageIcon
 } from 'lucide-react';
 import { ReportsManager } from './admin/ReportsManager';
+import { PortalSettingsManager } from './admin/PortalSettingsManager';
 import { subscribeToReports } from '../services/reportService';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { 
@@ -72,7 +73,7 @@ const MOCK_POSTS: AdminPost[] = [
 
 export function AdminDashboard() {
   const { users, currentUser, updateUser, register } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'rss' | 'reports'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'rss' | 'reports' | 'settings'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -339,6 +340,8 @@ export function AdminDashboard() {
         price: e.price,
         location: e.location,
         eventDate: e.eventDate || e.date,
+        eventTime: e.eventTime,
+        ticketUrl: e.ticketUrl,
         rejectionReason: e.rejectionReason,
         isPromoted: e.isPromoted,
         promotion: e.promotion,
@@ -584,6 +587,15 @@ export function AdminDashboard() {
             {pendingReportsCount}
           </span>
         )}
+      </button>
+      <button 
+        onClick={() => setActiveTab('settings')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'settings' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <ImageIcon className="w-4 h-4" />
+        <span>Nadomestna slika & Nastavitve</span>
       </button>
     </div>
   );
@@ -1036,7 +1048,7 @@ export function AdminDashboard() {
                                   <PromotedBadge 
                                     type={post.promotionBadgeType || post.promotion?.badgeType || 'PROMO'} 
                                     size="sm" 
-                                    showSparkle={false}
+                                    showIcon={false}
                                   />
                                 )}
                               </div>
@@ -1341,6 +1353,13 @@ export function AdminDashboard() {
         {activeTab === 'reports' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <ReportsManager />
+          </div>
+        )}
+
+        {/* Tab Content: Settings */}
+        {activeTab === 'settings' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <PortalSettingsManager currentUserId={currentUser?.id} />
           </div>
         )}
       </div>

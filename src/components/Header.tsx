@@ -3,9 +3,9 @@ import { NotificationCenter } from './NotificationCenter';
 import { useBookmarks } from '../contexts/BookmarkContext';
 import { useAuth } from '../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { parseSearchQuery, buildSearchQuery, SearchCategory } from '../utils/searchUtils';
-
+import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
 import { PostDetailTarget, ViewMode } from '../types';
 
 export function Header({
@@ -36,6 +36,10 @@ export function Header({
   const [userCategoryOverride, setUserCategoryOverride] = useState<SearchCategory | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
+  const [allPosts, setAllPosts] = useState<FirestorePost[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+
   const { currentUser, logout } = useAuth();
   const { savedIds } = useBookmarks();
   const savedCount = savedIds.length;
@@ -57,9 +61,35 @@ export function Header({
 
   // Close dropdown on click outside
   useEffect(() => {
+    const unsub = subscribeToPosts(setAllPosts);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (text.length < 2) {
+      setSuggestions([]);
+      setIsSuggestionsOpen(false);
+      return;
+    }
+
+    const filtered = allPosts
+      .filter(p => p.title.toLowerCase().includes(text.toLowerCase()))
+      .map(p => p.title);
+    
+    // Unique suggestions
+    setSuggestions([...new Set(filtered)].slice(0, 5));
+    setIsSuggestionsOpen(true);
+  }, [text, allPosts]);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
+      }
+      // Close suggestions
+      const searchInput = document.getElementById('search-input');
+      if (searchInput && !searchInput.contains(event.target as Node)) {
+        setIsSuggestionsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -118,8 +148,8 @@ export function Header({
         >
           <img 
             alt="Portalko.net" 
-            className="h-10 sm:h-11 w-auto max-h-12 object-contain drop-shadow-2xs group-hover:scale-[1.02] transition-transform duration-200" 
-            src="https://raw.githubusercontent.com/zorankrstin/portalko/main/src/assets/images/Portalko.jpg" 
+            className="h-12 sm:h-14 w-auto max-h-16 object-contain drop-shadow-2xs group-hover:scale-[1.02] transition-transform duration-200" 
+            src="https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg" 
             id="header-brand-logo-img"
           />
           <span className="sr-only">Portalko.net - Domov</span>
@@ -152,13 +182,16 @@ export function Header({
             <div className="relative flex-1 flex items-center">
               <Search className="w-4 h-4 text-outline ml-3 shrink-0" />
               <input 
+                id="search-input"
                 value={text}
                 onChange={(e) => {
                   onSearchChange?.(buildSearchQuery(category, e.target.value));
                 }}
+                onFocus={() => setIsSuggestionsOpen(true)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     onSearchSubmit?.(buildSearchQuery(category, text));
+                    setIsSuggestionsOpen(false);
                   }
                 }}
                 className="w-full bg-transparent pl-2.5 pr-8 py-2 font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none" 
@@ -172,6 +205,25 @@ export function Header({
                 }
                 type="text" 
               />
+              
+              {/* Suggestions Dropdown */}
+              {isSuggestionsOpen && suggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-container-lowest rounded-lg border border-surface-container shadow-lg z-50 py-1">
+                  {suggestions.map((suggestion, index) => (
+                    <button
+                      key={index}
+                      className="w-full text-left px-4 py-2 text-xs text-on-surface hover:bg-surface-container-low transition-colors"
+                      onClick={() => {
+                        onSearchChange?.(buildSearchQuery(category, suggestion));
+                        setIsSuggestionsOpen(false);
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {(text || (parsedSearch.category !== 'all' && parsedSearch.category !== activeViewCategory)) && (
                 <button 
                   onClick={() => {

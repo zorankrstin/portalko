@@ -15,8 +15,9 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
 
   const parsedSearch = parseSearchQuery(searchQuery);
 
-  // Collect all saved items with fallback data
-  const allSavedItems: SavedItemData[] = savedIds.map(id => {
+  // Collect all saved items with fallback data, ensuring no duplicates
+  const uniqueSavedIds = Array.from(new Set(savedIds));
+  const allSavedItems: SavedItemData[] = uniqueSavedIds.map(id => {
     const data = getItemData(id);
     if (data) return data;
     const stored = savedItems[id];
@@ -94,35 +95,36 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
     );
   }
 
-  const renderSavedItem = (item: SavedItemData) => {
+  const renderSavedItem = (item: SavedItemData, idx: number = 0) => {
     const id = item.id;
+    const itemKey = `saved-${id}-${idx}`;
     const itemCat = (item.category || item.type || '').toString().toLowerCase();
 
     // News (RSS or NewsPost)
     if (itemCat.includes('news') || itemCat.includes('novic') || id.startsWith('rss')) {
       if (item.sourceName || item.pubDate || item.link || id.startsWith('rss')) {
-        return <RssPost key={id} id={id} {...item} />;
+        return <RssPost key={itemKey} id={id} {...item} />;
       }
-      return <NewsPost key={id} id={id} {...item} />;
+      return <NewsPost key={itemKey} id={id} {...item} />;
     }
 
     // Mali Oglasi (AdPost)
     if (itemCat.includes('ad') || itemCat.includes('oglas') || id.startsWith('oglas') || id.startsWith('ad') || id.startsWith('inline-ad')) {
-      return <AdPost key={id} id={id} {...item} />;
+      return <AdPost key={itemKey} id={id} {...item} />;
     }
 
     // Dogodki (EventPost)
     if (itemCat.includes('event') || itemCat.includes('dogod') || id.startsWith('dogodek') || id.startsWith('event')) {
-      return <EventPost key={id} id={id} {...item} />;
+      return <EventPost key={itemKey} id={id} {...item} />;
     }
 
     // Ugodnosti / Popusti (DealPost)
     if (itemCat.includes('deal') || itemCat.includes('popust') || id.startsWith('deal')) {
-      return <DealPost key={id} id={id} {...item} />;
+      return <DealPost key={itemKey} id={id} {...item} />;
     }
 
     // Blog & Default
-    return <BlogPost key={id} id={id} {...item} />;
+    return <BlogPost key={itemKey} id={id} {...item} />;
   };
 
   return (
@@ -274,7 +276,7 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
         </div>
       ) : (
         <div className="flex flex-col gap-space-md">
-          {filteredItems.map(item => renderSavedItem(item))}
+          {filteredItems.map((item, idx) => renderSavedItem(item, idx))}
         </div>
       )}
     </div>

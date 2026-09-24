@@ -260,6 +260,8 @@ export function UserProfile({
           price: e.price,
           location: e.location,
           eventDate: e.eventDate || e.date,
+          eventTime: e.eventTime,
+          ticketUrl: e.ticketUrl,
           rejectionReason: e.rejectionReason,
         });
       }
@@ -308,7 +310,7 @@ export function UserProfile({
     return (
       <div className="flex flex-col gap-space-md">
         <div className="bg-surface-container-lowest rounded-2xl p-8 shadow-sm border border-surface-container/50 text-center flex flex-col items-center gap-4">
-          <img src="https://raw.githubusercontent.com/zorankrstin/portalko/main/src/assets/images/Portalko.jpg" alt="Portalko.net" className="w-16 h-16 rounded-2xl object-contain shadow-xs border border-surface-container/60" />
+          <img src="https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg" alt="Portalko.net" className="w-16 h-16 rounded-2xl object-contain shadow-xs border border-surface-container/60" />
           <div className="max-w-md">
             <h2 className="font-headline-sm text-xl font-bold text-on-surface mb-2">
               Niste prijavljeni v Portalko
@@ -446,9 +448,31 @@ export function UserProfile({
             className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover shadow-md ring-4 ring-surface-container-lowest" 
             src={currentUser.avatar} 
           />
-          <button className="absolute bottom-1 right-1 p-2 bg-surface-container-highest hover:bg-surface-container text-on-surface rounded-full shadow-sm transition-colors border border-surface-container/50">
+          <input 
+            type="file" 
+            id={`avatar-upload-${currentUser.id}`} 
+            className="hidden" 
+            accept="image/*"
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const newAvatarUrl = reader.result as string;
+                  updateUser(currentUser.id, { avatar: newAvatarUrl });
+                  e.target.value = ''; // Reset input
+                };
+                reader.readAsDataURL(file);
+              }
+            }}
+          />
+          <label 
+            htmlFor={`avatar-upload-${currentUser.id}`}
+            className="absolute bottom-1 right-1 p-2 bg-surface-container-highest hover:bg-surface-container text-on-surface rounded-full shadow-sm transition-colors border border-surface-container/50 cursor-pointer"
+          >
             <Camera className="w-[1em] h-[1em] text-sm" />
-          </button>
+          </label>
         </div>
 
         <div className="flex-1 min-w-0 z-10">

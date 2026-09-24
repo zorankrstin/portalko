@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Share2, Facebook, Linkedin, Link as LinkIcon, Check, Send, Mail } from 'lucide-react';
+import { buildPostUrl } from '../utils/urlUtils';
 
 const XIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -59,19 +60,34 @@ export function ShareMenu({
     if (!id) return window.location.href;
     
     const origin = window.location.origin;
-    const path = window.location.pathname;
+
+    if (type) {
+      const cleanType = (type === 'post' ? 'blog' : type) as 'blog' | 'ad' | 'event' | 'deal';
+      if (cleanType === 'blog' || cleanType === 'ad' || cleanType === 'event' || cleanType === 'deal') {
+        const cleanPath = buildPostUrl({
+          type: cleanType,
+          id,
+          title,
+        });
+        return `${origin}${cleanPath}`;
+      }
+    }
 
     // Check if id already has category prefix
     if (id.startsWith('ad-') || id.startsWith('event-') || id.startsWith('deal-') || id.startsWith('blog-') || id.startsWith('post-')) {
-      return `${origin}${path}#${id}`;
+      const match = id.match(/^(deal|event|ad|post|blog)-(.*)$/);
+      if (match) {
+        const cleanType = (match[1] === 'post' ? 'blog' : match[1]) as 'blog' | 'ad' | 'event' | 'deal';
+        const cleanPath = buildPostUrl({
+          type: cleanType,
+          id: match[2],
+          title,
+        });
+        return `${origin}${cleanPath}`;
+      }
     }
 
-    if (type) {
-      const cleanType = type === 'post' ? 'blog' : type;
-      return `${origin}${path}#${cleanType}-${id}`;
-    }
-
-    return `${origin}${path}#blog-${id}`;
+    return `${origin}/#blog-${id}`;
   };
 
   const shareUrl = getShareUrl();

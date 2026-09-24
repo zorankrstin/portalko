@@ -1,13 +1,33 @@
 import { useState, useEffect } from 'react';
-import { Rss, Timer, ArrowRight, Globe, RefreshCw, ExternalLink } from 'lucide-react';
+import { Rss, Timer, ArrowRight, Globe, RefreshCw, ExternalLink, Percent } from 'lucide-react';
 import { Weather } from './Weather';
+import { AdSense } from './ads/AdSense';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 import { formatSlovenianDate } from '../utils/dateUtils';
+import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
+import { buildPostUrl, slugify } from '../utils/urlUtils';
+import type { PostDetailTarget } from '../types';
 
-export function RightSidebar() {
+export interface RightSidebarProps {
+  onNavigatePost?: (target: PostDetailTarget) => void;
+}
+
+export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
   const [timeLeft, setTimeLeft] = useState(6 * 3600 + 42 * 60 + 19);
   const [latestNews, setLatestNews] = useState<RealNewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [topDeal, setTopDeal] = useState<FirestorePost | null>(null);
+
+  useEffect(() => {
+    const unsub = subscribeToPosts((posts) => {
+      const deals = posts.filter(p => {
+        if (p.status === 'rejected') return false;
+        return p.category === 'deal' || p.category === 'ugodnosti' || p.id.startsWith('deal-') || p.categoryName === 'Ugodnosti';
+      });
+      setTopDeal(deals[0] || null);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -49,6 +69,7 @@ export function RightSidebar() {
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
     >
+      <AdSense />
       
       {/* VREME WIDGET */}
       <Weather />
@@ -105,25 +126,100 @@ export function RightSidebar() {
         <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-surface-container-lowest/10 rounded-full blur-xl pointer-events-none"></div>
         <div className="flex items-center justify-between">
           <span className="px-2 py-0.5 rounded-full bg-secondary text-on-secondary font-label-caps text-label-caps uppercase font-bold tracking-wider">
-            Ugodnost dneva
+            {topDeal ? 'Ugodnost dneva' : 'Akcije & Ugodnosti'}
           </span>
-          <div className="flex items-center gap-1 font-mono text-xs font-bold text-on-primary-container bg-surface-container-lowest/20 px-2 py-0.5 rounded-md">
-            <Timer className="w-[1em] h-[1em] text-xs" />
-            <span>{h}:{m}:{s}</span>
-          </div>
+          {topDeal && (
+            <div className="flex items-center gap-1 font-mono text-xs font-bold text-on-primary-container bg-surface-container-lowest/20 px-2 py-0.5 rounded-md">
+              <Timer className="w-[1em] h-[1em] text-xs" />
+              <span>{h}:{m}:{s}</span>
+            </div>
+          )}
         </div>
-        <div>
-          <h4 className="font-headline-sm text-base font-bold text-white">
-            Petrol Klub: Dvojne točke ob točenju Q Max goriv ta vikend
-          </h4>
-          <p className="font-body-sm text-xs text-on-primary-container/90 mt-1">
-            Aktivirajte kupon v aplikaciji pred točenjem na vseh bencinskih servisih po Sloveniji.
-          </p>
-        </div>
-        <button className="w-full py-2 px-3 rounded-xl bg-surface-container-lowest text-primary hover:bg-surface-container-high font-label-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1" type="button">
-          <span>Aktiviraj ugodnost zdaj</span>
-          <ArrowRight className="w-[1em] h-[1em] text-sm" />
-        </button>
+        {topDeal ? (
+          (() => {
+            const topDealUrl = buildPostUrl({
+              type: 'deal',
+              id: topDeal.id,
+              title: topDeal.title,
+              category: 'ugodnosti',
+              categoryName: topDeal.categoryName || 'Ugodnosti',
+              subcategory: topDeal.subcategory,
+              subcategoryName: topDeal.subcategoryName,
+            });
+
+            const handleTopDealClick = (e: React.MouseEvent) => {
+              e.preventDefault();
+              if (onNavigatePost) {
+                onNavigatePost({
+                  type: 'deal',
+                  id: topDeal.id,
+                  titleSlug: slugify(topDeal.title),
+                  categorySlug: slugify(topDeal.categoryName || 'ugodnosti'),
+                  subcategorySlug: topDeal.subcategoryName || topDeal.subcategory ? slugify(topDeal.subcategoryName || topDeal.subcategory) : undefined,
+                  initialData: {
+                    title: topDeal.title,
+                    category: topDeal.category,
+                    categoryName: topDeal.categoryName,
+                    author: topDeal.authorName,
+                    authorRole: topDeal.authorRole,
+                    image: topDeal.imageUrl,
+                    discount: topDeal.discount || topDeal.price,
+                    oldPrice: topDeal.oldPrice,
+                    newPrice: topDeal.newPrice,
+                    date: topDeal.expirationDate ? `Velja do ${topDeal.expirationDate}` : 'Aktualno',
+                    description: topDeal.content,
+                    code: topDeal.promoCode,
+                    link: topDeal.dealLink,
+                    region: topDeal.location,
+                  },
+                });
+              } else {
+                window.history.pushState({ type: 'deal', id: topDeal.id }, '', topDealUrl);
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }
+            };
+
+            return (
+              <>
+                <div>
+                  <h4 className="font-headline-sm text-base font-bold text-white">
+                    {topDeal.title}
+                  </h4>
+                  <p className="font-body-sm text-xs text-on-primary-container/90 mt-1 line-clamp-2">
+                    {topDeal.content}
+                  </p>
+                </div>
+                <a 
+                  href={topDealUrl}
+                  onClick={handleTopDealClick}
+                  className="w-full py-2 px-3 rounded-xl bg-surface-container-lowest text-primary hover:bg-surface-container-high font-label-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <span>Poglej podrobnosti</span>
+                  <ArrowRight className="w-[1em] h-[1em] text-sm" />
+                </a>
+              </>
+            );
+          })()
+        ) : (
+          <>
+            <div>
+              <h4 className="font-headline-sm text-base font-bold text-white">
+                Delite ugodnost s skupnostjo
+              </h4>
+              <p className="font-body-sm text-xs text-on-primary-container/90 mt-1">
+                Imate kodo za popust ali ugodnost v trgovini? Objavite jo in pomagajte prihraniti ostalim članom.
+              </p>
+            </div>
+            <button 
+              onClick={() => { window.location.hash = 'new-deal'; }}
+              className="w-full py-2 px-3 rounded-xl bg-surface-container-lowest text-primary hover:bg-surface-container-high font-label-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer" 
+              type="button"
+            >
+              <span>Objavi ugodnost</span>
+              <ArrowRight className="w-[1em] h-[1em] text-sm" />
+            </button>
+          </>
+        )}
       </div>
       
       {/* IMENIK PRILJUBLJENIH POVEZAV */}

@@ -119,3 +119,113 @@ export function formatFullSlovenianDateTime(dateStr?: string | null): string | u
     timeZone: 'Europe/Ljubljana',
   });
 }
+
+export interface EventDateInfo {
+  day: string;
+  month: string;
+  fullDate: string;
+}
+
+/**
+ * Robust parser for event dates entered in posting forms (YYYY-MM-DD or standard ISO/local strings).
+ * Converts "2026-09-28" to:
+ * - day: "28"
+ * - month: "SEP"
+ * - fullDate: "Ponedeljek, 28. september 2026" (or "Ponedeljek, 28. september 2026 ob 20:00" if timeStr is supplied)
+ */
+export function parseEventDateInfo(dateStr?: string | null, timeStr?: string | null): EventDateInfo {
+  const cleanTime = timeStr && typeof timeStr === 'string' && timeStr.trim() ? timeStr.trim() : '';
+
+  const formatWithTime = (info: EventDateInfo): EventDateInfo => {
+    if (!cleanTime) return info;
+    if (info.fullDate.includes(' ob ')) return info;
+    if (info.fullDate === 'Datum po dogovoru') return { ...info, fullDate: `Datum po dogovoru ob ${cleanTime}` };
+    return {
+      ...info,
+      fullDate: `${info.fullDate} ob ${cleanTime}`,
+    };
+  };
+
+  if (!dateStr || typeof dateStr !== 'string') {
+    return formatWithTime({ day: '★', month: 'DOG', fullDate: 'Datum po dogovoru' });
+  }
+  const trimmed = dateStr.trim();
+  if (!trimmed) {
+    return formatWithTime({ day: '★', month: 'DOG', fullDate: 'Datum po dogovoru' });
+  }
+
+  const MONTHS_SL_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAJ', 'JUN', 'JUL', 'AVG', 'SEP', 'OKT', 'NOV', 'DEC'];
+  const MONTHS_SL_FULL = [
+    'januar', 'februar', 'marec', 'april', 'maj', 'junij',
+    'julij', 'avgust', 'september', 'oktober', 'november', 'december'
+  ];
+  const DAYS_SL = ['Nedelja', 'Ponedeljek', 'Torek', 'Sreda', 'Četrtek', 'Petek', 'Sobota'];
+
+  // 1. Matches standard date picker format YYYY-MM-DD (e.g. "2026-09-28" or "2026-09-28T19:00:00")
+  const ymdMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{2}))?/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const monthIdx = parseInt(ymdMatch[2], 10) - 1;
+    const dayNum = parseInt(ymdMatch[3], 10);
+    const hour = ymdMatch[4] ? parseInt(ymdMatch[4], 10) : undefined;
+    const minute = ymdMatch[5] || undefined;
+
+    const d = new Date(year, monthIdx, dayNum);
+    const dayOfWeek = DAYS_SL[d.getDay()] || '';
+    const monthShort = MONTHS_SL_SHORT[monthIdx] || 'DOG';
+    const monthFull = MONTHS_SL_FULL[monthIdx] || '';
+    const extractedTime = (hour !== undefined && minute !== undefined) ? `${String(hour).padStart(2, '0')}:${minute}` : '';
+    const finalTime = cleanTime || extractedTime;
+    const timeSuffix = finalTime ? ` ob ${finalTime}` : '';
+
+    return {
+      day: String(dayNum),
+      month: monthShort,
+      fullDate: `${dayOfWeek}, ${dayNum}. ${monthFull} ${year}${timeSuffix}`
+    };
+  }
+
+  // 2. Matches DD.MM.YYYY (e.g. "28. 9. 2026" or "28.09.2026")
+  const dmyMatch = trimmed.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})(?:\s*ob\s*(\d{1,2}):(\d{2}))?/);
+  if (dmyMatch) {
+    const dayNum = parseInt(dmyMatch[1], 10);
+    const monthIdx = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const hour = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : undefined;
+    const minute = dmyMatch[5] || undefined;
+
+    const d = new Date(year, monthIdx, dayNum);
+    const dayOfWeek = DAYS_SL[d.getDay()] || '';
+    const monthShort = MONTHS_SL_SHORT[monthIdx] || 'DOG';
+    const monthFull = MONTHS_SL_FULL[monthIdx] || '';
+    const extractedTime = (hour !== undefined && minute !== undefined) ? `${String(hour).padStart(2, '0')}:${minute}` : '';
+    const finalTime = cleanTime || extractedTime;
+    const timeSuffix = finalTime ? ` ob ${finalTime}` : '';
+
+    return {
+      day: String(dayNum),
+      month: monthShort,
+      fullDate: `${dayOfWeek}, ${dayNum}. ${monthFull} ${year}${timeSuffix}`
+    };
+  }
+
+  // 3. Fallback: try Date parse
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const monthShort = MONTHS_SL_SHORT[parsed.getMonth()] || 'DOG';
+    const formatted = parsed.toLocaleDateString('sl-SI', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    const baseFullDate = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    return formatWithTime({
+      day: String(parsed.getDate()),
+      month: monthShort,
+      fullDate: baseFullDate
+    });
+  }
+
+  return formatWithTime({ day: '★', month: 'DOG', fullDate: trimmed });
+}

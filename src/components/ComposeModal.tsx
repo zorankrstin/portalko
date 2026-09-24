@@ -2,6 +2,7 @@ import {
   X, 
   Image as ImageIcon, 
   Link as LinkIcon, 
+  Unlink,
   MapPin, 
   Smile, 
   Loader2, 
@@ -14,15 +15,27 @@ import {
   LogIn,
   Layers,
   Tag,
-  Globe
+  Globe,
+  Upload,
+  Calendar,
+  Clock,
+  Ticket,
+  Percent,
+  TrendingDown,
+  ExternalLink,
+  Share2,
+  Star,
+  UploadCloud,
+  Trash2
 } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { RichTextEditor } from './RichTextEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { createPostInFirestore, createAdInFirestore, createEventInFirestore } from '../services/firestoreService';
 import { LoginModal } from './LoginModal';
 import { useCategories } from '../hooks/useCategories';
 import { CategorySection, SLOVENIA_REGIONS } from '../services/categoryService';
+import { compressImageFileToDataUrl } from '../utils/imageUtils';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
 
@@ -35,19 +48,32 @@ interface ComposeModalProps {
 
 export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCreated }: ComposeModalProps) {
   const { currentUser } = useAuth();
+  const editorRef = useRef<any>(null);
   const [postType, setPostType] = useState<PostType>(initialType);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [price, setPrice] = useState('');
+  const [oldPrice, setOldPrice] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+  const [expirationDate, setExpirationDate] = useState('');
+  const [dealLink, setDealLink] = useState('');
   const [discount, setDiscount] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [ticketUrl, setTicketUrl] = useState('');
   const [location, setLocation] = useState('');
   const [tagsString, setTagsString] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const [compressingProgress, setCompressingProgress] = useState('');
+  const [urlImageInput, setUrlImageInput] = useState('');
+  const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [embedCode, setEmbedCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -64,6 +90,74 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const currentSection = sectionMap[postType];
   const { categories } = useCategories(currentSection);
 
+  // Multi-image handlers
+  const handleMultiFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsCompressing(true);
+    const total = files.length;
+    const newUrls: string[] = [];
+    try {
+      for (let i = 0; i < total; i++) {
+        setCompressingProgress(`Optimiziram sliko ${i + 1} od ${total}...`);
+        const file = files[i];
+        if (!file.type.startsWith('image/')) continue;
+        const dataUrl = await compressImageFileToDataUrl(file, 1200);
+        newUrls.push(dataUrl);
+      }
+      setImages(prev => {
+        const merged = [...prev, ...newUrls];
+        if (!imageUrl && merged[0]) {
+          setImageUrl(merged[0]);
+        }
+        return merged;
+      });
+    } catch (err: any) {
+      console.error('Error processing images:', err);
+      setErrorMsg('Napaka pri obdelavi slik: ' + (err.message || ''));
+    } finally {
+      setIsCompressing(false);
+      setCompressingProgress('');
+      e.target.value = '';
+    }
+  };
+
+  const handleAddImageUrl = () => {
+    const trimmed = urlImageInput.trim();
+    if (!trimmed) return;
+    let finalUrl = trimmed;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      finalUrl = `https://${trimmed}`;
+    }
+    setImages(prev => {
+      const merged = [...prev, finalUrl];
+      if (!imageUrl) setImageUrl(finalUrl);
+      return merged;
+    });
+    setUrlImageInput('');
+  };
+
+  const handleRemoveImage = (idxToRemove: number) => {
+    setImages(prev => {
+      const updated = prev.filter((_, idx) => idx !== idxToRemove);
+      if (imageUrl === prev[idxToRemove]) {
+        setImageUrl(updated[0] || '');
+      }
+      return updated;
+    });
+  };
+
+  const handleSetPrimaryImage = (idxToPrimary: number) => {
+    setImages(prev => {
+      if (idxToPrimary <= 0 || idxToPrimary >= prev.length) return prev;
+      const target = prev[idxToPrimary];
+      const remaining = prev.filter((_, idx) => idx !== idxToPrimary);
+      const reordered = [target, ...remaining];
+      setImageUrl(target);
+      return reordered;
+    });
+  };
+
   // Initialize or reset selections when modal opens or postType changes
   useEffect(() => {
     if (isOpen) {
@@ -71,18 +165,50 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setTitle('');
       setContent('');
       setPrice('');
+      setOldPrice('');
+      setNewPrice('');
+      setExpirationDate('');
+      setDealLink('');
       setDiscount('');
       setPromoCode('');
       setEventDate('');
+      setEventTime('');
+      setTicketUrl('');
       setLocation('');
       setTagsString('');
       setSelectedRegion('all');
       setImageUrl('');
+      setImages([]);
+      setUrlImageInput('');
+      setEmbedCode('');
       setErrorMsg('');
       setSuccessMsg('');
       setIsSubmitting(false);
     }
   }, [isOpen, initialType]);
+
+  const handlePriceChange = (type: 'old' | 'new', val: string) => {
+    if (type === 'old') {
+      setOldPrice(val);
+      calcDiscount(val, newPrice);
+    } else {
+      setNewPrice(val);
+      calcDiscount(oldPrice, val);
+    }
+  };
+
+  const calcDiscount = (oldVal: string, newVal: string) => {
+    const parseNum = (str: string) => {
+      const cleaned = str.replace(/[^0-9.,]/g, '').replace(',', '.');
+      return parseFloat(cleaned);
+    };
+    const o = parseNum(oldVal);
+    const n = parseNum(newVal);
+    if (!isNaN(o) && !isNaN(n) && o > 0 && n > 0 && o > n) {
+      const pct = Math.round(((o - n) / o) * 100);
+      setDiscount(`-${pct}%`);
+    }
+  };
 
   // When categories change or postType changes, ensure category selection is valid
   useEffect(() => {
@@ -154,6 +280,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     const regionName = chosenRegionObj?.name || (selectedRegion === 'all' ? 'Vsa Slovenija' : selectedRegion);
     const finalLocation = location.trim() || (chosenRegionObj ? chosenRegionObj.cities[0] : 'Slovenija');
 
+    const primaryImg = images[0] || imageUrl || undefined;
+    const allImgs = images.length > 0 ? images : (imageUrl ? [imageUrl] : undefined);
+
     try {
       if (postType === 'post' || postType === 'deal') {
         await createPostInFirestore({
@@ -169,8 +298,17 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorName,
           authorRole,
           authorAvatar,
-          imageUrl: imageUrl || undefined,
-          price: postType === 'deal' ? (discount || undefined) : undefined,
+          imageUrl: primaryImg,
+          images: allImgs,
+          imageUrls: allImgs,
+          embedCode: embedCode || undefined,
+          price: postType === 'deal' ? (newPrice.trim() || discount.trim() || undefined) : undefined,
+          oldPrice: postType === 'deal' ? (oldPrice.trim() || undefined) : undefined,
+          newPrice: postType === 'deal' ? (newPrice.trim() || undefined) : undefined,
+          expirationDate: postType === 'deal' ? (expirationDate.trim() || undefined) : undefined,
+          discount: postType === 'deal' ? (discount.trim() || undefined) : undefined,
+          promoCode: postType === 'deal' ? (promoCode.trim() || undefined) : undefined,
+          dealLink: postType === 'deal' ? (dealLink.trim() || undefined) : undefined,
           status: initialStatus,
           likesCount: 0,
           commentsCount: 0,
@@ -190,7 +328,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorId,
           authorName,
           authorRole,
-          imageUrl: imageUrl || undefined,
+          imageUrl: primaryImg,
+          images: allImgs,
+          embedCode: embedCode || undefined,
           status: initialAdStatus,
           tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         });
@@ -201,6 +341,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           location: finalLocation,
           region: regionName,
           eventDate: eventDate || new Date().toISOString().split('T')[0],
+          eventTime: eventTime.trim() || undefined,
+          ticketUrl: ticketUrl.trim() || undefined,
+          price: price.trim() || 'Vstop prost',
           category: categorySlug,
           categoryName,
           subcategory: subcategorySlug || undefined,
@@ -208,7 +351,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorId,
           authorName,
           authorRole,
-          imageUrl: imageUrl || undefined,
+          imageUrl: primaryImg,
+          images: allImgs,
+          embedCode: embedCode || undefined,
           status: initialStatus,
           isPromoted: false,
           tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
@@ -449,50 +594,181 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           )}
 
           {postType === 'deal' && (
-            <div className="grid grid-cols-2 gap-3">
-              <input 
-                type="text" 
-                value={discount}
-                onChange={e => setDiscount(e.target.value)}
-                placeholder="Višina popusta (npr. -25%)"
-                className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
-              />
-              <input 
-                type="text" 
-                value={promoCode}
-                onChange={e => setPromoCode(e.target.value)}
-                placeholder="Koda kupona (neobvezno)"
-                className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
-              />
+            <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-secondary" />
+                  <span>Podrobnosti ugodnosti in popusta</span>
+                </span>
+                <span className="text-[10px] text-outline font-medium">Ugodnosti & Popusti</span>
+              </div>
+
+              {/* Old price & New price */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <span className="line-through text-outline">Stara cena</span>
+                    <span>Stara cena (redna cena)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={oldPrice}
+                    onChange={e => handlePriceChange('old', e.target.value)}
+                    placeholder="npr. 99,99 €"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  <span className="text-[10px] text-outline">Redna cena pred ugodnostjo</span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-secondary flex items-center gap-1.5">
+                    <TrendingDown className="w-3.5 h-3.5 text-secondary" />
+                    <span>Nova cena (znižana cena)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={newPrice}
+                    onChange={e => handlePriceChange('new', e.target.value)}
+                    placeholder="npr. 69,99 € (neobvezno)"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs font-bold text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  <span className="text-[10px] text-outline">Akcijska cena za kupca</span>
+                </div>
+              </div>
+
+              {/* Expiration date & Discount */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>Datum poteka ugodnosti (Expiration date)</span>
+                  </label>
+                  <input 
+                    type="date" 
+                    value={expirationDate}
+                    onChange={e => setExpirationDate(e.target.value)}
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  <span className="text-[10px] text-outline">
+                    {expirationDate ? `Veljavno do: ${new Date(expirationDate).toLocaleDateString('sl-SI')}` : 'Izberite datum, do kdaj velja ugodnost (neobvezno)'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Percent className="w-3.5 h-3.5 text-primary" />
+                    <span>Višina popusta (% ali opis)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={discount}
+                    onChange={e => setDiscount(e.target.value)}
+                    placeholder="npr. -30% ali 1+1 GRATIS"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  <span className="text-[10px] text-outline">Izračuna se samodejno ali vnesite po meri</span>
+                </div>
+              </div>
+
+              {/* Promo code & Deal link */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-surface-container/60">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-outline" />
+                    <span>Koda kupona (če obstaja)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={promoCode}
+                    onChange={e => setPromoCode(e.target.value.toUpperCase())}
+                    placeholder="npr. POMLAD30"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-mono text-xs font-bold text-primary uppercase focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <ExternalLink className="w-3.5 h-3.5 text-outline" />
+                    <span>Povezava do ugodnosti / trgovine</span>
+                  </label>
+                  <input 
+                    type="url" 
+                    value={dealLink}
+                    onChange={e => setDealLink(e.target.value)}
+                    placeholder="https://trgovina.si/akcija"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                </div>
+              </div>
             </div>
           )}
 
           {postType === 'event' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-outline">Datum dogodka</label>
-                <input 
-                  type="date" 
-                  value={eventDate}
-                  onChange={e => setEventDate(e.target.value)}
-                  className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-transparent" 
-                />
+            <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>Datum dogodka</span>
+                  </label>
+                  <input 
+                    type="date" 
+                    value={eventDate}
+                    onChange={e => setEventDate(e.target.value)}
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-primary" />
+                    <span>Čas dogodka (24-urni format)</span>
+                  </label>
+                  <input 
+                    type="time" 
+                    step="60"
+                    value={eventTime}
+                    onChange={e => setEventTime(e.target.value)}
+                    placeholder="20:00"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  <span className="text-[10px] text-outline">Npr. 19:30 ali 20:00</span>
+                </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-outline">Vstopnina / Cena</label>
-                <input 
-                  type="text" 
-                  value={price}
-                  onChange={e => setPrice(e.target.value)}
-                  placeholder="npr. Brezplačno ali 15 €"
-                  className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-transparent" 
-                />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-secondary" />
+                    <span>Vstopnina / Cena</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={price}
+                    onChange={e => setPrice(e.target.value)}
+                    placeholder="npr. Brezplačno ali 15 €"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Ticket className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Povezava za nakup vstopnic (opcijsko)</span>
+                  </label>
+                  <input 
+                    type="url" 
+                    value={ticketUrl}
+                    onChange={e => setTicketUrl(e.target.value)}
+                    placeholder="https://mojekarte.si/... ali eventim.si"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  <span className="text-[10px] text-outline">Spletna stran za prodajo vstopnic</span>
+                </div>
               </div>
             </div>
           )}
 
           <div className="flex flex-col gap-1.5">
-            <RichTextEditor placeholder="Podrobnejši opis objave..." onChange={setContent} />
+            <RichTextEditor ref={editorRef} placeholder="Podrobnejši opis objave..." onChange={setContent} />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -506,41 +782,194 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-outline">Naslovna slika</label>
-            <input 
-              type="file" 
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  // In a real app, you would upload this to Firebase Storage.
-                  // For now, we simulate by creating a temporary object URL.
-                  setImageUrl(URL.createObjectURL(file));
-                }
-              }}
-              className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
-            />
-            {imageUrl && (
-              <img src={imageUrl} alt="Preview" className="mt-2 h-32 w-full object-cover rounded-lg" />
+          <div className="flex flex-col gap-2 p-3 rounded-xl bg-surface-container-low/70 border border-surface-container">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-primary" />
+                <label className="text-xs font-semibold text-on-surface">Fotografije objave (ena ali več)</label>
+                {images.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-bold text-[10px]">
+                    {images.length} {images.length === 1 ? 'slika' : 'slik'}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1 bg-surface-container p-0.5 rounded-lg text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setImageInputMode('upload')}
+                  className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    imageInputMode === 'upload' 
+                      ? 'bg-surface-container-lowest text-primary shadow-xs font-bold' 
+                      : 'text-outline hover:text-on-surface'
+                  }`}
+                >
+                  Naloži z naprave
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageInputMode('url')}
+                  className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    imageInputMode === 'url' 
+                      ? 'bg-surface-container-lowest text-primary shadow-xs font-bold' 
+                      : 'text-outline hover:text-on-surface'
+                  }`}
+                >
+                  Spletna povezava
+                </button>
+              </div>
+            </div>
+
+            {imageInputMode === 'upload' ? (
+              <div className="flex flex-col gap-2">
+                <label className="border-2 border-dashed border-surface-container-high hover:border-primary/60 rounded-xl p-3 text-center cursor-pointer transition-colors bg-surface-container-lowest/50 hover:bg-surface-container-lowest flex flex-col items-center justify-center gap-1 group">
+                  <UploadCloud className="w-6 h-6 text-primary group-hover:scale-110 transition-transform mb-0.5" />
+                  <span className="text-xs font-semibold text-on-surface">
+                    Kliknite za izbiro ene ali več fotografij
+                  </span>
+                  <span className="text-[10px] text-outline">
+                    Podprte oblike: JPG, PNG, WEBP. Samodejno stiskanje in optimizacija.
+                  </span>
+                  <input 
+                    type="file" 
+                    multiple 
+                    accept="image/*"
+                    onChange={handleMultiFileUpload}
+                    className="hidden" 
+                  />
+                </label>
+                {isCompressing && (
+                  <div className="flex items-center gap-2 text-xs text-primary font-medium p-2 bg-primary/10 rounded-lg animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{compressingProgress || 'Pripravljam in optimiziram fotografije...'}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input 
+                  type="url" 
+                  value={urlImageInput}
+                  onChange={e => setUrlImageInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddImageUrl();
+                    }
+                  }}
+                  placeholder="https://... prilepite spletni naslov fotografije"
+                  className="flex-1 bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:ring-1 focus:ring-primary border border-surface-container" 
+                />
+                <button
+                  type="button"
+                  onClick={handleAddImageUrl}
+                  className="px-3.5 py-2 bg-surface-container hover:bg-surface-container-high rounded-xl text-xs font-bold text-on-surface transition-colors cursor-pointer"
+                >
+                  Dodaj sliko
+                </button>
+              </div>
+            )}
+
+            {/* Predogled galerije naloženih fotografij */}
+            {images.length > 0 && (
+              <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-surface-container/60">
+                <div className="flex items-center justify-between text-[11px] text-outline">
+                  <span>Zvezdica označi glavno naslovno sliko:</span>
+                  <span className="font-semibold text-on-surface-variant">Naloženo: {images.length}</span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                  {images.map((img, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`relative rounded-xl overflow-hidden aspect-video border group ${
+                        idx === 0 ? 'border-primary ring-2 ring-primary/40 shadow-xs' : 'border-surface-container'
+                      }`}
+                    >
+                      <img src={img} alt={`Predogled ${idx + 1}`} className="h-full w-full object-cover" />
+                      {idx === 0 && (
+                        <span className="absolute top-1 left-1 bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
+                          <Star className="w-2.5 h-2.5 fill-current" />
+                          <span>Glavna</span>
+                        </span>
+                      )}
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                        {idx !== 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetPrimaryImage(idx)}
+                            className="p-1 rounded-md bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-primary text-[10px] font-bold cursor-pointer transition-colors shadow-xs"
+                            title="Nastavi kot glavno sliko"
+                          >
+                            <Star className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(idx)}
+                          className="p-1 rounded-md bg-error/90 hover:bg-error text-white text-[10px] font-bold cursor-pointer transition-colors shadow-xs"
+                          title="Odstrani to sliko"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-outline flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Share2 className="w-3.5 h-3.5 text-secondary" />
+                <span>Vdelana vsebina z družbenih omrežij ali video (neobvezno)</span>
+              </span>
+              <span className="text-[10px] bg-secondary/10 text-secondary font-medium px-1.5 py-0.5 rounded">YouTube, X, Instagram ali &lt;iframe&gt;</span>
+            </label>
+            <textarea 
+              value={embedCode}
+              onChange={e => setEmbedCode(e.target.value)}
+              placeholder="Prilepite povezavo ali vdelano kodo (npr. YouTube, Facebook, X, Instagram)..."
+              className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
+              rows={2}
+            />
+          </div>
+
           <div className="flex items-center justify-between border-t border-surface-container-low pt-4">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <button 
                 type="button" 
-                onClick={() => setImageUrl('https://images.unsplash.com/photo-1579202673506-ca3ce28943ef?w=800')} 
-                className="p-2 rounded-lg text-primary hover:bg-surface-container transition-colors" 
-                title="Dodaj primer slike"
+                onClick={() => editorRef.current?.openLinkDialog ? editorRef.current.openLinkDialog() : editorRef.current?.setLink()}
+                className="px-2.5 py-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors flex items-center gap-1.5 font-bold text-xs border border-primary/20 cursor-pointer" 
+                title="Dodaj spletno povezavo (URL link)"
               >
-                <ImageIcon className="w-[1em] h-[1em] text-lg" />
+                <LinkIcon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Povezava</span>
               </button>
-              <button type="button" className="p-2 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface transition-colors" title="Dodaj povezavo">
-                <LinkIcon className="w-[1em] h-[1em] text-lg" />
+              <button 
+                type="button" 
+                onClick={() => editorRef.current?.openEmbedDialog()}
+                className="px-2.5 py-1.5 rounded-lg text-secondary hover:bg-secondary/10 transition-colors flex items-center gap-1.5 font-bold text-xs border border-secondary/25 cursor-pointer" 
+                title="Vdelaj objavo z družbenih omrežij (YouTube, X, Instagram, Facebook, TikTok) ali video"
+              >
+                <Share2 className="w-3.5 h-3.5 text-secondary" />
+                <span className="hidden sm:inline">Vdelaj objavo</span>
               </button>
-              <button type="button" className="p-2 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface transition-colors" title="Dodaj emoji">
-                <Smile className="w-[1em] h-[1em] text-lg" />
+              <button 
+                type="button" 
+                onClick={() => editorRef.current?.addImage()} 
+                className="p-1.5 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface transition-colors cursor-pointer" 
+                title="Dodaj sliko v opis"
+              >
+                <ImageIcon className="w-4 h-4" />
+              </button>
+              <button 
+                type="button" 
+                onClick={() => editorRef.current?.unsetLink()}
+                className="p-1.5 rounded-lg text-outline hover:bg-surface-container hover:text-on-surface transition-colors cursor-pointer" 
+                title="Odstrani povezavo"
+              >
+                <Unlink className="w-4 h-4" />
               </button>
             </div>
             <button 

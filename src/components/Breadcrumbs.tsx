@@ -14,9 +14,11 @@ import {
   Shield,
   User,
   Search,
-  X
+  X,
+  Tag
 } from 'lucide-react';
 import { ViewMode, PostDetailTarget, AuthorProfileTarget } from '../types';
+import { slugify } from '../utils/urlUtils';
 
 export interface BreadcrumbCrumb {
   id: string;
@@ -33,6 +35,9 @@ export interface BreadcrumbsProps {
   previousView: ViewMode;
   selectedPostTarget: PostDetailTarget | null;
   postTitle?: string;
+  categoryName?: string;
+  subcategoryName?: string;
+  postUrl?: string;
   selectedAuthorProfile: AuthorProfileTarget | null;
   searchQuery?: string;
   onViewChange: (view: ViewMode) => void;
@@ -47,6 +52,9 @@ export function Breadcrumbs({
   previousView,
   selectedPostTarget,
   postTitle,
+  categoryName,
+  subcategoryName,
+  postUrl,
   selectedAuthorProfile,
   searchQuery,
   onViewChange,
@@ -64,7 +72,7 @@ export function Breadcrumbs({
   crumbs.push({
     id: 'home',
     label: 'Domov',
-    href: '#domov',
+    href: '/',
     icon: Home,
     isCurrent: currentView === 'main' && !searchQuery,
     onClick: onHomeClick,
@@ -84,7 +92,7 @@ export function Breadcrumbs({
     crumbs.push({
       id: 'news',
       label: 'Novice',
-      href: '#novice',
+      href: '/novice',
       icon: Rss,
       isCurrent: !searchQuery,
       onClick: () => onViewChange('news'),
@@ -101,7 +109,7 @@ export function Breadcrumbs({
     crumbs.push({
       id: 'ads',
       label: 'Mali oglasi',
-      href: '#mali-oglasi',
+      href: '/mali-oglasi',
       icon: Store,
       isCurrent: !searchQuery,
       onClick: () => onViewChange('ads'),
@@ -118,7 +126,7 @@ export function Breadcrumbs({
     crumbs.push({
       id: 'events',
       label: 'Dogodki & Prireditve',
-      href: '#dogodki',
+      href: '/dogodki',
       icon: CalendarDays,
       isCurrent: !searchQuery,
       onClick: () => onViewChange('events'),
@@ -135,7 +143,7 @@ export function Breadcrumbs({
     crumbs.push({
       id: 'deals',
       label: 'Ugodnosti & Popusti',
-      href: '#ugodnosti',
+      href: '/ugodnosti',
       icon: Percent,
       isCurrent: !searchQuery,
       onClick: () => onViewChange('deals'),
@@ -151,8 +159,8 @@ export function Breadcrumbs({
   } else if (currentView === 'blog') {
     crumbs.push({
       id: 'blog',
-      label: 'Blog & Članki',
-      href: '#blog',
+      label: 'Blog & Zgodbe',
+      href: '/blog',
       icon: BookOpen,
       isCurrent: !searchQuery,
       onClick: () => onViewChange('blog'),
@@ -169,7 +177,7 @@ export function Breadcrumbs({
     crumbs.push({
       id: 'saved',
       label: 'Shranjene objave',
-      href: '#shranjeno',
+      href: '/shranjeno',
       icon: Bookmark,
       isCurrent: true,
       onClick: () => onViewChange('saved'),
@@ -178,7 +186,7 @@ export function Breadcrumbs({
     crumbs.push({
       id: 'admin',
       label: 'Nadzorna plošča',
-      href: '#admin',
+      href: '/admin',
       icon: Shield,
       isCurrent: true,
       onClick: () => onViewChange('admin'),
@@ -196,16 +204,21 @@ export function Breadcrumbs({
                             parentView === 'events' ? 'Dogodki' :
                             parentView === 'ads' ? 'Mali oglasi' :
                             (parentView === 'news' ? 'Novice' : 'Blog');
+        const parentHref = parentView === 'deals' ? '/ugodnosti' :
+                           parentView === 'events' ? '/dogodki' :
+                           parentView === 'ads' ? '/mali-oglasi' :
+                           (parentView === 'news' ? '/novice' : '/blog');
         crumbs.push({
           id: 'author-parent-category',
           label: parentLabel,
-          href: `#${parentView}`,
+          href: parentHref,
           onClick: () => onViewChange(parentView),
         });
       }
       crumbs.push({
         id: 'author-profile',
         label: `Avtor: ${selectedAuthorProfile.name}`,
+        href: `/avtor/${slugify(selectedAuthorProfile.name)}`,
         icon: User,
         isCurrent: true,
         fullTitle: `Profil avtorja ${selectedAuthorProfile.name}`,
@@ -214,61 +227,59 @@ export function Breadcrumbs({
       crumbs.push({
         id: 'profile',
         label: 'Moj profil',
-        href: '#profil',
+        href: '/profil',
         icon: User,
         isCurrent: true,
         onClick: () => onViewChange('profile'),
       });
     }
   } else if (currentView === 'post-detail' && selectedPostTarget) {
-    // Determine category based on target type and previousView
+    // 1. Level 1: Category / Section (Mali oglasi, Dogodki, Ugodnosti, Blog)
     const type = selectedPostTarget.type;
+    let sectionLabel = 'Blog';
+    let sectionPath = '/blog';
+    let SectionIcon = BookOpen;
+
     if (type === 'deal') {
-      crumbs.push({
-        id: 'parent-deals',
-        label: 'Ugodnosti',
-        href: '#ugodnosti',
-        icon: Percent,
-        onClick: () => onViewChange('deals'),
-      });
+      sectionLabel = 'Ugodnosti';
+      sectionPath = '/ugodnosti';
+      SectionIcon = Percent;
     } else if (type === 'event') {
-      crumbs.push({
-        id: 'parent-events',
-        label: 'Dogodki',
-        href: '#dogodki',
-        icon: CalendarDays,
-        onClick: () => onViewChange('events'),
-      });
+      sectionLabel = 'Dogodki';
+      sectionPath = '/dogodki';
+      SectionIcon = CalendarDays;
     } else if (type === 'ad') {
-      crumbs.push({
-        id: 'parent-ads',
-        label: 'Mali oglasi',
-        href: '#mali-oglasi',
-        icon: Store,
-        onClick: () => onViewChange('ads'),
-      });
-    } else {
-      // blog or post
-      if (previousView === 'news') {
-        crumbs.push({
-          id: 'parent-news',
-          label: 'Novice',
-          href: '#novice',
-          icon: Rss,
-          onClick: () => onViewChange('news'),
-        });
-      } else {
-        crumbs.push({
-          id: 'parent-blog',
-          label: 'Blog',
-          href: '#blog',
-          icon: BookOpen,
-          onClick: () => onViewChange('blog'),
-        });
-      }
+      sectionLabel = 'Mali oglasi';
+      sectionPath = '/mali-oglasi';
+      SectionIcon = Store;
+    } else if (previousView === 'news') {
+      sectionLabel = 'Novice';
+      sectionPath = '/novice';
+      SectionIcon = Rss;
     }
 
-    // Active single post crumb
+    crumbs.push({
+      id: `section-${type}`,
+      label: sectionLabel,
+      href: sectionPath,
+      icon: SectionIcon,
+      onClick: () => onViewChange(type === 'deal' ? 'deals' : type === 'event' ? 'events' : type === 'ad' ? 'ads' : (previousView === 'news' ? 'news' : 'blog')),
+    });
+
+    // 2. Level 2: Subcategory (e.g. Avto-moto, Nepremičnine, Turizem & Izleti, etc.)
+    const resolvedSubcategory = subcategoryName || categoryName || selectedPostTarget.subcategorySlug || selectedPostTarget.categorySlug;
+    if (resolvedSubcategory && resolvedSubcategory.toLowerCase() !== sectionLabel.toLowerCase() && resolvedSubcategory !== 'splosno') {
+      const subcatSlug = slugify(resolvedSubcategory);
+      crumbs.push({
+        id: `subcat-${subcatSlug}`,
+        label: resolvedSubcategory,
+        href: `${sectionPath}/${subcatSlug}`,
+        icon: Tag,
+        onClick: () => onViewChange(type === 'deal' ? 'deals' : type === 'event' ? 'events' : type === 'ad' ? 'ads' : 'blog'),
+      });
+    }
+
+    // 3. Level 3: Post Title (The clean end of /category/subcategory/title)
     const fallbackTitle = type === 'deal' ? 'Posamezna ugodnost' :
                           type === 'event' ? 'Posamezen dogodek' :
                           type === 'ad' ? 'Posamezen oglas' :
@@ -276,8 +287,9 @@ export function Breadcrumbs({
     const displayTitle = postTitle || fallbackTitle;
 
     crumbs.push({
-      id: `post-${selectedPostTarget.id}`,
+      id: `post-${selectedPostTarget.id || slugify(displayTitle)}`,
       label: displayTitle,
+      href: postUrl || window.location.pathname,
       isCurrent: true,
       fullTitle: displayTitle,
     });

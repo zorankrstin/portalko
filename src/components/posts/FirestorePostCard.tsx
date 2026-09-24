@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
@@ -12,17 +12,44 @@ import { EditPostModal, EditablePostItem } from "./EditPostModal";
 import { PromotedBadge } from "../common/PromotedBadge";
 import { UserDisplayName } from "../common/UserDisplayName";
 import { isItemActivelyPromoted } from "../../services/promotionService";
+import { parseEventDateInfo } from "../../utils/dateUtils";
+import { getPlainTextSnippet } from "../../utils/textUtils";
+import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
+import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import type { PostDetailTarget } from "../../types";
 
 export interface FirestorePostCardProps {
   post: FirestorePost;
+  onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
-export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) => {
+export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNavigatePost }) => {
   const { currentUser } = useAuth();
   const [likesCount, setLikesCount] = useState(post.likesCount || 0);
   const [hasLiked, setHasLiked] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const resolveInitialImage = () => {
+    if (post.imageUrl && post.imageUrl.trim()) return post.imageUrl.trim();
+    return getActiveFallbackImage(true, post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog') || '';
+  };
+  const [imgSrc, setImgSrc] = useState<string>(resolveInitialImage());
+  const [hasImgError, setHasImgError] = useState<boolean>(false);
+
+  useEffect(() => {
+    setImgSrc(resolveInitialImage());
+    setHasImgError(false);
+  }, [post.imageUrl]);
+
+  const handleImageError = () => {
+    const fallback = getActiveFallbackImage(false);
+    if (fallback && imgSrc !== fallback) {
+      setImgSrc(fallback);
+      return;
+    }
+    setHasImgError(true);
+  };
 
   const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
   const isAuthor = currentUser?.id === post.authorId;
@@ -79,7 +106,16 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
     status: post.status || 'published',
     imageUrl: post.imageUrl,
     price: post.price,
+    oldPrice: post.oldPrice,
+    newPrice: post.newPrice,
+    expirationDate: post.expirationDate,
+    discount: post.discount,
+    promoCode: post.promoCode,
+    dealLink: post.dealLink,
     location: post.location,
+    eventDate: post.eventDate,
+    eventTime: post.eventTime,
+    ticketUrl: post.ticketUrl,
     rejectionReason: post.rejectionReason,
   };
 
@@ -91,15 +127,46 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
   );
   const promoBadge = post.promotionBadgeType || post.promotion?.badgeType || 'PROMO';
 
+  const renderAdminCardActions = () => {
+    if (!canEdit) return null;
+    return (
+      <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 bg-surface-container-lowest/90 backdrop-blur-md px-2 py-1 rounded-xl shadow-md border border-surface-container">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsEditModalOpen(true);
+          }}
+          className="px-2 py-1 rounded-lg text-xs font-semibold bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1 transition-colors cursor-pointer"
+          title="Uredi objavo (Skrbnik / Avtor)"
+        >
+          <Edit3 className="w-3.5 h-3.5" />
+          <span>Uredi</span>
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDelete();
+          }}
+          disabled={isDeleting}
+          className="p-1 rounded-lg text-xs font-semibold hover:bg-error/15 text-outline hover:text-error flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50"
+          title="Izbriši objavo"
+        >
+          {isDeleting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-error" />
+          ) : (
+            <Trash2 className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+    );
+  };
+
   if (post.category === 'ad') {
     return (
-      <div className="relative">
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
-          {isPostPromoted && <PromotedBadge type={promoBadge} size="sm" />}
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/90 backdrop-blur-xs text-white text-[10px] font-semibold tracking-wider uppercase">
-            <Sparkles className="w-2.5 h-2.5" />
-            V živo
-          </span>
+      <div className="relative group/card">
+        {renderAdminCardActions()}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 pointer-events-none">
+          {isPostPromoted && !canEdit && <PromotedBadge type={promoBadge} size="sm" />}
         </div>
         <AdPost
           id={post.id}
@@ -110,69 +177,101 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           date="Ravno objavljeno"
           description={post.content}
           categoryName="Mali oglas"
+          category="oglasi"
           image={post.imageUrl}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
+          onNavigatePost={onNavigatePost}
         />
+        {isEditModalOpen && (
+          <EditPostModal
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            item={editableItem}
+            onSaved={() => setIsEditModalOpen(false)}
+          />
+        )}
       </div>
     );
   }
 
   if (isDeal) {
     return (
-      <div className="relative">
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
-          {isPostPromoted && <PromotedBadge type={promoBadge} size="sm" />}
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary/90 backdrop-blur-xs text-on-secondary text-[10px] font-semibold tracking-wider uppercase">
-            <Sparkles className="w-2.5 h-2.5" />
-            V živo
-          </span>
+      <div className="relative group/card">
+        {renderAdminCardActions()}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 pointer-events-none">
+          {isPostPromoted && !canEdit && <PromotedBadge type={promoBadge} size="sm" />}
         </div>
         <DealPost
           id={post.id}
           title={post.title}
-          discount={post.price || "Ugodnost"}
+          discount={post.discount || post.price || "Ugodnost"}
+          oldPrice={post.oldPrice}
+          newPrice={post.newPrice}
+          expirationDate={post.expirationDate}
           author={post.authorName}
           authorRole={post.authorRole || "Partner"}
           authorAvatar={post.authorAvatar}
-          date="Aktualno"
+          date={post.expirationDate ? `Velja do ${post.expirationDate}` : "Aktualno"}
           description={post.content}
           image={post.imageUrl}
+          code={post.promoCode}
+          link={post.dealLink}
           categoryName={post.categoryName || "Ugodnosti"}
+          category="ugodnosti"
           region={post.location || "Slovenija"}
           verifiedText="Preverjeno"
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
+          onNavigatePost={onNavigatePost}
         />
+        {isEditModalOpen && (
+          <EditPostModal
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            item={editableItem}
+            onSaved={() => setIsEditModalOpen(false)}
+          />
+        )}
       </div>
     );
   }
 
   if (post.category === 'event') {
+    const dateInfo = parseEventDateInfo(post.eventDate, post.eventTime);
     return (
-      <div className="relative">
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
-          {isPostPromoted && <PromotedBadge type={promoBadge} size="sm" />}
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/90 backdrop-blur-xs text-white text-[10px] font-semibold tracking-wider uppercase">
-            <Sparkles className="w-2.5 h-2.5" />
-            V živo
-          </span>
+      <div className="relative group/card">
+        {renderAdminCardActions()}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 pointer-events-none">
+          {isPostPromoted && !canEdit && <PromotedBadge type={promoBadge} size="sm" />}
         </div>
         <EventPost
           id={post.id}
           title={post.title}
           organizer={post.authorName}
-          categoryName="Dogodek"
-          location="Slovenija"
-          date="Kmalu"
-          month="AKT"
-          day="!"
+          categoryName={post.categoryName || "Dogodek"}
+          category="dogodki"
+          location={post.location || "Slovenija"}
+          date={dateInfo.fullDate}
+          eventTime={post.eventTime}
+          month={dateInfo.month}
+          day={dateInfo.day}
           price={post.price || "Vstop prost"}
+          ticketUrl={post.ticketUrl}
           description={post.content}
           image={post.imageUrl}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
+          onNavigatePost={onNavigatePost}
         />
+        {isEditModalOpen && (
+          <EditPostModal
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            item={editableItem}
+            onSaved={() => setIsEditModalOpen(false)}
+          />
+        )}
       </div>
     );
   }
@@ -207,6 +306,45 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
   const isActivelyPromoted = post.isPromoted && (!post.promotedUntil || new Date(post.promotedUntil).getTime() > Date.now());
   const badgeType = post.promotionBadgeType || post.promotion?.badgeType || 'PROMO';
 
+  const postUrl = buildPostUrl({
+    type: 'blog',
+    id: post.id,
+    title: post.title,
+    category: post.category,
+    categoryName: post.categoryName,
+    subcategory: post.subcategory,
+    subcategoryName: post.subcategoryName,
+  });
+
+  const authorUrl = `/avtor/${slugify(post.authorName)}`;
+
+  const handleOpenDetail = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (onNavigatePost) {
+      onNavigatePost({
+        type: 'blog',
+        id: post.id,
+        titleSlug: slugify(post.title),
+        categorySlug: slugify(post.categoryName || post.category || 'blog'),
+        subcategorySlug: post.subcategoryName || post.subcategory ? slugify(post.subcategoryName || post.subcategory) : undefined,
+        initialData: {
+          title: post.title,
+          category: post.category,
+          categoryName: post.categoryName,
+          author: post.authorName,
+          authorRole: post.authorRole,
+          authorAvatar: post.authorAvatar,
+          image: imgSrc,
+          description: post.content,
+          date: 'Ravno objavljeno',
+        },
+      });
+    } else {
+      window.history.pushState({ type: 'blog', id: post.id }, '', postUrl);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
+
   return (
     <article className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border hover:shadow-md transition-shadow flex flex-col gap-space-sm relative overflow-hidden ${
       isActivelyPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
@@ -233,7 +371,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <a
-            href={`#author-${encodeURIComponent(post.authorName.replace(/\s+/g, '_'))}`}
+            href={authorUrl}
             className="group/author shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${post.authorName}`}
           >
@@ -246,7 +384,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           <div>
             <div className="flex items-center gap-1.5">
               <a
-                href={`#author-${encodeURIComponent(post.authorName.replace(/\s+/g, '_'))}`}
+                href={authorUrl}
                 className="font-label-md text-label-md font-bold text-on-surface hover:text-primary hover:underline transition-colors"
                 title={`Ogled profila avtorja: ${post.authorName}`}
               >
@@ -295,6 +433,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
             type={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
             title={post.title} 
             description={post.content}
+            url={`${window.location.origin}${postUrl}`}
           />
           <ReportButton 
             targetId={post.id}
@@ -307,11 +446,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
 
       <div className="flex flex-col gap-2">
         <a
-          href={`#blog-${post.id}`}
-          onClick={(e) => {
-            e.preventDefault();
-            window.location.hash = `blog-${post.id}`;
-          }}
+          href={postUrl}
+          onClick={handleOpenDetail}
           className="block group/title cursor-pointer"
           title="Odpri samostojno stran članka"
         >
@@ -320,25 +456,23 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           </h2>
         </a>
         <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
-          {post.content}
+          {getPlainTextSnippet(post.content)}
         </p>
       </div>
 
-      {post.imageUrl && (
+      {imgSrc && !hasImgError && (
         <a
-          href={`#blog-${post.id}`}
-          onClick={(e) => {
-            e.preventDefault();
-            window.location.hash = `blog-${post.id}`;
-          }}
+          href={postUrl}
+          onClick={handleOpenDetail}
           className="relative rounded-xl overflow-hidden aspect-[16/9] bg-surface-container max-h-80 block cursor-pointer group/img"
           title="Odpri samostojno stran članka"
         >
           <img 
             alt={post.title} 
             className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" 
-            src={post.imageUrl} 
+            src={imgSrc} 
             loading="lazy"
+            onError={handleImageError}
           />
         </a>
       )}
@@ -362,11 +496,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
           </button>
           
           <a 
-            href={`#blog-${post.id}`}
-            onClick={(e) => {
-              e.preventDefault();
-              window.location.hash = `blog-${post.id}`;
-            }}
+            href={postUrl}
+            onClick={handleOpenDetail}
             className="flex items-center gap-1.5 text-outline hover:text-on-surface text-label-md font-label-md transition-colors cursor-pointer"
           >
             <MessageCircle className="w-4 h-4" />
@@ -378,6 +509,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
             type={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
             title={post.title}
             description={post.content}
+            url={`${window.location.origin}${postUrl}`}
             showLabel={true}
             buttonClassName="flex items-center gap-1.5 text-outline hover:text-primary text-label-md font-label-md transition-colors cursor-pointer"
           />
@@ -385,11 +517,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post }) =>
 
         <div className="flex items-center gap-2">
           <a
-            href={`#blog-${post.id}`}
-            onClick={(e) => {
-              e.preventDefault();
-              window.location.hash = `blog-${post.id}`;
-            }}
+            href={postUrl}
+            onClick={handleOpenDetail}
             className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container"
             title="Preberi celoten članek"
           >

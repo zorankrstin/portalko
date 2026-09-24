@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Percent, 
   Search, 
@@ -21,8 +21,16 @@ import {
   SlidersHorizontal, 
   Timer,
   Sparkles,
-  MapPin
+  MapPin,
+  UploadCloud,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Share2,
+  Loader2,
+  Trash2
 } from 'lucide-react';
+import { RichTextEditor, RichTextEditorRef } from './RichTextEditor';
+import { compressImageFileToDataUrl } from '../utils/imageUtils';
 import { 
   DealItem, 
   HERO_BENTO_DEALS, 
@@ -89,10 +97,20 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     category: 'tehnika' as 'tehnika' | 'prehrana' | 'turizem' | 'sport' | 'dom' | 'avto',
     code: '',
     discount: '-20%',
+    oldPrice: '',
+    newPrice: '',
+    expirationDate: '',
     link: '',
     date: 'Velja do konca meseca',
     image: '',
+    images: [] as string[],
+    embedCode: '',
   });
+  const [photoMode, setPhotoMode] = useState<'upload' | 'url'>('upload');
+  const [isCompressingPhotos, setIsCompressingPhotos] = useState(false);
+  const [compressingProgress, setCompressingProgress] = useState('');
+  const [urlPhotoInput, setUrlPhotoInput] = useState('');
+  const editorRef = useRef<RichTextEditorRef>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   // Subscribe to Firestore for real community deals
@@ -113,17 +131,22 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           subcategory: p.subcategory || '',
           subcategoryName: p.subcategoryName || '',
           region: p.region || p.location || 'Vsa Slovenija',
-          discount: p.price || 'Ugodnost',
+          discount: p.discount || p.price || 'Ugodnost',
+          oldPrice: p.oldPrice,
+          newPrice: p.newPrice,
+          expirationDate: p.expirationDate,
           dealType: 'code' as const,
           dealTypeName: 'Uporabniški kupon',
-          date: 'Pravkar objavljeno',
+          date: p.expirationDate ? `Velja do ${p.expirationDate}` : 'Pravkar objavljeno',
           description: p.content,
-          code: p.title.match(/[A-Z0-9]{4,10}/)?.[0] || undefined,
-          link: '#',
+          code: p.promoCode || p.title.match(/[A-Z0-9]{4,10}/)?.[0] || undefined,
+          link: p.dealLink || '#',
           votes: (p.likesCount || 0) + 1,
           verifiedText: 'Članski predlog',
           statusTag: 'today' as const,
-          image: p.imageUrl || CATEGORY_IMAGE_FALLBACKS.tehnika,
+          image: p.imageUrl || (p.images && p.images[0]) || CATEGORY_IMAGE_FALLBACKS.tehnika,
+          images: p.images || p.imageUrls || (p.imageUrl ? [p.imageUrl] : undefined),
+          embedCode: p.embedCode,
           isPromoted: p.isPromoted,
           promotedUntil: p.promotedUntil,
           promotionBadgeType: p.promotionBadgeType,
@@ -158,30 +181,67 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     return categories.find(c => c.id === selectedCategory) || null;
   }, [categories, selectedCategory]);
 
+  // All available subcategories (when 'all' is selected, show all unique subcategories across all deals categories)
+  const availableSubcategories = useMemo(() => {
+    if (activeCategoryObj) {
+      return activeCategoryObj.subcategories || [];
+    }
+    const allSubs: { id: string; name: string; description?: string }[] = [];
+    const seen = new Set<string>();
+    for (const cat of categories) {
+      for (const sub of (cat.subcategories || [])) {
+        const key = sub.name.toLowerCase().trim();
+        if (!seen.has(sub.id) && !seen.has(key)) {
+          seen.add(sub.id);
+          seen.add(key);
+          allSubs.push(sub);
+        }
+      }
+    }
+    return allSubs;
+  }, [activeCategoryObj, categories]);
+
+  // Selected subcategory object for name-based matching
+  const selectedSubcatObj = useMemo(() => {
+    if (selectedSubcategory === 'all') return null;
+    for (const cat of categories) {
+      const found = (cat.subcategories || []).find(s => 
+        s.id === selectedSubcategory || 
+        s.name.toLowerCase().trim() === selectedSubcategory.toLowerCase().trim()
+      );
+      if (found) return found;
+    }
+    return null;
+  }, [categories, selectedSubcategory]);
+
   const handleCategorySelect = (catId: string) => {
     setSelectedCategory(catId);
     setSelectedSubcategory('all');
     setPage(1);
   };
 
-  // Combine initial curated deals + any user submitted deals + hero deals (with deduplication)
+  // Only user-submitted deals (no mock data)
   const combinedDeals = useMemo(() => {
-    const userDealIds = new Set(userDeals.map(d => d.id));
-    const dedupedHero = HERO_BENTO_DEALS.filter(d => !userDealIds.has(d.id));
-    const dedupedInitial = INITIAL_DEALS.filter(d => !userDealIds.has(d.id));
-    return [...userDeals, ...dedupedHero, ...dedupedInitial];
+    return userDeals;
   }, [userDeals]);
 
-  // Dynamic category counts
+  // Dynamic category counts based on real deals
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {
       all: combinedDeals.length,
     };
     for (const cat of categories) {
-      counts[cat.id] = combinedDeals.filter(d => 
-        d.category === cat.id || 
-        (d.categoryName && d.categoryName.toLowerCase().includes(cat.name.toLowerCase()))
-      ).length;
+      const cName = cat.name.toLowerCase().trim();
+      const cId = cat.id.toLowerCase().trim();
+      counts[cat.id] = combinedDeals.filter(d => {
+        const dCat = (d.category || '').toLowerCase().trim();
+        const dCatName = (d.categoryName || '').toLowerCase().trim();
+        return d.category === cat.id || 
+          dCat === cId || 
+          dCat === cName || 
+          dCatName.includes(cName) || 
+          cName.includes(dCat);
+      }).length;
     }
     return counts;
   }, [combinedDeals, categories]);
@@ -211,20 +271,34 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
       // 4. Category filter
       if (selectedCategory !== 'all') {
+        const dCat = (deal.category || '').toLowerCase().trim();
+        const dCatName = (deal.categoryName || '').toLowerCase().trim();
+        const targetCat = selectedCategory.toLowerCase().trim();
         const matchesCat = deal.category === selectedCategory ||
+          dCat === targetCat ||
+          dCatName === targetCat ||
           (activeCategoryObj && (
-            deal.category?.toLowerCase() === activeCategoryObj.name.toLowerCase() ||
-            (deal.categoryName && deal.categoryName.toLowerCase().includes(activeCategoryObj.name.toLowerCase()))
+            dCat === activeCategoryObj.name.toLowerCase().trim() ||
+            dCat === activeCategoryObj.id.toLowerCase().trim() ||
+            dCatName.includes(activeCategoryObj.name.toLowerCase().trim()) ||
+            activeCategoryObj.name.toLowerCase().trim().includes(dCat)
           ));
         if (!matchesCat) return false;
       }
 
       // 5. Subcategory filter
       if (selectedSubcategory !== 'all') {
-        const subId = (deal as any).subcategory;
-        const subName = (deal as any).subcategoryName;
-        const matchesSub = subId === selectedSubcategory ||
-          (subName && subName.toLowerCase() === selectedSubcategory.toLowerCase());
+        const subId = ((deal as any).subcategory || '').toLowerCase().trim();
+        const subName = ((deal as any).subcategoryName || '').toLowerCase().trim();
+        const targetSub = selectedSubcategory.toLowerCase().trim();
+        const matchesSub = subId === targetSub ||
+          subName === targetSub ||
+          (selectedSubcatObj && (
+            subId === selectedSubcatObj.id.toLowerCase().trim() ||
+            subId === selectedSubcatObj.name.toLowerCase().trim() ||
+            subName === selectedSubcatObj.id.toLowerCase().trim() ||
+            subName === selectedSubcatObj.name.toLowerCase().trim()
+          ));
         if (!matchesSub) return false;
       }
 
@@ -294,12 +368,89 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     }, 400);
   };
 
+  // Multi-photo upload and management handlers
+  const handleMultiPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsCompressingPhotos(true);
+    const total = files.length;
+    const newUploadedUrls: string[] = [];
+    try {
+      for (let i = 0; i < total; i++) {
+        setCompressingProgress(`Optimiziram sliko ${i + 1} od ${total}...`);
+        const file = files[i];
+        if (!file.type.startsWith('image/')) continue;
+        const dataUrl = await compressImageFileToDataUrl(file, 1200);
+        newUploadedUrls.push(dataUrl);
+      }
+      setModalForm(prev => {
+        const merged = [...prev.images, ...newUploadedUrls];
+        return {
+          ...prev,
+          images: merged,
+          image: prev.image || merged[0] || '',
+        };
+      });
+    } catch (err) {
+      console.error('Napaka pri stiskanju fotografij:', err);
+    } finally {
+      setIsCompressingPhotos(false);
+      setCompressingProgress('');
+      e.target.value = '';
+    }
+  };
+
+  const handleAddPhotoUrl = () => {
+    const trimmed = urlPhotoInput.trim();
+    if (!trimmed) return;
+    let finalUrl = trimmed;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      finalUrl = `https://${trimmed}`;
+    }
+    setModalForm(prev => {
+      const merged = [...prev.images, finalUrl];
+      return {
+        ...prev,
+        images: merged,
+        image: prev.image || finalUrl,
+      };
+    });
+    setUrlPhotoInput('');
+  };
+
+  const handleRemovePhoto = (idxToRemove: number) => {
+    setModalForm(prev => {
+      const updated = prev.images.filter((_, idx) => idx !== idxToRemove);
+      return {
+        ...prev,
+        images: updated,
+        image: updated[0] || '',
+      };
+    });
+  };
+
+  const handleSetPrimaryPhoto = (idxToPrimary: number) => {
+    setModalForm(prev => {
+      if (idxToPrimary <= 0 || idxToPrimary >= prev.images.length) return prev;
+      const target = prev.images[idxToPrimary];
+      const remaining = prev.images.filter((_, idx) => idx !== idxToPrimary);
+      const reordered = [target, ...remaining];
+      return {
+        ...prev,
+        images: reordered,
+        image: target,
+      };
+    });
+  };
+
   // Submit modal handler
   const handleModalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalForm.title || !modalForm.store) return;
 
     const fallbackImg = CATEGORY_IMAGE_FALLBACKS[modalForm.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
+    const primaryImg = modalForm.images[0] || modalForm.image || fallbackImg;
+    const allImages = modalForm.images.length > 0 ? modalForm.images : (modalForm.image ? [modalForm.image] : [fallbackImg]);
 
     const newDeal: DealItem = {
       id: `user-deal-${Date.now()}`,
@@ -317,16 +468,21 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     modalForm.category === 'dom' ? 'Dom & Vrt' : 'Avto & Mobilnost',
       region: 'Vsa Slovenija / Splet',
       discount: modalForm.discount || '-20%',
+      oldPrice: modalForm.oldPrice || undefined,
+      newPrice: modalForm.newPrice || undefined,
+      expirationDate: modalForm.expirationDate || undefined,
       dealType: modalForm.code ? 'code' : 'sale',
       dealTypeName: modalForm.code ? 'Koda za popust' : 'Letak & Akcija',
-      date: modalForm.date || 'Velja do konca meseca',
+      date: modalForm.expirationDate ? `Velja do ${modalForm.expirationDate}` : (modalForm.date || 'Velja do konca meseca'),
       description: modalForm.description || 'Ugodnost, ki jo je predlagal član skupnosti Portal.si.',
       code: modalForm.code ? modalForm.code.toUpperCase() : undefined,
       link: modalForm.link || '#',
       votes: 1,
       verifiedText: 'Novo dodano',
       statusTag: 'today',
-      image: modalForm.image || fallbackImg,
+      image: primaryImg,
+      images: allImages,
+      embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
     };
 
     // Prepend locally
@@ -337,16 +493,26 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       if (currentUser) {
         await createPostInFirestore({
           title: `[Ugodnost] ${modalForm.title}`,
-          content: `${modalForm.description || modalForm.title}. Trgovec: ${modalForm.store}. Koda: ${modalForm.code || 'Brez kode'}`,
+          content: modalForm.description || `${modalForm.title}. Trgovec: ${modalForm.store}. Koda: ${modalForm.code || 'Brez kode'}`,
           category: 'deal',
+          categoryName: 'Ugodnosti',
           authorId: currentUser.id,
           authorName: currentUser.name,
           authorRole: currentUser.role,
           authorAvatar: currentUser.avatar,
-          price: modalForm.discount,
+          price: modalForm.newPrice || modalForm.discount,
+          oldPrice: modalForm.oldPrice || undefined,
+          newPrice: modalForm.newPrice || undefined,
+          expirationDate: modalForm.expirationDate || undefined,
+          discount: modalForm.discount || undefined,
+          promoCode: modalForm.code ? modalForm.code.toUpperCase() : undefined,
+          dealLink: modalForm.link || undefined,
+          embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
           likesCount: 1,
           commentsCount: 0,
-          imageUrl: modalForm.image || fallbackImg,
+          imageUrl: primaryImg,
+          images: allImages,
+          imageUrls: allImages,
         });
       }
     } catch (err) {
@@ -364,9 +530,14 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         category: 'tehnika',
         code: '',
         discount: '-20%',
+        oldPrice: '',
+        newPrice: '',
+        expirationDate: '',
         link: '',
         date: 'Velja do konca meseca',
         image: '',
+        images: [],
+        embedCode: '',
       });
     }, 1500);
   };
@@ -393,7 +564,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Predlagaj ugodnost</span>
+            <span>Dodaj</span>
           </button>
         </div>
       </div>
@@ -402,10 +573,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       <div className="flex flex-col gap-3.5 p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/50">
         
         {/* Status Quick Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pb-0.5">
           <button 
             onClick={() => { setSelectedStatus('all'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
               selectedStatus === 'all' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
             }`}
             type="button"
@@ -415,7 +586,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           </button>
           <button 
             onClick={() => { setSelectedStatus('expiring'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
               selectedStatus === 'expiring' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
             }`}
             type="button"
@@ -425,7 +596,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           </button>
           <button 
             onClick={() => { setSelectedStatus('today'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
               selectedStatus === 'today' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
             }`}
             type="button"
@@ -435,7 +606,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           </button>
           <button 
             onClick={() => { setSelectedStatus('exclusive'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
               selectedStatus === 'exclusive' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
             }`}
             type="button"
@@ -445,7 +616,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           </button>
           <button 
             onClick={() => { setSelectedStatus('shipping'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
               selectedStatus === 'shipping' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
             }`}
             type="button"
@@ -456,10 +627,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         </div>
 
         {/* Category Rail with Dynamic Categories */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 pb-0.5">
           <button 
             onClick={() => handleCategorySelect('all')}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
               selectedCategory === 'all' 
                 ? 'bg-primary text-on-primary font-bold' 
                 : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
@@ -475,7 +646,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             <button 
               key={cat.id}
               onClick={() => handleCategorySelect(cat.id)}
-              className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === cat.id 
                   ? 'bg-primary text-on-primary font-bold' 
                   : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
@@ -493,9 +664,9 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           ))}
         </div>
 
-        {/* Subcategory Rail (when active category has subcategories) */}
-        {activeCategoryObj && activeCategoryObj.subcategories && activeCategoryObj.subcategories.length > 0 && (
-          <div className="bg-surface-container-low/60 p-2 rounded-xl border border-surface-container/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+        {/* Subcategory Rail - always visible when subcategories are available */}
+        {availableSubcategories.length > 0 && (
+          <div className="bg-surface-container-low/60 p-2 sm:p-2.5 rounded-xl border border-surface-container/60 flex flex-wrap items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="text-[11px] font-semibold text-outline uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
               <Tag className="w-3 h-3 text-primary" />
               <span>Podkategorije:</span>
@@ -510,12 +681,12 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             >
               Vse podkategorije
             </button>
-            {activeCategoryObj.subcategories.map(sub => (
+            {availableSubcategories.map(sub => (
               <button
                 key={sub.id}
                 onClick={() => { setSelectedSubcategory(sub.id); setPage(1); }}
                 className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-                  selectedSubcategory === sub.id
+                  selectedSubcategory === sub.id || (selectedSubcatObj && (selectedSubcatObj.id === sub.id || selectedSubcatObj.name.toLowerCase() === sub.name.toLowerCase()))
                     ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
                     : 'text-on-surface-variant hover:bg-surface-container'
                 }`}
@@ -623,7 +794,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             </button>
           </div>
         ) : (
-          visibleDeals.map((deal) => {
+          visibleDeals.map((deal, idx) => {
             const currentVotes = votesMap[deal.id] ?? deal.votes;
             const hasVoted = votedSet.has(deal.id);
             const isCopied = copiedCodeId === deal.id;
@@ -637,7 +808,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
             return (
               <article 
-                key={deal.id}
+                key={`deal-${deal.id}-${idx}`}
                 className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group ${
                   isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60'
                 }`}
@@ -725,8 +896,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             type: 'deal',
                             category: 'deals',
                             title: deal.title,
-                            price: deal.discount,
+                            price: deal.newPrice || deal.discount,
                             discount: deal.discount,
+                            oldPrice: deal.oldPrice,
+                            newPrice: deal.newPrice,
+                            expirationDate: deal.expirationDate,
                             author: deal.partner,
                             authorRole: deal.partnerRole,
                             authorAvatar: deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`,
@@ -765,6 +939,33 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                         {deal.title}
                       </h3>
                     </a>
+
+                    {/* Pricing Highlight: Old price & New price */}
+                    {(deal.newPrice || deal.oldPrice) && (
+                      <div className="flex items-center gap-2.5 my-1.5 p-2 rounded-xl bg-surface-container-low/80 border border-surface-container/60 w-fit flex-wrap">
+                        {deal.newPrice && (
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[10px] uppercase font-bold text-outline">Akcija:</span>
+                            <span className="font-headline-sm text-base sm:text-lg font-black text-secondary">
+                              {deal.newPrice}
+                            </span>
+                          </div>
+                        )}
+                        {deal.oldPrice && (
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[10px] text-outline">Redna:</span>
+                            <span className="text-xs line-through text-outline font-medium">
+                              {deal.oldPrice}
+                            </span>
+                          </div>
+                        )}
+                        {deal.discount && (
+                          <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-secondary/15 text-secondary border border-secondary/20">
+                            {deal.discount}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Description */}
                     <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
@@ -902,9 +1103,9 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
       {/* 5. MODAL: PREDLAGAJ ALI OBJAVI UGODNOST */}
       {isSubmitModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-surface-container-lowest p-5 sm:p-6 shadow-xl space-y-4 border border-surface-container animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-surface-container-lowest p-5 sm:p-6 shadow-2xl space-y-4 border border-surface-container animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
               <h3 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface flex items-center gap-2">
                 <PlusCircle className="w-5 h-5 text-primary" />
                 <span>Predlagaj ali objavi ugodnost</span>
@@ -974,13 +1175,76 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     </select>
                   </div>
                   <div>
-                    <label className="block font-label-md text-on-surface font-semibold mb-1">Višina popusta</label>
+                    <label className="block font-label-md text-on-surface font-semibold mb-1">Višina popusta / Opis</label>
                     <input 
                       type="text" 
                       value={modalForm.discount}
                       onChange={(e) => setModalForm({ ...modalForm, discount: e.target.value })}
                       placeholder="npr. -20% ali 1+1 gratis" 
                       className="w-full bg-surface-container-low px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
+                    />
+                  </div>
+                </div>
+
+                {/* Old Price & New Price & Expiration Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-surface-container-low/70 border border-surface-container">
+                  <div>
+                    <label className="block font-label-md text-outline font-semibold mb-1">
+                      <span className="line-through">Stara cena</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      value={modalForm.oldPrice}
+                      onChange={(e) => {
+                        const oldP = e.target.value;
+                        const newP = modalForm.newPrice;
+                        const cleanedO = parseFloat(oldP.replace(/[^0-9.,]/g, '').replace(',', '.'));
+                        const cleanedN = parseFloat(newP.replace(/[^0-9.,]/g, '').replace(',', '.'));
+                        let autoDisc = modalForm.discount;
+                        if (!isNaN(cleanedO) && !isNaN(cleanedN) && cleanedO > 0 && cleanedN > 0 && cleanedO > cleanedN) {
+                          autoDisc = `-${Math.round(((cleanedO - cleanedN) / cleanedO) * 100)}%`;
+                        }
+                        setModalForm({ ...modalForm, oldPrice: oldP, discount: autoDisc });
+                      }}
+                      placeholder="npr. 99,99 €" 
+                      className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-label-md text-secondary font-semibold mb-1">
+                      Nova cena (akcijska)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={modalForm.newPrice}
+                      onChange={(e) => {
+                        const newP = e.target.value;
+                        const oldP = modalForm.oldPrice;
+                        const cleanedO = parseFloat(oldP.replace(/[^0-9.,]/g, '').replace(',', '.'));
+                        const cleanedN = parseFloat(newP.replace(/[^0-9.,]/g, '').replace(',', '.'));
+                        let autoDisc = modalForm.discount;
+                        if (!isNaN(cleanedO) && !isNaN(cleanedN) && cleanedO > 0 && cleanedN > 0 && cleanedO > cleanedN) {
+                          autoDisc = `-${Math.round(((cleanedO - cleanedN) / cleanedO) * 100)}%`;
+                        }
+                        setModalForm({ ...modalForm, newPrice: newP, discount: autoDisc });
+                      }}
+                      placeholder="npr. 69,99 € (neobvezno)" 
+                      className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm font-bold text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-label-md text-on-surface-variant font-semibold mb-1">
+                      Datum poteka (Expiration date)
+                    </label>
+                    <input 
+                      type="date" 
+                      value={modalForm.expirationDate}
+                      onChange={(e) => setModalForm({ 
+                        ...modalForm, 
+                        expirationDate: e.target.value,
+                        date: e.target.value ? `Velja do ${new Date(e.target.value).toLocaleDateString('sl-SI')}` : modalForm.date
+                      })}
+                      className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container text-xs"
                     />
                   </div>
                 </div>
@@ -1012,30 +1276,198 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                   </div>
                 </div>
 
-                <div>
-                  <label className="block font-label-md text-on-surface font-semibold mb-1">
-                    Povezava do fotografije (neobvezno)
-                  </label>
-                  <input 
-                    type="url" 
-                    value={modalForm.image}
-                    onChange={(e) => setModalForm({ ...modalForm, image: e.target.value })}
-                    placeholder="https://... (pustite prazno za privzeto fotografijo kategorije)" 
-                    className="w-full bg-surface-container-low px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
+                {/* Fotografije ugodnosti (ena ali več) */}
+                <div className="flex flex-col gap-2.5 p-3.5 rounded-xl bg-surface-container-low/70 border border-surface-container">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-primary" />
+                      <span className="font-semibold text-on-surface text-xs">
+                        Fotografije ponudbe / izdelka (ena ali več)
+                      </span>
+                      {modalForm.images.length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-bold text-[10px]">
+                          {modalForm.images.length} {modalForm.images.length === 1 ? 'slika' : 'slik'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 bg-surface-container p-0.5 rounded-lg text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setPhotoMode('upload')}
+                        className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                          photoMode === 'upload' 
+                            ? 'bg-surface-container-lowest text-primary shadow-xs font-bold' 
+                            : 'text-outline hover:text-on-surface'
+                        }`}
+                      >
+                        Naloži z naprave
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPhotoMode('url')}
+                        className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                          photoMode === 'url' 
+                            ? 'bg-surface-container-lowest text-primary shadow-xs font-bold' 
+                            : 'text-outline hover:text-on-surface'
+                        }`}
+                      >
+                        Spletna povezava
+                      </button>
+                    </div>
+                  </div>
+
+                  {photoMode === 'upload' ? (
+                    <div className="flex flex-col gap-2">
+                      <label className="border-2 border-dashed border-surface-container-high hover:border-primary/60 rounded-xl p-3.5 text-center cursor-pointer transition-colors bg-surface-container-lowest/50 hover:bg-surface-container-lowest flex flex-col items-center justify-center gap-1 group">
+                        <UploadCloud className="w-6 h-6 text-primary group-hover:scale-110 transition-transform mb-0.5" />
+                        <span className="text-xs font-semibold text-on-surface">
+                          Kliknite za izbiro ene ali več fotografij
+                        </span>
+                        <span className="text-[10px] text-outline">
+                          Podprte oblike: JPG, PNG, WEBP. Samodejno stiskanje in optimizacija.
+                        </span>
+                        <input 
+                          type="file" 
+                          multiple 
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleMultiPhotoUpload}
+                        />
+                      </label>
+                      {isCompressingPhotos && (
+                        <div className="flex items-center gap-2 text-xs text-primary font-medium p-2 bg-primary/10 rounded-lg animate-pulse">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>{compressingProgress || 'Optimiziram fotografije za objavo...'}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input 
+                        type="url" 
+                        value={urlPhotoInput}
+                        onChange={(e) => setUrlPhotoInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddPhotoUrl();
+                          }
+                        }}
+                        placeholder="https://... prilepite spletni naslov slike"
+                        className="flex-1 bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary border border-surface-container"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddPhotoUrl}
+                        className="px-3.5 py-2 bg-surface-container hover:bg-surface-container-high rounded-xl text-xs font-bold text-on-surface transition-colors cursor-pointer"
+                      >
+                        Dodaj sliko
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Predogled galerije naloženih slik */}
+                  {modalForm.images.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-surface-container/60">
+                      <div className="flex items-center justify-between text-[11px] text-outline">
+                        <span>Zvezdica označi glavno naslovno sliko ponudbe:</span>
+                        <span className="font-semibold text-on-surface-variant">Naloženo: {modalForm.images.length}</span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                        {modalForm.images.map((imgUrl, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`relative rounded-xl overflow-hidden aspect-video border group ${
+                              idx === 0 ? 'border-primary ring-2 ring-primary/40 shadow-xs' : 'border-surface-container'
+                            }`}
+                          >
+                            <img src={imgUrl} alt={`Fotografija ${idx + 1}`} className="w-full h-full object-cover" />
+                            {idx === 0 && (
+                              <span className="absolute top-1 left-1 bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
+                                <Star className="w-2.5 h-2.5 fill-current" />
+                                <span>Glavna</span>
+                              </span>
+                            )}
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                              {idx !== 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetPrimaryPhoto(idx)}
+                                  className="p-1 rounded-md bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-primary text-[10px] font-bold cursor-pointer transition-colors shadow-xs"
+                                  title="Nastavi kot glavno naslovno sliko"
+                                >
+                                  <Star className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePhoto(idx)}
+                                className="p-1 rounded-md bg-error/90 hover:bg-error text-white text-[10px] font-bold cursor-pointer transition-colors shadow-xs"
+                                title="Odstrani to fotografijo"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Podrobnejši opis ugodnosti z obogatenim urejevalnikom (Rich Text Editor) */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block font-label-md text-on-surface font-semibold">
+                      Podrobnejši opis ugodnosti *
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => editorRef.current?.openLinkDialog()}
+                        className="px-2.5 py-1 rounded-lg bg-surface-container hover:bg-surface-container-high text-primary font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-primary/20"
+                        title="Vstavi spletno povezavo (URL link) v opis"
+                      >
+                        <LinkIcon className="w-3.5 h-3.5 text-primary" />
+                        <span>Dodaj povezavo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editorRef.current?.openEmbedDialog()}
+                        className="px-2.5 py-1 rounded-lg bg-secondary/10 hover:bg-secondary/20 text-secondary font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-secondary/25"
+                        title="Vdelaj objavo z družbenih omrežij (YouTube, X, Instagram, Facebook, TikTok) ali video"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-secondary" />
+                        <span>Vdelaj objavo</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <RichTextEditor
+                    ref={editorRef}
+                    placeholder="Podrobno opišite pogoje ugodnosti, kje in kako jo unovčiti, povezave ali dodatna navodila..."
+                    initialContent={modalForm.description}
+                    onChange={(html) => setModalForm(prev => ({ ...prev, description: html }))}
+                    minHeight="min-h-[140px]"
                   />
                 </div>
 
-                <div>
-                  <label className="block font-label-md text-on-surface font-semibold mb-1">
-                    Podrobnejši opis ugodnosti
+                {/* Vdelana vsebina (Embed koda / povezava z omrežij) */}
+                <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-low/50 border border-surface-container">
+                  <label className="flex items-center justify-between font-label-md text-outline font-semibold">
+                    <span className="flex items-center gap-1.5 text-on-surface">
+                      <Share2 className="w-3.5 h-3.5 text-secondary" />
+                      <span>Vdelana objava z družbenih omrežij ali video (neobvezno)</span>
+                    </span>
+                    <span className="text-[10px] text-outline font-normal">YouTube, Instagram, Facebook, X ali &lt;iframe&gt;</span>
                   </label>
-                  <textarea 
-                    rows={2}
-                    value={modalForm.description}
-                    onChange={(e) => setModalForm({ ...modalForm, description: e.target.value })}
-                    placeholder="Opišite pogoje, kje koda velja in do kdaj..."
-                    className="w-full bg-surface-container-low px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
-                  ></textarea>
+                  <input 
+                    type="text" 
+                    value={modalForm.embedCode}
+                    onChange={(e) => setModalForm({ ...modalForm, embedCode: e.target.value })}
+                    placeholder="Prilepite povezavo (npr. https://youtube.com/watch?v=... ali https://x.com/... ali iframe kodo)"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-secondary border border-surface-container"
+                  />
                 </div>
 
                 <div className="pt-2 flex justify-end gap-2">

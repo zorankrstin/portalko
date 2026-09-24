@@ -159,3 +159,6 @@
 .tiptap p:last-child {
   margin-bottom: 0;
 }
+.tiptap u {
+  text-decoration: underline;
+}

@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Zap, Copy, Check, CheckCircle2, Calculator, ShieldCheck, 
   BookOpen, ExternalLink, Bell, Percent, Sparkles 
 } from 'lucide-react';
-import { TOP_VOUCHER_CODES, CATALOGUES_DATA, INITIAL_DEALS } from '../data/mockDealsData';
+import { TOP_VOUCHER_CODES, CATALOGUES_DATA } from '../data/mockDealsData';
 import { PostDetailTarget } from '../types';
 import { scrollToPageTop } from '../utils/scrollUtils';
+import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
 
 interface RightSidebarDealsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -15,12 +16,24 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [emailInput, setEmailInput] = useState('');
   const [subscribed, setSubscribed] = useState(false);
+  const [userDeals, setUserDeals] = useState<FirestorePost[]>([]);
   const [calcCategories, setCalcCategories] = useState({
     food: true,
     tech: true,
     sports: false,
     tourism: true,
   });
+
+  useEffect(() => {
+    const unsub = subscribeToPosts((allPosts) => {
+      const deals = allPosts.filter(p => {
+        if (p.status === 'rejected') return false;
+        return p.category === 'deal' || p.category === 'ugodnosti' || p.id.startsWith('deal-') || p.categoryName === 'Ugodnosti';
+      });
+      setUserDeals(deals);
+    });
+    return () => unsub();
+  }, []);
 
   const handleOpenDeal = (id: string, e?: React.MouseEvent) => {
     if (e) e.preventDefault();
@@ -74,32 +87,36 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
           </span>
         </div>
         <div className="space-y-2.5">
-          {INITIAL_DEALS.slice(0, 3).map(deal => (
-            <a
-              key={deal.id}
-              href={`#deal-${deal.id}`}
-              onClick={(e) => handleOpenDeal(deal.id, e)}
-              className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center gap-3 group border border-surface-container/50 cursor-pointer"
-              title={`Odpri ugodnost: ${deal.title}`}
-            >
-              {deal.image && (
-                <img 
-                  src={deal.image} 
-                  alt={deal.title} 
-                  className="w-12 h-12 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform" 
-                />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="font-label-caps text-[10px] text-primary font-bold">{deal.partner}</span>
-                  <span className="font-mono text-[11px] font-bold text-secondary">{deal.discount}</span>
+          {userDeals.length === 0 ? (
+            <p className="text-xs text-outline py-2 text-center">Trenutno ni objavljenih ugodnosti.</p>
+          ) : (
+            userDeals.slice(0, 3).map(deal => (
+              <a
+                key={deal.id}
+                href={`#deal-${deal.id}`}
+                onClick={(e) => handleOpenDeal(deal.id, e)}
+                className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center gap-3 group border border-surface-container/50 cursor-pointer"
+                title={`Odpri ugodnost: ${deal.title}`}
+              >
+                {deal.imageUrl && (
+                  <img 
+                    src={deal.imageUrl} 
+                    alt={deal.title} 
+                    className="w-12 h-12 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform" 
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-label-caps text-[10px] text-primary font-bold">{deal.authorName || 'Ugodnost'}</span>
+                    <span className="font-mono text-[11px] font-bold text-secondary">{deal.discount || deal.price}</span>
+                  </div>
+                  <h4 className="font-label-md text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors">
+                    {deal.title}
+                  </h4>
                 </div>
-                <h4 className="font-label-md text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors">
-                  {deal.title}
-                </h4>
-              </div>
-            </a>
-          ))}
+              </a>
+            ))
+          )}
         </div>
       </div>
 

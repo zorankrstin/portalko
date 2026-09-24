@@ -92,9 +92,19 @@ export interface FirestorePost {
   authorAvatar?: string;
   authorRole?: string;
   imageUrl?: string;
+  embedCode?: string;
   images?: string[];
   imageUrls?: string[];
   price?: string;
+  oldPrice?: string;
+  newPrice?: string;
+  expirationDate?: string;
+  discount?: string;
+  promoCode?: string;
+  dealLink?: string;
+  eventDate?: string;
+  eventTime?: string;
+  ticketUrl?: string;
   location?: string;
   region?: string;
   tags?: string[];
@@ -128,8 +138,10 @@ export interface FirestoreAd {
   authorRole?: string;
   authorAvatar?: string;
   imageUrl?: string;
+  embedCode?: string;
   images?: string[];
   imageUrls?: string[];
+  tags?: string[];
   status: 'active' | 'sold' | 'closed' | 'pending' | 'rejected';
   rejectionReason?: string;
   // Promotion / Featured Post fields
@@ -148,6 +160,8 @@ export interface FirestoreEvent {
   location: string;
   region?: string;
   eventDate?: string;
+  eventTime?: string;
+  ticketUrl?: string;
   date?: string;
   price?: string;
   category: string;
@@ -159,8 +173,11 @@ export interface FirestoreEvent {
   authorRole?: string;
   authorAvatar?: string;
   imageUrl?: string;
+  embedCode?: string;
   images?: string[];
   imageUrls?: string[];
+  tags?: string[];
+  interestedCount?: number;
   isPromoted?: boolean;
   promotion?: PromotionConfig;
   promotedUntil?: string;
@@ -493,6 +510,12 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
         status: data.status || 'published',
         imageUrl: data.imageUrl || mockDeal?.image || mockBlog?.image || '',
         price: data.price || (mockDeal ? (mockDeal.discount || (mockDeal as any).price) : '') || '',
+        oldPrice: data.oldPrice || (mockDeal as any)?.oldPrice || '',
+        newPrice: data.newPrice || (mockDeal as any)?.newPrice || '',
+        expirationDate: data.expirationDate || (mockDeal as any)?.expirationDate || '',
+        discount: data.discount || (mockDeal ? mockDeal.discount : '') || '',
+        promoCode: data.promoCode || (mockDeal ? mockDeal.code : '') || '',
+        dealLink: data.dealLink || (mockDeal ? mockDeal.link : '') || '',
         location: data.location || (mockDeal ? mockDeal.region : '') || '',
         likesCount: data.likesCount || (mockDeal?.votes) || 0,
         commentsCount: data.commentsCount || 0,
@@ -737,7 +760,7 @@ export async function deleteAdInFirestore(adId: string): Promise<void> {
 export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void): () => void {
   const path = 'events';
   try {
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
     return onSnapshot(q, (snapshot) => {
       const events: FirestoreEvent[] = snapshot.docs.map(d => {
         const item = {
@@ -760,6 +783,178 @@ export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void):
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
     return () => {};
+  }
+}
+
+export async function getEventById(eventId: string): Promise<FirestoreEvent | null> {
+  if (!eventId) return null;
+  const cleanId = eventId.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+  try {
+    let snap = await getDoc(doc(db, 'events', eventId));
+    if (!snap.exists() && cleanId !== eventId) {
+      snap = await getDoc(doc(db, 'events', cleanId));
+    }
+    if (!snap.exists()) {
+      snap = await getDoc(doc(db, 'events', `event-${cleanId}`));
+    }
+    if (snap.exists()) {
+      const item = {
+        id: snap.id,
+        ...(snap.data() as Omit<FirestoreEvent, 'id'>),
+      };
+      const mockEvent = INITIAL_EVENTS.find(x => x.id === item.id);
+      if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
+        item.authorName = mockEvent.organizer;
+        item.authorRole = 'Organizator';
+        item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+        item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      }
+      return item;
+    }
+    // Case-insensitive fallback search
+    const q = query(collection(db, 'events'), limit(100));
+    const allSnaps = await getDocs(q);
+    const match = allSnaps.docs.find(d => {
+      const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+      return d.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId;
+    });
+    if (match) {
+      const item = {
+        id: match.id,
+        ...(match.data() as Omit<FirestoreEvent, 'id'>),
+      };
+      const mockEvent = INITIAL_EVENTS.find(x => x.id === item.id);
+      if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
+        item.authorName = mockEvent.organizer;
+        item.authorRole = 'Organizator';
+        item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+        item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      }
+      return item;
+    }
+    return null;
+  } catch (error) {
+    console.warn(`Could not get event ${eventId}:`, error);
+    return null;
+  }
+}
+
+export async function getPostById(postId: string): Promise<FirestorePost | null> {
+  if (!postId) return null;
+  const cleanId = postId.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+  try {
+    let snap = await getDoc(doc(db, 'posts', postId));
+    if (!snap.exists() && cleanId !== postId) {
+      snap = await getDoc(doc(db, 'posts', cleanId));
+    }
+    if (!snap.exists()) {
+      snap = await getDoc(doc(db, 'posts', `post-${cleanId}`));
+    }
+    if (!snap.exists()) {
+      snap = await getDoc(doc(db, 'posts', `deal-${cleanId}`));
+    }
+    if (snap.exists()) {
+      return {
+        id: snap.id,
+        ...(snap.data() as Omit<FirestorePost, 'id'>),
+      };
+    }
+    const q = query(collection(db, 'posts'), limit(100));
+    const allSnaps = await getDocs(q);
+    const match = allSnaps.docs.find(d => {
+      const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+      return d.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId;
+    });
+    if (match) {
+      return {
+        id: match.id,
+        ...(match.data() as Omit<FirestorePost, 'id'>),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn(`Could not get post ${postId}:`, error);
+    return null;
+  }
+}
+
+export async function getAdById(adId: string): Promise<FirestoreAd | null> {
+  if (!adId) return null;
+  const cleanId = adId.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+  try {
+    let snap = await getDoc(doc(db, 'ads', adId));
+    if (!snap.exists() && cleanId !== adId) {
+      snap = await getDoc(doc(db, 'ads', cleanId));
+    }
+    if (!snap.exists()) {
+      snap = await getDoc(doc(db, 'ads', `ad-${cleanId}`));
+    }
+    if (snap.exists()) {
+      return {
+        id: snap.id,
+        ...(snap.data() as Omit<FirestoreAd, 'id'>),
+      };
+    }
+    const q = query(collection(db, 'ads'), limit(100));
+    const allSnaps = await getDocs(q);
+    const match = allSnaps.docs.find(d => {
+      const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+      return d.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId;
+    });
+    if (match) {
+      return {
+        id: match.id,
+        ...(match.data() as Omit<FirestoreAd, 'id'>),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn(`Could not get ad ${adId}:`, error);
+    return null;
+  }
+}
+
+export async function fetchDocumentById(
+  id: string,
+  preferredType?: 'event' | 'deal' | 'ad' | 'blog' | 'post'
+): Promise<{ type: 'event' | 'deal' | 'ad' | 'blog'; data: any } | null> {
+  if (!id) return null;
+
+  const checkEvent = async () => {
+    const ev = await getEventById(id);
+    if (ev) return { type: 'event' as const, data: ev };
+    return null;
+  };
+
+  const checkPost = async () => {
+    const post = await getPostById(id);
+    if (post) {
+      const isDeal = post.category === 'deal' || 
+                     post.category === 'ugodnosti' || 
+                     post.category?.startsWith('deal') || 
+                     post.categoryName === 'Ugodnosti' || 
+                     post.categoryName === 'Ugodnost' ||
+                     post.id.startsWith('deal-') ||
+                     post.id.startsWith('hero-bento-');
+      return { type: (isDeal ? 'deal' : 'blog') as ('deal' | 'blog'), data: post };
+    }
+    return null;
+  };
+
+  const checkAd = async () => {
+    const ad = await getAdById(id);
+    if (ad) return { type: 'ad' as const, data: ad };
+    return null;
+  };
+
+  if (preferredType === 'event') {
+    return (await checkEvent()) || (await checkPost()) || (await checkAd());
+  } else if (preferredType === 'ad') {
+    return (await checkAd()) || (await checkPost()) || (await checkEvent());
+  } else if (preferredType === 'deal' || preferredType === 'blog' || preferredType === 'post') {
+    return (await checkPost()) || (await checkEvent()) || (await checkAd());
+  } else {
+    return (await checkEvent()) || (await checkPost()) || (await checkAd());
   }
 }
 

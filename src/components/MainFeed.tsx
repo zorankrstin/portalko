@@ -7,32 +7,33 @@ import { EventPost } from './posts/EventPost';
 import { NewsPost } from './posts/NewsPost';
 import { RssPost } from './posts/RssPost';
 import { FirestorePostCard } from './posts/FirestorePostCard';
+import { AdSense } from './ads/AdSense';
 import { ComposeModal } from './ComposeModal';
 import { parseSearchQuery, matchesSearchAndCategory } from '../utils/searchUtils';
-import type { ViewMode } from '../types';
+import type { ViewMode, PostDetailTarget } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, subscribeToAds, subscribeToEvents, FirestorePost, FirestoreAd, FirestoreEvent } from '../services/firestoreService';
-import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
-import { INITIAL_DEALS, DealItem } from '../data/mockDealsData';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 import { isItemActivelyPromoted } from '../services/promotionService';
+import { parseEventDateInfo } from '../utils/dateUtils';
 
 type FeedItemKind = 
   | { type: 'firestore'; data: FirestorePost }
   | { type: 'firestore_ad'; data: FirestoreAd }
   | { type: 'firestore_event'; data: FirestoreEvent }
   | { type: 'news'; data: RealNewsItem }
-  | { type: 'blog'; data: typeof INITIAL_BLOG_POSTS[0] }
-  | { type: 'ad'; data: typeof INITIAL_ADS[0] }
-  | { type: 'deal'; data: DealItem }
-  | { type: 'event'; data: typeof INITIAL_EVENTS[0] };
+  | { type: 'blog'; data: any }
+  | { type: 'ad'; data: any }
+  | { type: 'deal'; data: any }
+  | { type: 'event'; data: any };
 
 interface MainFeedProps {
   searchQuery?: string;
   onViewChange?: (view: ViewMode) => void;
+  onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
-export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
+export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: MainFeedProps) {
   const { currentUser } = useAuth();
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeType, setComposeType] = useState<'post' | 'ad' | 'deal' | 'event'>('post');
@@ -118,24 +119,10 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       items.push({ type: 'firestore_event', data: fe });
     });
 
-    // Interleave real news, blog, ad, deal, event, and mock feed
-    const maxLen = Math.max(
-      realNews.length,
-      INITIAL_BLOG_POSTS.length,
-      INITIAL_ADS.length,
-      INITIAL_EVENTS.length,
-      INITIAL_DEALS.length
-    );
-
-    for (let i = 0; i < maxLen; i++) {
-      if (realNews[i]) items.push({ type: 'news', data: realNews[i] });
-      if (INITIAL_BLOG_POSTS[i]) items.push({ type: 'blog', data: INITIAL_BLOG_POSTS[i] });
-      if (INITIAL_ADS[i]) items.push({ type: 'ad', data: INITIAL_ADS[i] });
-      if (INITIAL_DEALS[i % INITIAL_DEALS.length] && i % 2 === 0) {
-        items.push({ type: 'deal', data: INITIAL_DEALS[i % INITIAL_DEALS.length] });
-      }
-      if (INITIAL_EVENTS[i]) items.push({ type: 'event', data: INITIAL_EVENTS[i] });
-    }
+    // Real RSS news from official feeds
+    realNews.forEach(newsItem => {
+      items.push({ type: 'news', data: newsItem });
+    });
 
     return items;
   }, [firestorePosts, firestoreAds, firestoreEvents, realNews, currentUser]);
@@ -209,7 +196,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       const checkItemPromoted = (item: FeedItemKind): boolean => {
         const d: any = item.data;
         if (d.promotion) {
-          return isItemActivelyPromoted(d.promotion);
+          return isItemActivelyPromoted(d.promotion, 'all');
         }
         if (d.isPromoted) {
           if (d.promotedUntil) {
@@ -234,38 +221,9 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
   const currentLimit = page * PAGE_SIZE;
 
   const visibleItems = useMemo(() => {
-    if (filteredItems.length === 0) return [];
-    if (currentLimit <= filteredItems.length) {
-      return filteredItems.slice(0, currentLimit);
-    }
-    // Repeat items with unique virtual keys if page exceeds initial unique list
-    const result: FeedItemKind[] = [...filteredItems];
-    let counter = 1;
-    while (result.length < currentLimit) {
-      for (const item of filteredItems) {
-        if (result.length >= currentLimit) break;
-        if (item.type === 'firestore') {
-          result.push({ type: 'firestore', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        } else if (item.type === 'firestore_ad') {
-          result.push({ type: 'firestore_ad', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        } else if (item.type === 'firestore_event') {
-          result.push({ type: 'firestore_event', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        } else if (item.type === 'news') {
-          result.push({ type: 'news', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        } else if (item.type === 'blog') {
-          result.push({ type: 'blog', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        } else if (item.type === 'ad') {
-          result.push({ type: 'ad', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        } else if (item.type === 'deal') {
-          result.push({ type: 'deal', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        } else if (item.type === 'event') {
-          result.push({ type: 'event', data: { ...item.data, id: `${item.data.id}-p${counter}` } });
-        }
-      }
-      counter++;
-    }
-    return result;
+    return filteredItems.slice(0, currentLimit);
   }, [filteredItems, currentLimit]);
+  const hasMore = currentLimit < filteredItems.length;
 
   const userAvatar = currentUser?.avatar || "https://lh3.googleusercontent.com/aida/AEtjO1WzgwshpYtUlUT6B6hzTtlscXMkpKFYIjPiStIYfRrhCOV_MJeKV53x2D-tigu5SbHyESMyvILulBOUHZNfXTh6f8BRNGoWAkmZGhTeSWRB6n0Yw7IQRI0B91gU_U5KeEaSv6GZGH_W05qE5EOybPtK8yTXIY8KRAN88q_810UgS5RUyRmLSTI-zFjGHDUBCI7ELn7zCVDuy5Hy1SYdchdHKbBPfokQqaaMmc3liYXq_mNFC7yqQPYrfuA";
   const firstName = currentUser ? currentUser.name.split(' ')[0] : 'obiskovalec';
@@ -415,7 +373,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
         ) : (
           visibleItems.map((item, idx) => {
             if (item.type === 'firestore') {
-              return <FirestorePostCard key={`fp-${item.data.id}-${idx}`} post={item.data} />;
+              return <FirestorePostCard key={`fp-${item.data.id}-${idx}`} post={item.data} onNavigatePost={onNavigatePost} />;
             }
             if (item.type === 'firestore_ad') {
               const ad = item.data;
@@ -436,9 +394,11 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   date="Ravno objavljeno"
                   description={ad.description}
                   categoryName={ad.category || 'Mali oglas'}
+                  category="oglasi"
                   image={ad.imageUrl}
                   isPromoted={isPromoted}
                   promotionBadgeType={ad.promotionBadgeType || ad.promotion?.badgeType}
+                  onNavigatePost={onNavigatePost}
                 />
               );
             }
@@ -449,22 +409,27 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   ? isItemActivelyPromoted(ev.promotion, 'dogodki')
                   : (ev.isPromoted && (!ev.promotedUntil || new Date(ev.promotedUntil).getTime() > Date.now()))
               );
+              const dateInfo = parseEventDateInfo(ev.eventDate || ev.date, ev.eventTime);
               return (
                 <EventPost
                   key={`f-ev-${ev.id}-${idx}`}
                   id={ev.id}
                   title={ev.title}
                   organizer={ev.authorName}
-                  categoryName={ev.category || 'Dogodek'}
-                  location={ev.location || 'Slovenija'}
-                  date={ev.eventDate || ev.date || 'Ravno objavljeno'}
-                  month="AKT"
-                  day="★"
+                  categoryName={ev.categoryName || ev.category || 'Dogodek'}
+                  category="dogodki"
+                  location={ev.location || ev.region || 'Slovenija'}
+                  date={dateInfo.fullDate}
+                  eventTime={ev.eventTime}
+                  month={dateInfo.month}
+                  day={dateInfo.day}
                   price={ev.price || 'Vstop prost'}
+                  ticketUrl={ev.ticketUrl}
                   description={ev.description}
                   image={ev.imageUrl}
                   isPromoted={isPromoted}
                   promotionBadgeType={ev.promotionBadgeType || ev.promotion?.badgeType}
+                  onNavigatePost={onNavigatePost}
                 />
               );
             }
@@ -499,10 +464,11 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   image={blog.image}
                   readTime={blog.readTime}
                   photoCount={blog.photoCount}
-                  likesCount={`${blog.likesCount} všečkov`}
-                  commentsCount={`${blog.commentsCount} komentarjev`}
+                  likesCount={`${blog.likesCount || 0} všečkov`}
+                  commentsCount={`${blog.commentsCount || 0} komentarjev`}
                   viewsCount={`${blog.viewsCount} ogledov`}
                   tags={blog.tags}
+                  onNavigatePost={onNavigatePost}
                 />
               );
             }
@@ -520,7 +486,9 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   date={ad.date}
                   description={ad.description}
                   categoryName={ad.categoryName}
+                  category="oglasi"
                   image={ad.image}
+                  onNavigatePost={onNavigatePost}
                 />
               );
             }
@@ -541,10 +509,12 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   link={deal.link}
                   image={deal.image}
                   categoryName={deal.categoryName}
+                  category="ugodnosti"
                   region={deal.region}
                   verifiedText={deal.verifiedText}
                   featured={deal.featured}
                   votesCount={deal.votes}
+                  onNavigatePost={onNavigatePost}
                 />
               );
             }
@@ -557,6 +527,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   title={ev.title}
                   organizer={ev.organizer}
                   categoryName={ev.categoryName}
+                  category="dogodki"
                   location={ev.location}
                   date={ev.date}
                   month={ev.month}
@@ -565,6 +536,7 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
                   description={ev.description}
                   image={ev.image}
                   interestedCount={ev.interestedCount}
+                  onNavigatePost={onNavigatePost}
                 />
               );
             }
@@ -574,8 +546,9 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
       </div>
 
       {/* Load More Button */}
-      {visibleItems.length > 0 && (
+      {visibleItems.length > 0 && hasMore && (
         <div className="flex flex-col items-center justify-center gap-2 pt-2 pb-6">
+          <AdSense />
           <button 
             onClick={handleLoadMore}
             disabled={isLoading}
@@ -586,10 +559,10 @@ export function MainFeed({ searchQuery = '', onViewChange }: MainFeedProps) {
             ) : (
               <ChevronDown className="w-4 h-4 text-primary" />
             )}
-            <span>{isLoading ? 'Nalaganje objav...' : 'Naloži še 10 objav'}</span>
+            <span>{isLoading ? 'Nalaganje objav...' : 'Naloži še objav'}</span>
           </button>
           <span className="font-body-sm text-xs text-outline">
-            Prikazano {visibleItems.length} objav (stran {page})
+            Prikazano {visibleItems.length} od {filteredItems.length} objav
           </span>
         </div>
       )}

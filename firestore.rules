@@ -87,6 +87,12 @@ service cloud.firestore {
       allow read, update, delete: if true;
     }
 
+    // Portal Settings Collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Connection test document
     match /test/{docId} {
       allow read, write: if true;

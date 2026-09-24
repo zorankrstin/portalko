@@ -733,7 +733,7 @@ export const PromotionModal: React.FC<PromotionModalProps> = ({
                 <>
                   <Sparkles className="w-4 h-4" />
                   <span>
-                    {paymentMethod === 'card' && (paymentMethod !== 'admin_waived' && selectedPlan.priceEur > 0)
+                    {paymentMethod === 'card' && selectedPlan.priceEur > 0
                       ? `Plačaj ${selectedPlan.priceEur.toFixed(2)} € in aktiviraj`
                       : 'Potrdi in aktiviraj izpostavitev'}
                   </span>

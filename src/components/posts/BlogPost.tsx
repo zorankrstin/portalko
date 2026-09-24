@@ -5,10 +5,19 @@ import { ReportButton } from "../ReportButton";
 import { BookOpen, MoreHorizontal, Camera, Heart, MessageCircle, Eye, ArrowRight } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType } from "../../types";
+import { AdSense } from "../ads/AdSense";
+import { getPlainTextSnippet } from "../../utils/textUtils";
+import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
+import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import type { PostDetailTarget } from "../../types";
 
 export interface BlogPostProps {
   id?: string;
   title?: string;
+  category?: string;
+  categoryName?: string;
+  subcategory?: string;
+  subcategoryName?: string;
   author?: string;
   authorRole?: string;
   authorAvatar?: string;
@@ -25,12 +34,16 @@ export interface BlogPostProps {
   tags?: string[];
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
-  onNavigatePost?: (target: { type: 'blog'; id: string }) => void;
+  onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
 export const BlogPost: React.FC<BlogPostProps> = ({ 
   id = "blog",
   title = "Potep po dolini Soče: 5 skritih kotičkov, ki jih morate obiskati to pomlad",
+  category = "turizem-izleti",
+  categoryName = "Turizem & Izleti",
+  subcategory,
+  subcategoryName,
   author = "Maja Zupan",
   authorRole = "Registrirana",
   authorAvatar = "https://lh3.googleusercontent.com/aida-public/AB6AXuA0aillBK42foqYYRs3Hl0i5psDvvr2NDlrZX_P-FXMFxLDlTrJyttrIRyIM7OjAMIeCA8VDw5Da046gdbXusHkNnSCNLmgTP1y3GLJPh-_spwBhPsrnwKXD-zF6zEb144nZU8FLIklzGTs5sg8xvIs7NcM-R4fOwdNJHr4sPnR2x0Im8d6D1xpgLSCk-6lXFjnWO5W4kUTP6QjtqfjqwL9sD3BxP22cIPCehiW4qkKlJEasSlcrIVW",
@@ -42,7 +55,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   readTime = "5 minut branja",
   photoCount = "8 fotografij",
   likesCount = "84 všečkov",
-  commentsCount = "19 komentarjev",
+  commentsCount = "0 komentarjev",
   viewsCount = "1.420 ogledov",
   tags = ["turizem", "slovenija", "izlet", "socaValley"],
   isPromoted = false,
@@ -51,12 +64,64 @@ export const BlogPost: React.FC<BlogPostProps> = ({
 }) => {
   const finalDesc = excerpt || description;
 
+  const postUrl = buildPostUrl({
+    type: 'blog',
+    id,
+    title,
+    category,
+    categoryName,
+    subcategory,
+    subcategoryName,
+  });
+
+  const authorUrl = `/avtor/${slugify(author)}`;
+
+  const resolveInitialImage = () => {
+    if (image && image.trim()) return image.trim();
+    return getActiveFallbackImage(true, 'blog') || '';
+  };
+  const [imgSrc, setImgSrc] = React.useState<string>(resolveInitialImage());
+  const [hasError, setHasError] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    setImgSrc(resolveInitialImage());
+    setHasError(false);
+  }, [image]);
+
+  const handleImageError = () => {
+    const fallback = getActiveFallbackImage(false);
+    if (fallback && imgSrc !== fallback) {
+      setImgSrc(fallback);
+      return;
+    }
+    setHasError(true);
+  };
+
   const handleOpenDetail = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (onNavigatePost) {
-      onNavigatePost({ type: 'blog', id });
+      onNavigatePost({
+        type: 'blog',
+        id,
+        titleSlug: slugify(title),
+        categorySlug: slugify(categoryName || category),
+        subcategorySlug: subcategoryName || subcategory ? slugify(subcategoryName || subcategory) : undefined,
+        initialData: {
+          title,
+          category,
+          categoryName,
+          subcategory,
+          subcategoryName,
+          author,
+          image,
+          date,
+          location,
+          description: finalDesc,
+        },
+      });
     } else {
-      window.location.hash = `blog-${id}`;
+      window.history.pushState({ type: 'blog', id }, '', postUrl);
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
 
@@ -82,7 +147,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <a
-            href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+            href={authorUrl}
             className="group/avatar shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${author}`}
           >
@@ -91,7 +156,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <a
-                href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+                href={authorUrl}
                 className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors"
                 title={`Ogled profila avtorja: ${author}`}
               >
@@ -118,7 +183,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             <BookOpen className="w-[1em] h-[1em] text-xs" /> Blog
           </span>
           <BookmarkButton id={id} data={bookmarkData} />
-          <ShareMenu id={id} type="blog" title={title} description={description} />
+          <ShareMenu id={id} type="blog" title={title} description={description} url={`${window.location.origin}${postUrl}`} />
           <ReportButton 
             targetId={id || ''} 
             targetType="post" 
@@ -133,7 +198,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
       
       <div className="flex flex-col gap-2">
         <a 
-          href={`#blog-${id}`}
+          href={postUrl}
           onClick={handleOpenDetail}
           className="block group/title cursor-pointer"
           title="Odpri samostojno stran članka"
@@ -142,19 +207,24 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             {title}
           </h4>
         </a>
-        <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3">
-          {finalDesc}
+        <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
+          {getPlainTextSnippet(finalDesc)}
         </p>
       </div>
       
-      {image && (
+      {imgSrc && !hasError && (
         <a
-          href={`#blog-${id}`}
+          href={postUrl}
           onClick={handleOpenDetail}
           className="relative rounded-xl overflow-hidden h-72 w-full bg-surface-container block cursor-pointer group/img"
           title="Odpri samostojno stran članka"
         >
-          <img className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" src={image} alt={title} />
+          <img 
+            className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" 
+            src={imgSrc} 
+            alt={title} 
+            onError={handleImageError}
+          />
           <div className="absolute bottom-3 left-3 bg-inverse-surface/80 backdrop-blur-sm text-inverse-on-surface px-2.5 py-1 rounded-lg font-label-md text-xs flex items-center gap-1.5">
             <Camera className="w-[1em] h-[1em] text-xs text-secondary-fixed" /> {readTime} {photoCount ? `• ${photoCount}` : ''}
           </div>
@@ -196,6 +266,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             type="blog"
             title={title}
             description={description}
+            url={`${window.location.origin}${postUrl}`}
             showLabel={true}
             buttonClassName="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer text-on-surface-variant font-label-md text-xs"
           />
@@ -203,7 +274,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
 
         <div className="flex items-center gap-2">
           <a
-            href={`#blog-${id}`}
+            href={postUrl}
             onClick={handleOpenDetail}
             className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container"
             title="Preberi celoten članek"
@@ -213,6 +284,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           </a>
         </div>
       </div>
+      <AdSense />
     </article>
   );
 };

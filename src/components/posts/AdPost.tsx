@@ -4,7 +4,10 @@ import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
 import { MapPin, Phone } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
-import { PromotionBadgeType } from "../../types";
+import { PromotionBadgeType, PostDetailTarget } from "../../types";
+import { getPlainTextSnippet } from "../../utils/textUtils";
+import { getActiveFallbackImage } from "../../services/portalSettingsService";
+import { buildPostUrl, slugify } from "../../utils/urlUtils";
 
 export interface AdPostProps {
   id?: string;
@@ -17,11 +20,14 @@ export interface AdPostProps {
   description?: string;
   categoryName?: string;
   category?: string;
+  subcategory?: string;
+  subcategoryName?: string;
   image?: string;
   images?: string[];
   status?: string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
+  onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
 export const AdPost: React.FC<AdPostProps> = ({ 
@@ -34,15 +40,82 @@ export const AdPost: React.FC<AdPostProps> = ({
   date = "Danes",
   description = "Telefon je brezhiben, od prvega dne nošen v originalnem Apple usnjenem ovitku ter z nameščenim PanzerGlass steklom.",
   categoryName = "Telefonija",
-  category,
+  category = "elektronika",
+  subcategory,
+  subcategoryName,
   image,
   images,
   status = "Aktivno",
   isPromoted = false,
   promotionBadgeType = 'PROMO',
+  onNavigatePost,
 }) => {
-  const displayImage = image || (images && images.length > 0 ? images[0] : "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=600&auto=format&fit=crop&q=80");
+  const postUrl = buildPostUrl({
+    type: 'ad',
+    id,
+    title,
+    category,
+    categoryName,
+    subcategory,
+    subcategoryName,
+  });
+
+  const authorUrl = `/avtor/${slugify(author)}`;
+
+  const handleOpenDetail = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (onNavigatePost) {
+      onNavigatePost({
+        type: 'ad',
+        id,
+        titleSlug: slugify(title),
+        categorySlug: slugify(categoryName || category),
+        subcategorySlug: subcategoryName || subcategory ? slugify(subcategoryName || subcategory) : undefined,
+        initialData: {
+          title,
+          category,
+          categoryName,
+          subcategory,
+          subcategoryName,
+          author,
+          price,
+          location,
+          date,
+          description,
+        },
+      });
+    } else {
+      window.history.pushState({ type: 'ad', id }, '', postUrl);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
+  const resolveInitialImage = () => {
+    if (image && image.trim()) return image.trim();
+    if (images && images.length > 0 && images[0]?.trim()) return images[0].trim();
+    const fallback = getActiveFallbackImage(true);
+    return fallback || '';
+  };
+
+  const [imgSrc, setImgSrc] = React.useState<string>(resolveInitialImage());
+  const [hasError, setHasError] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    setImgSrc(resolveInitialImage());
+    setHasError(false);
+  }, [image, images]);
+
+  const handleImageError = () => {
+    const fallback = getActiveFallbackImage(false);
+    if (fallback && imgSrc !== fallback) {
+      setImgSrc(fallback);
+      return;
+    }
+    setHasError(true);
+  };
+
+  const hasVisibleImage = !!imgSrc && !hasError;
   const displayCategory = categoryName || category || 'Oglas';
+  const cleanDescription = getPlainTextSnippet(description);
 
   const bookmarkData = {
     type: 'ad',
@@ -50,25 +123,27 @@ export const AdPost: React.FC<AdPostProps> = ({
     title,
     price,
     location,
-    description,
-    image: displayImage,
+    description: cleanDescription,
+    image: hasVisibleImage ? imgSrc : undefined,
   };
 
   return (
     <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row ${
       isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
     }`}>
-      {displayImage && (
+      {hasVisibleImage && (
         <a 
-          href={`#ad-${id}`}
-          onClick={(e) => {
-            e.preventDefault();
-            window.location.hash = `ad-${id}`;
-          }}
+          href={postUrl}
+          onClick={handleOpenDetail}
           className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
           title="Odpri samostojno stran tega malega oglasa"
         >
-          <img alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={displayImage} />
+          <img 
+            alt={title} 
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+            src={imgSrc} 
+            onError={handleImageError}
+          />
           <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
             {isPromoted && (
               <PromotedBadge type={promotionBadgeType} size="sm" />
@@ -81,6 +156,16 @@ export const AdPost: React.FC<AdPostProps> = ({
       )}
       <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
         <div>
+          {!hasVisibleImage && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="px-2.5 py-1 rounded-lg bg-surface-container font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                {displayCategory}
+              </span>
+              {isPromoted && (
+                <PromotedBadge type={promotionBadgeType} size="sm" />
+              )}
+            </div>
+          )}
           <div className="flex items-start justify-between gap-2">
             <span className="font-headline-lg text-xl font-bold text-primary">{price}</span>
             <div className="flex items-center gap-1">
@@ -88,7 +173,7 @@ export const AdPost: React.FC<AdPostProps> = ({
                 id={id} 
                 data={bookmarkData}
               />
-              <ShareMenu id={id} type="ad" title={title} description={description} />
+              <ShareMenu id={id} type="ad" title={title} description={cleanDescription} url={`${window.location.origin}${postUrl}`} />
               <ReportButton 
                 targetId={id} 
                 targetType="ad" 
@@ -98,25 +183,22 @@ export const AdPost: React.FC<AdPostProps> = ({
             </div>
           </div>
           <a
-            href={`#ad-${id}`}
-            onClick={(e) => {
-              e.preventDefault();
-              window.location.hash = `ad-${id}`;
-            }}
+            href={postUrl}
+            onClick={handleOpenDetail}
             className="block group/title cursor-pointer"
           >
             <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
               {title}
             </h3>
           </a>
-          <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{description}</p>
+          <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{cleanDescription}</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
           <div className="flex items-center gap-2 flex-wrap">
             {author && (
               <>
                 <a
-                  href={`#author-${encodeURIComponent(author.replace(/\s+/g, '_'))}`}
+                  href={authorUrl}
                   className="inline-flex items-center gap-1.5 font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
                   title={`Ogled profila prodajalca: ${author}`}
                 >
@@ -138,13 +220,12 @@ export const AdPost: React.FC<AdPostProps> = ({
               type="ad" 
               title={title} 
               description={description} 
+              url={`${window.location.origin}${postUrl}`}
               showLabel={true} 
               buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
             />
             <button 
-              onClick={() => {
-                window.location.hash = `ad-${id}`;
-              }}
+              onClick={handleOpenDetail}
               className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Phone className="w-3.5 h-3.5" />

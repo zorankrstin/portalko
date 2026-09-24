@@ -1,6 +1,7 @@
+import { useState, useEffect } from 'react';
 import { Rocket, ShieldCheck, Lock, TrendingUp, Link as LinkIcon, ShoppingBag } from 'lucide-react';
 import { PostDetailTarget } from '../types';
-import { INITIAL_ADS } from '../data/mockFeedData';
+import { subscribeToAds, FirestoreAd } from '../services/firestoreService';
 import { scrollToPageTop } from '../utils/scrollUtils';
 
 interface RightSidebarAdsProps {
@@ -8,6 +9,16 @@ interface RightSidebarAdsProps {
 }
 
 export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
+  const [ads, setAds] = useState<FirestoreAd[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeToAds((allAds) => {
+      const activeAds = allAds.filter(a => a.status !== 'rejected');
+      setAds(activeAds.slice(0, 3));
+    });
+    return () => unsub();
+  }, []);
+
   const handleOpenAd = (id: string, e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (onNavigatePost) {
@@ -35,32 +46,36 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
           <span className="font-label-caps text-[10px] uppercase font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Aktualno</span>
         </div>
         <div className="flex flex-col gap-2 pt-1">
-          {INITIAL_ADS.slice(0, 3).map(ad => (
-            <a
-              key={ad.id}
-              href={`#ad-${ad.id}`}
-              onClick={(e) => handleOpenAd(ad.id, e)}
-              className="group flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent hover:border-surface-container/60"
-              title={`Odpri oglas: ${ad.title}`}
-            >
-              {ad.image && (
-                <img 
-                  src={ad.image} 
-                  alt={ad.title} 
-                  className="w-12 h-12 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform"
-                />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="font-headline-sm text-xs font-bold text-primary">{ad.price}</span>
-                  <span className="font-label-caps text-[10px] text-outline truncate">{ad.location}</span>
+          {ads.length === 0 ? (
+            <p className="text-xs text-outline py-3 text-center">Trenutno ni objavljenih malih oglasov.</p>
+          ) : (
+            ads.map(ad => (
+              <a
+                key={ad.id}
+                href={`#ad-${ad.id}`}
+                onClick={(e) => handleOpenAd(ad.id, e)}
+                className="group flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent hover:border-surface-container/60"
+                title={`Odpri oglas: ${ad.title}`}
+              >
+                {ad.imageUrl && (
+                  <img 
+                    src={ad.imageUrl} 
+                    alt={ad.title} 
+                    className="w-12 h-12 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-headline-sm text-xs font-bold text-primary">{ad.price}</span>
+                    <span className="font-label-caps text-[10px] text-outline truncate">{ad.location}</span>
+                  </div>
+                  <h4 className="font-label-md text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors mt-0.5">
+                    {ad.title}
+                  </h4>
                 </div>
-                <h4 className="font-label-md text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors mt-0.5">
-                  {ad.title}
-                </h4>
-              </div>
-            </a>
-          ))}
+              </a>
+            ))
+          )}
         </div>
       </div>
 
@@ -105,7 +120,7 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
           </div>
           <div className="flex items-start gap-2">
             <Lock className="w-[1em] h-[1em] text-xs text-primary mt-0.5" />
-            <p className="leading-tight">Komunikacija in podatki so šifrirani prek Supabase Row-Level Security.</p>
+            <p className="leading-tight">Komunikacija in podatki so varni in šifrirani.</p>
           </div>
         </div>
       </div>
@@ -153,24 +168,6 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
           <a className="p-2 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors truncate" href="https://e-uprava.gov.si" target="_blank" rel="noopener noreferrer">e-Uprava Pogodba</a>
           <a className="p-2 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors truncate" href="https://www.posta.si" target="_blank" rel="noopener noreferrer">Pošta Cenik</a>
           <a className="p-2 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors truncate" href="https://www.dars.si" target="_blank" rel="noopener noreferrer">DARS Vinjete</a>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="bg-surface-container-low rounded-2xl p-space-md flex items-center justify-around text-center border border-surface-container">
-        <div>
-          <span className="font-headline-sm text-base font-bold text-primary block">1.240</span>
-          <span className="font-label-caps text-[10px] text-outline uppercase">Oglasov</span>
-        </div>
-        <div className="w-px h-8 bg-surface-container-high"></div>
-        <div>
-          <span className="font-headline-sm text-base font-bold text-secondary block">98%</span>
-          <span className="font-label-caps text-[10px] text-outline uppercase">Zadovoljnih</span>
-        </div>
-        <div className="w-px h-8 bg-surface-container-high"></div>
-        <div>
-          <span className="font-headline-sm text-base font-bold text-tertiary-container block">&lt; 24h</span>
-          <span className="font-label-caps text-[10px] text-outline uppercase">Povpr. prodaja</span>
         </div>
       </div>
 

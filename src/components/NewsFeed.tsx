@@ -126,7 +126,7 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
       </div>
 
       {/* Category & Source filters */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-1">
         {dynamicFilterPills.map(cat => (
           <button
             key={cat.id}

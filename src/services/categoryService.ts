@@ -488,14 +488,23 @@ export function subscribeToCategories(callback: (categories: CategoryItem[]) => 
         const data = d.data();
         if (data.isDeleted) return;
 
+        const defCat = DEFAULT_CATEGORIES.find(c => c.id === d.id);
+        const resolvedName = (data.name && String(data.name).trim()) || defCat?.name || '';
+        const resolvedSection = (data.section && String(data.section).trim()) || defCat?.section || 'ads';
+        const resolvedIcon = data.icon || defCat?.icon || '📁';
+        const resolvedDesc = data.description || defCat?.description || '';
+        const resolvedSubs = Array.isArray(data.subcategories) && data.subcategories.length > 0 
+          ? data.subcategories 
+          : (defCat?.subcategories || []);
+
         firestoreCats.push({
           id: d.id,
-          name: data.name || '',
-          section: data.section || 'ads',
-          icon: data.icon || '📁',
-          description: data.description || '',
-          subcategories: Array.isArray(data.subcategories) ? data.subcategories : [],
-          order: typeof data.order === 'number' ? data.order : 99,
+          name: resolvedName,
+          section: resolvedSection as CategorySection,
+          icon: resolvedIcon,
+          description: resolvedDesc,
+          subcategories: resolvedSubs,
+          order: typeof data.order === 'number' ? data.order : (defCat?.order ?? 99),
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });

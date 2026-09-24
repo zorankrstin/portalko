@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, Sparkles, Trash2, Loader2 } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, Sparkles, Trash2, Loader2, Calendar, Tag, TrendingDown, Percent } from 'lucide-react';
 import { 
   FirestorePost, 
   FirestoreAd, 
@@ -14,6 +14,7 @@ import {
 import { PromotionConfig, PromotionBadgeType } from '../../types';
 import { PromotedBadge } from '../common/PromotedBadge';
 import { RichTextEditor } from '../RichTextEditor';
+import { compressImageFileToDataUrl } from '../../utils/imageUtils';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -31,8 +32,16 @@ export interface EditablePostItem {
   status: 'published' | 'active' | 'pending' | 'rejected' | 'archived';
   imageUrl?: string;
   price?: string;
+  oldPrice?: string;
+  newPrice?: string;
+  expirationDate?: string;
+  discount?: string;
+  promoCode?: string;
+  dealLink?: string;
   location?: string;
   eventDate?: string;
+  eventTime?: string;
+  ticketUrl?: string;
   rejectionReason?: string;
   isPromoted?: boolean;
   promotion?: PromotionConfig;
@@ -54,9 +63,19 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [category, setCategory] = useState('');
   const [status, setStatus] = useState<'published' | 'active' | 'pending' | 'rejected'>('published');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('url');
+  const [isCompressing, setIsCompressing] = useState(false);
   const [price, setPrice] = useState('');
+  const [oldPrice, setOldPrice] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+  const [expirationDate, setExpirationDate] = useState('');
+  const [discount, setDiscount] = useState('');
+  const [promoCode, setPromoCode] = useState('');
+  const [dealLink, setDealLink] = useState('');
   const [location, setLocation] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [ticketUrl, setTicketUrl] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -67,13 +86,13 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     if (isOpen && item) {
       setTitle(item.title || '');
       setContent(item.content || '');
-      const isDealItem = item.type === 'deal' || 
-                         item.category === 'deal' || 
-                         item.category === 'ugodnosti' || 
-                         item.category?.startsWith('deal') ||
-                         item.categoryName === 'Ugodnosti' || 
-                         item.categoryName === 'Ugodnost';
-      const initialCat = isDealItem 
+      const isDeal = item.type === 'deal' || 
+                     item.category === 'deal' || 
+                     item.category === 'ugodnosti' || 
+                     item.category?.startsWith('deal') ||
+                     item.categoryName === 'Ugodnosti' || 
+                     item.categoryName === 'Ugodnost';
+      const initialCat = isDeal 
         ? (item.category && item.category !== 'blog' && item.category !== 'post' ? item.category : 'deal')
         : (item.category || '');
       setCategory(initialCat);
@@ -81,8 +100,16 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       setStatus(normalizedStatus as any);
       setImageUrl(item.imageUrl || '');
       setPrice(item.price || '');
+      setOldPrice(item.oldPrice || '');
+      setNewPrice(item.newPrice || '');
+      setExpirationDate(item.expirationDate || '');
+      setDiscount(item.discount || '');
+      setPromoCode(item.promoCode || '');
+      setDealLink(item.dealLink || '');
       setLocation(item.location || '');
       setEventDate(item.eventDate || '');
+      setEventTime(item.eventTime || '');
+      setTicketUrl(item.ticketUrl || '');
       setRejectionReason(item.rejectionReason || '');
       setErrorMsg('');
       setSuccessMsg('');
@@ -90,6 +117,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   }, [isOpen, item]);
 
   if (!isOpen || !item) return null;
+
+  const isDeal = item.type === 'deal' || item.category === 'deal' || item.category?.startsWith('deal') || item.categoryName === 'Ugodnosti' || item.categoryName === 'Ugodnost';
 
   const handleDelete = async () => {
     if (!item) return;
@@ -155,6 +184,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           price: price.trim() || '',
           location: location.trim() || 'Ljubljana',
           eventDate: eventDate.trim() || '',
+          eventTime: eventTime.trim() || '',
+          ticketUrl: ticketUrl.trim() || '',
           imageUrl: imageUrl.trim() || '',
           status: targetStatus as any,
           authorId: item.authorId,
@@ -188,7 +219,13 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           content: content.trim(),
           category: preservedCategory,
           categoryName: preservedCategoryName,
-          price: price.trim() || item.price || '',
+          price: isDeal ? (newPrice.trim() || price.trim() || item.price || '') : (price.trim() || item.price || ''),
+          oldPrice: isDeal ? (oldPrice.trim() || undefined) : undefined,
+          newPrice: isDeal ? (newPrice.trim() || undefined) : undefined,
+          expirationDate: isDeal ? (expirationDate.trim() || undefined) : undefined,
+          discount: isDeal ? (discount.trim() || undefined) : undefined,
+          promoCode: isDeal ? (promoCode.trim() || undefined) : undefined,
+          dealLink: isDeal ? (dealLink.trim() || undefined) : undefined,
           location: location.trim() || item.location || '',
           imageUrl: imageUrl.trim() || item.imageUrl || '',
           status: targetStatus as any,
@@ -403,7 +440,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
               />
             </div>
 
-            {/* Price or Event Date */}
+            {/* Price or Event Date or Deal indicator */}
             {item.type === 'event' ? (
               <div className="flex flex-col gap-1.5">
                 <label className="font-label-caps uppercase font-semibold text-outline">Datum dogodka</label>
@@ -414,19 +451,171 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                   className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
                 />
               </div>
+            ) : isDeal ? (
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label-caps uppercase font-semibold text-outline">Glavna cena / Popust</label>
+                <input
+                  type="text"
+                  value={newPrice || price}
+                  onChange={e => {
+                    setNewPrice(e.target.value);
+                    setPrice(e.target.value);
+                  }}
+                  placeholder="Npr. 69,90 € ali -30%"
+                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary font-bold text-secondary"
+                />
+              </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                <label className="font-label-caps uppercase font-semibold text-outline">Cena ali popust</label>
+                <label className="font-label-caps uppercase font-semibold text-outline">Cena</label>
                 <input
                   type="text"
                   value={price}
                   onChange={e => setPrice(e.target.value)}
-                  placeholder="Npr. 250 € ali -20%"
+                  placeholder="Npr. 250 € ali Po dogovoru"
                   className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
                 />
               </div>
             )}
           </div>
+
+          {/* Deal-specific extra fields: Old price, New price, Expiration date, Discount, Promo code */}
+          {isDeal && (
+            <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-secondary" />
+                  <span>Podrobnosti ugodnosti (Ugodnosti & Popusti)</span>
+                </span>
+                <span className="text-[10px] text-outline font-semibold">Cene in veljavnost</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline flex items-center gap-1">
+                    <span className="line-through">Stara cena</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={oldPrice}
+                    onChange={e => setOldPrice(e.target.value)}
+                    placeholder="Npr. 99,90 €"
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                  />
+                  <span className="text-[10px] text-outline">Prejšnja cena</span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-secondary flex items-center gap-1">
+                    <TrendingDown className="w-3.5 h-3.5" />
+                    <span>Nova cena</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newPrice}
+                    onChange={e => {
+                      setNewPrice(e.target.value);
+                      if (!price) setPrice(e.target.value);
+                    }}
+                    placeholder="Npr. 69,90 € (neobvezno)"
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary font-bold"
+                  />
+                  <span className="text-[10px] text-outline">Znižana cena</span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>Datum poteka (Expiration date)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={expirationDate}
+                    onChange={e => setExpirationDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                  />
+                  <span className="text-[10px] text-outline">
+                    {expirationDate ? `Do: ${new Date(expirationDate).toLocaleDateString('sl-SI')}` : 'Veljavnost (neobvezno)'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 border-t border-surface-container/60">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline flex items-center gap-1">
+                    <Percent className="w-3.5 h-3.5 text-primary" />
+                    <span>Popust (% ali opis)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={discount}
+                    onChange={e => setDiscount(e.target.value)}
+                    placeholder="Npr. -30%"
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline">Koda kupona</label>
+                  <input
+                    type="text"
+                    value={promoCode}
+                    onChange={e => setPromoCode(e.target.value.toUpperCase())}
+                    placeholder="POMLAD30"
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs font-mono font-bold text-primary uppercase outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline">Povezava do ponudbe</label>
+                  <input
+                    type="url"
+                    value={dealLink}
+                    onChange={e => setDealLink(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Event-specific extra fields: Time (24h), Price, Ticket URL */}
+          {item.type === 'event' && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-xl bg-surface-container-low/50 border border-surface-container">
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label-caps uppercase font-semibold text-outline">Čas dogodka (24h)</label>
+                <input
+                  type="time"
+                  step="60"
+                  value={eventTime}
+                  onChange={e => setEventTime(e.target.value)}
+                  placeholder="20:00"
+                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label-caps uppercase font-semibold text-outline">Vstopnina / Cena</label>
+                <input
+                  type="text"
+                  value={price}
+                  onChange={e => setPrice(e.target.value)}
+                  placeholder="Npr. Brezplačno ali 15 €"
+                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label-caps uppercase font-semibold text-outline">Povezava do vstopnic</label>
+                <input
+                  type="url"
+                  value={ticketUrl}
+                  onChange={e => setTicketUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Location */}
           <div className="flex flex-col gap-1.5">
@@ -440,21 +629,87 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
             />
           </div>
 
-          {/* Image URL */}
-          <div className="flex flex-col gap-1.5">
-            <label className="font-label-caps uppercase font-semibold text-outline">Povezava do slike (URL)</label>
-            <div className="flex gap-2">
+          {/* Image */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="font-label-caps uppercase font-semibold text-outline">Naslovna slika</label>
+              <div className="flex items-center gap-1 bg-surface-container p-0.5 rounded-lg text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setImageInputMode('upload')}
+                  className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    imageInputMode === 'upload' 
+                      ? 'bg-surface-container-lowest text-primary shadow-xs font-bold' 
+                      : 'text-outline hover:text-on-surface'
+                  }`}
+                >
+                  Naloži novo sliko
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageInputMode('url')}
+                  className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    imageInputMode === 'url' 
+                      ? 'bg-surface-container-lowest text-primary shadow-xs font-bold' 
+                      : 'text-outline hover:text-on-surface'
+                  }`}
+                >
+                  Povezava (URL)
+                </button>
+              </div>
+            </div>
+
+            {imageInputMode === 'upload' ? (
+              <div className="flex flex-col gap-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      try {
+                        setIsCompressing(true);
+                        const dataUrl = await compressImageFileToDataUrl(file);
+                        setImageUrl(dataUrl);
+                      } catch (err: any) {
+                        console.error('Error processing image:', err);
+                        setErrorMsg('Napaka pri obdelavi slike: ' + (err.message || ''));
+                      } finally {
+                        setIsCompressing(false);
+                      }
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary cursor-pointer"
+                />
+                {isCompressing && (
+                  <div className="flex items-center gap-2 text-xs text-primary font-medium">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Optimiziram sliko...</span>
+                  </div>
+                )}
+              </div>
+            ) : (
               <input
                 type="url"
                 value={imageUrl}
                 onChange={e => setImageUrl(e.target.value)}
                 placeholder="https://images.unsplash.com/..."
-                className="flex-1 px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
               />
-            </div>
+            )}
+
             {imageUrl && (
-              <div className="mt-1 relative w-full h-32 rounded-xl overflow-hidden bg-surface-container border border-surface-container">
+              <div className="mt-1 relative w-full h-36 rounded-xl overflow-hidden bg-surface-container border border-surface-container group">
                 <img src={imageUrl} alt="Predogled" className="w-full h-full object-cover" onError={() => {}} />
+                <button
+                  type="button"
+                  onClick={() => setImageUrl('')}
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs font-medium backdrop-blur-xs transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                  title="Odstrani sliko"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Odstrani sliko</span>
+                </button>
               </div>
             )}
           </div>

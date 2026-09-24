@@ -35,6 +35,9 @@
         "authorAvatar": { "type": "string", "maxLength": 500 },
         "imageUrl": { "type": "string", "maxLength": 500 },
         "price": { "type": "string", "maxLength": 50 },
+        "eventDate": { "type": "string", "maxLength": 100 },
+        "eventTime": { "type": "string", "maxLength": 50 },
+        "ticketUrl": { "type": "string", "maxLength": 500 },
         "location": { "type": "string", "maxLength": 100 },
         "status": { "type": "string", "enum": ["published", "pending", "rejected", "archived"] },
         "rejectionReason": { "type": "string", "maxLength": 500 },
@@ -77,6 +80,8 @@
         "description": { "type": "string", "minLength": 5, "maxLength": 5000 },
         "location": { "type": "string", "maxLength": 150 },
         "eventDate": { "type": "string", "maxLength": 100 },
+        "eventTime": { "type": "string", "maxLength": 50 },
+        "ticketUrl": { "type": "string", "maxLength": 500 },
         "category": { "type": "string", "maxLength": 50 },
         "price": { "type": "string", "maxLength": 50 },
         "authorId": { "type": "string", "maxLength": 128 },
@@ -122,6 +127,20 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "name", "section"]
+    },
+    "Settings": {
+      "title": "Portal System Settings",
+      "description": "Global settings for portal including custom fallback image placeholder",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "fallbackImageUrl": { "type": "string" },
+        "useFallbackForMissingImages": { "type": "boolean" },
+        "useFallbackForBrokenImages": { "type": "boolean" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id"]
     }
   },
   "firestore": {
@@ -144,6 +163,10 @@
     "/categories/{categoryId}": {
       "schema": "Category",
       "description": "Taxonomy categories and subcategories managed by admins"
+    },
+    "/settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Global portal configurations and fallback image preferences"
     },
     "/users/{userId}/bookmarks/{bookmarkId}": {
       "schema": "Bookmark",

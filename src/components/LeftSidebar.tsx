@@ -96,7 +96,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         <a className="flex items-center justify-between px-3 py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-lg text-label-lg transition-colors" href="#imenik">
           <span className="flex items-center gap-2.5">
             <Network className="w-[1em] h-[1em] text-lg text-outline" />
-            <span>Spletni imenik</span>
+            <span>Imenik</span>
           </span>
           <span className="text-outline text-xs">↗</span>
         </a>

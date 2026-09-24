@@ -4,6 +4,10 @@
  * GEO coordinates/regions, Canonical tags, and Schema.org JSON-LD structured data.
  */
 
+import { slugify } from './urlUtils';
+
+export { slugify };
+
 export interface SeoMetadataOptions {
   title?: string;
   description?: string;
@@ -27,8 +31,18 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   const title = options.title ? `${options.title}` : DEFAULT_TITLE;
   const description = options.description || DEFAULT_DESCRIPTION;
   const image = options.image || DEFAULT_IMAGE;
-  const currentUrl = options.url || (typeof window !== 'undefined' ? window.location.href : 'https://portalko.net');
-  const canonicalUrl = options.canonicalUrl || currentUrl;
+  
+  // Clean URL without hash fragments for canonical and OpenGraph
+  let rawUrl = options.url || (typeof window !== 'undefined' ? window.location.href : 'https://portalko.net');
+  if (rawUrl.includes('#')) {
+    rawUrl = rawUrl.split('#')[0];
+  }
+  const currentUrl = rawUrl;
+  let canonicalUrl = options.canonicalUrl || currentUrl;
+  if (canonicalUrl.includes('#')) {
+    canonicalUrl = canonicalUrl.split('#')[0];
+  }
+
   const ogType = options.type === 'article' || options.type === 'product' || options.type === 'event' || options.type === 'profile' 
     ? (options.type === 'article' ? 'article' : 'website') 
     : 'website';
@@ -77,6 +91,7 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   setMetaTag('name', 'twitter:card', 'summary_large_image');
   setMetaTag('name', 'twitter:title', title);
   setMetaTag('name', 'twitter:description', description);
+  setMetaTag('name', 'twitter:url', canonicalUrl);
   setMetaTag('name', 'twitter:image', image.startsWith('http') ? image : (typeof window !== 'undefined' ? `${window.location.origin}${image}` : image));
 
   // 6. Canonical Link
@@ -101,22 +116,4 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   } else if (jsonLdScript) {
     jsonLdScript.remove();
   }
-}
-
-/**
- * Generate slug from title for SEO friendly URLs
- */
-export function slugify(text: string): string {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .normalize('NFD') // Normalize diacritics
-    .replace(/[\u0300-\u036f]/g, '') // remove accents
-    .replace(/[čć]/g, 'c')
-    .replace(/[š]/g, 's')
-    .replace(/[ž]/g, 'z')
-    .replace(/[^a-z0-9 -]/g, '') // remove invalid chars
-    .replace(/\s+/g, '-') // collapse whitespace and replace by -
-    .replace(/-+/g, '-'); // collapse dashes
 }

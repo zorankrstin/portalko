@@ -3,6 +3,7 @@ import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { Rss, ExternalLink, Clock } from 'lucide-react';
 import { formatSlovenianDate, formatFullSlovenianDateTime } from "../../utils/dateUtils";
+import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 
 interface RssPostProps {
   id?: string;
@@ -89,9 +90,14 @@ export const RssPost: React.FC<RssPostProps> = ({
           </div>
         </div>
         
-        {thumbnail && (
+        {(thumbnail || getActiveFallbackImage(true, 'news')) && (
           <div className="sm:col-span-4 rounded-xl overflow-hidden h-32 bg-surface-container">
-            <img className="w-full h-full object-cover" src={thumbnail} alt={title} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img 
+              className="w-full h-full object-cover" 
+              src={thumbnail || getActiveFallbackImage(true, 'news')!} 
+              alt={title} 
+              onError={handleImageFallbackError} 
+            />
           </div>
         )}
       </div>

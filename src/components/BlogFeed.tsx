@@ -38,10 +38,44 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
     return () => unsub();
   }, []);
 
+  // Active Category Object
   const activeCategoryObj = useMemo(() => {
     if (selectedCategory === 'all') return null;
     return categories.find(c => c.id === selectedCategory) || null;
   }, [categories, selectedCategory]);
+
+  // All available subcategories (when 'all' is selected, show all unique subcategories across all blog categories)
+  const availableSubcategories = useMemo(() => {
+    if (activeCategoryObj) {
+      return activeCategoryObj.subcategories || [];
+    }
+    const allSubs: { id: string; name: string; description?: string }[] = [];
+    const seen = new Set<string>();
+    for (const cat of categories) {
+      for (const sub of (cat.subcategories || [])) {
+        const key = sub.name.toLowerCase().trim();
+        if (!seen.has(sub.id) && !seen.has(key)) {
+          seen.add(sub.id);
+          seen.add(key);
+          allSubs.push(sub);
+        }
+      }
+    }
+    return allSubs;
+  }, [activeCategoryObj, categories]);
+
+  // Selected subcategory object for name-based matching
+  const selectedSubcatObj = useMemo(() => {
+    if (selectedSubcategory === 'all') return null;
+    for (const cat of categories) {
+      const found = (cat.subcategories || []).find(s => 
+        s.id === selectedSubcategory || 
+        s.name.toLowerCase().trim() === selectedSubcategory.toLowerCase().trim()
+      );
+      if (found) return found;
+    }
+    return null;
+  }, [categories, selectedSubcategory]);
 
   const handleCategorySelect = (catId: string) => {
     setSelectedCategory(catId);
@@ -49,67 +83,86 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
     setPage(1);
   };
 
-  // Filter Firestore posts
-  const filteredFirestore = firestorePosts.filter(post => {
-    // Strictly exclude deals and posts in category Ugodnosti from Blog feed
-    const isDeal = post.category === 'deal' || 
-                   post.category === 'ugodnosti' || 
-                   post.category?.startsWith('deal') || 
-                   post.categoryName === 'Ugodnosti' || 
-                   post.categoryName === 'Ugodnost' ||
-                   post.id.startsWith('deal-') || 
-                   post.id.startsWith('hero-bento-');
-    if (isDeal) return false;
+  // Category counts based on real user blog posts
+  const categoryCounts = useMemo(() => {
+    const validPosts = firestorePosts.filter(p => {
+      const isDeal = p.category === 'deal' || p.category === 'ugodnosti' || p.category?.startsWith('deal') || p.categoryName === 'Ugodnosti';
+      return !isDeal;
+    });
+    const counts: Record<string, number> = { all: validPosts.length };
+    for (const cat of categories) {
+      counts[cat.id] = validPosts.filter(p => {
+        const cLower = cat.name.toLowerCase().trim();
+        const pCat = (p.category || '').toLowerCase().trim();
+        const pCatName = (p.categoryName || '').toLowerCase().trim();
+        return p.category === cat.id || pCat === cLower || pCatName === cLower || pCat.includes(cLower) || pCatName.includes(cLower);
+      }).length;
+    }
+    return counts;
+  }, [firestorePosts, categories]);
 
-    const textToMatch = `${post.title} ${post.content} ${post.authorName} ${post.category || ''} ${post.categoryName || ''} ${post.subcategory || ''} ${post.subcategoryName || ''} ${post.region || ''} ${post.location || ''}`;
-    const matchesSearch = matchesSearchAndCategory(textToMatch, 'blog', searchQuery);
-    
-    const matchesCat = selectedCategory === 'all' || 
-      post.category === selectedCategory ||
-      (activeCategoryObj && (
-        post.category?.toLowerCase() === activeCategoryObj.name.toLowerCase() ||
-        post.categoryName?.toLowerCase() === activeCategoryObj.name.toLowerCase()
-      ));
+  // Filter real Firestore posts
+  const filteredFirestore = useMemo(() => {
+    return firestorePosts.filter(post => {
+      // Strictly exclude deals and posts in category Ugodnosti from Blog feed
+      const isDeal = post.category === 'deal' || 
+                     post.category === 'ugodnosti' || 
+                     post.category?.startsWith('deal') || 
+                     post.categoryName === 'Ugodnosti' || 
+                     post.categoryName === 'Ugodnost' ||
+                     post.id.startsWith('deal-') || 
+                     post.id.startsWith('hero-bento-');
+      if (isDeal) return false;
 
-    const matchesSubcat = selectedSubcategory === 'all' ||
-      post.subcategory === selectedSubcategory ||
-      (post.subcategoryName && post.subcategoryName.toLowerCase() === selectedSubcategory.toLowerCase());
+      const textToMatch = `${post.title} ${post.content} ${post.authorName || ''} ${post.category || ''} ${post.categoryName || ''} ${post.subcategory || ''} ${post.subcategoryName || ''} ${post.region || ''} ${post.location || ''}`;
+      const matchesSearch = matchesSearchAndCategory(textToMatch, 'blog', searchQuery);
+      
+      const pCatLower = (post.category || '').toLowerCase().trim();
+      const pCatNameLower = (post.categoryName || '').toLowerCase().trim();
 
-    const matchesReg = selectedRegion === 'all' ||
-      (post.region && post.region.toLowerCase().includes(selectedRegion.toLowerCase())) ||
-      (post.location && post.location.toLowerCase().includes(selectedRegion.toLowerCase()));
+      const matchesCat = selectedCategory === 'all' || 
+        post.category === selectedCategory ||
+        pCatLower === selectedCategory.toLowerCase().trim() ||
+        pCatNameLower === selectedCategory.toLowerCase().trim() ||
+        (activeCategoryObj && (
+          pCatLower === activeCategoryObj.name.toLowerCase().trim() ||
+          pCatNameLower === activeCategoryObj.name.toLowerCase().trim() ||
+          pCatLower.includes(activeCategoryObj.name.toLowerCase().trim()) ||
+          pCatNameLower.includes(activeCategoryObj.name.toLowerCase().trim())
+        ));
 
-    return matchesSearch && matchesCat && matchesSubcat && matchesReg;
-  });
+      const pSubLower = (post.subcategory || '').toLowerCase().trim();
+      const pSubNameLower = (post.subcategoryName || '').toLowerCase().trim();
+      const targetSubLower = selectedSubcategory.toLowerCase().trim();
 
-  // Filter static/mock posts
-  const filteredMock = INITIAL_BLOG_POSTS.filter(post => {
-    if (firestorePosts.some(f => f.id === post.id || f.id.replace(/-p\d+$/, '') === post.id)) return false;
-    const textToMatch = `${post.title} ${post.description} ${post.author} ${post.location} ${post.tags.join(' ')}`;
-    const matchesSearch = matchesSearchAndCategory(textToMatch, 'blog', searchQuery);
-    
-    const matchesCat = selectedCategory === 'all' || 
-      (activeCategoryObj && post.tags.some(t => t.toLowerCase().includes(activeCategoryObj.name.toLowerCase()) || activeCategoryObj.name.toLowerCase().includes(t.toLowerCase())));
+      const matchesSubcat = selectedSubcategory === 'all' ||
+        post.subcategory === selectedSubcategory ||
+        pSubLower === targetSubLower ||
+        pSubNameLower === targetSubLower ||
+        (selectedSubcatObj && (
+          pSubLower === selectedSubcatObj.name.toLowerCase().trim() ||
+          pSubLower === selectedSubcatObj.id.toLowerCase().trim() ||
+          pSubNameLower === selectedSubcatObj.name.toLowerCase().trim() ||
+          pSubNameLower === selectedSubcatObj.id.toLowerCase().trim()
+        ));
 
-    const matchesReg = selectedRegion === 'all' ||
-      (post.location && post.location.toLowerCase().includes(selectedRegion.toLowerCase()));
+      const matchesReg = selectedRegion === 'all' ||
+        (post.region && post.region.toLowerCase().includes(selectedRegion.toLowerCase())) ||
+        (post.location && post.location.toLowerCase().includes(selectedRegion.toLowerCase()));
 
-    return matchesSearch && matchesCat && matchesReg;
-  });
+      return matchesSearch && matchesCat && matchesSubcat && matchesReg;
+    });
+  }, [firestorePosts, searchQuery, selectedCategory, activeCategoryObj, selectedSubcategory, selectedSubcatObj, selectedRegion]);
 
   // Combined pool of all blog items
-  type UnifiedBlogItem = 
-    | { type: 'firestore'; data: FirestorePost }
-    | { type: 'mock'; data: MockBlogItem };
+  type UnifiedBlogItem = { type: 'firestore'; data: FirestorePost };
 
-  const allItems: UnifiedBlogItem[] = [
-    ...filteredFirestore.map(p => ({ type: 'firestore' as const, data: p })),
-    ...filteredMock.map(p => ({ type: 'mock' as const, data: p }))
-  ];
+  const allItems: UnifiedBlogItem[] = useMemo(() => {
+    return filteredFirestore.map(p => ({ type: 'firestore' as const, data: p }));
+  }, [filteredFirestore]);
 
   // Helper to check promotion status
   const checkBlogPromoted = (item: UnifiedBlogItem): boolean => {
-    if (item.type !== 'firestore') return false;
     const post = item.data;
     if (post.promotion) {
       return isItemActivelyPromoted(post.promotion, 'blog', selectedCategory, selectedSubcategory);
@@ -124,52 +177,22 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
   };
 
   // Sorting: Actively promoted (PROMO / OGLAS) articles are positioned FIRST in the feed
-  allItems.sort((a, b) => {
-    const aPromoted = checkBlogPromoted(a);
-    const bPromoted = checkBlogPromoted(b);
-
-    if (aPromoted && !bPromoted) return -1;
-    if (!aPromoted && bPromoted) return 1;
-    return 0;
-  });
+  const sortedItems = useMemo(() => {
+    const copy = [...allItems];
+    copy.sort((a, b) => {
+      const aPromoted = checkBlogPromoted(a);
+      const bPromoted = checkBlogPromoted(b);
+      if (aPromoted && !bPromoted) return -1;
+      if (!aPromoted && bPromoted) return 1;
+      return 0;
+    });
+    return copy;
+  }, [allItems, selectedCategory, selectedSubcategory]);
 
   const PAGE_SIZE = 10;
   const currentVisibleLimit = page * PAGE_SIZE;
-  
-  const getPagedItems = (): UnifiedBlogItem[] => {
-    if (allItems.length === 0) return [];
-    if (currentVisibleLimit <= allItems.length) {
-      return allItems.slice(0, currentVisibleLimit);
-    }
-    const result: UnifiedBlogItem[] = [...allItems];
-    let counter = 1;
-    while (result.length < currentVisibleLimit) {
-      for (const item of allItems) {
-        if (result.length >= currentVisibleLimit) break;
-        if (item.type === 'mock') {
-          result.push({
-            type: 'mock',
-            data: {
-              ...item.data,
-              id: `${item.data.id}-p${counter}`
-            }
-          });
-        } else {
-          result.push({
-            type: 'firestore',
-            data: {
-              ...item.data,
-              id: `${item.data.id}-p${counter}`
-            }
-          });
-        }
-      }
-      counter++;
-    }
-    return result;
-  };
-
-  const visibleItems = getPagedItems();
+  const visibleItems = sortedItems.slice(0, currentVisibleLimit);
+  const hasMore = currentVisibleLimit < sortedItems.length;
 
   const handleLoadMore = () => {
     setIsLoading(true);
@@ -205,16 +228,19 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
       </div>
 
       {/* Dynamic Categories filter */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-1">
         <button
           onClick={() => handleCategorySelect('all')}
-          className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm cursor-pointer ${
+          className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
             selectedCategory === 'all'
               ? 'bg-primary text-on-primary font-bold'
               : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
           }`}
         >
-          Vse teme
+          <span>Vse teme</span>
+          <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
+            {categoryCounts.all || 0}
+          </span>
         </button>
         {categories.map(cat => (
           <button
@@ -228,13 +254,18 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
           >
             <span>{cat.icon || '📝'}</span>
             <span>{cat.name}</span>
+            {categoryCounts[cat.id] !== undefined && categoryCounts[cat.id] > 0 && (
+              <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
+                {categoryCounts[cat.id]}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* Subcategories filter */}
-      {activeCategoryObj && activeCategoryObj.subcategories && activeCategoryObj.subcategories.length > 0 && (
-        <div className="bg-surface-container-low/60 p-2 rounded-xl border border-surface-container/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+      {/* Subcategories filter - always visible when subcategories are available */}
+      {availableSubcategories.length > 0 && (
+        <div className="bg-surface-container-low/60 p-2 sm:p-2.5 rounded-xl border border-surface-container/60 flex flex-wrap items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="text-[11px] font-semibold text-outline uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
             <Tag className="w-3 h-3 text-primary" />
             <span>Podteme:</span>
@@ -249,12 +280,12 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
           >
             Vse podteme
           </button>
-          {activeCategoryObj.subcategories.map(sub => (
+          {availableSubcategories.map(sub => (
             <button
               key={sub.id}
               onClick={() => { setSelectedSubcategory(sub.id); setPage(1); }}
               className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-                selectedSubcategory === sub.id
+                selectedSubcategory === sub.id || (selectedSubcatObj && (selectedSubcatObj.id === sub.id || selectedSubcatObj.name.toLowerCase() === sub.name.toLowerCase()))
                   ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
                   : 'text-on-surface-variant hover:bg-surface-container'
               }`}
@@ -294,43 +325,17 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
             Ni najdenih blog člankov za izbrane kriterije.
           </div>
         ) : (
-          visibleItems.map((item) => {
-            if (item.type === 'firestore') {
-              return (
-                <FirestorePostCard 
-                  key={item.data.id} 
-                  post={item.data} 
-                />
-              );
-            }
-            const blog = item.data;
-            return (
-              <BlogPost 
-                key={blog.id} 
-                id={blog.id}
-                title={blog.title}
-                author={blog.author}
-                authorRole={blog.authorRole}
-                authorAvatar={blog.authorAvatar}
-                date={blog.date}
-                location={blog.location}
-                description={blog.description}
-                image={blog.image}
-                readTime={blog.readTime}
-                photoCount={blog.photoCount}
-                likesCount={`${blog.likesCount} všečkov`}
-                commentsCount={`${blog.commentsCount} komentarjev`}
-                viewsCount={`${blog.viewsCount} ogledov`}
-                tags={blog.tags}
-                onNavigatePost={onNavigatePost}
-              />
-            );
-          })
+          visibleItems.map((item, idx) => (
+            <FirestorePostCard 
+              key={`fs-post-${item.data.id}-${idx}`} 
+              post={item.data} 
+            />
+          ))
         )}
       </div>
 
       {/* Load more button */}
-      {visibleItems.length > 0 && (
+      {visibleItems.length > 0 && hasMore && (
         <div className="flex flex-col items-center justify-center gap-2 pt-2 pb-6">
           <button 
             onClick={handleLoadMore}
@@ -342,10 +347,10 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
             ) : (
               <ChevronDown className="w-4 h-4 text-primary" />
             )}
-            <span>{isLoading ? 'Nalaganje člankov...' : 'Naloži še 10 člankov'}</span>
+            <span>{isLoading ? 'Nalaganje člankov...' : 'Naloži še člankov'}</span>
           </button>
           <span className="font-body-sm text-xs text-outline">
-            Prikazano {visibleItems.length} člankov (stran {page})
+            Prikazano {visibleItems.length} od {sortedItems.length} člankov
           </span>
         </div>
       )}

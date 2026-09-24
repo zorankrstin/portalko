@@ -4,10 +4,10 @@ import {
   ThumbsUp, Tag, ShieldCheck, User, Clock, MessageSquare, 
   Phone, Send, Heart, AlertTriangle, Sparkles, CheckCircle2, 
   CalendarPlus, Bookmark, Eye, ChevronRight, ChevronLeft, Store, ArrowRight,
-  Edit3, Trash2, Search, X, BookOpen, Maximize2, Images
+  Edit3, Trash2, Search, X, BookOpen, Maximize2, Images, Ticket
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
-import { PostDetailTarget, ViewMode, AuthorProfileTarget } from '../types';
+import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from '../types';
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
 import { ReportButton } from './ReportButton';
@@ -19,6 +19,7 @@ import {
   subscribeToPosts, 
   subscribeToEvents, 
   subscribeToAds, 
+  fetchDocumentById,
   FirestorePost, 
   FirestoreEvent, 
   FirestoreAd,
@@ -28,8 +29,13 @@ import {
 } from '../services/firestoreService';
 import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
 import { scrollToPageTop, scrollToSidebarsTop } from '../utils/scrollUtils';
+import { parseEventDateInfo } from '../utils/dateUtils';
+import { getCleanHtml } from '../utils/textUtils';
+import { parseSocialEmbed } from '../utils/embedUtils';
+import { getActiveFallbackImage } from '../services/portalSettingsService';
 import { buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { updatePageSeo } from '../utils/seoUtils';
+import { buildPostUrl, slugify } from '../utils/urlUtils';
 import { SocialShareWidget } from './SocialShareWidget';
 import { DEFAULT_CATEGORIES } from '../services/categoryService';
 
@@ -116,7 +122,7 @@ interface PostDetailPageProps {
   searchQuery?: string;
   onSearchChange?: (q: string) => void;
   onAuthorClick?: (author: AuthorProfileTarget) => void;
-  onTitleLoaded?: (title: string) => void;
+  onTitleLoaded?: (title: string, meta?: { categoryName?: string; subcategoryName?: string; cleanUrl?: string }) => void;
 }
 
 interface PostComment {
@@ -183,6 +189,43 @@ export function PostDetailPage({
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
   const [firestoreAds, setFirestoreAds] = useState<FirestoreAd[]>([]);
 
+  // Direct item fetch state for fast deep-linking & guaranteed ID lookup
+  const [directItem, setDirectItem] = useState<{ type: PostDetailType; data: any } | null>(null);
+  const [isDirectLoading, setIsDirectLoading] = useState<boolean>(!target.initialData);
+
+  useEffect(() => {
+    let isCancelled = false;
+    if (target.initialData) {
+      setIsDirectLoading(false);
+      setDirectItem(null);
+      return;
+    }
+
+    setIsDirectLoading(true);
+    setDirectItem(null);
+
+    async function loadItem() {
+      try {
+        const res = await fetchDocumentById(target.id, target.type);
+        if (!isCancelled && res) {
+          setDirectItem(res as { type: PostDetailType; data: any });
+        }
+      } catch (err) {
+        console.warn('Error fetching item directly:', err);
+      } finally {
+        if (!isCancelled) {
+          setIsDirectLoading(false);
+        }
+      }
+    }
+
+    loadItem();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [target.id, target.type, target.initialData]);
+
   // Local interactive states
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -202,6 +245,10 @@ export function PostDetailPage({
   const [comments, setComments] = useState<PostComment[]>([]);
   const [newCommentText, setNewCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+
+  // Edit / Delete post modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const unsubPosts = subscribeToPosts(setFirestorePosts);
@@ -226,38 +273,193 @@ export function PostDetailPage({
 
     if (initialData) return initialData;
 
-    if (type === 'deal') {
-      // Look in Firestore
-      const fs = firestorePosts.find(p => p.id === id);
-      if (fs) {
-        return {
-          id: fs.id,
-          type: 'deal',
-          title: fs.title,
-          description: fs.content,
-          discount: fs.price || 'Ugodnost',
-          partner: fs.authorName,
-          authorName: fs.authorName,
-          authorId: fs.authorId,
-          status: fs.status,
-          partnerRole: fs.authorRole,
-          partnerAvatar: fs.authorAvatar,
-          date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes',
-          image: fs.imageUrl || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
-          images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
-          category: fs.category || 'deal',
-          categoryName: fs.categoryName || 'Ugodnosti & Popusti',
-          region: fs.location || 'Vsa Slovenija',
-          votes: fs.likesCount || 12,
-          link: 'https://www.portalko.net',
-        };
+    // Helper to format event object
+    const formatEventData = (fs: FirestoreEvent) => {
+      const dateInfo = parseEventDateInfo(fs.eventDate || fs.date, fs.eventTime);
+      return {
+        id: fs.id,
+        type: 'event' as const,
+        title: fs.title,
+        description: fs.description,
+        location: fs.location,
+        date: dateInfo.fullDate,
+        eventDate: fs.eventDate,
+        eventTime: fs.eventTime,
+        ticketUrl: fs.ticketUrl,
+        month: dateInfo.month,
+        day: dateInfo.day,
+        price: fs.price || 'Vstop prost',
+        organizer: fs.authorName,
+        authorName: fs.authorName,
+        authorId: fs.authorId,
+        status: fs.status,
+        categoryName: fs.categoryName || fs.category || 'Dogodek v živo',
+        image: fs.imageUrl || (getActiveFallbackImage(true) || ''),
+        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
+        interestedCount: fs.interestedCount || 42,
+      };
+    };
+
+    // Helper to format deal object
+    const formatDealData = (fs: FirestorePost) => {
+      return {
+        id: fs.id,
+        type: 'deal' as const,
+        title: fs.title,
+        description: fs.content,
+        discount: fs.discount || fs.price || 'Ugodnost',
+        oldPrice: fs.oldPrice,
+        newPrice: fs.newPrice,
+        expirationDate: fs.expirationDate,
+        partner: fs.authorName,
+        authorName: fs.authorName,
+        authorId: fs.authorId,
+        status: fs.status,
+        partnerRole: fs.authorRole,
+        partnerAvatar: fs.authorAvatar,
+        date: fs.expirationDate ? `Velja do ${fs.expirationDate}` : (fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes'),
+        image: fs.imageUrl || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
+        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        category: fs.category || 'deal',
+        categoryName: fs.categoryName || 'Ugodnosti & Popusti',
+        region: fs.location || 'Vsa Slovenija',
+        votes: fs.likesCount || 12,
+        code: fs.promoCode,
+        link: fs.dealLink || 'https://www.portalko.net',
+      };
+    };
+
+    // Helper to format ad object
+    const formatAdData = (fs: FirestoreAd) => {
+      return {
+        id: fs.id,
+        type: 'ad' as const,
+        title: fs.title,
+        description: fs.description,
+        price: fs.price,
+        location: fs.location,
+        date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes',
+        author: fs.authorName,
+        authorName: fs.authorName,
+        authorId: fs.authorId,
+        status: fs.status,
+        categoryName: fs.category || 'Mali oglas',
+        image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
+        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
+      };
+    };
+
+    // Helper to format blog object
+    const formatBlogData = (fs: FirestorePost) => {
+      const isActuallyDeal = fs.category === 'deal' || 
+                             fs.category === 'ugodnosti' || 
+                             fs.category?.startsWith('deal') || 
+                             fs.categoryName === 'Ugodnosti' || 
+                             fs.categoryName === 'Ugodnost' ||
+                             fs.id.startsWith('deal-') ||
+                             fs.id.startsWith('hero-bento-');
+
+      if (isActuallyDeal) {
+        return formatDealData(fs);
       }
+
+      const resolvedCat = resolveBlogCategory({
+        id: fs.id,
+        category: fs.category,
+        categoryName: fs.categoryName,
+        title: fs.title,
+        description: fs.content,
+        tags: fs.category ? [fs.category] : undefined,
+      });
+      return {
+        id: fs.id,
+        type: 'blog' as const,
+        title: fs.title,
+        description: fs.content,
+        content: fs.content,
+        author: fs.authorName,
+        authorName: fs.authorName,
+        authorId: fs.authorId,
+        status: fs.status,
+        authorRole: fs.authorRole || 'Član skupnosti',
+        authorAvatar: fs.authorAvatar,
+        date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Ravno objavljeno',
+        image: fs.imageUrl,
+        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        categoryName: resolvedCat.name,
+        categoryId: resolvedCat.id,
+        location: fs.location || 'Slovenija',
+        readTime: '4 min branja',
+        photoCount: fs.imageUrl ? '1 fotografija' : undefined,
+        likesCount: fs.likesCount || 0,
+        commentsCount: fs.commentsCount || 0,
+        viewsCount: '1.240',
+        tags: ['blog', 'portal', 'slovenija', fs.category || 'zgodbe'],
+      };
+    };
+
+    const idMatches = (docId?: string, searchId?: string) => {
+      if (!docId || !searchId) return false;
+      const d = docId.toLowerCase().trim();
+      const s = searchId.toLowerCase().trim();
+      if (d === s) return true;
+      const cleanD = d.replace(/^(event|ad|deal|blog|post)-/, '');
+      const cleanS = s.replace(/^(event|ad|deal|blog|post)-/, '');
+      return cleanD === cleanS;
+    };
+
+    const itemMatches = (item: any, searchId?: string, searchSlug?: string) => {
+      if (!item) return false;
+      if (searchId && idMatches(item.id, searchId)) return true;
+
+      const targetSlug = searchSlug || (searchId ? slugify(searchId) : '');
+      if (!targetSlug) return false;
+
+      // Check if targetSlug has embedded ID (e.g. title-slug--blog-1 or title-slug-blog-1)
+      if (targetSlug.includes('--')) {
+        const idPart = targetSlug.split('--')[1];
+        if (idMatches(item.id, idPart)) return true;
+      }
+      if (targetSlug.endsWith(`-${item.id}`)) return true;
+
+      const itemTitleSlug = slugify(item.title || '');
+      if (itemTitleSlug) {
+        if (itemTitleSlug === targetSlug) return true;
+        if (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug)) return true;
+      }
+      return false;
+    };
+
+    // 1. Check directItem from guaranteed fetch
+    if (directItem) {
+      if (directItem.type === 'event') return formatEventData(directItem.data);
+      if (directItem.type === 'deal') return formatDealData(directItem.data);
+      if (directItem.type === 'ad') return formatAdData(directItem.data);
+      if (directItem.type === 'blog') return formatBlogData(directItem.data);
+    }
+
+    const titleSlug = target.titleSlug;
+
+    if (type === 'deal') {
+      // Look in Firestore posts
+      const fs = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+      if (fs) return formatDealData(fs);
+
+      // Cross-collection fallback
+      const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+      if (fsEvt) return formatEventData(fsEvt);
+
       // Look in Mock Deals
       const allDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
-      const d = allDeals.find(x => x.id === id) || allDeals[0];
+      const d = allDeals.find(x => itemMatches(x, id, titleSlug));
+      if (!d) return null;
       return {
         ...d,
         type: 'deal',
+        oldPrice: d.oldPrice,
+        newPrice: d.newPrice,
+        expirationDate: d.expirationDate,
         category: d.category || 'deal',
         categoryName: d.categoryName || 'Ugodnosti',
         images: d.images || (d.image ? [d.image] : undefined),
@@ -265,30 +467,21 @@ export function PostDetailPage({
     }
 
     if (type === 'event') {
-      const fs = firestoreEvents.find(e => e.id === id);
-      if (fs) {
-        return {
-          id: fs.id,
-          type: 'event',
-          title: fs.title,
-          description: fs.description,
-          location: fs.location,
-          date: fs.eventDate,
-          eventDate: fs.eventDate,
-          month: 'DOG',
-          day: '★',
-          price: 'Vstop prost',
-          organizer: fs.authorName,
-          authorName: fs.authorName,
-          authorId: fs.authorId,
-          status: fs.status,
-          categoryName: fs.category || 'Dogodek v živo',
-          image: fs.imageUrl || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=1000&auto=format&fit=crop&q=80',
-          images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
-          interestedCount: 42,
-        };
-      }
-      const e = INITIAL_EVENTS.find(x => x.id === id) || INITIAL_EVENTS[0];
+      // Look in Firestore events
+      const fs = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+      if (fs) return formatEventData(fs);
+
+      // Cross-collection fallback: check posts
+      const fsPost = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+      if (fsPost) return formatBlogData(fsPost);
+
+      // Cross-collection fallback: check ads
+      const fsAd = firestoreAds.find(a => itemMatches(a, id, titleSlug));
+      if (fsAd) return formatAdData(fsAd);
+
+      // Look in Mock Events
+      const e = INITIAL_EVENTS.find(x => itemMatches(x, id, titleSlug));
+      if (!e) return null;
       return {
         ...e,
         type: 'event',
@@ -297,27 +490,21 @@ export function PostDetailPage({
     }
 
     if (type === 'ad') {
-      const fs = firestoreAds.find(a => a.id === id);
-      if (fs) {
-        return {
-          id: fs.id,
-          type: 'ad',
-          title: fs.title,
-          description: fs.description,
-          price: fs.price,
-          location: fs.location,
-          date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes',
-          author: fs.authorName,
-          authorName: fs.authorName,
-          authorId: fs.authorId,
-          status: fs.status,
-          categoryName: fs.category || 'Mali oglas',
-          image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
-          images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
-          authorInitials: fs.authorName.slice(0, 2).toUpperCase(),
-        };
-      }
-      const a = INITIAL_ADS.find(x => x.id === id) || INITIAL_ADS[0];
+      // Look in Firestore ads
+      const fs = firestoreAds.find(a => itemMatches(a, id, titleSlug));
+      if (fs) return formatAdData(fs);
+
+      // Cross-collection fallback: check events
+      const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+      if (fsEvt) return formatEventData(fsEvt);
+
+      // Cross-collection fallback: check posts
+      const fsPost = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+      if (fsPost) return formatBlogData(fsPost);
+
+      // Look in Mock Ads
+      const a = INITIAL_ADS.find(x => itemMatches(x, id, titleSlug));
+      if (!a) return null;
       return {
         ...a,
         type: 'ad',
@@ -326,78 +513,22 @@ export function PostDetailPage({
     }
 
     if (type === 'blog' || type === 'post') {
-      const fs = firestorePosts.find(p => p.id === id);
-      if (fs) {
-        const isActuallyDeal = fs.category === 'deal' || 
-                               fs.category === 'ugodnosti' || 
-                               fs.category?.startsWith('deal') || 
-                               fs.categoryName === 'Ugodnosti' || 
-                               fs.categoryName === 'Ugodnost' ||
-                               fs.id.startsWith('deal-') ||
-                               fs.id.startsWith('hero-bento-');
+      // Look in Firestore posts
+      const fs = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+      if (fs) return formatBlogData(fs);
 
-        if (isActuallyDeal) {
-          return {
-            id: fs.id,
-            type: 'deal',
-            title: fs.title,
-            description: fs.content,
-            discount: fs.price || 'Ugodnost',
-            partner: fs.authorName,
-            authorName: fs.authorName,
-            authorId: fs.authorId,
-            status: fs.status,
-            partnerRole: fs.authorRole,
-            partnerAvatar: fs.authorAvatar,
-            date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes',
-            image: fs.imageUrl || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
-            images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
-            category: fs.category || 'deal',
-            categoryName: fs.categoryName || 'Ugodnosti & Popusti',
-            region: fs.location || 'Vsa Slovenija',
-            votes: fs.likesCount || 12,
-            link: 'https://www.portalko.net',
-          };
-        }
+      // Cross-collection fallback: check events
+      const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+      if (fsEvt) return formatEventData(fsEvt);
 
-        const resolvedCat = resolveBlogCategory({
-          id: fs.id,
-          category: fs.category,
-          categoryName: fs.categoryName,
-          title: fs.title,
-          description: fs.content,
-          tags: fs.category ? [fs.category] : undefined,
-        });
-        return {
-          id: fs.id,
-          type: 'blog',
-          title: fs.title,
-          description: fs.content,
-          content: fs.content,
-          author: fs.authorName,
-          authorName: fs.authorName,
-          authorId: fs.authorId,
-          status: fs.status,
-          authorRole: fs.authorRole || 'Član skupnosti',
-          authorAvatar: fs.authorAvatar,
-          date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Ravno objavljeno',
-          image: fs.imageUrl,
-          images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
-          categoryName: resolvedCat.name,
-          categoryId: resolvedCat.id,
-          location: fs.location || 'Slovenija',
-          readTime: '4 min branja',
-          photoCount: fs.imageUrl ? '1 fotografija' : undefined,
-          likesCount: fs.likesCount || 0,
-          commentsCount: fs.commentsCount || 0,
-          viewsCount: '1.240',
-          tags: ['blog', 'portal', 'slovenija', fs.category || 'zgodbe'],
-        };
-      }
+      // Cross-collection fallback: check ads
+      const fsAd = firestoreAds.find(a => itemMatches(a, id, titleSlug));
+      if (fsAd) return formatAdData(fsAd);
 
       // Look in Mock Blog Posts
-      const baseId = id.replace(/-p\d+$/, '');
-      const b = INITIAL_BLOG_POSTS.find(x => x.id === id || x.id === baseId) || INITIAL_BLOG_POSTS[0];
+      const baseId = id ? id.replace(/-p\d+$/, '') : '';
+      const b = INITIAL_BLOG_POSTS.find(x => itemMatches(x, id, titleSlug) || idMatches(x.id, id) || (baseId && idMatches(x.id, baseId)));
+      if (!b) return null;
       const resolvedCat = resolveBlogCategory(b);
       return {
         ...b,
@@ -409,7 +540,7 @@ export function PostDetailPage({
     }
 
     return null;
-  }, [target, firestorePosts, firestoreEvents, firestoreAds]);
+  }, [target, firestorePosts, firestoreEvents, firestoreAds, directItem]);
 
   // Calculate resolved post images list for carousel/gallery
   const postImages = useMemo(() => {
@@ -423,11 +554,15 @@ export function PostDetailPage({
           if (typeof v === 'string' && v.trim().length > 0) list.push(v.trim());
         }
       } else if (typeof val === 'string' && val.trim().length > 0) {
-        if (val.includes(',') || val.includes('\n')) {
-          const parts = val.split(/[\n,]/).map((p) => p.trim()).filter(Boolean);
+        const trimmed = val.trim();
+        // Base64 data URLs contain commas in their header (data:image/jpeg;base64,...) and must NOT be split!
+        if (trimmed.startsWith('data:image/')) {
+          list.push(trimmed);
+        } else if (trimmed.includes(',') || trimmed.includes('\n')) {
+          const parts = trimmed.split(/[\n,]/).map((p) => p.trim()).filter(Boolean);
           list.push(...parts);
         } else {
-          list.push(val.trim());
+          list.push(trimmed);
         }
       }
     };
@@ -442,8 +577,12 @@ export function PostDetailPage({
     for (const url of list) {
       if (!unique.includes(url)) unique.push(url);
     }
+    if (unique.length === 0) {
+      const fallback = getActiveFallbackImage(true, target.type as any);
+      if (fallback) unique.push(fallback);
+    }
     return unique;
-  }, [itemData]);
+  }, [itemData, target.type]);
 
   // Reset active image on post change
   useEffect(() => {
@@ -504,60 +643,64 @@ export function PostDetailPage({
     setBlogLikes(initialBlogLikes);
     setHasBlogLiked(false);
 
-    // Initial mock comments per post
-    setComments([
-      {
-        id: 'c1',
-        author: 'Matej B.',
-        authorRole: 'Preverjen uporabnik',
-        authorAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-        date: 'včeraj ob 16:40',
-        content: target.type === 'deal' 
-          ? 'Koda preverjeno deluje v spletni trgovini, ravnokar naročil z brezplačno dostavo!' 
-          : target.type === 'event'
-          ? 'A je na lokaciji na voljo brezplačno parkirišče ali priporočate javni prevoz?'
-          : target.type === 'ad'
-          ? 'Ali je cena zadnja ali je možen še manjši popust ob hitrem osebnem prevzemu?'
-          : 'Hvala za tako podroben in poučen zapis, zelo koristni nasveti iz prve roke!',
-      },
-      {
-        id: 'c2',
-        author: 'Ana Novak',
-        authorRole: 'Registrirana',
-        authorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80',
-        date: 'danes ob 09:15',
-        content: target.type === 'deal'
-          ? 'Hvala za delitev te ugodnosti, res odličen prihranek za začetek sezone!'
-          : target.type === 'event'
-          ? 'Se vidimo tam! Vstopnice so že rezervirane.'
-          : target.type === 'ad'
-          ? 'Zelo lep ohranjen kos, priporočam prodajalca!'
-          : 'Zanimiva perspektiva, zagotovo preizkusim te predloge ob prvi priliki.',
+    // Load persisted real user comments for this post if any
+    try {
+      const storageKey = `portalko_comments_${target.type}_${target.id}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const filtered = Array.isArray(parsed)
+          ? parsed.filter((c: any) => c && c.id !== 'c1' && c.id !== 'c2' && c.author !== 'Matej B.' && c.author !== 'Ana Novak')
+          : [];
+        setComments(filtered);
+      } else {
+        setComments([]);
       }
-    ]);
-
-    // Update URL hash to support direct link / deep linking
-    const expectedHash = `#${target.type}-${target.id}`;
-    if (window.location.hash !== expectedHash) {
-      window.history.replaceState(null, '', expectedHash);
+    } catch {
+      setComments([]);
     }
-    scrollToPageTop();
 
     if (itemData) {
-      onTitleLoaded?.(itemData.title);
       const typeLabel = target.type === 'ad' ? 'Mali oglas' :
                         target.type === 'event' ? 'Dogodek' :
                         target.type === 'deal' ? 'Ugodnost' : 'Blog & Zgodba';
 
       const postAuthorName = itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor';
+      
+      // Clean SEO URL structure: /category/subcategory/title
+      const cleanPath = buildPostUrl({
+        type: target.type,
+        id: itemData.id || target.id,
+        title: itemData.title,
+        category: itemData.category,
+        categoryName: itemData.categoryName,
+        subcategory: itemData.subcategory,
+        subcategoryName: itemData.subcategoryName,
+      });
+
+      const fullUrl = `${window.location.origin}${cleanPath}`;
+
+      // Update URL cleanly without hash
+      if (window.location.pathname !== cleanPath || window.location.hash) {
+        window.history.replaceState({ type: target.type, id: itemData.id || target.id }, '', cleanPath);
+      }
+      scrollToPageTop();
+
+      onTitleLoaded?.(itemData.title, {
+        categoryName: itemData.categoryName || itemData.category,
+        subcategoryName: itemData.subcategoryName || itemData.subcategory,
+        cleanUrl: cleanPath,
+      });
+
       let jsonLd: Record<string, any> | undefined;
-      const fullUrl = `${window.location.origin}${window.location.pathname}#${target.type}-${target.id}`;
       const cleanDesc = (itemData.description || itemData.content || itemData.title).replace(/\s+/g, ' ').trim();
 
       if (target.type === 'event') {
         jsonLd = {
           '@context': 'https://schema.org',
           '@type': 'Event',
+          '@id': fullUrl,
+          url: fullUrl,
           name: itemData.title,
           description: cleanDesc,
           image: itemData.image ? [itemData.image] : [],
@@ -588,6 +731,8 @@ export function PostDetailPage({
         jsonLd = {
           '@context': 'https://schema.org',
           '@type': 'Offer',
+          '@id': fullUrl,
+          url: fullUrl,
           name: itemData.title,
           description: cleanDesc,
           image: itemData.image,
@@ -603,6 +748,8 @@ export function PostDetailPage({
         jsonLd = {
           '@context': 'https://schema.org',
           '@type': 'Product',
+          '@id': fullUrl,
+          url: fullUrl,
           name: itemData.title,
           description: cleanDesc,
           image: itemData.image ? [itemData.image] : [],
@@ -618,6 +765,9 @@ export function PostDetailPage({
         jsonLd = {
           '@context': 'https://schema.org',
           '@type': 'BlogPosting',
+          '@id': fullUrl,
+          mainEntityOfPage: fullUrl,
+          url: fullUrl,
           headline: itemData.title,
           description: cleanDesc,
           image: itemData.image ? [itemData.image] : [],
@@ -647,6 +797,8 @@ export function PostDetailPage({
         type: target.type === 'event' ? 'event' : target.type === 'deal' || target.type === 'ad' ? 'product' : 'article',
         jsonLd,
       });
+    } else {
+      scrollToPageTop();
     }
   }, [itemData, target]);
 
@@ -711,152 +863,32 @@ export function PostDetailPage({
       content: newCommentText.trim(),
     };
 
-    setComments(prev => [...prev, newComment]);
+    setComments(prev => {
+      const updated = [...prev, newComment];
+      try {
+        const storageKey = `portalko_comments_${target.type}_${target.id}`;
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
     setNewCommentText('');
     setIsSubmittingComment(false);
   };
 
-  if (!itemData) {
-    return (
-      <main className="lg:col-span-6 flex flex-col items-center justify-center p-12 bg-surface-container-lowest rounded-2xl border border-surface-container text-center">
-        <h2 className="text-xl font-bold text-on-surface mb-2">Objava ni bila najdena</h2>
-        <p className="text-sm text-outline mb-6">Morda je bila objava odstranjena ali pa povezava ni pravilna.</p>
-        <button
-          onClick={onBack}
-          className="px-4 py-2 bg-primary text-on-primary rounded-xl font-semibold text-sm hover:bg-primary-container transition-colors cursor-pointer"
-        >
-          Nazaj na pregled
-        </button>
-      </main>
-    );
-  }
-
-  // Determine back navigation label
-  const backLabel = target.type === 'deal' 
-    ? 'Nazaj na Ugodnosti' 
-    : target.type === 'event' 
-    ? 'Nazaj na Dogodke' 
-    : target.type === 'ad'
-    ? 'Nazaj na Male oglase'
-    : (target.type === 'blog' || target.type === 'post')
-    ? 'Nazaj na Blog & Članki'
-    : 'Nazaj';
-
-  const feedCategoryName = target.type === 'deal'
-    ? 'Ugodnosti & Popusti'
-    : target.type === 'event'
-    ? 'Dogodki & Koncerti'
-    : target.type === 'ad'
-    ? 'Mali oglasi'
-    : 'Blog & Članki';
-
-  // Bookmark payload
-  const bookmarkData = {
-    id: itemData.id,
-    type: (target.type === 'blog' || target.type === 'post') ? 'blog' : target.type,
-    category: target.type === 'deal' ? 'deals' : target.type === 'event' ? 'events' : target.type === 'ad' ? 'ads' : 'blog',
-    title: itemData.title,
-    description: itemData.description || itemData.content,
-    price: itemData.price || itemData.discount,
-    discount: itemData.discount,
-    location: itemData.location || itemData.region,
-    date: itemData.date || itemData.eventDate,
-    image: itemData.image || itemData.imageUrl,
-    author: itemData.author || itemData.partner || itemData.organizer,
-    readTime: itemData.readTime,
-    photoCount: itemData.photoCount,
-  };
-
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
-  const isAuthor = Boolean(currentUser?.id && itemData.authorId && currentUser.id === itemData.authorId);
-  const canManage = isAdminOrSuper || isAuthor;
-
-  const handleDeletePost = async () => {
-    if (!window.confirm(`Ali ste prepričani, da želite izbrisati objavo "${itemData.title}"?`)) {
-      return;
-    }
-    setIsDeleting(true);
-    try {
-      if (target.type === 'ad') {
-        await deleteAdInFirestore(itemData.id);
-      } else if (target.type === 'event') {
-        await deleteEventInFirestore(itemData.id);
-      } else {
-        await deletePostInFirestore(itemData.id);
+  // Handle comment deletion (for author or admin/superadmin)
+  const handleDeleteComment = (commentId: string) => {
+    setComments(prev => {
+      const updated = prev.filter(c => c.id !== commentId);
+      try {
+        const storageKey = `portalko_comments_${target.type}_${target.id}`;
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      } catch {
+        // ignore
       }
-      onBack();
-    } catch (e) {
-      console.error('Napaka pri brisanju objave:', e);
-      alert('Prišlo je do napake pri brisanju.');
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const isDealItem = target.type === 'deal' || 
-                     itemData.type === 'deal' || 
-                     itemData.category === 'deal' || 
-                     itemData.category === 'ugodnosti' || 
-                     itemData.category?.startsWith('deal') ||
-                     itemData.categoryName === 'Ugodnosti' || 
-                     itemData.categoryName === 'Ugodnosti & Popusti' || 
-                     itemData.id?.startsWith('deal-') || 
-                     itemData.id?.startsWith('hero-bento-');
-
-  const resolvedCategory = target.type === 'ad' 
-    ? (itemData.category || 'ad') 
-    : target.type === 'event' 
-      ? (itemData.category || 'event') 
-      : isDealItem 
-        ? (itemData.category && itemData.category !== 'blog' && itemData.category !== 'post' ? itemData.category : 'deal') 
-        : (itemData.category || itemData.categoryId || 'blog');
-
-  const resolvedType = target.type === 'ad' 
-    ? 'ad' 
-    : target.type === 'event' 
-      ? 'event' 
-      : isDealItem 
-        ? 'deal' 
-        : 'post';
-
-  const editableItem: EditablePostItem = {
-    id: itemData.id,
-    title: itemData.title,
-    content: itemData.description || itemData.content || '',
-    category: resolvedCategory,
-    categoryName: isDealItem ? (itemData.categoryName || 'Ugodnosti') : itemData.categoryName,
-    type: resolvedType,
-    status: (itemData.status || 'published') as any,
-    imageUrl: itemData.image,
-    price: itemData.price || itemData.discount,
-    location: itemData.location || itemData.region,
-    eventDate: itemData.eventDate || itemData.date,
-    authorName: itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor',
-    authorId: itemData.authorId,
-    authorRole: itemData.partnerRole || itemData.authorRole,
-    authorAvatar: itemData.partnerAvatar || itemData.authorAvatar,
-  };
-
-  const authorDisplayName = itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor';
-  const authorAvatar = itemData.partnerAvatar || itemData.authorAvatar;
-  const authorRole = itemData.partnerRole || itemData.authorRole;
-  const authorId = itemData.authorId;
-
-  const handleAuthorClick = () => {
-    if (onAuthorClick) {
-      onAuthorClick({
-        id: authorId,
-        name: authorDisplayName,
-        avatar: authorAvatar,
-        role: authorRole,
-        fromPostTarget: target
-      });
-    } else {
-      onViewChange('profile');
-    }
+      return updated;
+    });
   };
 
   // Determine 3 related articles from the same category as the currently viewed blog post
@@ -974,18 +1006,30 @@ export function PostDetailPage({
   // Related 3 ads from same category
   const relatedAds = useMemo(() => {
     if (target.type !== 'ad' || !itemData) return [];
-    const allAds = [
-      ...firestoreAds.map(a => ({
-        id: a.id,
-        title: a.title,
-        price: a.price,
-        location: a.location,
-        image: a.imageUrl,
-        category: a.category || 'splosno',
-        categoryName: a.categoryName || a.category || 'Mali oglas'
-      })),
-      ...INITIAL_ADS
-    ];
+    const seenIds = new Set<string>();
+    const allAds: any[] = [];
+
+    firestoreAds.forEach(a => {
+      if (a.id && !seenIds.has(a.id)) {
+        seenIds.add(a.id);
+        allAds.push({
+          id: a.id,
+          title: a.title,
+          price: a.price,
+          location: a.location,
+          image: a.imageUrl,
+          category: a.category || 'splosno',
+          categoryName: a.categoryName || a.category || 'Mali oglas'
+        });
+      }
+    });
+
+    INITIAL_ADS.forEach(a => {
+      if (a.id && !seenIds.has(a.id)) {
+        seenIds.add(a.id);
+        allAds.push(a);
+      }
+    });
 
     const currentId = itemData.id;
     const currentCat = itemData.category || itemData.categoryName;
@@ -1003,20 +1047,32 @@ export function PostDetailPage({
   // Related 3 events from same category
   const relatedEvents = useMemo(() => {
     if (target.type !== 'event' || !itemData) return [];
-    const allEvents = [
-      ...firestoreEvents.map(e => ({
-        id: e.id,
-        title: e.title,
-        location: e.location,
-        city: e.location,
-        month: 'DOG',
-        day: '★',
-        image: e.imageUrl,
-        category: e.category || 'splosno',
-        categoryName: e.categoryName || e.category || 'Dogodek'
-      })),
-      ...INITIAL_EVENTS
-    ];
+    const seenIds = new Set<string>();
+    const allEvents: any[] = [];
+
+    firestoreEvents.forEach(e => {
+      if (e.id && !seenIds.has(e.id)) {
+        seenIds.add(e.id);
+        allEvents.push({
+          id: e.id,
+          title: e.title,
+          location: e.location,
+          city: e.location,
+          month: 'DOG',
+          day: '★',
+          image: e.imageUrl,
+          category: e.category || 'splosno',
+          categoryName: e.categoryName || e.category || 'Dogodek'
+        });
+      }
+    });
+
+    INITIAL_EVENTS.forEach(e => {
+      if (e.id && !seenIds.has(e.id)) {
+        seenIds.add(e.id);
+        allEvents.push(e);
+      }
+    });
 
     const currentId = itemData.id;
     const currentCat = itemData.category || itemData.categoryName;
@@ -1027,17 +1083,182 @@ export function PostDetailPage({
     );
 
     if (sameCat.length >= 3) return sameCat.slice(0, 3);
-    const others = filtered.filter(e => !sameCat.some(s => s.id === e.id));
+    const others = filtered.filter(a => !sameCat.some(s => s.id === a.id));
     return [...sameCat, ...others].slice(0, 3);
   }, [target.type, itemData, firestoreEvents]);
 
   // Related 3 deals
   const relatedDeals = useMemo(() => {
     if (target.type !== 'deal' || !itemData) return [];
-    const allDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
+    const seenIds = new Set<string>();
+    const allDeals: any[] = [];
+    [...INITIAL_DEALS, ...HERO_BENTO_DEALS].forEach(d => {
+      if (d.id && !seenIds.has(d.id)) {
+        seenIds.add(d.id);
+        allDeals.push(d);
+      }
+    });
     const currentId = itemData.id;
     return allDeals.filter(d => d.id !== currentId).slice(0, 3);
   }, [target.type, itemData]);
+
+  if (isDirectLoading && !itemData) {
+    return (
+      <main className="lg:col-span-6 flex flex-col items-center justify-center p-16 bg-surface-container-lowest rounded-2xl border border-surface-container/60 shadow-xs min-h-[420px] text-center">
+        <div className="w-12 h-12 rounded-full border-3 border-primary/20 border-t-primary animate-spin mb-4" />
+        <h2 className="text-base font-bold text-on-surface mb-1">Nalaganje objave...</h2>
+        <p className="text-xs text-outline">Pripravljamo podrobnosti objave in fotografije.</p>
+      </main>
+    );
+  }
+
+  if (!itemData) {
+    return (
+      <main className="lg:col-span-6 flex flex-col items-center justify-center p-12 bg-surface-container-lowest rounded-2xl border border-surface-container text-center">
+        <h2 className="text-xl font-bold text-on-surface mb-2">Objava ni bila najdena</h2>
+        <p className="text-sm text-outline mb-6">Morda je bila objava odstranjena ali pa povezava ni pravilna.</p>
+        <button
+          onClick={onBack}
+          className="px-4 py-2 bg-primary text-on-primary rounded-xl font-semibold text-sm hover:bg-primary-container transition-colors cursor-pointer"
+        >
+          Nazaj na pregled
+        </button>
+      </main>
+    );
+  }
+
+  // Determine back navigation label
+  const backLabel = target.type === 'deal' 
+    ? 'Nazaj na Ugodnosti' 
+    : target.type === 'event' 
+    ? 'Nazaj na Dogodke' 
+    : target.type === 'ad'
+    ? 'Nazaj na Male oglase'
+    : (target.type === 'blog' || target.type === 'post')
+    ? 'Nazaj na Blog & Članki'
+    : 'Nazaj';
+
+  const feedCategoryName = target.type === 'deal'
+    ? 'Ugodnosti & Popusti'
+    : target.type === 'event'
+    ? 'Dogodki & Koncerti'
+    : target.type === 'ad'
+    ? 'Mali oglasi'
+    : 'Blog & Članki';
+
+  // Bookmark payload
+  const bookmarkData = {
+    id: itemData.id,
+    type: (target.type === 'blog' || target.type === 'post') ? 'blog' : target.type,
+    category: target.type === 'deal' ? 'deals' : target.type === 'event' ? 'events' : target.type === 'ad' ? 'ads' : 'blog',
+    title: itemData.title,
+    description: itemData.description || itemData.content,
+    price: itemData.price || itemData.discount,
+    discount: itemData.discount,
+    location: itemData.location || itemData.region,
+    date: itemData.date || itemData.eventDate,
+    image: itemData.image || itemData.imageUrl,
+    author: itemData.author || itemData.partner || itemData.organizer,
+    readTime: itemData.readTime,
+    photoCount: itemData.photoCount,
+  };
+
+  const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+  const isAuthor = Boolean(currentUser?.id && itemData.authorId && currentUser.id === itemData.authorId);
+  const canManage = isAdminOrSuper || isAuthor;
+
+  const handleDeletePost = async () => {
+    if (!window.confirm(`Ali ste prepričani, da želite izbrisati objavo "${itemData.title}"?`)) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      if (target.type === 'ad') {
+        await deleteAdInFirestore(itemData.id);
+      } else if (target.type === 'event') {
+        await deleteEventInFirestore(itemData.id);
+      } else {
+        await deletePostInFirestore(itemData.id);
+      }
+      onBack();
+    } catch (e) {
+      console.error('Napaka pri brisanju objave:', e);
+      alert('Prišlo je do napake pri brisanju.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const isDealItem = target.type === 'deal' || 
+                     itemData.type === 'deal' || 
+                     itemData.category === 'deal' || 
+                     itemData.category === 'ugodnosti' || 
+                     itemData.category?.startsWith('deal') ||
+                     itemData.categoryName === 'Ugodnosti' || 
+                     itemData.categoryName === 'Ugodnosti & Popusti' || 
+                     itemData.id?.startsWith('deal-') || 
+                     itemData.id?.startsWith('hero-bento-');
+
+  const resolvedCategory = target.type === 'ad' 
+    ? (itemData.category || 'ad') 
+    : target.type === 'event' 
+      ? (itemData.category || 'event') 
+      : isDealItem 
+        ? (itemData.category && itemData.category !== 'blog' && itemData.category !== 'post' ? itemData.category : 'deal') 
+        : (itemData.category || itemData.categoryId || 'blog');
+
+  const resolvedType = target.type === 'ad' 
+    ? 'ad' 
+    : target.type === 'event' 
+      ? 'event' 
+      : isDealItem 
+        ? 'deal' 
+        : 'post';
+
+  const editableItem: EditablePostItem = {
+    id: itemData.id,
+    title: itemData.title,
+    content: itemData.description || itemData.content || '',
+    category: resolvedCategory,
+    categoryName: isDealItem ? (itemData.categoryName || 'Ugodnosti') : itemData.categoryName,
+    type: resolvedType,
+    status: (itemData.status || 'published') as any,
+    imageUrl: itemData.image,
+    price: itemData.price || itemData.discount,
+    oldPrice: itemData.oldPrice,
+    newPrice: itemData.newPrice,
+    expirationDate: itemData.expirationDate,
+    discount: itemData.discount,
+    promoCode: itemData.code,
+    dealLink: itemData.link,
+    location: itemData.location || itemData.region,
+    eventDate: itemData.eventDate || itemData.date,
+    eventTime: itemData.eventTime,
+    ticketUrl: itemData.ticketUrl,
+    authorName: itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor',
+    authorId: itemData.authorId,
+    authorRole: itemData.partnerRole || itemData.authorRole,
+    authorAvatar: itemData.partnerAvatar || itemData.authorAvatar,
+  };
+
+  const authorDisplayName = itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor';
+  const authorAvatar = itemData.partnerAvatar || itemData.authorAvatar;
+  const authorRole = itemData.partnerRole || itemData.authorRole;
+  const authorId = itemData.authorId;
+
+  const handleAuthorClick = () => {
+    if (onAuthorClick) {
+      onAuthorClick({
+        id: authorId,
+        name: authorDisplayName,
+        avatar: authorAvatar,
+        role: authorRole,
+        fromPostTarget: target
+      });
+    } else {
+      onViewChange('profile');
+    }
+  };
 
   return (
     <div className="flex flex-col gap-space-md animate-in fade-in duration-200">
@@ -1128,6 +1349,14 @@ export function PostDetailPage({
                 src={postImages[activeImageIndex]}
                 alt={`${itemData.title} – fotografija ${activeImageIndex + 1}`}
                 onClick={() => setIsLightboxOpen(true)}
+                onError={(e) => {
+                  const fallback = getActiveFallbackImage(false);
+                  if (fallback && (e.target as HTMLImageElement).src !== fallback) {
+                    (e.target as HTMLImageElement).src = fallback;
+                  } else {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }
+                }}
                 className="w-full h-full object-cover cursor-zoom-in group-hover:scale-102 transition-transform duration-500"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
@@ -1145,6 +1374,12 @@ export function PostDetailPage({
                 {target.type === 'deal' && (itemData.discount || itemData.price) && (
                   <span className="px-3 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-sm font-black tracking-tight shadow-md">
                     {itemData.discount || itemData.price}
+                  </span>
+                )}
+
+                {target.type === 'event' && itemData.price && (
+                  <span className="px-3.5 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-sm font-extrabold shadow-md">
+                    {itemData.price}
                   </span>
                 )}
 
@@ -1535,20 +1770,35 @@ export function PostDetailPage({
               )}
 
               {target.type === 'event' && (
-                <button
-                  onClick={handleRsvp}
-                  className={`px-4 py-2 rounded-xl font-label-md text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
-                    isRsvpActive 
-                      ? 'bg-secondary text-white' 
-                      : 'bg-primary hover:bg-primary-container text-on-primary'
-                  }`}
-                >
-                  <CalendarPlus className="w-4 h-4" />
-                  <span>{isRsvpActive ? 'Prijavljen (Bom tam)' : 'Zanima me'}</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-black/20 text-[10px]">
-                    {rsvpCount}
-                  </span>
-                </button>
+                <>
+                  {itemData.ticketUrl && (
+                    <a
+                      href={itemData.ticketUrl.startsWith('http') ? itemData.ticketUrl : `https://${itemData.ticketUrl}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-label-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs hover:shadow-md"
+                      title="Odpri zunanjo povezavo za nakup vstopnic"
+                    >
+                      <Ticket className="w-4 h-4" />
+                      <span>Kupi vstopnice</span>
+                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                    </a>
+                  )}
+                  <button
+                    onClick={handleRsvp}
+                    className={`px-4 py-2 rounded-xl font-label-md text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                      isRsvpActive 
+                        ? 'bg-secondary text-white' 
+                        : 'bg-primary hover:bg-primary-container text-on-primary'
+                    }`}
+                  >
+                    <CalendarPlus className="w-4 h-4" />
+                    <span>{isRsvpActive ? 'Prijavljen (Bom tam)' : 'Zanima me'}</span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-black/20 text-[10px]">
+                      {rsvpCount}
+                    </span>
+                  </button>
+                </>
               )}
 
               {(target.type === 'blog' || target.type === 'post') && (
@@ -1614,16 +1864,44 @@ export function PostDetailPage({
           )}
           {target.type === 'deal' && (
             <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/10 via-surface-container-low to-secondary/10 border border-primary/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1.5">
                 <span className="font-label-caps text-xs text-primary uppercase font-extrabold tracking-wider flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5" />
                   Ekskluzivna ponudba za člane Portalka
                 </span>
-                <div className="font-headline-md text-xl font-bold text-on-surface">
-                  Popust: <span className="text-primary font-black">{itemData.discount || '-30%'}</span>
+                
+                {/* Pricing row */}
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  {itemData.newPrice && (
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xs uppercase font-bold text-outline">Akcija:</span>
+                      <span className="font-headline-lg text-2xl sm:text-3xl font-black text-secondary">
+                        {itemData.newPrice}
+                      </span>
+                    </div>
+                  )}
+                  {itemData.oldPrice && (
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xs text-outline">Redna:</span>
+                      <span className="text-sm line-through text-outline font-semibold">
+                        {itemData.oldPrice}
+                      </span>
+                    </div>
+                  )}
+                  {itemData.discount && (
+                    <span className="px-2.5 py-1 rounded-lg bg-secondary/15 text-secondary font-bold text-xs border border-secondary/25">
+                      {itemData.discount}
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-outline">
-                  {itemData.date || 'Veljavno do preklica ali odprodaje zalog.'}
+
+                <p className="text-xs text-outline flex items-center gap-1.5 mt-0.5">
+                  <Clock className="w-3.5 h-3.5 text-error" />
+                  <span>
+                    {itemData.expirationDate 
+                      ? `Veljavno do: ${itemData.expirationDate.includes('-') ? new Date(itemData.expirationDate).toLocaleDateString('sl-SI') : itemData.expirationDate}` 
+                      : (itemData.date || 'Veljavno do preklica ali odprodaje zalog.')}
+                  </span>
                 </p>
               </div>
 
@@ -1661,36 +1939,73 @@ export function PostDetailPage({
           )}
 
           {target.type === 'event' && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                  <Calendar className="w-5 h-5" />
+            <div className="flex flex-col gap-3">
+              <div className={`grid grid-cols-1 sm:grid-cols-2 ${itemData.eventTime ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Datum</div>
+                    <div className="text-sm font-bold text-on-surface">{itemData.date || itemData.eventDate || 'Kmalu'}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Datum in ura</div>
-                  <div className="text-sm font-bold text-on-surface">{itemData.date || 'Četrtek ob 19:00'}</div>
+
+                {itemData.eventTime && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-outline uppercase font-semibold">Čas dogodka (24h)</div>
+                      <div className="text-sm font-bold text-on-surface">{itemData.eventTime}</div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
+                    <div className="text-sm font-bold text-on-surface truncate max-w-[160px]">{itemData.location || 'Ljubljana'}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-tertiary-container/30 text-tertiary flex items-center justify-center shrink-0">
+                    <Tag className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Vstopnina / Cena</div>
+                    <div className="text-sm font-bold text-primary">{itemData.price || 'Vstop prost'}</div>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
-                  <MapPin className="w-5 h-5" />
+              {itemData.ticketUrl && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <Ticket className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-on-surface">Vstopnice so na voljo na spletu</div>
+                      <div className="text-[11px] text-on-surface-variant truncate max-w-sm">{itemData.ticketUrl}</div>
+                    </div>
+                  </div>
+                  <a
+                    href={itemData.ticketUrl.startsWith('http') ? itemData.ticketUrl : `https://${itemData.ticketUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-label-md text-xs font-bold inline-flex items-center gap-2 transition-all shadow-xs shrink-0 cursor-pointer"
+                  >
+                    <span>Nakup vstopnic</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
                 </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
-                  <div className="text-sm font-bold text-on-surface truncate max-w-[160px]">{itemData.location || 'Ljubljana'}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-tertiary-container/30 text-tertiary flex items-center justify-center shrink-0">
-                  <Tag className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Vstopnina</div>
-                  <div className="text-sm font-bold text-on-surface">{itemData.price || 'Vstop prost'}</div>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -1713,9 +2028,22 @@ export function PostDetailPage({
             </h2>
             <div 
               className="font-body-lg text-sm md:text-base text-on-surface-variant leading-relaxed tiptap"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(itemData.description || itemData.content || 'Ni dodatnega opisa za to objavo.') }}
+              dangerouslySetInnerHTML={{ __html: getCleanHtml(itemData.description || itemData.content || 'Ni dodatnega opisa za to objavo.') }}
             />
           </div>
+
+          {/* Embedded Social Media or Video if present */}
+          {itemData.embedCode && (
+            <div className="flex flex-col gap-2.5 pt-4 border-t border-surface-container-low">
+              <h3 className="font-headline-sm text-sm font-bold text-on-surface flex items-center gap-2">
+                <span>Vdelana vsebina / Družbena omrežja</span>
+              </h3>
+              <div 
+                className="tiptap rounded-xl overflow-hidden"
+                dangerouslySetInnerHTML={{ __html: getCleanHtml(parseSocialEmbed(itemData.embedCode)?.embedHtml || itemData.embedCode) }}
+              />
+            </div>
+          )}
 
           {/* Tags & Metadata */}
           <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-surface-container-low text-xs">
@@ -1764,7 +2092,7 @@ export function PostDetailPage({
 
       {/* Social Media Sharing Widget with pre-filled content */}
       <SocialShareWidget
-        url={typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#${target.type}-${target.id}` : ''}
+        url={typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : ''}
         title={itemData.title}
         description={itemData.description || itemData.content}
         type={target.type}
@@ -1819,59 +2147,89 @@ export function PostDetailPage({
 
         {/* Comments List */}
         <div className="flex flex-col divide-y divide-surface-container-low">
-          {comments.map((comment) => (
-            <div key={comment.id} className="py-3.5 first:pt-0 last:pb-0 flex items-start gap-3">
-              <img
-                src={comment.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author)}`}
-                alt={comment.author}
-                className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-black/5"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onAuthorClick) {
-                          onAuthorClick({
-                            name: comment.author,
-                            avatar: comment.authorAvatar,
-                            role: comment.authorRole,
-                            fromPostTarget: target
-                          });
-                        } else {
-                          onViewChange('profile');
-                        }
-                      }}
-                      className="font-bold text-xs sm:text-sm text-on-surface hover:text-primary hover:underline text-left cursor-pointer transition-colors"
-                      title={`Ogled profila avtorja: ${comment.author}`}
-                    >
-                      {comment.author}
-                    </button>
-                    {comment.authorRole && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-outline font-semibold">
-                        {comment.authorRole}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-outline">{comment.date}</span>
-                    <ReportButton
-                      targetId={comment.id}
-                      targetType="comment"
-                      targetTitle={`Komentar (${comment.author}): "${comment.content.substring(0, 40)}..."`}
-                      targetAuthor={comment.author}
-                      size="sm"
-                      className="p-1 rounded text-outline hover:text-error hover:bg-surface-container transition-colors cursor-pointer"
-                    />
+          {comments.length === 0 ? (
+            <div className="py-8 px-4 text-center flex flex-col items-center justify-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-outline">
+                <MessageSquare className="w-5 h-5 opacity-60" />
+              </div>
+              <p className="text-sm font-medium text-on-surface">Ni še komentarjev</p>
+              <p className="text-xs text-outline max-w-sm">
+                Bodite prvi, ki boste postavili vprašanje avtorju ali delili svoje mnenje.
+              </p>
+            </div>
+          ) : (
+            comments.map((comment) => {
+              const canDelete = Boolean(currentUser && (
+                currentUser.role === 'admin' || 
+                currentUser.role === 'superadmin' || 
+                currentUser.name === comment.author
+              ));
+
+              return (
+                <div key={comment.id} className="py-3.5 first:pt-0 last:pb-0 flex items-start gap-3">
+                  <img
+                    src={comment.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author)}`}
+                    alt={comment.author}
+                    className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-black/5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onAuthorClick) {
+                              onAuthorClick({
+                                name: comment.author,
+                                avatar: comment.authorAvatar,
+                                role: comment.authorRole,
+                                fromPostTarget: target
+                              });
+                            } else {
+                              onViewChange('profile');
+                            }
+                          }}
+                          className="font-bold text-xs sm:text-sm text-on-surface hover:text-primary hover:underline text-left cursor-pointer transition-colors"
+                          title={`Ogled profila avtorja: ${comment.author}`}
+                        >
+                          {comment.author}
+                        </button>
+                        {comment.authorRole && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-outline font-semibold">
+                            {comment.authorRole}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-outline">{comment.date}</span>
+                        <ReportButton
+                          targetId={comment.id}
+                          targetType="comment"
+                          targetTitle={`Komentar (${comment.author}): "${comment.content.substring(0, 40)}..."`}
+                          targetAuthor={comment.author}
+                          size="sm"
+                          className="p-1 rounded text-outline hover:text-error hover:bg-surface-container transition-colors cursor-pointer"
+                        />
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(comment.id)}
+                            title="Izbriši komentar"
+                            className="p-1 rounded text-outline hover:text-error hover:bg-surface-container transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed">
+                      {comment.content}
+                    </p>
                   </div>
                 </div>
-                <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed">
-                  {comment.content}
-                </p>
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
       </section>
 
@@ -1916,9 +2274,9 @@ export function PostDetailPage({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {relatedArticles.map((article) => (
+            {relatedArticles.map((article, idx) => (
               <div
-                key={article.id}
+                key={`rel-art-${article.id}-${idx}`}
                 id={`related-article-${article.id}`}
                 onClick={() => {
                   scrollToPageTop();
@@ -2010,9 +2368,9 @@ export function PostDetailPage({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-            {target.type === 'deal' && relatedDeals.map((deal) => (
+            {target.type === 'deal' && relatedDeals.map((deal, idx) => (
               <div
-                key={deal.id}
+                key={`rel-deal-${deal.id}-${idx}`}
                 onClick={() => {
                   scrollToPageTop();
                   onNavigatePost({ type: 'deal', id: deal.id });
@@ -2037,9 +2395,9 @@ export function PostDetailPage({
               </div>
             ))}
 
-            {target.type === 'event' && relatedEvents.map((evt) => (
+            {target.type === 'event' && relatedEvents.map((evt, idx) => (
               <div
-                key={evt.id}
+                key={`rel-evt-${evt.id}-${idx}`}
                 onClick={() => {
                   scrollToPageTop();
                   onNavigatePost({ type: 'event', id: evt.id });
@@ -2064,9 +2422,9 @@ export function PostDetailPage({
               </div>
             ))}
 
-            {target.type === 'ad' && relatedAds.map((ad) => (
+            {target.type === 'ad' && relatedAds.map((ad, idx) => (
               <div
-                key={ad.id}
+                key={`rel-ad-${ad.id}-${idx}`}
                 onClick={() => {
                   scrollToPageTop();
                   onNavigatePost({ type: 'ad', id: ad.id });

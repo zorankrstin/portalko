@@ -40,21 +40,6 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
     read: false,
   },
   {
-    id: 'notif-com-1',
-    type: 'comment',
-    title: 'Nov komentar na oglasu',
-    description: 'Luka K. je vprašal: "Ali je možen prevzem danes popoldne v Ljubljani?"',
-    time: 'pred 15 min',
-    timestamp: Date.now() - 1000 * 60 * 15,
-    read: false,
-    target: {
-      type: 'ad',
-      id: 'ad-1',
-    },
-    authorName: 'Luka K.',
-    authorAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-  },
-  {
     id: 'notif-deal-1',
     type: 'deal',
     title: 'Nova ekskluzivna ugodnost',

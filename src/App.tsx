@@ -25,19 +25,9 @@ import { useAuth } from './contexts/AuthContext';
 import { scrollToPageTop, scrollToSidebarsTop } from './utils/scrollUtils';
 import { parseSearchQuery, SearchCategory } from './utils/searchUtils';
 import { updatePageSeo } from './utils/seoUtils';
+import { parseUrlPath, buildPostUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } from './utils/urlUtils';
 
-export const VIEW_HASH_MAP: Record<ViewMode, string> = {
-  main: 'domov',
-  news: 'novice',
-  ads: 'mali-oglasi',
-  deals: 'ugodnosti',
-  events: 'dogodki',
-  blog: 'blog',
-  saved: 'shranjeno',
-  admin: 'admin',
-  profile: 'profil',
-  'post-detail': '',
-};
+export { VIEW_HASH_MAP };
 
 export default function App() {
   const { currentUser } = useAuth();
@@ -47,6 +37,11 @@ export default function App() {
   const [selectedAuthorProfile, setSelectedAuthorProfile] = useState<AuthorProfileTarget | null>(null);
   const [previousView, setPreviousView] = useState<ViewMode>('main');
   const [postDetailTitle, setPostDetailTitle] = useState<string>('');
+  const [postDetailMeta, setPostDetailMeta] = useState<{
+    categoryName?: string;
+    subcategoryName?: string;
+    cleanUrl?: string;
+  }>({});
   const [isRlsModalOpen, setIsRlsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -57,116 +52,48 @@ export default function App() {
     }
   }, []);
 
-  // Handle URL hash deep-linking (e.g. #domov, #novice, #mali-oglasi, #ugodnosti, #dogodki, #blog, #shranjeno, #admin, #deal-xyz, #event-xyz, #ad-xyz, #post-xyz)
+  // Handle URL deep-linking (supporting clean /category/subcategory/title paths as well as legacy hash URLs)
   useEffect(() => {
-    const handleHashChange = () => {
-      const rawHash = window.location.hash.replace(/^#\/?/, '').trim();
-      if (!rawHash || rawHash === 'domov') {
-        if (currentView !== 'main') {
-          setCurrentView('main');
-          setSelectedPostTarget(null);
-          setSelectedAuthorProfile(null);
-          scrollToPageTop();
-          scrollToSidebarsTop();
-        }
-        return;
-      }
+    const handleRouteChange = () => {
+      const parsed = parseUrlPath(window.location.pathname, window.location.hash);
 
-      const lowerHash = rawHash.toLowerCase();
-
-      // Check standard view routes
-      if (lowerHash === 'novice' || lowerHash === 'news') {
-        setCurrentView('news');
-        setSelectedPostTarget(null);
+      if (parsed.isPostDetail && parsed.target) {
         setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-      if (lowerHash === 'mali-oglasi' || lowerHash === 'oglasi' || lowerHash === 'ads') {
-        setCurrentView('ads');
-        setSelectedPostTarget(null);
-        setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-      if (lowerHash === 'ugodnosti' || lowerHash === 'popusti' || lowerHash === 'deals') {
-        setCurrentView('deals');
-        setSelectedPostTarget(null);
-        setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-      if (lowerHash === 'dogodki' || lowerHash === 'events') {
-        setCurrentView('events');
-        setSelectedPostTarget(null);
-        setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-      if (lowerHash === 'blog' || lowerHash === 'clanki') {
-        setCurrentView('blog');
-        setSelectedPostTarget(null);
-        setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-      if (lowerHash === 'shranjeno' || lowerHash === 'zaznamki' || lowerHash === 'saved') {
-        setCurrentView('saved');
-        setSelectedPostTarget(null);
-        setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-      if (lowerHash === 'admin' || lowerHash === 'nadzorna-plosca') {
-        setCurrentView('admin');
-        setSelectedPostTarget(null);
-        setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-      if (lowerHash === 'profil' || lowerHash === 'profile') {
-        setCurrentView('profile');
-        setSelectedPostTarget(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-
-      const authorMatch = rawHash.match(/^author-(.+)$/);
-      if (authorMatch) {
-        const decodedName = decodeURIComponent(authorMatch[1]).replace(/_/g, ' ');
-        setSelectedAuthorProfile({ name: decodedName });
-        setCurrentView('profile');
-        scrollToPageTop();
-        scrollToSidebarsTop();
-        return;
-      }
-
-      const match = rawHash.match(/^(deal|event|ad|post|blog)-(.+)$/);
-      if (match) {
-        let type = match[1] as PostDetailType;
-        if (type === 'post') type = 'blog';
-        const id = match[2];
-        setSelectedPostTarget({ type, id });
+        setSelectedPostTarget(parsed.target);
         setCurrentView('post-detail');
         scrollToPageTop();
         scrollToSidebarsTop();
+        return;
       }
+
+      if (parsed.author) {
+        setSelectedPostTarget(null);
+        setSelectedAuthorProfile(parsed.author);
+        setCurrentView('profile');
+        scrollToPageTop();
+        scrollToSidebarsTop();
+        return;
+      }
+
+      setSelectedPostTarget(null);
+      setSelectedAuthorProfile(null);
+      setPostDetailMeta({});
+      setPostDetailTitle('');
+      setCurrentView(parsed.view);
+      scrollToPageTop();
+      scrollToSidebarsTop();
     };
 
-    // Check initial hash
-    handleHashChange();
+    // Check initial URL immediately on mount
+    handleRouteChange();
 
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [currentView, previousView]);
+    window.addEventListener('popstate', handleRouteChange);
+    window.addEventListener('hashchange', handleRouteChange);
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+      window.removeEventListener('hashchange', handleRouteChange);
+    };
+  }, []);
 
   // Dynamic SEO & Title updates for views
   useEffect(() => {
@@ -174,71 +101,80 @@ export default function App() {
       updatePageSeo({
         title: 'Portalko – Slovenski portal za novice, male oglase in dogodke',
         description: 'Portalko je osrednji slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke, ugodnosti in popuste ter skupnost po vsej Sloveniji.',
-        url: `${window.location.origin}${window.location.pathname}#domov`,
-        canonicalUrl: `${window.location.origin}${window.location.pathname}`,
+        url: `${window.location.origin}/`,
+        canonicalUrl: `${window.location.origin}/`,
         type: 'website',
       });
     } else if (currentView === 'news') {
       updatePageSeo({
         title: 'Aktualne novice v Sloveniji – RSS viri v živo | Portalko',
         description: 'Zadnje novice iz osrednjih slovenskih medijev in RSS virov v živo. Preverite dogajanja v Sloveniji in po svetu.',
-        url: `${window.location.origin}${window.location.pathname}#novice`,
+        url: `${window.location.origin}/novice`,
+        canonicalUrl: `${window.location.origin}/novice`,
         type: 'website',
       });
     } else if (currentView === 'ads') {
       updatePageSeo({
         title: 'Mali oglasi Slovenija – Brezplačni spletni oglasi | Portalko',
         description: 'Brezplačni mali oglasi v Sloveniji. Rabljena in nova vozila, nepremičnine, elektronika, dom in storitve po slovenskih regijah.',
-        url: `${window.location.origin}${window.location.pathname}#mali-oglasi`,
+        url: `${window.location.origin}/mali-oglasi`,
+        canonicalUrl: `${window.location.origin}/mali-oglasi`,
         type: 'website',
       });
     } else if (currentView === 'events') {
       updatePageSeo({
         title: 'Dogodki in prireditve v Sloveniji – Koledar dogodkov | Portalko',
         description: 'Koledar prireditev, koncertov, festivalov, športnih in kulturnih dogodkov po celotni Sloveniji.',
-        url: `${window.location.origin}${window.location.pathname}#dogodki`,
+        url: `${window.location.origin}/dogodki`,
+        canonicalUrl: `${window.location.origin}/dogodki`,
         type: 'website',
       });
     } else if (currentView === 'deals') {
       updatePageSeo({
         title: 'Ugodnosti, popusti in kuponi v Sloveniji | Portalko',
         description: 'Preverjene ugodnosti, promocijske kode, akcije in popusti v slovenskih trgovinah ter na spletu.',
-        url: `${window.location.origin}${window.location.pathname}#ugodnosti`,
+        url: `${window.location.origin}/ugodnosti`,
+        canonicalUrl: `${window.location.origin}/ugodnosti`,
         type: 'website',
       });
     } else if (currentView === 'blog') {
       updatePageSeo({
         title: 'Blog & Zgodbe slovenske skupnosti | Portalko',
         description: 'Avtorske zgodbe, potopisi, lokalni vodiči in razmišljanja članov slovenske spletne skupnosti Portalko.',
-        url: `${window.location.origin}${window.location.pathname}#blog`,
+        url: `${window.location.origin}/blog`,
+        canonicalUrl: `${window.location.origin}/blog`,
         type: 'website',
       });
     } else if (currentView === 'saved') {
       updatePageSeo({
         title: 'Shranjene objave in zaznamki | Portalko',
         description: 'Vaše shranjene novice, mali oglasi, dogodki in ugodnosti na enem mestu za hiter dostop.',
-        url: `${window.location.origin}${window.location.pathname}#shranjeno`,
+        url: `${window.location.origin}/shranjeno`,
+        canonicalUrl: `${window.location.origin}/shranjeno`,
         type: 'website',
       });
     } else if (currentView === 'admin') {
       updatePageSeo({
         title: 'Nadzorna plošča – Administracija portala | Portalko',
         description: 'Administrativno upravljanje vsebin, uporabnikov in nastavitev portala Portalko.',
-        url: `${window.location.origin}${window.location.pathname}#admin`,
+        url: `${window.location.origin}/admin`,
+        canonicalUrl: `${window.location.origin}/admin`,
         type: 'website',
       });
     } else if (currentView === 'profile') {
       const name = selectedAuthorProfile?.name || currentUser?.name || 'Uporabnik';
+      const authorUrl = selectedAuthorProfile ? `${window.location.origin}/avtor/${slugify(name)}` : `${window.location.origin}/profil`;
       updatePageSeo({
         title: `Profil uporabnika: ${name} | Portalko`,
         description: `Oglejte si profil, objave in aktivnosti uporabnika ${name} na portalu Portalko.`,
-        url: `${window.location.origin}${window.location.pathname}#profil`,
+        url: authorUrl,
+        canonicalUrl: authorUrl,
         type: 'profile',
       });
     }
   }, [currentView, selectedAuthorProfile, currentUser]);
 
-  // Global capture-phase click handler for any single post link across the portal
+  // Global capture-phase click handler for any internal links across the portal
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
@@ -247,22 +183,56 @@ export default function App() {
       const anchor = target.closest('a');
       if (anchor) {
         const href = anchor.getAttribute('href') || '';
-        const authorMatch = href.match(/^#author-(.+)$/);
+        
+        // Skip external or special protocol links
+        if (href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) {
+          return;
+        }
+        if ((href.startsWith('http://') || href.startsWith('https://')) && !href.startsWith(window.location.origin)) {
+          return;
+        }
+
+        // Check if this is an internal app route
+        let path = href;
+        if (href.startsWith('http')) {
+          try {
+            const urlObj = new URL(href);
+            path = urlObj.pathname + urlObj.hash;
+          } catch {
+            return;
+          }
+        }
+
+        const pathPart = path.split('#')[0] || '/';
+        const hashPart = path.includes('#') ? '#' + path.split('#')[1] : '';
+
+        // Check legacy author hash
+        const authorMatch = hashPart.match(/^#author-(.+)$/);
         if (authorMatch) {
           e.preventDefault();
           const decodedName = decodeURIComponent(authorMatch[1]).replace(/_/g, ' ');
           handleAuthorClick({ name: decodedName });
           return;
         }
-        const match = href.match(/^#(deal|event|ad|post|blog)-(.+)$/);
-        if (match) {
+
+        // Parse path and hash
+        const parsed = parseUrlPath(pathPart, hashPart);
+        if (parsed.isPostDetail && parsed.target) {
           e.preventDefault();
-          let type = match[1] as PostDetailType;
-          if (type === 'post') type = 'blog';
-          const id = match[2];
-          handleNavigatePost({ type, id });
-          scrollToSidebarsTop();
+          handleNavigatePost(parsed.target);
           return;
+        }
+        if (parsed.author) {
+          e.preventDefault();
+          handleAuthorClick(parsed.author);
+          return;
+        }
+        if (pathPart !== window.location.pathname || (hashPart && hashPart !== window.location.hash)) {
+          if (parsed.view) {
+            e.preventDefault();
+            handleViewChange(parsed.view);
+            return;
+          }
         }
       }
 
@@ -293,9 +263,22 @@ export default function App() {
       setPreviousView(currentView);
     }
     setPostDetailTitle('');
+    setPostDetailMeta({});
     setSelectedPostTarget(target);
     setCurrentView('post-detail');
-    window.location.hash = `${target.type}-${target.id}`;
+
+    const cleanPath = buildPostUrl({
+      type: target.type,
+      id: target.id,
+      title: target.initialData?.title,
+      category: target.initialData?.category,
+      categoryName: target.initialData?.categoryName,
+      subcategory: target.initialData?.subcategory,
+      subcategoryName: target.initialData?.subcategoryName,
+    });
+    if (window.location.pathname !== cleanPath || window.location.hash) {
+      window.history.pushState({ type: target.type, id: target.id }, '', cleanPath);
+    }
     scrollToPageTop();
     scrollToSidebarsTop();
   };
@@ -306,19 +289,27 @@ export default function App() {
       setPreviousView(currentView);
     }
     setCurrentView('profile');
-    window.location.hash = `author-${encodeURIComponent(author.name.replace(/\s+/g, '_'))}`;
+    const authorSlug = slugify(author.name);
+    const cleanUrl = `/avtor/${authorSlug}`;
+    if (window.location.pathname !== cleanUrl || window.location.hash) {
+      window.history.pushState({ author: author.name }, '', cleanUrl);
+    }
     scrollToPageTop();
     scrollToSidebarsTop();
   };
 
   const handleBackFromPost = () => {
-    window.location.hash = '';
     const targetView = selectedPostTarget?.type === 'deal' ? 'deals' :
                        selectedPostTarget?.type === 'event' ? 'events' :
                        selectedPostTarget?.type === 'ad' ? 'ads' :
                        (selectedPostTarget?.type === 'blog' || selectedPostTarget?.type === 'post') ? 'blog' : previousView || 'main';
     setSelectedPostTarget(null);
     setPostDetailTitle('');
+    setPostDetailMeta({});
+    const cleanUrl = targetView === 'main' ? '/' : `/${SECTION_TO_SLUG[targetView] || targetView}`;
+    if (window.location.pathname !== cleanUrl || window.location.hash) {
+      window.history.pushState(null, '', cleanUrl);
+    }
     handleViewChange(targetView);
     scrollToPageTop();
     scrollToSidebarsTop();
@@ -330,12 +321,8 @@ export default function App() {
     } else if (currentView === 'profile') {
       if (selectedAuthorProfile?.fromPostTarget) {
         const returnTarget = selectedAuthorProfile.fromPostTarget;
-        setSelectedPostTarget(returnTarget);
-        setCurrentView('post-detail');
-        window.location.hash = `${returnTarget.type}-${returnTarget.id}`;
         setSelectedAuthorProfile(null);
-        scrollToPageTop();
-        scrollToSidebarsTop();
+        handleNavigatePost(returnTarget);
       } else {
         setSelectedAuthorProfile(null);
         handleViewChange(previousView && previousView !== 'profile' ? previousView : 'main');
@@ -351,14 +338,23 @@ export default function App() {
     }
     if (view !== 'post-detail') {
       setPostDetailTitle('');
+      setPostDetailMeta({});
     }
-    if (view !== 'post-detail' && view !== 'profile') {
+    if (view === 'profile') {
       setSelectedPostTarget(null);
-      setPreviousView(view);
-      const targetHash = VIEW_HASH_MAP[view] || '';
-      if (window.location.hash.replace(/^#\/?/, '') !== targetHash) {
-        window.location.hash = targetHash;
+      const cleanUrl = '/profil';
+      if (window.location.pathname !== cleanUrl || window.location.hash) {
+        window.history.pushState(null, '', cleanUrl);
       }
+    } else if (view !== 'post-detail') {
+      setSelectedPostTarget(null);
+      const cleanUrl = view === 'main' ? '/' : `/${SECTION_TO_SLUG[view] || view}`;
+      if (window.location.pathname !== cleanUrl || window.location.hash) {
+        window.history.pushState(null, '', cleanUrl);
+      }
+    }
+    if (currentView !== view && currentView !== 'post-detail') {
+      setPreviousView(currentView);
     }
     setCurrentView(view);
     scrollToPageTop();
@@ -370,7 +366,10 @@ export default function App() {
     setSelectedAuthorProfile(null);
     setSelectedPostTarget(null);
     setPostDetailTitle('');
-    window.location.hash = 'domov';
+    setPostDetailMeta({});
+    if (window.location.pathname !== '/' || window.location.hash) {
+      window.history.pushState(null, '', '/');
+    }
     handleViewChange('main');
   };
 
@@ -459,6 +458,9 @@ export default function App() {
               previousView={previousView}
               selectedPostTarget={selectedPostTarget}
               postTitle={postDetailTitle}
+              categoryName={postDetailMeta.categoryName}
+              subcategoryName={postDetailMeta.subcategoryName}
+              postUrl={postDetailMeta.cleanUrl}
               selectedAuthorProfile={selectedAuthorProfile}
               searchQuery={searchQuery}
               onViewChange={handleViewChange}
@@ -476,11 +478,20 @@ export default function App() {
                 searchQuery={searchQuery}
                 onSearchChange={handleSearchChange}
                 onAuthorClick={handleAuthorClick}
-                onTitleLoaded={setPostDetailTitle}
+                onTitleLoaded={(title, meta) => {
+                  setPostDetailTitle(title);
+                  if (meta) {
+                    setPostDetailMeta(meta);
+                  }
+                }}
               />
             )}
             {currentView === 'main' && (
-              <MainFeed searchQuery={searchQuery} onViewChange={handleViewChange} />
+              <MainFeed 
+                searchQuery={searchQuery} 
+                onViewChange={handleViewChange} 
+                onNavigatePost={handleNavigatePost}
+              />
             )}
             {currentView === 'news' && (
               <NewsFeed onViewChange={handleViewChange} searchQuery={searchQuery} />
@@ -520,11 +531,9 @@ export default function App() {
                 onClearTargetAuthor={() => {
                   setSelectedAuthorProfile(null);
                   if (selectedPostTarget) {
-                    setCurrentView('post-detail');
-                    window.location.hash = `${selectedPostTarget.type}-${selectedPostTarget.id}`;
+                    handleNavigatePost(selectedPostTarget);
                   } else {
-                    window.location.hash = '';
-                    setCurrentView(previousView || 'main');
+                    handleViewChange(previousView || 'main');
                   }
                   scrollToPageTop();
                   scrollToSidebarsTop();
@@ -561,7 +570,7 @@ export default function App() {
               ) : currentView === 'deals' ? (
                 <RightSidebarDeals onNavigatePost={handleNavigatePost} />
               ) : (
-                <RightSidebar />
+                <RightSidebar onNavigatePost={handleNavigatePost} />
               )}
             </>
           )}

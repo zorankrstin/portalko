@@ -8,6 +8,7 @@ export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 /* CRITICAL: The app will break without specifying firestoreDatabaseId */
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const firestore = db;
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
