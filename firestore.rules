@@ -49,6 +49,11 @@ service cloud.firestore {
       match /bookmarks/{bookmarkId} {
         allow read, write: if true;
       }
+
+      // User likes subcollection
+      match /likes/{likeId} {
+        allow read, write: if true;
+      }
     }
 
     // Posts Collection

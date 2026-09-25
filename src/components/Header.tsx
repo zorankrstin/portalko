@@ -65,6 +65,16 @@ export function Header({
     return () => unsub();
   }, []);
 
+  // Listen for open_auth_modal event
+  useEffect(() => {
+    const handleOpenAuth = (e: any) => {
+      if (e.detail?.mode) setAuthModalMode(e.detail.mode);
+      setIsLoginModalOpen(true);
+    };
+    window.addEventListener('open_auth_modal', handleOpenAuth);
+    return () => window.removeEventListener('open_auth_modal', handleOpenAuth);
+  }, []);
+
   useEffect(() => {
     if (text.length < 2) {
       setSuggestions([]);

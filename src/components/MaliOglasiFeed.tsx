@@ -2,14 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ShareMenu } from "./ShareMenu";
 import { BookmarkButton } from "./BookmarkButton";
 import { ReportButton } from "./ReportButton";
-import { Search, ChevronDown, PlusCircle, Star, Phone, MapPin, Building2, Car, Sparkles, ShoppingBag, Tag, Layers, Globe, Filter } from 'lucide-react';
+import { LikeButton } from "./LikeButton";
+import { Search, ChevronDown, PlusCircle, Star, Phone, MapPin, Building2, Car, Sparkles, ShoppingBag, Tag, Layers, Globe, Filter, X } from 'lucide-react';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { subscribeToAds, FirestoreAd } from '../services/firestoreService';
 import { ComposeModal } from './ComposeModal';
 import { INITIAL_ADS, MockAdItem } from '../data/mockFeedData';
 import { PostDetailTarget } from '../types';
 import { useCategories } from '../hooks/useCategories';
-import { SLOVENIA_REGIONS } from '../services/categoryService';
+import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categoryService';
 import { PromotedBadge } from './common/PromotedBadge';
 import { isItemActivelyPromoted } from '../services/promotionService';
 
@@ -138,10 +139,47 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
           aSubNameLower === selectedSubcatObj.id.toLowerCase().trim()
         ));
 
-      // Region match
-      const matchesReg = selectedRegion === 'all' ||
-        (ad.region && ad.region.toLowerCase().includes(selectedRegion.toLowerCase())) ||
-        (ad.location && ad.location.toLowerCase().includes(selectedRegion.toLowerCase()));
+      // Region & City/Location matching
+      let matchesReg = false;
+      if (selectedRegion === 'all') {
+        matchesReg = true;
+      } else {
+        const target = selectedRegion.toLowerCase().trim();
+        const adLoc = (ad.location || '').toLowerCase().trim();
+        const adReg = (ad.region || '').toLowerCase().trim();
+
+        // 1. Direct match on ad.region or ad.location
+        if (adReg.includes(target) || adLoc.includes(target)) {
+          matchesReg = true;
+        } else {
+          // 2. Check if selectedRegion is a region ID (e.g. 'osrednjeslovenska', 'podravska', etc.)
+          const regObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
+          if (regObj) {
+            if (
+              adReg.includes(regObj.id) ||
+              adReg.includes(regObj.name.toLowerCase()) ||
+              adReg.includes(regObj.shortName.toLowerCase())
+            ) {
+              matchesReg = true;
+            } else {
+              // Check if ad location contains ANY town/city from this region
+              for (const city of regObj.cities) {
+                const cLower = city.toLowerCase();
+                if (adLoc.includes(cLower) || adReg.includes(cLower)) {
+                  matchesReg = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 3. Check if selectedRegion is a specific town (e.g. 'city-Maribor' or 'Maribor')
+          const cleanCity = (target.startsWith('city-') ? target.replace('city-', '') : target).toLowerCase();
+          if (adLoc.includes(cleanCity) || adReg.includes(cleanCity)) {
+            matchesReg = true;
+          }
+        }
+      }
 
       return matchesSearch && matchesCat && matchesSubcat && matchesReg;
     });
@@ -381,6 +419,14 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                           <MapPin className="w-3 h-3 text-primary" /> {ad.location || ad.region || 'Slovenija'}
                         </span>
                         <div className="flex items-center gap-1">
+                          <LikeButton
+                            id={ad.id}
+                            targetType="ad"
+                            initialLikesCount={ad.likesCount || 0}
+                            variant="minimal"
+                            showCount={true}
+                            itemTitle={ad.title}
+                          />
                           <BookmarkButton 
                             id={ad.id}
                             data={{

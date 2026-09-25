@@ -4,13 +4,15 @@ import {
   ThumbsUp, Tag, ShieldCheck, User, Clock, MessageSquare, 
   Phone, Send, Heart, AlertTriangle, Sparkles, CheckCircle2, 
   CalendarPlus, Bookmark, Eye, ChevronRight, ChevronLeft, Store, ArrowRight,
-  Edit3, Trash2, Search, X, BookOpen, Maximize2, Images, Ticket
+  Edit3, Trash2, Search, X, BookOpen, Maximize2, Images, Ticket, CalendarDays
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from '../types';
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
 import { ReportButton } from './ReportButton';
+import { LikeButton } from './LikeButton';
+import { useLikes } from '../contexts/LikeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { INITIAL_DEALS, HERO_BENTO_DEALS, DealItem } from '../data/mockDealsData';
@@ -36,6 +38,7 @@ import { getActiveFallbackImage } from '../services/portalSettingsService';
 import { buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { updatePageSeo } from '../utils/seoUtils';
 import { buildPostUrl, slugify } from '../utils/urlUtils';
+import { useEventFilter } from '../contexts/EventFilterContext';
 import { SocialShareWidget } from './SocialShareWidget';
 import { DEFAULT_CATEGORIES } from '../services/categoryService';
 
@@ -146,6 +149,7 @@ export function PostDetailPage({
 }: PostDetailPageProps) {
   const { currentUser } = useAuth();
   const { addNotification } = useNotifications();
+  const { filterByEventCategory, filterByEventLocation } = useEventFilter();
 
   // In-page search state
   const [inPageSearchText, setInPageSearchText] = useState('');
@@ -236,6 +240,7 @@ export function PostDetailPage({
   const [hasVoted, setHasVoted] = useState(false);
   const [blogLikes, setBlogLikes] = useState<number>(0);
   const [hasBlogLiked, setHasBlogLiked] = useState(false);
+  const { getLikesCount } = useLikes();
 
   // Carousel & Lightbox state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -285,6 +290,9 @@ export function PostDetailPage({
         date: dateInfo.fullDate,
         eventDate: fs.eventDate,
         eventTime: fs.eventTime,
+        eventDates: fs.eventDates,
+        eventTimes: fs.eventTimes,
+        eventSchedule: fs.eventSchedule,
         ticketUrl: fs.ticketUrl,
         month: dateInfo.month,
         day: dateInfo.day,
@@ -297,6 +305,7 @@ export function PostDetailPage({
         image: fs.imageUrl || (getActiveFallbackImage(true) || ''),
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
         interestedCount: fs.interestedCount || 42,
+        likesCount: fs.likesCount || 0,
       };
     };
 
@@ -347,6 +356,7 @@ export function PostDetailPage({
         image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
         authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
+        likesCount: fs.likesCount || 0,
       };
     };
 
@@ -1363,13 +1373,30 @@ export function PostDetailPage({
 
               {/* Badges on Hero (Top Left) */}
               <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 pointer-events-auto">
-                <span className="px-3 py-1 rounded-lg bg-black/75 backdrop-blur-md text-white font-label-caps text-xs font-bold uppercase tracking-wider shadow-sm flex items-center gap-1.5 border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (target.type === 'event') {
+                      filterByEventCategory(
+                        itemData.category || '', 
+                        itemData.categoryName || feedCategoryName, 
+                        itemData.subcategory, 
+                        itemData.subcategoryName
+                      );
+                      onViewChange('events');
+                    }
+                  }}
+                  className={`px-3 py-1 rounded-lg bg-black/75 backdrop-blur-md text-white font-label-caps text-xs font-bold uppercase tracking-wider shadow-sm flex items-center gap-1.5 border border-white/10 ${
+                    target.type === 'event' ? 'hover:bg-black/90 hover:border-primary/50 cursor-pointer transition-colors' : ''
+                  }`}
+                  title={target.type === 'event' ? `Filtriraj dogodke po kategoriji: ${itemData.categoryName || feedCategoryName}` : undefined}
+                >
                   {target.type === 'deal' && <Tag className="w-3.5 h-3.5 text-amber-400" />}
                   {target.type === 'event' && <Calendar className="w-3.5 h-3.5 text-sky-400" />}
                   {target.type === 'ad' && <Store className="w-3.5 h-3.5 text-emerald-400" />}
                   {(target.type === 'blog' || target.type === 'post') && <BookOpen className="w-3.5 h-3.5 text-amber-300" />}
                   <span>{itemData.categoryName || feedCategoryName}</span>
-                </span>
+                </button>
 
                 {target.type === 'deal' && (itemData.discount || itemData.price) && (
                   <span className="px-3 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-sm font-black tracking-tight shadow-md">
@@ -1498,10 +1525,22 @@ export function PostDetailPage({
                   <span>•</span>
                   {(itemData.location || itemData.region) && (
                     <>
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-primary" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (target.type === 'event') {
+                            filterByEventLocation(itemData.location || itemData.region);
+                            onViewChange('events');
+                          }
+                        }}
+                        className={`flex items-center gap-1 text-left ${
+                          target.type === 'event' ? 'hover:text-primary hover:underline cursor-pointer transition-colors' : ''
+                        }`}
+                        title={target.type === 'event' ? `Filtriraj dogodke po lokaciji: ${itemData.location || itemData.region}` : undefined}
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                         <span>{itemData.location || itemData.region}</span>
-                      </span>
+                      </button>
                       <span>•</span>
                     </>
                   )}
@@ -1801,20 +1840,15 @@ export function PostDetailPage({
                 </>
               )}
 
-              {(target.type === 'blog' || target.type === 'post') && (
-                <button
-                  onClick={handleLikeBlog}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    hasBlogLiked 
-                      ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' 
-                      : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
-                  }`}
-                  title="Všečkaj ta blog članek"
-                >
-                  <Heart className={`w-4 h-4 ${hasBlogLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
-                  <span>{blogLikes} {blogLikes === 1 ? 'všeček' : 'všečkov'}</span>
-                </button>
-              )}
+              <LikeButton
+                id={itemData.id || target.id}
+                targetType={target.type}
+                initialLikesCount={itemData.likesCount || 0}
+                variant="pill"
+                showCount={true}
+                showLabel={true}
+                itemTitle={itemData.title}
+              />
             </div>
           </div>
 
@@ -1847,7 +1881,9 @@ export function PostDetailPage({
                 </div>
                 <div>
                   <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
-                  <div className="text-sm font-bold text-on-surface">{blogLikes}</div>
+                  <div className="text-sm font-bold text-on-surface">
+                    {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
+                  </div>
                 </div>
               </div>
 
@@ -1969,7 +2005,7 @@ export function PostDetailPage({
                   </div>
                   <div>
                     <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
-                    <div className="text-sm font-bold text-on-surface truncate max-w-[160px]">{itemData.location || 'Ljubljana'}</div>
+                    <div className="text-sm font-bold text-on-surface truncate max-w-[160px]">{itemData.location || 'Slovenija'}</div>
                   </div>
                 </div>
 
@@ -1983,6 +2019,77 @@ export function PostDetailPage({
                   </div>
                 </div>
               </div>
+
+              {/* Detailed Schedule & Hours section if repetitive dates or specific schedule slots exist */}
+              {itemData.eventSchedule && itemData.eventSchedule.length > 0 && (
+                <div className="p-4 rounded-2xl bg-surface-container-low border border-surface-container flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-surface-container/60 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center">
+                        <CalendarDays className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-on-surface">Razpored terminov & ure dogodka</h4>
+                        <p className="text-[11px] text-outline">
+                          {itemData.eventSchedule.length > 1 
+                            ? `Ta dogodek ima ${itemData.eventSchedule.length} razpisanih terminov/ponovitev` 
+                            : 'Vsi razpisani termini in ure tega dogodka'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {itemData.eventSchedule.map((slot: any, idx: number) => {
+                      const dateObj = slot.date ? parseEventDateInfo(slot.date) : null;
+                      const timesList = slot.times && slot.times.length > 0 
+                        ? slot.times 
+                        : (slot.time ? slot.time.split(',').map((t: string) => t.trim()).filter(Boolean) : []);
+                      return (
+                        <div key={idx} className="p-3.5 rounded-xl bg-surface-container-lowest border border-surface-container flex flex-col gap-2.5 shadow-xs">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              {dateObj && (
+                                <div className="bg-primary/10 rounded-xl px-2.5 py-1 text-center min-w-[42px] border border-primary/20 shrink-0">
+                                  <div className="text-[9px] font-bold text-primary uppercase">{dateObj.month}</div>
+                                  <div className="text-sm font-black text-primary leading-none">{dateObj.day}</div>
+                                </div>
+                              )}
+                              <div>
+                                <div className="text-xs font-bold text-on-surface">
+                                  {dateObj ? dateObj.fullDate : (slot.date || `Termin ${idx + 1}`)}
+                                </div>
+                                {slot.label && (
+                                  <span className="text-[11px] font-semibold text-secondary">
+                                    {slot.label}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {timesList.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-surface-container/50">
+                              <span className="text-[11px] text-outline flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-primary" />
+                                <span>{timesList.length > 1 ? 'Ure:' : 'Ura:'}</span>
+                              </span>
+                              {timesList.map((tm: string, tIdx: number) => (
+                                <span 
+                                  key={tIdx} 
+                                  className="px-2 py-0.5 rounded-md bg-surface-container font-mono text-xs font-bold text-on-surface"
+                                >
+                                  {tm}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {itemData.ticketUrl && (
                 <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

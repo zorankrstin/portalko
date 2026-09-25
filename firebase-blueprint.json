@@ -42,6 +42,7 @@
         "status": { "type": "string", "enum": ["published", "pending", "rejected", "archived"] },
         "rejectionReason": { "type": "string", "maxLength": 500 },
         "likesCount": { "type": "number" },
+        "likedBy": { "type": "array" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -65,6 +66,8 @@
         "imageUrl": { "type": "string", "maxLength": 500 },
         "status": { "type": "string", "enum": ["active", "sold", "closed", "pending", "rejected"] },
         "rejectionReason": { "type": "string", "maxLength": 500 },
+        "likesCount": { "type": "number" },
+        "likedBy": { "type": "array" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -80,7 +83,10 @@
         "description": { "type": "string", "minLength": 5, "maxLength": 5000 },
         "location": { "type": "string", "maxLength": 150 },
         "eventDate": { "type": "string", "maxLength": 100 },
-        "eventTime": { "type": "string", "maxLength": 50 },
+        "eventTime": { "type": "string", "maxLength": 100 },
+        "eventDates": { "type": "array" },
+        "eventTimes": { "type": "array" },
+        "eventSchedule": { "type": "array" },
         "ticketUrl": { "type": "string", "maxLength": 500 },
         "category": { "type": "string", "maxLength": 50 },
         "price": { "type": "string", "maxLength": 50 },
@@ -91,10 +97,25 @@
         "isPromoted": { "type": "boolean" },
         "status": { "type": "string", "enum": ["published", "pending", "rejected"] },
         "rejectionReason": { "type": "string", "maxLength": 500 },
+        "likesCount": { "type": "number" },
+        "likedBy": { "type": "array" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "title", "description", "location", "authorId", "authorName"]
+    },
+    "Like": {
+      "title": "User Post Like",
+      "description": "Like record on an individual post, ad, event or blog item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "targetId", "targetType"]
     },
     "Bookmark": {
       "title": "User Bookmark",
@@ -171,6 +192,10 @@
     "/users/{userId}/bookmarks/{bookmarkId}": {
       "schema": "Bookmark",
       "description": "User specific bookmarks and saved items"
+    },
+    "/users/{userId}/likes/{likeId}": {
+      "schema": "Like",
+      "description": "User specific likes on posts, ads, events and blog"
     }
   }
 }

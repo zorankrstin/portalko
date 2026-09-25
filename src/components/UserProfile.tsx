@@ -261,6 +261,8 @@ export function UserProfile({
           location: e.location,
           eventDate: e.eventDate || e.date,
           eventTime: e.eventTime,
+          eventDates: e.eventDates,
+          eventSchedule: e.eventSchedule,
           ticketUrl: e.ticketUrl,
           rejectionReason: e.rejectionReason,
         });

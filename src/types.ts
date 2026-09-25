@@ -3,6 +3,13 @@ export type ViewMode = 'main' | 'news' | 'ads' | 'events' | 'blog' | 'profile' |
 
 export type PostDetailType = 'deal' | 'event' | 'ad' | 'post' | 'blog';
 
+export interface EventScheduleSlot {
+  date: string;         // YYYY-MM-DD
+  times?: string[];     // Array of time strings, e.g. ["10:00", "14:00", "18:00"]
+  time?: string;        // Formatted comma-separated string e.g. "10:00, 14:00"
+  label?: string;       // Optional custom label, e.g. "Matineja", "Večerni koncert"
+}
+
 export interface PostDetailTarget {
   type: PostDetailType;
   id: string;

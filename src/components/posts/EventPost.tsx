@@ -2,12 +2,14 @@ import React, { useState, useEffect } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
-import { MapPin, Star, Ticket, Clock, ExternalLink } from 'lucide-react';
+import { LikeButton } from "../LikeButton";
+import { MapPin, Star, Ticket, Clock, ExternalLink, Calendar } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
-import { PromotionBadgeType, PostDetailTarget } from "../../types";
+import { PromotionBadgeType, PostDetailTarget, EventScheduleSlot } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { useEventFilter } from "../../contexts/EventFilterContext";
 
 export interface EventPostProps {
   id?: string;
@@ -18,9 +20,12 @@ export interface EventPostProps {
   subcategory?: string;
   subcategoryName?: string;
   location?: string;
+  region?: string;
   date?: string;
   time?: string;
   eventTime?: string;
+  eventDates?: string[];
+  eventSchedule?: EventScheduleSlot[];
   month?: string;
   day?: string;
   price?: string;
@@ -28,9 +33,12 @@ export interface EventPostProps {
   description?: string;
   image?: string;
   interestedCount?: string | number;
+  likesCount?: number | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onCategoryClick?: (category?: string, categoryName?: string, subcategory?: string, subcategoryName?: string) => void;
+  onLocationClick?: (location?: string, region?: string) => void;
 }
 
 export const EventPost: React.FC<EventPostProps> = ({ 
@@ -42,9 +50,12 @@ export const EventPost: React.FC<EventPostProps> = ({
   subcategory,
   subcategoryName,
   location = "Kranj, Glavni trg 12",
+  region,
   date = "Četrtek, 20. marec ob 19:00",
   time,
   eventTime,
+  eventDates,
+  eventSchedule,
   month = "MAR",
   day = "20",
   price,
@@ -52,10 +63,34 @@ export const EventPost: React.FC<EventPostProps> = ({
   description = "Vabljeni v dvorano Mestne knjižnice Kranj na predstavitev novih pesniških zbirk gorenjskih avtorjev.",
   image,
   interestedCount = 86,
+  likesCount = 0,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
+  onCategoryClick,
+  onLocationClick,
 }) => {
+  const { filterByEventCategory, filterByEventLocation } = useEventFilter();
+
+  const handleCategoryClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onCategoryClick) {
+      onCategoryClick(category, categoryName, subcategory, subcategoryName);
+    } else {
+      filterByEventCategory(category, categoryName, subcategory, subcategoryName);
+    }
+  };
+
+  const handleLocationClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onLocationClick) {
+      onLocationClick(location, region);
+    } else {
+      filterByEventLocation(location, region);
+    }
+  };
   const [currentCount, setCurrentCount] = useState<number>(
     typeof interestedCount === 'number' ? interestedCount : parseInt(String(interestedCount)) || 86
   );
@@ -94,6 +129,8 @@ export const EventPost: React.FC<EventPostProps> = ({
           date,
           time,
           eventTime,
+          eventDates,
+          eventSchedule,
           price,
           ticketUrl,
           description,
@@ -202,9 +239,14 @@ export const EventPost: React.FC<EventPostProps> = ({
           )}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-label-caps text-[11px] text-primary font-semibold uppercase tracking-wider">
+              <button
+                type="button"
+                onClick={handleCategoryClick}
+                className="font-label-caps text-[11px] text-primary hover:text-primary/80 hover:underline font-semibold uppercase tracking-wider cursor-pointer transition-colors text-left"
+                title={`Filtriraj dogodke po kategoriji: ${categoryName}`}
+              >
                 {categoryName}
-              </span>
+              </button>
               {organizer && (
                 <>
                   <span className="text-[11px] text-outline">•</span>
@@ -219,6 +261,14 @@ export const EventPost: React.FC<EventPostProps> = ({
               )}
             </div>
             <div className="flex items-center gap-1">
+              <LikeButton 
+                id={id}
+                targetType="event"
+                initialLikesCount={likesCount}
+                variant="minimal"
+                showCount={true}
+                itemTitle={title}
+              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}
@@ -247,13 +297,27 @@ export const EventPost: React.FC<EventPostProps> = ({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-primary" /> {location}
-            </span>
+            <button
+              type="button"
+              onClick={handleLocationClick}
+              className="flex items-center gap-1 text-outline hover:text-primary hover:underline transition-colors cursor-pointer text-left"
+              title={`Filtriraj dogodke po lokaciji: ${location}`}
+            >
+              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span>{location}</span>
+            </button>
             {date && (
               <>
                 <span>•</span>
-                <span className="font-medium text-on-surface">{date}</span>
+                <span className="font-medium text-on-surface flex items-center gap-1.5">
+                  <span>{date}</span>
+                  {eventDates && eventDates.length > 1 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+                      <Calendar className="w-3 h-3" />
+                      <span>+{eventDates.length - 1} ponovitev</span>
+                    </span>
+                  )}
+                </span>
               </>
             )}
             {showDistinctTime && (
@@ -302,6 +366,15 @@ export const EventPost: React.FC<EventPostProps> = ({
               url={`${window.location.origin}${postUrl}`}
               showLabel={true} 
               buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
+            />
+            <LikeButton 
+              id={id}
+              targetType="event"
+              initialLikesCount={likesCount}
+              variant="pill"
+              showCount={true}
+              showLabel={true}
+              itemTitle={title}
             />
             <button 
               onClick={handleInterest}

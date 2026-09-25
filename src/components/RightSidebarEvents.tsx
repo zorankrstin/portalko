@@ -1,24 +1,44 @@
-import { useState, useEffect } from 'react';
-import { Bookmark, Calendar, Building, Navigation } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Bookmark, Building, Navigation, Plus, MapPin } from 'lucide-react';
 import { PostDetailTarget } from '../types';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { subscribeToEvents, FirestoreEvent } from '../services/firestoreService';
 import { parseEventDateInfo } from '../utils/dateUtils';
+import { EventCalendarWidget } from './common/EventCalendarWidget';
+import { useEventFilter } from '../contexts/EventFilterContext';
+import { getUpcomingEvents, getTodayYmd } from '../utils/eventFilterUtils';
 
 interface RightSidebarEventsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
+const POPULAR_VENUES = [
+  'Arena Stožice',
+  'Cankarjev dom',
+  'Križanke',
+  'Španski borci',
+  'Ljudski vrt MB',
+  'SNG Drama',
+];
+
 export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) {
-  const [events, setEvents] = useState<FirestoreEvent[]>([]);
+  const [allEvents, setAllEvents] = useState<FirestoreEvent[]>([]);
+  const { locationFilter, filterByEventLocation, setLocationFilter } = useEventFilter();
+
+  const todayYmd = useMemo(() => getTodayYmd(), []);
 
   useEffect(() => {
-    const unsub = subscribeToEvents((allEvents) => {
-      const activeEvents = allEvents.filter(e => e.status !== 'rejected');
-      setEvents(activeEvents.slice(0, 3));
+    const unsub = subscribeToEvents((events) => {
+      const activeEvents = events.filter(e => e.status !== 'rejected');
+      setAllEvents(activeEvents);
     });
     return () => unsub();
   }, []);
+
+  // Filter only upcoming events (date >= today) sorted chronologically (earliest first)
+  const upcomingEvents = useMemo(() => {
+    return getUpcomingEvents(allEvents, todayYmd).slice(0, 4);
+  }, [allEvents, todayYmd]);
 
   const handleOpenEvent = (id: string, e?: React.MouseEvent) => {
     if (e) e.preventDefault();
@@ -30,37 +50,22 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
     scrollToPageTop();
   };
 
+  const handleVenueClick = (venue: string) => {
+    if (locationFilter.toLowerCase() === venue.toLowerCase()) {
+      setLocationFilter('');
+    } else {
+      filterByEventLocation(venue);
+    }
+  };
+
   return (
     <aside 
       id="right-sidebar" 
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
     >
-      {/* 1. Mini Koledar prireditev */}
-      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
-        <div className="flex items-center justify-between pb-1 border-b border-surface-container-low">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-[1em] h-[1em] text-primary text-xl" />
-            <h3 className="font-headline-sm text-sm font-bold text-on-surface">Koledar prireditev</h3>
-          </div>
-          <span className="font-label-caps text-label-caps text-primary font-bold">Koledar</span>
-        </div>
-        <div className="grid grid-cols-7 gap-1 text-center font-label-caps text-[10px] text-outline pt-1">
-          <span>P</span><span>T</span><span>S</span><span>Č</span><span>P</span><span className="text-primary font-bold">S</span><span className="text-primary font-bold">N</span>
-        </div>
-        <div className="grid grid-cols-7 gap-1 text-center font-label-md text-xs">
-          <span className="p-1 text-outline-variant">24</span><span className="p-1 text-outline-variant">25</span><span className="p-1 text-outline-variant">26</span><span className="p-1 text-outline-variant">27</span><span className="p-1 text-outline-variant">28</span>
-          <span className="p-1 rounded-lg bg-surface-container-low">1</span><span className="p-1 rounded-lg bg-surface-container-low">2</span><span className="p-1 rounded-lg bg-surface-container-low">3</span><span className="p-1 rounded-lg bg-surface-container-low">4</span><span className="p-1 rounded-lg bg-surface-container-low">5</span><span className="p-1 rounded-lg bg-surface-container-low">6</span><span className="p-1 rounded-lg bg-surface-container-low">7</span><span className="p-1 rounded-lg bg-surface-container-low">8</span><span className="p-1 rounded-lg bg-surface-container-low">9</span><span className="p-1 rounded-lg bg-surface-container-low">10</span><span className="p-1 rounded-lg bg-surface-container-low">11</span><span className="p-1 rounded-lg bg-surface-container-low">12</span><span className="p-1 rounded-lg bg-surface-container-low">13</span><span className="p-1 rounded-lg bg-surface-container-low">14</span><span className="p-1 rounded-lg bg-surface-container-low">15</span><span className="p-1 rounded-lg bg-surface-container-low">16</span><span className="p-1 rounded-lg bg-surface-container-low">17</span><span className="p-1 rounded-lg bg-surface-container-low">18</span><span className="p-1 rounded-lg bg-surface-container-low">19</span><span className="p-1 rounded-lg bg-surface-container-low">20</span><span className="p-1 rounded-lg bg-surface-container-low">21</span><span className="p-1 rounded-lg bg-surface-container-low">22</span><span className="p-1 rounded-lg bg-surface-container-low">23</span><span className="p-1 rounded-lg bg-surface-container-low">24</span><span className="p-1 rounded-lg bg-surface-container-low">25</span><span className="p-1 rounded-lg bg-surface-container-low">26</span>
-          <span className="p-1 rounded-lg bg-primary text-on-primary font-bold shadow-sm">27</span>
-          <span className="p-1 rounded-lg bg-secondary-fixed text-on-secondary-fixed font-bold">28</span>
-          <span className="p-1 rounded-lg bg-primary-fixed text-on-primary-fixed font-bold">29</span>
-          <span className="p-1 rounded-lg bg-tertiary-fixed text-on-tertiary-fixed font-bold">30</span>
-        </div>
-        <div className="pt-1 flex items-center justify-between text-[10px] text-outline">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary"></span> Danes</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-secondary"></span> Vikend dogodki</span>
-        </div>
-      </div>
+      {/* 1. Interaktivni Koledar prireditev (Date Filter) */}
+      <EventCalendarWidget events={allEvents} />
 
       {/* 2. Prihajajoči top dogodki v vaši bližini */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
@@ -72,11 +77,13 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
           <span className="font-label-caps text-label-caps text-outline">Aktualno</span>
         </div>
         <div className="flex flex-col gap-2.5">
-          {events.length === 0 ? (
+          {upcomingEvents.length === 0 ? (
             <p className="text-xs text-outline py-3 text-center">Trenutno ni prihajajočih dogodkov.</p>
           ) : (
-            events.map(ev => {
-              const dateInfo = parseEventDateInfo(ev.eventDate || ev.date, ev.eventTime);
+            upcomingEvents.map(ev => {
+              const dateInfo = parseEventDateInfo(ev.upcomingDate || ev.eventDate || ev.date, ev.eventTime);
+              const isToday = ev.upcomingDate === todayYmd;
+
               return (
                 <a 
                   key={ev.id}
@@ -86,12 +93,25 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
                   title={`Odpri dogodek: ${ev.title}`}
                 >
                   <div className="flex items-center justify-between text-[11px] text-outline">
-                    <span className="font-bold text-primary">{dateInfo.fullDate || 'Kmalu'}</span>
-                    <Bookmark className="w-[1em] h-[1em] text-sm group-hover:text-primary" />
+                    {isToday ? (
+                      <span className="font-bold text-primary flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        <span>Danes{ev.eventTime ? ` ob ${ev.eventTime}` : ''}</span>
+                      </span>
+                    ) : (
+                      <span className="font-bold text-primary">{dateInfo.fullDate || 'Kmalu'}</span>
+                    )}
+                    <Bookmark className="w-[1em] h-[1em] text-sm group-hover:text-primary shrink-0" />
                   </div>
                   <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">
                     {ev.title}
                   </p>
+                  {ev.location && (
+                    <div className="flex items-center gap-1 text-[10px] text-outline truncate mt-0.5">
+                      <MapPin className="w-3 h-3 text-outline/70 shrink-0" />
+                      <span className="truncate">{ev.location}</span>
+                    </div>
+                  )}
                 </a>
               );
             })
@@ -115,12 +135,12 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
           className="w-full py-2.5 px-3 rounded-xl bg-surface-container-lowest text-primary hover:bg-surface-container-high font-label-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer" 
           type="button"
         >
+          <Plus className="w-4 h-4" />
           <span>Oddaj prireditev</span>
-          <svg className="w-[1em] h-[1em] text-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
         </button>
       </div>
 
-      {/* 4. Prizorišča v Sloveniji */}
+      {/* 4. Prizorišča v Sloveniji (Interactive Location Filter) */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
         <div className="flex items-center justify-between pb-1 border-b border-surface-container-low">
           <div className="flex items-center gap-2">
@@ -130,12 +150,24 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
           <span className="font-label-caps text-label-caps text-outline">Slovenija</span>
         </div>
         <div className="flex flex-wrap gap-1.5 pt-1">
-          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-md text-xs">Arena Stožice</span>
-          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-md text-xs">Cankarjev dom</span>
-          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-md text-xs">Križanke</span>
-          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-md text-xs">Španski borci</span>
-          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-md text-xs">Ljudski vrt MB</span>
-          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-md text-xs">SNG Drama</span>
+          {POPULAR_VENUES.map((venue) => {
+            const isSelected = locationFilter.toLowerCase() === venue.toLowerCase();
+            return (
+              <button
+                key={venue}
+                type="button"
+                onClick={() => handleVenueClick(venue)}
+                title={`Filtriraj dogodke za prizorišče: ${venue}`}
+                className={`px-2.5 py-1 rounded-lg font-label-md text-xs transition-colors cursor-pointer text-left ${
+                  isSelected
+                    ? 'bg-primary text-on-primary font-bold shadow-xs'
+                    : 'bg-surface-container-low hover:bg-surface-container text-on-surface'
+                }`}
+              >
+                {venue}
+              </button>
+            );
+          })}
         </div>
       </div>
     </aside>

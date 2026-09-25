@@ -1,6 +1,7 @@
 import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
+import { LikeButton } from "../LikeButton";
 import { Rss, ExternalLink, Clock } from 'lucide-react';
 import { formatSlovenianDate, formatFullSlovenianDateTime } from "../../utils/dateUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
@@ -66,6 +67,14 @@ export const RssPost: React.FC<RssPostProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <LikeButton 
+            id={id} 
+            targetType="news" 
+            initialLikesCount={0} 
+            variant="minimal" 
+            showCount={true} 
+            itemTitle={title} 
+          />
           <BookmarkButton id={id} data={{ title, link, description, sourceName, pubDate, thumbnail, type: 'news', category: 'news' }} />
           <ShareMenu id={id} url={link} type="news" title={title} description={description} />
         </div>

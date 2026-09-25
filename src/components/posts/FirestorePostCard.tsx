@@ -3,8 +3,9 @@ import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
 import { Heart, MessageCircle, Sparkles, Edit3, Check, Ban, ArrowRight, Trash2, Loader2 } from 'lucide-react';
-import { FirestorePost, togglePostLikeInFirestore, deletePostInFirestore, deleteAdInFirestore, deleteEventInFirestore } from "../../services/firestoreService";
+import { FirestorePost, deletePostInFirestore, deleteAdInFirestore, deleteEventInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
+import { LikeButton } from "../LikeButton";
 import { AdPost } from "./AdPost";
 import { DealPost } from "./DealPost";
 import { EventPost } from "./EventPost";
@@ -25,8 +26,6 @@ export interface FirestorePostCardProps {
 
 export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNavigatePost }) => {
   const { currentUser } = useAuth();
-  const [likesCount, setLikesCount] = useState(post.likesCount || 0);
-  const [hasLiked, setHasLiked] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -254,6 +253,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           location={post.location || "Slovenija"}
           date={dateInfo.fullDate}
           eventTime={post.eventTime}
+          eventDates={post.eventDates}
+          eventSchedule={post.eventSchedule}
           month={dateInfo.month}
           day={dateInfo.day}
           price={post.price || "Vstop prost"}
@@ -275,13 +276,6 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
       </div>
     );
   }
-
-  const handleLike = async () => {
-    const nextLiked = !hasLiked;
-    setHasLiked(nextLiked);
-    setLikesCount(prev => nextLiked ? prev + 1 : Math.max(0, prev - 1));
-    await togglePostLikeInFirestore(post.id, nextLiked);
-  };
 
   const bookmarkData = {
     type: 'blog',
@@ -486,14 +480,15 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low pt-3 mt-1">
         <div className="flex items-center gap-4">
-          <button 
-            type="button" 
-            onClick={handleLike}
-            className={`flex items-center gap-1.5 text-label-md font-label-md transition-colors cursor-pointer ${hasLiked ? 'text-primary font-bold' : 'text-outline hover:text-primary'}`}
-          >
-            <Heart className={`w-4 h-4 ${hasLiked ? 'fill-primary text-primary' : ''}`} />
-            <span>{likesCount} všečkov</span>
-          </button>
+          <LikeButton
+            id={post.id}
+            targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
+            initialLikesCount={post.likesCount || 0}
+            variant="card-action"
+            showCount={true}
+            showLabel={true}
+            itemTitle={post.title}
+          />
           
           <a 
             href={postUrl}

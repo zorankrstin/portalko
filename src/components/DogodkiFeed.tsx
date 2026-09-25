@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BookmarkButton } from "./BookmarkButton";
 import { ShareMenu } from "./ShareMenu";
 import { ReportButton } from "./ReportButton";
-import { CalendarDays, MapPin, Search, Calendar, ChevronDown, PlusCircle, Star, Music, PartyPopper, Users, Sparkles, Flame, Tag, Layers, Globe } from 'lucide-react';
+import { CalendarDays, MapPin, Search, Calendar, ChevronDown, PlusCircle, Star, Music, PartyPopper, Users, Sparkles, Flame, Tag, Layers, Globe, X } from 'lucide-react';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { subscribeToEvents, FirestoreEvent } from '../services/firestoreService';
 import { ComposeModal } from './ComposeModal';
@@ -14,6 +14,9 @@ import { PromotedBadge } from './common/PromotedBadge';
 import { EventPost } from './posts/EventPost';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { parseEventDateInfo } from '../utils/dateUtils';
+import { useEventFilter } from '../contexts/EventFilterContext';
+import { extractEventDateStrings } from '../utils/eventFilterUtils';
+import { EventCalendarWidget } from './common/EventCalendarWidget';
 
 interface DogodkiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -24,11 +27,30 @@ interface DogodkiFeedProps {
 export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: DogodkiFeedProps) {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
-  const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [showMobileCalendar, setShowMobileCalendar] = useState(false);
+
+  // Global Event Filter Context (synced with Koledar prireditev in RightSidebar)
+  const {
+    selectedDates,
+    clearDates,
+    toggleDate,
+    datesSummary,
+    selectedCategory,
+    setSelectedCategory,
+    selectedSubcategory,
+    setSelectedSubcategory,
+    selectedRegion,
+    setSelectedRegion,
+    locationFilter,
+    setLocationFilter,
+    clearAllFilters,
+    hasActiveFilters,
+    activeFilterCount,
+    filterByEventCategory,
+    filterByEventLocation,
+  } = useEventFilter();
 
   // Dynamic categories for events
   const { categories } = useCategories('events');
@@ -42,9 +64,9 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
 
   // Active Category Object
   const activeCategoryObj = useMemo(() => {
-    if (activeCategory === 'all') return null;
-    return categories.find(c => c.id === activeCategory) || null;
-  }, [categories, activeCategory]);
+    if (selectedCategory === 'all') return null;
+    return categories.find(c => c.id === selectedCategory) || null;
+  }, [categories, selectedCategory]);
 
   // All available subcategories (when 'all' is selected, show all unique subcategories across all event categories)
   const availableSubcategories = useMemo(() => {
@@ -80,7 +102,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
   }, [categories, selectedSubcategory]);
 
   const handleCategorySelect = (catId: string) => {
-    setActiveCategory(catId);
+    setSelectedCategory(catId);
     setSelectedSubcategory('all');
     setPage(1);
   };
@@ -108,10 +130,10 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
       const evCatLower = (event.category || '').toLowerCase().trim();
       const evCatNameLower = (event.categoryName || '').toLowerCase().trim();
 
-      const matchesCat = activeCategory === 'all' || 
-        event.category === activeCategory ||
-        evCatLower === activeCategory.toLowerCase().trim() ||
-        evCatNameLower === activeCategory.toLowerCase().trim() ||
+      const matchesCat = selectedCategory === 'all' || 
+        event.category === selectedCategory ||
+        evCatLower === selectedCategory.toLowerCase().trim() ||
+        evCatNameLower === selectedCategory.toLowerCase().trim() ||
         (activeCategoryObj && (
           evCatLower === activeCategoryObj.name.toLowerCase().trim() ||
           evCatNameLower === activeCategoryObj.name.toLowerCase().trim() ||
@@ -138,9 +160,31 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
         (event.region && event.region.toLowerCase().includes(selectedRegion.toLowerCase())) ||
         (event.location && event.location.toLowerCase().includes(selectedRegion.toLowerCase()));
 
-      return matchesSearch && matchesCat && matchesSubcat && matchesReg;
+      // 1. Date Filtering (Koledar prireditev multi-date filter)
+      const eventDates = extractEventDateStrings(event);
+      const matchesDates = selectedDates.length === 0 ||
+        selectedDates.some(selDate => eventDates.includes(selDate));
+
+      // 2. Location / Venue Keyword Filtering
+      const targetLocLower = locationFilter.toLowerCase().trim();
+      const matchesLocation = !targetLocLower ||
+        (event.location && event.location.toLowerCase().includes(targetLocLower)) ||
+        (event.region && event.region.toLowerCase().includes(targetLocLower)) ||
+        (event.title && event.title.toLowerCase().includes(targetLocLower));
+
+      return matchesSearch && matchesCat && matchesSubcat && matchesReg && matchesDates && matchesLocation;
     });
-  }, [firestoreEvents, searchQuery, activeCategory, activeCategoryObj, selectedSubcategory, selectedSubcatObj, selectedRegion]);
+  }, [
+    firestoreEvents, 
+    searchQuery, 
+    selectedCategory, 
+    activeCategoryObj, 
+    selectedSubcategory, 
+    selectedSubcatObj, 
+    selectedRegion, 
+    selectedDates, 
+    locationFilter
+  ]);
 
   type UnifiedEvent = { type: 'firestore'; data: FirestoreEvent };
 
@@ -152,7 +196,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
   const checkEventPromoted = (item: UnifiedEvent): boolean => {
     const event = item.data;
     if (event.promotion) {
-      return isItemActivelyPromoted(event.promotion, 'dogodki', activeCategory, selectedSubcategory);
+      return isItemActivelyPromoted(event.promotion, 'dogodki', selectedCategory, selectedSubcategory);
     }
     if (event.isPromoted) {
       if (event.promotedUntil) {
@@ -174,7 +218,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
       return 0;
     });
     return copy;
-  }, [allEvents, activeCategory, selectedSubcategory]);
+  }, [allEvents, selectedCategory, selectedSubcategory]);
 
   const PAGE_SIZE = 10;
   const currentLimit = page * PAGE_SIZE;
@@ -204,28 +248,144 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
               Koncerti, festivali, gledališke predstave, športne prireditve in kulinarična doživetja po vsej Sloveniji.
             </p>
           </div>
-          <button 
-            onClick={() => setIsComposeOpen(true)}
-            className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+          <div className="flex items-center gap-2">
+            {/* Mobile Calendar Toggle Button (for screens where right sidebar is hidden) */}
+            <button
+              type="button"
+              onClick={() => setShowMobileCalendar(prev => !prev)}
+              className="lg:hidden px-3 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <Calendar className="w-4 h-4 text-primary" />
+              <span>{selectedDates.length > 0 ? `Koledar (${selectedDates.length})` : 'Koledar'}</span>
+            </button>
+            <button 
+              onClick={() => setIsComposeOpen(true)}
+              className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Dodaj</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Collapsible Mobile Calendar */}
+        {showMobileCalendar && (
+          <div className="lg:hidden mt-2 pt-3 border-t border-surface-container animate-in fade-in duration-200">
+            <EventCalendarWidget events={firestoreEvents} />
+          </div>
+        )}
+      </div>
+
+      {/* Active Filter Chips Bar (Dates, Category, Subcategory, Location) */}
+      {hasActiveFilters && (
+        <div className="bg-surface-container-lowest rounded-2xl p-3 sm:p-4 shadow-sm border border-primary/20 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in duration-200">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-outline font-label-caps uppercase tracking-wider mr-1">
+              Filtri:
+            </span>
+
+            {/* Date filter chip */}
+            {selectedDates.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/25 text-xs font-bold">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>{datesSummary}</span>
+                <button
+                  type="button"
+                  onClick={clearDates}
+                  title="Odstrani filter datumov"
+                  className="hover:bg-primary/20 rounded-full p-0.5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {/* Category chip */}
+            {selectedCategory !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-surface-container text-on-surface border border-surface-container-high text-xs font-semibold">
+                <Tag className="w-3.5 h-3.5 text-primary" />
+                <span>{activeCategoryObj?.name || selectedCategory}</span>
+                <button
+                  type="button"
+                  onClick={() => handleCategorySelect('all')}
+                  title="Odstrani filter kategorije"
+                  className="hover:bg-surface-container-high rounded-full p-0.5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {/* Subcategory chip */}
+            {selectedSubcategory !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-surface-container text-on-surface border border-surface-container-high text-xs font-semibold">
+                <span>Zvrst: {selectedSubcatObj?.name || selectedSubcategory}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubcategory('all')}
+                  title="Odstrani filter zvrsti"
+                  className="hover:bg-surface-container-high rounded-full p-0.5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {/* Region chip */}
+            {selectedRegion !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-surface-container text-on-surface border border-surface-container-high text-xs font-semibold">
+                <Globe className="w-3.5 h-3.5 text-primary" />
+                <span>{SLOVENIA_REGIONS.find(r => r.id === selectedRegion)?.shortName || selectedRegion}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRegion('all')}
+                  title="Odstrani filter regije"
+                  className="hover:bg-surface-container-high rounded-full p-0.5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {/* Specific Location chip */}
+            {locationFilter.trim() && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-secondary/10 text-secondary border border-secondary/25 text-xs font-bold">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Lokacija: {locationFilter}</span>
+                <button
+                  type="button"
+                  onClick={() => setLocationFilter('')}
+                  title="Odstrani filter lokacije"
+                  className="hover:bg-secondary/20 rounded-full p-0.5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="text-xs font-bold text-outline hover:text-primary transition-colors cursor-pointer underline"
           >
-            <PlusCircle className="w-4 h-4" />
-            <span>Dodaj</span>
+            Počisti vse filtre
           </button>
         </div>
-      </div>
+      )}
 
       {/* Main Categories Pills */}
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-1">
         <button
           onClick={() => handleCategorySelect('all')}
           className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
-            activeCategory === 'all'
+            selectedCategory === 'all'
               ? 'bg-primary text-on-primary font-bold'
               : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
           }`}
         >
           <span>Vsi dogodki</span>
-          <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${activeCategory === 'all' ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
+          <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
             {categoryCounts.all || 0}
           </span>
         </button>
@@ -234,7 +394,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
             key={cat.id}
             onClick={() => handleCategorySelect(cat.id)}
             className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
-              activeCategory === cat.id
+              selectedCategory === cat.id
                 ? 'bg-primary text-on-primary font-bold'
                 : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
             }`}
@@ -242,7 +402,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
             <span>{cat.icon || '📅'}</span>
             <span>{cat.name}</span>
             {categoryCounts[cat.id] !== undefined && categoryCounts[cat.id] > 0 && (
-              <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${activeCategory === cat.id ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
+              <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
                 {categoryCounts[cat.id]}
               </span>
             )}
@@ -301,15 +461,37 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-body-sm text-xs text-outline">Najdenih {allEvents.length} dogodkov</span>
+          <span className="font-body-sm text-xs text-outline">
+            Najdenih {sortedEvents.length} dogodkov
+            {selectedDates.length > 0 && ` za izbrane datume`}
+          </span>
         </div>
       </div>
 
       {/* Events List */}
       <div className="flex flex-col gap-space-md">
         {visibleEvents.length === 0 ? (
-          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50">
-            Ni najdenih dogodkov za izbrane kriterije (kategorija, zvrst ali regija).
+          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center border border-surface-container/50 flex flex-col items-center justify-center gap-3">
+            <Calendar className="w-10 h-10 text-outline/50" />
+            <div>
+              <h4 className="font-headline-sm text-base font-bold text-on-surface">Ni najdenih dogodkov</h4>
+              <p className="text-xs text-outline mt-1 max-w-md mx-auto">
+                {selectedDates.length > 0 
+                  ? `Za izbrane datume (${datesSummary})${locationFilter ? ` in lokacijo "${locationFilter}"` : ''} trenutno ni vpisanih dogodkov.`
+                  : locationFilter
+                  ? `Za lokacijo "${locationFilter}" trenutno ni vpisanih dogodkov.`
+                  : 'Za izbrane kriterije (kategorija, zvrst ali regija) trenutno ni najdenih dogodkov.'}
+              </p>
+            </div>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="px-4 py-2 rounded-xl bg-primary text-on-primary font-label-md text-xs font-bold transition-all shadow-sm cursor-pointer hover:bg-primary-container"
+              >
+                Počisti vse filtre in prikaži vse dogodke
+              </button>
+            )}
           </div>
         ) : (
           visibleEvents.map((item, idx) => {
@@ -324,10 +506,16 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
                 id={event.id}
                 title={event.title}
                 organizer={event.authorName}
+                category={event.category}
                 categoryName={event.categoryName || event.category || 'Dogodek'}
+                subcategory={event.subcategory}
+                subcategoryName={event.subcategoryName}
                 location={event.location || event.region || 'Slovenija'}
+                region={event.region}
                 date={dateInfo.fullDate}
                 eventTime={event.eventTime}
+                eventDates={event.eventDates}
+                eventSchedule={event.eventSchedule}
                 month={dateInfo.month}
                 day={dateInfo.day}
                 price={event.price || 'Vstop prost'}
@@ -335,8 +523,16 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
                 description={event.description}
                 image={event.imageUrl}
                 interestedCount={event.interestedCount}
+                likesCount={event.likesCount || 0}
                 isPromoted={isPromoted}
                 promotionBadgeType={badgeType}
+                onNavigatePost={onNavigatePost}
+                onCategoryClick={(cat, catName, sub, subName) => {
+                  filterByEventCategory(cat || 'all', catName, sub, subName, false);
+                }}
+                onLocationClick={(loc, reg) => {
+                  filterByEventLocation(loc || '', reg, false);
+                }}
               />
             );
           })

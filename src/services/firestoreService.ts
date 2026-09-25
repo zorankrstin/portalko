@@ -18,7 +18,7 @@ import { User, Role } from '../contexts/AuthContext';
 import { SavedItemData } from '../contexts/BookmarkContext';
 import { INITIAL_DEALS, HERO_BENTO_DEALS } from '../data/mockDealsData';
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
-import { PromotionConfig, PromotionTargetSection, PromotionBadgeType } from '../types';
+import { PromotionConfig, PromotionTargetSection, PromotionBadgeType, EventScheduleSlot } from '../types';
 
 /**
  * Sanitizes an object before calling Firestore updateDoc:
@@ -104,6 +104,9 @@ export interface FirestorePost {
   dealLink?: string;
   eventDate?: string;
   eventTime?: string;
+  eventDates?: string[];
+  eventTimes?: string[];
+  eventSchedule?: EventScheduleSlot[];
   ticketUrl?: string;
   location?: string;
   region?: string;
@@ -111,6 +114,7 @@ export interface FirestorePost {
   status?: 'published' | 'pending' | 'rejected' | 'archived';
   rejectionReason?: string;
   likesCount?: number;
+  likedBy?: string[];
   commentsCount?: number;
   // Promotion / Featured Post fields
   isPromoted?: boolean;
@@ -144,6 +148,8 @@ export interface FirestoreAd {
   tags?: string[];
   status: 'active' | 'sold' | 'closed' | 'pending' | 'rejected';
   rejectionReason?: string;
+  likesCount?: number;
+  likedBy?: string[];
   // Promotion / Featured Post fields
   isPromoted?: boolean;
   promotion?: PromotionConfig;
@@ -161,6 +167,9 @@ export interface FirestoreEvent {
   region?: string;
   eventDate?: string;
   eventTime?: string;
+  eventDates?: string[];
+  eventTimes?: string[];
+  eventSchedule?: EventScheduleSlot[];
   ticketUrl?: string;
   date?: string;
   price?: string;
@@ -178,6 +187,8 @@ export interface FirestoreEvent {
   imageUrls?: string[];
   tags?: string[];
   interestedCount?: number;
+  likesCount?: number;
+  likedBy?: string[];
   isPromoted?: boolean;
   promotion?: PromotionConfig;
   promotedUntil?: string;
@@ -602,7 +613,104 @@ export async function deletePostInFirestore(postId: string): Promise<void> {
   }
 }
 
-export async function togglePostLikeInFirestore(postId: string, increment: boolean): Promise<void> {
+export async function toggleItemLikeInFirestore(
+  targetType: 'post' | 'ad' | 'event' | 'blog' | 'news' | 'deal',
+  targetId: string,
+  userId: string,
+  increment: boolean
+): Promise<{ likesCount?: number; liked: boolean }> {
+  // 1. Update user's personal likes subcollection in Firestore
+  if (userId) {
+    try {
+      const userLikeRef = doc(db, 'users', userId, 'likes', targetId);
+      if (increment) {
+        await setDoc(userLikeRef, {
+          id: targetId,
+          userId,
+          targetId,
+          targetType,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        await deleteDoc(userLikeRef);
+      }
+    } catch (error) {
+      console.warn('Could not persist like in user subcollection:', error);
+    }
+  }
+
+  // 2. Determine target collection in Firestore
+  let colName = 'posts';
+  if (targetType === 'ad') colName = 'ads';
+  else if (targetType === 'event') colName = 'events';
+
+  let itemRef = doc(db, colName, targetId);
+  let snap = await getDoc(itemRef);
+
+  // If not found in guessed collection, try fallback collections
+  if (!snap.exists()) {
+    const fallbackCols = ['posts', 'ads', 'events'].filter(c => c !== colName);
+    for (const fc of fallbackCols) {
+      const altRef = doc(db, fc, targetId);
+      const altSnap = await getDoc(altRef);
+      if (altSnap.exists()) {
+        itemRef = altRef;
+        snap = altSnap;
+        colName = fc;
+        break;
+      }
+    }
+  }
+
+  let finalCount: number | undefined;
+  if (snap.exists()) {
+    try {
+      const data = snap.data();
+      const current = data?.likesCount || 0;
+      const likedBy = Array.isArray(data?.likedBy) ? [...data.likedBy] : [];
+      let updatedLikedBy: string[];
+      if (increment) {
+        updatedLikedBy = likedBy.includes(userId) ? likedBy : [...likedBy, userId];
+        finalCount = Math.max(updatedLikedBy.length, current + 1);
+      } else {
+        updatedLikedBy = likedBy.filter(uid => uid !== userId);
+        finalCount = Math.max(0, current - 1);
+      }
+      await updateDoc(itemRef, {
+        likesCount: finalCount,
+        likedBy: updatedLikedBy,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `${colName}/${targetId}`);
+    }
+  }
+
+  return { likesCount: finalCount, liked: increment };
+}
+
+export function subscribeToUserLikes(userId: string, onLikes: (likedIds: string[]) => void): () => void {
+  const path = `users/${userId}/likes`;
+  try {
+    const q = query(collection(db, 'users', userId, 'likes'));
+    return onSnapshot(q, (snapshot) => {
+      const ids = snapshot.docs.map(d => d.id);
+      onLikes(ids);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return () => {};
+  }
+}
+
+export async function togglePostLikeInFirestore(postId: string, increment: boolean, userId?: string): Promise<void> {
+  const uid = userId || auth.currentUser?.uid;
+  if (uid) {
+    await toggleItemLikeInFirestore('post', postId, uid, increment);
+    return;
+  }
   const path = `posts/${postId}`;
   try {
     const postRef = doc(db, 'posts', postId);

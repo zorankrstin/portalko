@@ -50,6 +50,14 @@ export const SECTION_TO_SLUG: Record<string, string> = {
 };
 
 /**
+ * Mapping of ViewMode / section to URL hash or slug
+ */
+export const VIEW_HASH_MAP: Record<string, string> = {
+  ...SECTION_TO_SLUG,
+  'post-detail': '',
+};
+
+/**
  * Map of URL slugs to their ViewMode
  */
 export const SLUG_TO_VIEW: Record<string, ViewMode> = {

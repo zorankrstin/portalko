@@ -49,19 +49,204 @@ export interface SloveniaRegion {
 }
 
 export const SLOVENIA_REGIONS: SloveniaRegion[] = [
-  { id: 'osrednjeslovenska', name: 'Osrednjeslovenska (Ljubljana z okolico)', shortName: 'Ljubljana & Osrednja', cities: ['Ljubljana', 'Kamnik', 'Domžale', 'Grosuplje', 'Vrhnika', 'Logatec', 'Medvode', 'Litija'] },
-  { id: 'podravska', name: 'Podravska (Maribor, Ptuj)', shortName: 'Maribor & Podravje', cities: ['Maribor', 'Ptuj', 'Slovenska Bistrica', 'Ormož', 'Lenart', 'Ruše'] },
-  { id: 'savinjska', name: 'Savinjska (Celje, Velenje)', shortName: 'Celje & Savinjska', cities: ['Celje', 'Velenje', 'Žalec', 'Slovenske Konjice', 'Šentjur', 'Rogaška Slatina', 'Laško', 'Mozirje'] },
-  { id: 'gorenjska', name: 'Gorenjska (Kranj, Jesenice, Bled)', shortName: 'Kranj & Gorenjska', cities: ['Kranj', 'Jesenice', 'Škofja Loka', 'Radovljica', 'Bled', 'Tržič', 'Bohinj', 'Kranjska Gora'] },
-  { id: 'obalnokraska', name: 'Obalno-kraška (Koper, Izola, Piran, Kras)', shortName: 'Koper & Obala', cities: ['Koper', 'Izola', 'Piran', 'Portorož', 'Sežana', 'Hrpelje-Kozina', 'Divača', 'Komen'] },
-  { id: 'goriska', name: 'Goriška (Nova Gorica, Ajdovščina, Soča)', shortName: 'Nova Gorica & Posočje', cities: ['Nova Gorica', 'Ajdovščina', 'Tolmin', 'Idrija', 'Bovec', 'Kobarid', 'Šempeter', 'Brda'] },
-  { id: 'jugovzhodna', name: 'Dolenjska & JV Slovenija (Novo mesto, Kočevje)', shortName: 'Novo mesto & Dolenjska', cities: ['Novo mesto', 'Kočevje', 'Črnomelj', 'Trebnje', 'Metlika', 'Ribnica', 'Šentjernej', 'Semič'] },
-  { id: 'pomurska', name: 'Pomurska (Murska Sobota, Lendava)', shortName: 'Murska Sobota & Pomurje', cities: ['Murska Sobota', 'Lendava', 'Gornja Radgona', 'Ljutomer', 'Beltinci', 'Radenci'] },
-  { id: 'koroska', name: 'Koroška (Slovenj Gradec, Ravne)', shortName: 'Slovenj Gradec & Koroška', cities: ['Slovenj Gradec', 'Ravne na Koroškem', 'Dravograd', 'Prevalje', 'Radlje ob Dravi', 'Mežica'] },
-  { id: 'posavska', name: 'Posavska (Krško, Brežice, Sevnica)', shortName: 'Krško & Posavje', cities: ['Krško', 'Brežice', 'Sevnica', 'Kostanjevica na Krki', 'Radeče', 'Bistrica ob Sotli'] },
-  { id: 'zasavska', name: 'Zasavska (Trbovlje, Zagorje, Hrastnik)', shortName: 'Trbovlje & Zasavje', cities: ['Trbovlje', 'Zagorje ob Savi', 'Hrastnik'] },
-  { id: 'primorskonotranjska', name: 'Primorsko-notranjska (Postojna, Ilirska Bistrica)', shortName: 'Postojna & Notranjska', cities: ['Postojna', 'Ilirska Bistrica', 'Cerknica', 'Pivka', 'Loška dolina', 'Bloke'] },
+  { 
+    id: 'osrednjeslovenska', 
+    name: 'Osrednjeslovenska', 
+    shortName: 'Ljubljana & Osrednja', 
+    cities: [
+      'Ljubljana', 'Domžale', 'Kamnik', 'Grosuplje', 'Vrhnika', 'Logatec', 'Medvode', 
+      'Litija', 'Ivančna Gorica', 'Brezovica', 'Mengeš', 'Škofljica', 'Trzin', 'Vodice', 
+      'Komenda', 'Ig', 'Borovnica', 'Horjul', 'Dobrova', 'Lukovica', 'Moravče', 'Šmartno pri Litiji'
+    ] 
+  },
+  { 
+    id: 'podravska', 
+    name: 'Podravska', 
+    shortName: 'Maribor & Podravje', 
+    cities: [
+      'Maribor', 'Ptuj', 'Slovenska Bistrica', 'Ormož', 'Lenart', 'Ruše', 'Pesnica', 
+      'Šentilj', 'Hoče-Slivnica', 'Miklavž na Dravskem polju', 'Rače-Fram', 'Kidričevo', 
+      'Duplek', 'Majšperk', 'Gorišnica', 'Dornava', 'Videm pri Ptuju', 'Poljčane', 
+      'Makole', 'Selnica ob Dravi', 'Sveta Trojica', 'Benedikt', 'Cerkvenjak', 'Destrnik', 'Žetale'
+    ] 
+  },
+  { 
+    id: 'savinjska', 
+    name: 'Savinjska', 
+    shortName: 'Celje & Savinjska', 
+    cities: [
+      'Celje', 'Velenje', 'Žalec', 'Slovenske Konjice', 'Šentjur', 'Rogaška Slatina', 
+      'Laško', 'Šoštanj', 'Zreče', 'Mozirje', 'Prebold', 'Polzela', 'Vransko', 
+      'Braslovče', 'Šmarje pri Jelšah', 'Podčetrtek', 'Kozje', 'Rogatec', 'Ljubno', 
+      'Gornji Grad', 'Luče', 'Solčava', 'Vojnik', 'Dobrna', 'Štore', 'Tabor', 'Rečica ob Savinji'
+    ] 
+  },
+  { 
+    id: 'gorenjska', 
+    name: 'Gorenjska', 
+    shortName: 'Kranj & Gorenjska', 
+    cities: [
+      'Kranj', 'Jesenice', 'Škofja Loka', 'Radovljica', 'Bled', 'Tržič', 'Bohinj', 
+      'Kranjska Gora', 'Železniki', 'Žiri', 'Šenčur', 'Cerklje na Gorenjskem', 'Naklo', 
+      'Preddvor', 'Gorje', 'Žirovnica', 'Gorenja vas'
+    ] 
+  },
+  { 
+    id: 'obalnokraska', 
+    name: 'Obalno-kraška', 
+    shortName: 'Koper & Obala', 
+    cities: [
+      'Koper', 'Izola', 'Piran', 'Portorož', 'Sežana', 'Ankaran', 'Hrpelje-Kozina', 'Divača', 'Komen'
+    ] 
+  },
+  { 
+    id: 'goriska', 
+    name: 'Goriška', 
+    shortName: 'Nova Gorica & Posočje', 
+    cities: [
+      'Nova Gorica', 'Ajdovščina', 'Tolmin', 'Idrija', 'Bovec', 'Kobarid', 
+      'Šempeter pri Gorici', 'Brda', 'Cerkno', 'Vipava', 'Kanal ob Soči', 'Miren', 'Renče'
+    ] 
+  },
+  { 
+    id: 'jugovzhodna', 
+    name: 'Jugovzhodna Slovenija (Dolenjska & Bela krajina)', 
+    shortName: 'Novo mesto & Dolenjska', 
+    cities: [
+      'Novo mesto', 'Kočevje', 'Črnomelj', 'Trebnje', 'Metlika', 'Ribnica', 'Šentjernej', 
+      'Semič', 'Žužemberk', 'Dolenjske Toplice', 'Šmarješke Toplice', 'Mirna Peč', 'Straža', 
+      'Mokronog', 'Mirna', 'Kostel', 'Sodražica', 'Osilnica'
+    ] 
+  },
+  { 
+    id: 'pomurska', 
+    name: 'Pomurska', 
+    shortName: 'Murska Sobota & Pomurje', 
+    cities: [
+      'Murska Sobota', 'Lendava', 'Gornja Radgona', 'Ljutomer', 'Beltinci', 'Radenci', 
+      'Moravske Toplice', 'Puconci', 'Tišina', 'Črenšovci', 'Turnišče', 'Kuzma', 
+      'Rogašovci', 'Grad', 'Gornji Petrovci', 'Šalovci', 'Odranci', 'Dobrovnik', 'Veržej', 'Križevci', 'Apače'
+    ] 
+  },
+  { 
+    id: 'koroska', 
+    name: 'Koroška', 
+    shortName: 'Slovenj Gradec & Koroška', 
+    cities: [
+      'Slovenj Gradec', 'Ravne na Koroškem', 'Dravograd', 'Prevalje', 'Radlje ob Dravi', 
+      'Mežica', 'Črna na Koroškem', 'Vuzenica', 'Muta', 'Mislinja', 'Podvelka', 'Ribnica na Pohorju'
+    ] 
+  },
+  { 
+    id: 'posavska', 
+    name: 'Posavska', 
+    shortName: 'Krško & Posavje', 
+    cities: [
+      'Krško', 'Brežice', 'Sevnica', 'Kostanjevica na Krki', 'Radeče', 'Bistrica ob Sotli'
+    ] 
+  },
+  { 
+    id: 'zasavska', 
+    name: 'Zasavska', 
+    shortName: 'Trbovlje & Zasavje', 
+    cities: [
+      'Trbovlje', 'Zagorje ob Savi', 'Hrastnik'
+    ] 
+  },
+  { 
+    id: 'primorskonotranjska', 
+    name: 'Primorsko-notranjska', 
+    shortName: 'Postojna & Notranjska', 
+    cities: [
+      'Postojna', 'Ilirska Bistrica', 'Cerknica', 'Pivka', 'Loška dolina', 'Bloke'
+    ] 
+  },
 ];
+
+export const POPULAR_SLOVENIA_TOWNS: string[] = [
+  'Ljubljana',
+  'Maribor',
+  'Celje',
+  'Kranj',
+  'Koper',
+  'Novo mesto',
+  'Velenje',
+  'Nova Gorica',
+  'Ptuj',
+  'Murska Sobota',
+  'Jesenice',
+  'Trbovlje',
+  'Kamnik',
+  'Domžale',
+  'Škofja Loka',
+  'Izola',
+  'Postojna',
+  'Kočevje',
+  'Slovenj Gradec',
+  'Ravne na Koroškem',
+  'Krško',
+  'Brežice',
+  'Grosuplje',
+  'Ajdovščina',
+  'Radovljica',
+  'Zagorje ob Savi',
+  'Slovenska Bistrica',
+  'Slovenske Konjice',
+  'Bled',
+  'Idrija',
+  'Sežana',
+  'Piran',
+  'Portorož',
+  'Vrhnika',
+  'Logatec',
+  'Tržič',
+  'Črnomelj',
+  'Hrastnik',
+  'Gornja Radgona',
+  'Ljutomer',
+  'Sevnica',
+  'Rogaška Slatina',
+  'Laško',
+  'Žalec',
+  'Ilirska Bistrica',
+  'Tolmin',
+  'Cerknica',
+  'Trebnje',
+  'Ribnica',
+  'Dravograd',
+  'Medvode',
+  'Mengeš',
+  'Litija',
+  'Lendava',
+  'Bohinj',
+  'Kranjska Gora',
+  'Bovec',
+  'Kobarid',
+  'Ankaran',
+  'Šentjur',
+  'Prevalje',
+  'Ruše',
+  'Ormož',
+  'Lenart',
+  'Metlika',
+  'Radenci',
+  'Moravske Toplice',
+  'Vipava',
+  'Brezovica',
+  'Ivančna Gorica'
+];
+
+/**
+ * Returns a deduplicated, alphabetically sorted list of all cities and towns in Slovenia.
+ */
+export function getAllSloveniaCities(): string[] {
+  const set = new Set<string>();
+  SLOVENIA_REGIONS.forEach(reg => {
+    reg.cities.forEach(c => set.add(c.trim()));
+  });
+  POPULAR_SLOVENIA_TOWNS.forEach(t => set.add(t.trim()));
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'sl'));
+}
 
 export const DEFAULT_CATEGORIES: CategoryItem[] = [
   // ---------------- MALI OGLASI ----------------
