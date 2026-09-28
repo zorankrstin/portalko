@@ -26,6 +26,7 @@ import { useAuth } from './contexts/AuthContext';
 import { scrollToPageTop, scrollToSidebarsTop } from './utils/scrollUtils';
 import { parseSearchQuery, SearchCategory } from './utils/searchUtils';
 import { updatePageSeo } from './utils/seoUtils';
+import { initAnalyticsNavigationTracker } from './utils/analyticsUtils';
 import { parseUrlPath, buildPostUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } from './utils/urlUtils';
 
 export { VIEW_HASH_MAP };
@@ -46,11 +47,12 @@ export default function App() {
   const [isRlsModalOpen, setIsRlsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Disable browser automatic scroll restoration to ensure reliable top-scroll
+  // Disable browser automatic scroll restoration to ensure reliable top-scroll and init analytics tracker
   useEffect(() => {
     if ('scrollRestoration' in window.history) {
       window.history.scrollRestoration = 'manual';
     }
+    initAnalyticsNavigationTracker();
   }, []);
 
   // Handle URL deep-linking (supporting clean /category/subcategory/title paths as well as legacy hash URLs)
@@ -179,8 +181,19 @@ export default function App() {
         canonicalUrl: authorUrl,
         type: 'profile',
       });
+    } else if (currentView === 'post-detail') {
+      const title = postDetailTitle || selectedPostTarget?.initialData?.title;
+      const cleanTitle = title ? `${title} | Portalko` : 'Objava | Portalko';
+      const cleanUrl = postDetailMeta.cleanUrl || (typeof window !== 'undefined' ? window.location.href : 'https://portalko.net');
+      updatePageSeo({
+        title: cleanTitle,
+        description: `Oglejte si podrobnosti objave na portalu Portalko.`,
+        url: cleanUrl,
+        canonicalUrl: cleanUrl,
+        type: selectedPostTarget?.type === 'event' ? 'event' : (selectedPostTarget?.type === 'ad' || selectedPostTarget?.type === 'deal') ? 'product' : 'article',
+      });
     }
-  }, [currentView, selectedAuthorProfile, currentUser]);
+  }, [currentView, selectedAuthorProfile, currentUser, postDetailTitle, selectedPostTarget, postDetailMeta]);
 
   // Global capture-phase click handler for any internal links across the portal
   useEffect(() => {

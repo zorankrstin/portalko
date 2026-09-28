@@ -607,6 +607,9 @@ const LOCAL_STORAGE_KEY = 'portalko_categories_cache';
 // Load cached categories if present, ensuring default categories are preserved
 function getCachedCategories(): CategoryItem[] {
   try {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return DEFAULT_CATEGORIES;
+    }
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);

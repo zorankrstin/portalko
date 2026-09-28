@@ -5,8 +5,9 @@
  */
 
 import { slugify } from './urlUtils';
+import { trackPageView, ensureGoogleAnalyticsTag } from './analyticsUtils';
 
-export { slugify };
+export { slugify, trackPageView, ensureGoogleAnalyticsTag };
 
 export interface SeoMetadataOptions {
   title?: string;
@@ -116,4 +117,7 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   } else if (jsonLdScript) {
     jsonLdScript.remove();
   }
+
+  // 8. Track page view in Google Analytics across every feed, post, and page
+  trackPageView(title, canonicalUrl || options.url, typeof window !== 'undefined' ? window.location.href : undefined);
 }

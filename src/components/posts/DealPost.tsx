@@ -43,29 +43,29 @@ export interface DealPostProps {
 
 export const DealPost: React.FC<DealPostProps> = ({ 
   id = "default",
-  title = "Hervis Slovenija: 30% spomladanski popust na vso tekaško obutev (Nike, Salomon, Asics)",
-  discount = "-30%",
+  title = "",
+  discount = "",
   oldPrice,
   newPrice,
   startDate,
   expirationDate,
-  author = "Hervis Slovenija",
+  author = "Partner",
   authorRole = "Preverjen partner",
   authorAvatar,
-  date = "Veljavno do konca meseca",
-  description = "Za vse registrirane člane portala je na voljo posebna ugodnost ob začetku tekaške sezone. Koda velja v spletni trgovini ter v vseh poslovalnicah po Sloveniji ob predložitvi digitalnega kupona.",
-  code = "TEK30",
-  link = "https://www.hervis.si",
-  votesCount = 142,
+  date = "",
+  description = "",
+  code,
+  link = "",
+  votesCount = 0,
   lovesCount = 0,
   dislikesCount = 0,
-  image = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&auto=format&fit=crop&q=80",
-  categoryName = "Šport & Obutev",
+  image = "",
+  categoryName = "Ugodnosti",
   category = "ugodnosti",
   subcategory,
   subcategoryName,
-  region = "Vsa Slovenija / Splet",
-  verifiedText = "Preverjeno danes",
+  region = "Vsa Slovenija",
+  verifiedText = "",
   featured = false,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
@@ -76,6 +76,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   const [hasVoted, setHasVoted] = useState(false);
 
   const cleanTitle = (title || '').replace(/^\[Ugodnost\]\s*/i, '');
+  const hasValidCode = Boolean(code && code.trim());
 
   const postUrl = buildPostUrl({
     type: 'deal',
@@ -112,7 +113,7 @@ export const DealPost: React.FC<DealPostProps> = ({
           newPrice,
           date,
           description,
-          code,
+          code: hasValidCode ? code!.trim() : undefined,
           link,
           region,
         },
@@ -126,8 +127,8 @@ export const DealPost: React.FC<DealPostProps> = ({
   const avatarSrc = authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`;
 
   const handleCopy = () => {
-    if (code) {
-      navigator.clipboard.writeText(code);
+    if (hasValidCode) {
+      navigator.clipboard.writeText(code!.trim());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -192,7 +193,7 @@ export const DealPost: React.FC<DealPostProps> = ({
     date: effectiveDate,
     description: cleanDescription,
     image: hasVisibleImage ? imgSrc : undefined,
-    code,
+    code: hasValidCode ? code!.trim() : undefined,
     link,
     votesCount: votes,
     categoryName,
@@ -412,11 +413,11 @@ export const DealPost: React.FC<DealPostProps> = ({
 
           {/* Promo Code or Direct Link CTA */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-            {code ? (
+            {hasValidCode ? (
               <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60">
                 <span className="font-label-caps text-[10px] text-outline uppercase font-bold">Koda:</span>
                 <span className="font-mono font-bold text-primary px-2 py-0.5 bg-surface-container-lowest rounded select-all text-xs border border-surface-container">
-                  {code}
+                  {code!.trim()}
                 </span>
                 <button 
                   onClick={handleCopy}

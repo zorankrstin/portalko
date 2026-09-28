@@ -37,6 +37,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { RichTextEditor } from './RichTextEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { createPostInFirestore, createAdInFirestore, createEventInFirestore } from '../services/firestoreService';
+import { trackEvent } from '../utils/analyticsUtils';
 import { LoginModal } from './LoginModal';
 import { useCategories } from '../hooks/useCategories';
 import { CategorySection, SLOVENIA_REGIONS, getAllSloveniaCities, getTertiaryCategories } from '../services/categoryService';
@@ -617,6 +618,12 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       }
 
       setSuccessMsg('Vaša objava je bila uspešno objavljena in je takoj vidna vsem obiskovalcem!');
+      trackEvent('new_post_published', {
+        post_type: postType,
+        post_title: title.trim(),
+        category: categorySlug,
+        subcategory: subcategorySlug || '',
+      });
       onPostCreated?.();
       setTimeout(() => {
         onClose();

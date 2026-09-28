@@ -15,7 +15,8 @@ import {
   User,
   Search,
   X,
-  Tag
+  Tag,
+  Layers
 } from 'lucide-react';
 import { ViewMode, PostDetailTarget, AuthorProfileTarget } from '../types';
 import { slugify } from '../utils/urlUtils';
@@ -266,9 +267,21 @@ export function Breadcrumbs({
       onClick: () => onViewChange(type === 'deal' ? 'deals' : type === 'event' ? 'events' : type === 'ad' ? 'ads' : (previousView === 'news' ? 'news' : 'blog')),
     });
 
-    // 2. Level 2: Subcategory (e.g. Avto-moto, Nepremičnine, Turizem & Izleti, etc.)
-    const resolvedSubcategory = subcategoryName || categoryName || selectedPostTarget.subcategorySlug || selectedPostTarget.categorySlug;
-    if (resolvedSubcategory && resolvedSubcategory.toLowerCase() !== sectionLabel.toLowerCase() && resolvedSubcategory !== 'splosno') {
+    // 2. Level 2: Main category (e.g. Glasba & Koncerti, Avto-moto, etc.)
+    if (categoryName && categoryName.toLowerCase() !== sectionLabel.toLowerCase() && categoryName.toLowerCase() !== 'splosno' && (!subcategoryName || categoryName.toLowerCase() !== subcategoryName.toLowerCase())) {
+      const catSlug = slugify(categoryName);
+      crumbs.push({
+        id: `cat-${catSlug}`,
+        label: categoryName,
+        href: `${sectionPath}/${catSlug}`,
+        icon: Layers,
+        onClick: () => onViewChange(type === 'deal' ? 'deals' : type === 'event' ? 'events' : type === 'ad' ? 'ads' : 'blog'),
+      });
+    }
+
+    // 3. Level 3: Subcategory (e.g. Klasika, jazz & blues, Osebna vozila, etc.)
+    const resolvedSubcategory = subcategoryName || (categoryName && !crumbs.some(c => c.id.startsWith('cat-')) ? categoryName : undefined) || selectedPostTarget.subcategorySlug;
+    if (resolvedSubcategory && resolvedSubcategory.toLowerCase() !== sectionLabel.toLowerCase() && resolvedSubcategory.toLowerCase() !== 'splosno' && (!categoryName || resolvedSubcategory.toLowerCase() !== categoryName.toLowerCase())) {
       const subcatSlug = slugify(resolvedSubcategory);
       crumbs.push({
         id: `subcat-${subcatSlug}`,

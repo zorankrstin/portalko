@@ -21,6 +21,7 @@ import { SavedItemData } from '../contexts/BookmarkContext';
 import { INITIAL_DEALS, HERO_BENTO_DEALS } from '../data/mockDealsData';
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
 import { PromotionConfig, PromotionTargetSection, PromotionBadgeType, EventScheduleSlot } from '../types';
+import { slugify } from '../utils/urlUtils';
 
 /**
  * Sanitizes an object before calling Firestore updateDoc:
@@ -1103,12 +1104,21 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
       }
       return item;
     }
-    // Case-insensitive fallback search
+    // Case-insensitive fallback search and title slug search
     const q = query(collection(db, 'events'), limit(100));
     const allSnaps = await getDocs(q);
+    const targetSlug = slugify(eventId);
+    const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
       const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
-      return d.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId;
+      if (d.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId) return true;
+      const data = d.data();
+      const itemTitleSlug = slugify(data.title || '');
+      if (itemTitleSlug) {
+        if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === eventId.toLowerCase()) return true;
+        if (targetSlug && (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug))) return true;
+      }
+      return false;
     });
     if (match) {
       const item = {
@@ -1153,9 +1163,18 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
     }
     const q = query(collection(db, 'posts'), limit(100));
     const allSnaps = await getDocs(q);
+    const targetSlug = slugify(postId);
+    const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
       const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
-      return d.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId;
+      if (d.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId) return true;
+      const data = d.data();
+      const itemTitleSlug = slugify(data.title || '');
+      if (itemTitleSlug) {
+        if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === postId.toLowerCase()) return true;
+        if (targetSlug && (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug))) return true;
+      }
+      return false;
     });
     if (match) {
       return {
@@ -1189,9 +1208,18 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
     }
     const q = query(collection(db, 'ads'), limit(100));
     const allSnaps = await getDocs(q);
+    const targetSlug = slugify(adId);
+    const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
       const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
-      return d.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId;
+      if (d.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId) return true;
+      const data = d.data();
+      const itemTitleSlug = slugify(data.title || '');
+      if (itemTitleSlug) {
+        if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === adId.toLowerCase()) return true;
+        if (targetSlug && (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug))) return true;
+      }
+      return false;
     });
     if (match) {
       return {

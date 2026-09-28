@@ -140,11 +140,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           newPrice: p.newPrice,
           startDate: p.startDate,
           expirationDate: p.expirationDate,
-          dealType: 'code' as const,
-          dealTypeName: 'Uporabniški kupon',
+          dealType: (p.promoCode && p.promoCode.trim()) ? ('code' as const) : ('sale' as const),
+          dealTypeName: (p.promoCode && p.promoCode.trim()) ? 'Koda za popust' : 'Letak & Akcija',
           date: p.expirationDate ? `Velja do ${p.expirationDate}` : 'Pravkar objavljeno',
           description: p.content,
-          code: p.promoCode || p.title.match(/[A-Z0-9]{4,10}/)?.[0] || undefined,
+          code: (p.promoCode && p.promoCode.trim()) ? p.promoCode.trim() : undefined,
           link: p.dealLink || '#',
           votes: (p.likesCount || 0) + 1,
           verifiedText: 'Članski predlog',
@@ -932,14 +932,14 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
                     {/* Promo Code or Direct Link CTA */}
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                      {deal.code ? (
+                      {deal.code && deal.code.trim() ? (
                         <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60">
                           <span className="font-label-caps text-[10px] text-outline uppercase font-bold">Koda:</span>
                           <span className="font-mono font-bold text-primary px-2 py-0.5 bg-surface-container-lowest rounded select-all text-xs border border-surface-container">
-                            {deal.code}
+                            {deal.code.trim()}
                           </span>
                           <button 
-                            onClick={() => handleCopy(deal.code!, deal.id)}
+                            onClick={() => handleCopy(deal.code!.trim(), deal.id)}
                             className="p-1 text-outline hover:text-primary transition-colors cursor-pointer" 
                             title="Kopiraj kodo" 
                             type="button"

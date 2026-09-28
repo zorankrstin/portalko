@@ -1,3 +1,13 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+# SPA Fallback: Rewrite all paths to index.html for React client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
 [build.environment]
   # Firebase browser keys are public identifiers. Keep all other secret
   # scanning enabled while allowing this restricted client-side value.

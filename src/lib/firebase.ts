@@ -3,15 +3,17 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseProjectConfig from '../../firebase-applet-config.json';
 
+const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : (typeof process !== 'undefined' ? process.env : {});
+
 const firebaseConfig = {
   ...firebaseProjectConfig,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseProjectConfig.projectId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseProjectConfig.appId,
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (firebaseProjectConfig as any).apiKey || "AIzaSyB35ggTZeyyH50V9mRoOAKcc3KNFugrdfg",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseProjectConfig.authDomain,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseProjectConfig.firestoreDatabaseId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseProjectConfig.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseProjectConfig.messagingSenderId,
+  projectId: env.VITE_FIREBASE_PROJECT_ID || firebaseProjectConfig.projectId,
+  appId: env.VITE_FIREBASE_APP_ID || firebaseProjectConfig.appId,
+  apiKey: env.VITE_FIREBASE_API_KEY || (firebaseProjectConfig as any).apiKey || "AIzaSyB35ggTZeyyH50V9mRoOAKcc3KNFugrdfg",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || firebaseProjectConfig.authDomain,
+  firestoreDatabaseId: env.VITE_FIREBASE_DATABASE_ID || firebaseProjectConfig.firestoreDatabaseId,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || firebaseProjectConfig.storageBucket,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseProjectConfig.messagingSenderId,
 };
 
 // Initialize Firebase App

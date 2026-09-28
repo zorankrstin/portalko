@@ -290,10 +290,33 @@ export function PostDetailPage({
     };
   }, [target.type, target.id]);
 
+  const [hasCollectionsLoaded, setHasCollectionsLoaded] = useState(false);
+
   useEffect(() => {
-    const unsubPosts = subscribeToPosts(setFirestorePosts);
-    const unsubEvents = subscribeToEvents(setFirestoreEvents);
-    const unsubAds = subscribeToAds(setFirestoreAds);
+    let postsDone = false;
+    let eventsDone = false;
+    let adsDone = false;
+    const checkReady = () => {
+      if (eventsDone || postsDone || adsDone) {
+        setHasCollectionsLoaded(true);
+      }
+    };
+
+    const unsubPosts = subscribeToPosts((posts) => {
+      setFirestorePosts(posts);
+      postsDone = true;
+      checkReady();
+    });
+    const unsubEvents = subscribeToEvents((events) => {
+      setFirestoreEvents(events);
+      eventsDone = true;
+      checkReady();
+    });
+    const unsubAds = subscribeToAds((ads) => {
+      setFirestoreAds(ads);
+      adsDone = true;
+      checkReady();
+    });
     return () => {
       unsubPosts();
       unsubEvents();
@@ -337,7 +360,11 @@ export function PostDetailPage({
         authorId: fs.authorId,
         status: fs.status,
         tags: fs.tags,
+        category: fs.category || 'event',
         categoryName: fs.categoryName || fs.category || 'Dogodek v živo',
+        subcategory: fs.subcategory,
+        subcategoryName: fs.subcategoryName,
+        thirdLevelCategory: fs.thirdLevelCategory,
         image: fs.imageUrl || (getActiveFallbackImage(true) || ''),
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
         interestedCount: fs.interestedCount || 42,
@@ -365,15 +392,18 @@ export function PostDetailPage({
         partnerRole: fs.authorRole,
         partnerAvatar: fs.authorAvatar,
         tags: fs.tags,
+        category: fs.category || 'deal',
+        categoryName: fs.categoryName || 'Ugodnosti & Popusti',
+        subcategory: fs.subcategory,
+        subcategoryName: fs.subcategoryName,
+        thirdLevelCategory: fs.thirdLevelCategory || (fs as any).make,
         date: fs.expirationDate ? `Velja do ${fs.expirationDate}` : (fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes'),
         image: fs.imageUrl || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
-        category: fs.category || 'deal',
-        categoryName: fs.categoryName || 'Ugodnosti & Popusti',
         region: fs.location || 'Vsa Slovenija',
         votes: fs.likesCount || 12,
         viewsCount: fs.viewsCount ?? 0,
-        code: fs.promoCode,
+        code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : undefined,
         link: fs.dealLink || 'https://www.portalko.net',
       };
     };
@@ -393,7 +423,11 @@ export function PostDetailPage({
         authorId: fs.authorId,
         status: fs.status,
         tags: fs.tags,
-        categoryName: fs.category || 'Mali oglas',
+        category: fs.category || 'ad',
+        categoryName: fs.categoryName || fs.category || 'Mali oglas',
+        subcategory: fs.subcategory,
+        subcategoryName: fs.subcategoryName,
+        thirdLevelCategory: fs.thirdLevelCategory || (fs as any).make,
         image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
         authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
@@ -439,8 +473,12 @@ export function PostDetailPage({
         date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Ravno objavljeno',
         image: fs.imageUrl,
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        category: fs.category,
         categoryName: resolvedCat.name,
         categoryId: resolvedCat.id,
+        subcategory: fs.subcategory,
+        subcategoryName: fs.subcategoryName,
+        thirdLevelCategory: fs.thirdLevelCategory || (fs as any).make,
         location: fs.location || 'Slovenija',
         readTime: '4 min branja',
         photoCount: fs.imageUrl ? '1 fotografija' : undefined,
@@ -480,6 +518,16 @@ export function PostDetailPage({
         if (itemTitleSlug === targetSlug) return true;
         if (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug)) return true;
       }
+
+      // Fuzzy check: if key slug parts match
+      if (item.title && typeof item.title === 'string') {
+        const cleanTitle = slugify(item.title);
+        const cleanTarget = targetSlug.toLowerCase().trim();
+        if (cleanTitle && cleanTarget) {
+          if (cleanTitle.includes(cleanTarget) || cleanTarget.includes(cleanTitle)) return true;
+        }
+      }
+
       return false;
     };
 
@@ -1425,7 +1473,9 @@ export function PostDetailPage({
     return results.slice(0, 4);
   }, [itemData, target.id, firestorePosts, firestoreAds, firestoreEvents]);
 
-  if (isDirectLoading && !itemData) {
+  const isPageLoading = (isDirectLoading || !hasCollectionsLoaded) && !itemData;
+
+  if (isPageLoading) {
     return (
       <main className="lg:col-span-6 flex flex-col items-center justify-center p-16 bg-surface-container-lowest rounded-2xl border border-surface-container/60 shadow-xs min-h-[420px] text-center">
         <div className="w-12 h-12 rounded-full border-3 border-primary/20 border-t-primary animate-spin mb-4" />
@@ -2286,14 +2336,14 @@ export function PostDetailPage({
               </div>
 
               <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                {itemData.code ? (
+                {itemData.code && itemData.code.trim() ? (
                   <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-2 rounded-xl border border-primary/30 shadow-xs">
                     <span className="text-xs text-outline uppercase font-bold">Koda:</span>
                     <span className="font-mono font-bold text-sm text-primary select-all px-2 py-0.5 rounded bg-primary/10">
-                      {itemData.code}
+                      {itemData.code.trim()}
                     </span>
                     <button
-                      onClick={() => handleCopyCode(itemData.code)}
+                      onClick={() => handleCopyCode(itemData.code!.trim())}
                       className="p-1.5 rounded-lg text-outline hover:text-primary transition-colors cursor-pointer"
                       title="Kopiraj kodo za popust"
                     >

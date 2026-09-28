@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="sl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Portalko</title>
+    <script>
+      // Single Page Application redirect script for static hosts (GitHub Pages, etc.)
+      (function() {
+        var path = window.location.pathname;
+        var search = window.location.search;
+        var hash = window.location.hash;
+        // Redirect to root preserving the full route in the search query parameter 'spa_route'
+        var targetUrl = '/' + (path !== '/' ? '?spa_route=' + encodeURIComponent(path + search) : '') + hash;
+        window.location.replace(targetUrl);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Nalaganje portala Portalko...</p>
+  </body>
+</html>

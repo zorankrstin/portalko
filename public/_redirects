@@ -1,0 +1,2 @@
+# SPA redirect rules for client-side routing on Netlify, Cloudflare Pages, etc.
+/*    /index.html   200

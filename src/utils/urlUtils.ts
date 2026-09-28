@@ -248,26 +248,37 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
     };
   }
 
-  // 3-level route: /category/subcategory/title (The IDEAL SEO structure requested)
+  // Multi-level post detail routes: /section/category/subcategory/title or /section/subcategory/title
   if (segments.length >= 3) {
-    const categoryPart = segments[0].toLowerCase();
-    const subcategoryPart = segments[1].toLowerCase();
-    const titlePart = segments[2];
+    const sectionPart = segments[0].toLowerCase();
+    const type = getTypeFromSection(sectionPart);
 
-    const type = getTypeFromSection(categoryPart);
+    // The last segment is ALWAYS the post title or ID
+    const titlePart = segments[segments.length - 1];
+
+    let categoryPart = sectionPart;
+    let subcategoryPart = '';
+
+    if (segments.length >= 4) {
+      categoryPart = segments[1].toLowerCase();
+      subcategoryPart = segments[2].toLowerCase();
+    } else {
+      // 3 segments: /section/subcategory/title or /section/category/title
+      subcategoryPart = segments[1].toLowerCase();
+    }
 
     return {
       view: 'post-detail',
       isPostDetail: true,
       categorySlug: categoryPart,
-      subcategorySlug: subcategoryPart,
+      subcategorySlug: subcategoryPart || undefined,
       titleSlug: titlePart,
       target: {
         type,
         id: titlePart, // initial search term (can match id or title slug)
         titleSlug: titlePart,
         categorySlug: categoryPart,
-        subcategorySlug: subcategoryPart,
+        subcategorySlug: subcategoryPart || undefined,
       }
     };
   }
