@@ -18,12 +18,12 @@ export function BottomNav({ currentView, onViewChange }: BottomNavProps) {
         <span className="text-[10px] font-label-caps font-semibold">Domov</span>
       </a>
       <a 
-        href="#ugodnosti"
+        href="#akcije"
         onClick={(e) => { e.preventDefault(); onViewChange('deals'); }}
         className={`flex flex-col items-center gap-1 p-1.5 rounded-xl min-w-[3.2rem] transition-colors ${currentView === 'deals' ? 'text-secondary' : 'text-on-surface-variant'}`}
       >
         <Percent className={`w-5 h-5 ${currentView === 'deals' ? 'stroke-[2.5]' : ''}`} />
-        <span className="text-[10px] font-label-caps font-semibold">Popusti</span>
+        <span className="text-[10px] font-label-caps font-semibold">Akcije</span>
       </a>
       <a 
         href="#mali-oglasi"

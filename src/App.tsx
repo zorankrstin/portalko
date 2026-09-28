@@ -6,6 +6,7 @@ import { RightSidebarAds } from './components/RightSidebarAds';
 import { RightSidebarEvents } from './components/RightSidebarEvents';
 import { RightSidebarDeals } from './components/RightSidebarDeals';
 import { RightSidebarBlog } from './components/RightSidebarBlog';
+import { RightSidebarNews } from './components/RightSidebarNews';
 import { MainFeed } from './components/MainFeed';
 import { MaliOglasiFeed } from './components/MaliOglasiFeed';
 import { DogodkiFeed } from './components/DogodkiFeed';
@@ -55,6 +56,13 @@ export default function App() {
   // Handle URL deep-linking (supporting clean /category/subcategory/title paths as well as legacy hash URLs)
   useEffect(() => {
     const handleRouteChange = () => {
+      // Auto-migrate legacy /#ugodnosti or /ugodnosti to /#akcije or /akcije
+      if (window.location.hash.toLowerCase() === '#ugodnosti') {
+        window.history.replaceState(null, '', '#akcije');
+      } else if (window.location.pathname.toLowerCase() === '/ugodnosti') {
+        window.history.replaceState(null, '', '/akcije');
+      }
+
       const parsed = parseUrlPath(window.location.pathname, window.location.hash);
 
       if (parsed.isPostDetail && parsed.target) {
@@ -131,10 +139,10 @@ export default function App() {
       });
     } else if (currentView === 'deals') {
       updatePageSeo({
-        title: 'Ugodnosti, popusti in kuponi v Sloveniji | Portalko',
-        description: 'Preverjene ugodnosti, promocijske kode, akcije in popusti v slovenskih trgovinah ter na spletu.',
-        url: `${window.location.origin}/ugodnosti`,
-        canonicalUrl: `${window.location.origin}/ugodnosti`,
+        title: 'Akcije, popusti in ugodnosti v Sloveniji | Portalko',
+        description: 'Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu.',
+        url: `${window.location.origin}/akcije`,
+        canonicalUrl: `${window.location.origin}/akcije`,
         type: 'website',
       });
     } else if (currentView === 'blog') {
@@ -557,6 +565,7 @@ export default function App() {
                   {selectedPostTarget.type === 'deal' && <RightSidebarDeals onNavigatePost={handleNavigatePost} />}
                   {selectedPostTarget.type === 'event' && <RightSidebarEvents onNavigatePost={handleNavigatePost} />}
                   {selectedPostTarget.type === 'ad' && <RightSidebarAds onNavigatePost={handleNavigatePost} />}
+                  {selectedPostTarget.type === 'news' && <RightSidebarNews onNavigatePost={handleNavigatePost} />}
                   {(selectedPostTarget.type === 'blog' || selectedPostTarget.type === 'post') && (
                     <RightSidebarBlog onNavigatePost={handleNavigatePost} />
                   )}
@@ -569,6 +578,8 @@ export default function App() {
                 <RightSidebarEvents onNavigatePost={handleNavigatePost} />
               ) : currentView === 'deals' ? (
                 <RightSidebarDeals onNavigatePost={handleNavigatePost} />
+              ) : currentView === 'news' ? (
+                <RightSidebarNews onNavigatePost={handleNavigatePost} />
               ) : (
                 <RightSidebar onNavigatePost={handleNavigatePost} />
               )}

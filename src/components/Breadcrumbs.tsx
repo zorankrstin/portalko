@@ -142,8 +142,8 @@ export function Breadcrumbs({
   } else if (currentView === 'deals') {
     crumbs.push({
       id: 'deals',
-      label: 'Ugodnosti & Popusti',
-      href: '/ugodnosti',
+      label: 'Akcije & Popusti',
+      href: '/akcije',
       icon: Percent,
       isCurrent: !searchQuery,
       onClick: () => onViewChange('deals'),
@@ -200,11 +200,11 @@ export function Breadcrumbs({
                                     parentType === 'event' ? 'events' :
                                     parentType === 'ad' ? 'ads' :
                                     (previousView === 'news' ? 'news' : 'blog');
-        const parentLabel = parentView === 'deals' ? 'Ugodnosti' :
+        const parentLabel = parentView === 'deals' ? 'Akcije' :
                             parentView === 'events' ? 'Dogodki' :
                             parentView === 'ads' ? 'Mali oglasi' :
                             (parentView === 'news' ? 'Novice' : 'Blog');
-        const parentHref = parentView === 'deals' ? '/ugodnosti' :
+        const parentHref = parentView === 'deals' ? '/akcije' :
                            parentView === 'events' ? '/dogodki' :
                            parentView === 'ads' ? '/mali-oglasi' :
                            (parentView === 'news' ? '/novice' : '/blog');
@@ -241,8 +241,8 @@ export function Breadcrumbs({
     let SectionIcon = BookOpen;
 
     if (type === 'deal') {
-      sectionLabel = 'Ugodnosti';
-      sectionPath = '/ugodnosti';
+      sectionLabel = 'Akcije';
+      sectionPath = '/akcije';
       SectionIcon = Percent;
     } else if (type === 'event') {
       sectionLabel = 'Dogodki';

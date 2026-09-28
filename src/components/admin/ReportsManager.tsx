@@ -29,6 +29,7 @@ import {
   deleteReportedContent 
 } from '../../services/reportService';
 import { formatFullSlovenianDateTime } from '../../utils/dateUtils';
+import { buildPostUrl, slugify } from '../../utils/urlUtils';
 
 interface ReportsManagerProps {
   onNavigatePost?: (type: string, id: string) => void;
@@ -341,22 +342,34 @@ export function ReportsManager({ onNavigatePost }: ReportsManagerProps) {
                       {report.targetAuthor && (
                         <div className="text-xs text-outline flex items-center gap-1">
                           <User className="w-3 h-3" />
-                          <span>Avtor vsebine: <strong>{report.targetAuthor}</strong></span>
+                          <span>
+                            Avtor vsebine:{' '}
+                            <a
+                              href={`/avtor/${slugify(report.targetAuthor)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-on-surface hover:text-primary transition-colors font-bold underline decoration-dotted underline-offset-2 inline-flex items-center gap-0.5"
+                              title={`Odpri profil avtorja ${report.targetAuthor} v novem oknu`}
+                            >
+                              <span>{report.targetAuthor}</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          </span>
                         </div>
                       )}
                     </div>
 
                     {report.targetId && (
                       <a
-                        href={`#${report.targetType}-${report.targetId}`}
-                        onClick={(e) => {
-                          if (onNavigatePost) {
-                            e.preventDefault();
-                            onNavigatePost(report.targetType, report.targetId);
-                          }
-                        }}
+                        href={buildPostUrl({
+                          type: report.targetType as any,
+                          id: report.targetId,
+                          title: report.targetTitle
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="p-2 rounded-lg bg-surface border border-outline-variant/20 hover:bg-surface-container text-primary text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors"
-                        title="Ogled vsebine"
+                        title="Odpri vsebino v novem oknu"
                       >
                         <span>Odpri</span>
                         <ExternalLink className="w-3 h-3" />

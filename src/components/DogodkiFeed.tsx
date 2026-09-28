@@ -9,7 +9,7 @@ import { ComposeModal } from './ComposeModal';
 import { INITIAL_EVENTS, MockEventItem } from '../data/mockFeedData';
 import { PostDetailTarget } from '../types';
 import { useCategories } from '../hooks/useCategories';
-import { SLOVENIA_REGIONS } from '../services/categoryService';
+import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categoryService';
 import { PromotedBadge } from './common/PromotedBadge';
 import { EventPost } from './posts/EventPost';
 import { isItemActivelyPromoted } from '../services/promotionService';
@@ -17,6 +17,7 @@ import { parseEventDateInfo } from '../utils/dateUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { extractEventDateStrings } from '../utils/eventFilterUtils';
 import { EventCalendarWidget } from './common/EventCalendarWidget';
+import { EventsCategoryLocationFilter } from './events/EventsCategoryLocationFilter';
 
 interface DogodkiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -30,6 +31,8 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [showMobileCalendar, setShowMobileCalendar] = useState(false);
+  const [selectedTertiaryCategory, setSelectedTertiaryCategory] = useState<string>('all');
+  const [sortOption, setSortOption] = useState<string>('newest');
 
   // Global Event Filter Context (synced with Koledar prireditev in RightSidebar)
   const {
@@ -104,6 +107,18 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
   const handleCategorySelect = (catId: string) => {
     setSelectedCategory(catId);
     setSelectedSubcategory('all');
+    setSelectedTertiaryCategory('all');
+    setPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setSelectedCategory('all');
+    setSelectedSubcategory('all');
+    setSelectedTertiaryCategory('all');
+    setSelectedRegion('all');
+    setLocationFilter('');
+    clearDates();
+    setSortOption('newest');
     setPage(1);
   };
 
@@ -156,9 +171,61 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
           evSubNameLower === selectedSubcatObj.id.toLowerCase().trim()
         ));
 
-      const matchesReg = selectedRegion === 'all' ||
-        (event.region && event.region.toLowerCase().includes(selectedRegion.toLowerCase())) ||
-        (event.location && event.location.toLowerCase().includes(selectedRegion.toLowerCase()));
+      // 3rd Level Category / Genre / Venue / Type filter (e.g. Rock, Stand-up, Maraton, Odprta kuhna)
+      let matchesTertiary = true;
+      if (selectedTertiaryCategory !== 'all') {
+        const target = selectedTertiaryCategory.toLowerCase().trim();
+        const evTitle = (event.title || '').toLowerCase();
+        const evDesc = (event.description || '').toLowerCase();
+        const evTags = Array.isArray((event as any).tags) 
+          ? ((event as any).tags as string[]).map(t => String(t).toLowerCase()).join(' ') 
+          : String((event as any).tags || '').toLowerCase();
+        const evThird = String((event as any).thirdLevelCategory || (event as any).genre || (event as any).eventType || '').toLowerCase();
+
+        matchesTertiary = 
+          evTitle.includes(target) ||
+          evDesc.includes(target) ||
+          evTags.includes(target) ||
+          evThird.includes(target) ||
+          (target.includes('rock') && (evTitle.includes('rock') || evDesc.includes('rock') || evTitle.includes('metal') || evDesc.includes('metal'))) ||
+          (target.includes('stand-up') && (evTitle.includes('stand-up') || evTitle.includes('stand up') || evTitle.includes('komedij') || evDesc.includes('stand-up'))) ||
+          (target.includes('odprta kuhna') && (evTitle.includes('kuhna') || evDesc.includes('kuhna') || evTitle.includes('kulinari')));
+      }
+
+      // Region & City/Town filter
+      let matchesReg = false;
+      if (selectedRegion === 'all') {
+        matchesReg = true;
+      } else {
+        const target = selectedRegion.toLowerCase().trim();
+        const evLoc = (event.location || '').toLowerCase().trim();
+        const evReg = (event.region || '').toLowerCase().trim();
+
+        if (target.startsWith('city-')) {
+          const cleanCity = target.replace('city-', '').trim().toLowerCase();
+          if (evLoc.includes(cleanCity) || evReg.includes(cleanCity)) {
+            matchesReg = true;
+          }
+        } else {
+          if (evReg.includes(target) || evLoc.includes(target)) {
+            matchesReg = true;
+          } else {
+            const regObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
+            if (regObj) {
+              if (evReg.includes(regObj.id) || evReg.includes(regObj.name.toLowerCase()) || evReg.includes(regObj.shortName.toLowerCase())) {
+                matchesReg = true;
+              } else {
+                for (const city of regObj.cities) {
+                  if (evLoc.includes(city.toLowerCase()) || evReg.includes(city.toLowerCase())) {
+                    matchesReg = true;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
 
       // 1. Date Filtering (Koledar prireditev multi-date filter)
       const eventDates = extractEventDateStrings(event);
@@ -172,7 +239,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
         (event.region && event.region.toLowerCase().includes(targetLocLower)) ||
         (event.title && event.title.toLowerCase().includes(targetLocLower));
 
-      return matchesSearch && matchesCat && matchesSubcat && matchesReg && matchesDates && matchesLocation;
+      return matchesSearch && matchesCat && matchesSubcat && matchesTertiary && matchesReg && matchesDates && matchesLocation;
     });
   }, [
     firestoreEvents, 
@@ -181,6 +248,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
     activeCategoryObj, 
     selectedSubcategory, 
     selectedSubcatObj, 
+    selectedTertiaryCategory,
     selectedRegion, 
     selectedDates, 
     locationFilter
@@ -215,10 +283,16 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
       const bPromoted = checkEventPromoted(b);
       if (aPromoted && !bPromoted) return -1;
       if (!aPromoted && bPromoted) return 1;
+
+      if (sortOption === 'popular') {
+        const likesA = (a.data.likesCount || 0);
+        const likesB = (b.data.likesCount || 0);
+        return likesB - likesA;
+      }
       return 0;
     });
     return copy;
-  }, [allEvents, selectedCategory, selectedSubcategory]);
+  }, [allEvents, selectedCategory, selectedSubcategory, sortOption]);
 
   const PAGE_SIZE = 10;
   const currentLimit = page * PAGE_SIZE;
@@ -241,7 +315,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
-              <PartyPopper className="w-[1em] h-[1em] text-primary shrink-0" />
+              <PartyPopper className="w-[1em] h-[1em] text-tertiary-container shrink-0" />
               <span>Dogodki in prireditve</span>
             </h1>
             <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
@@ -255,12 +329,12 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
               onClick={() => setShowMobileCalendar(prev => !prev)}
               className="lg:hidden px-3 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
             >
-              <Calendar className="w-4 h-4 text-primary" />
+              <Calendar className="w-4 h-4 text-tertiary-container" />
               <span>{selectedDates.length > 0 ? `Koledar (${selectedDates.length})` : 'Koledar'}</span>
             </button>
             <button 
               onClick={() => setIsComposeOpen(true)}
-              className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+              className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl bg-tertiary-container hover:bg-tertiary-container/90 text-on-tertiary-container font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" />
               <span>Dodaj</span>
@@ -276,197 +350,45 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
         )}
       </div>
 
-      {/* Active Filter Chips Bar (Dates, Category, Subcategory, Location) */}
-      {hasActiveFilters && (
-        <div className="bg-surface-container-lowest rounded-2xl p-3 sm:p-4 shadow-sm border border-primary/20 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in duration-200">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-outline font-label-caps uppercase tracking-wider mr-1">
-              Filtri:
-            </span>
-
-            {/* Date filter chip */}
-            {selectedDates.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-primary/10 text-primary border border-primary/25 text-xs font-bold">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>{datesSummary}</span>
-                <button
-                  type="button"
-                  onClick={clearDates}
-                  title="Odstrani filter datumov"
-                  className="hover:bg-primary/20 rounded-full p-0.5 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            )}
-
-            {/* Category chip */}
-            {selectedCategory !== 'all' && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-surface-container text-on-surface border border-surface-container-high text-xs font-semibold">
-                <Tag className="w-3.5 h-3.5 text-primary" />
-                <span>{activeCategoryObj?.name || selectedCategory}</span>
-                <button
-                  type="button"
-                  onClick={() => handleCategorySelect('all')}
-                  title="Odstrani filter kategorije"
-                  className="hover:bg-surface-container-high rounded-full p-0.5 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            )}
-
-            {/* Subcategory chip */}
-            {selectedSubcategory !== 'all' && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-surface-container text-on-surface border border-surface-container-high text-xs font-semibold">
-                <span>Zvrst: {selectedSubcatObj?.name || selectedSubcategory}</span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedSubcategory('all')}
-                  title="Odstrani filter zvrsti"
-                  className="hover:bg-surface-container-high rounded-full p-0.5 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            )}
-
-            {/* Region chip */}
-            {selectedRegion !== 'all' && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-surface-container text-on-surface border border-surface-container-high text-xs font-semibold">
-                <Globe className="w-3.5 h-3.5 text-primary" />
-                <span>{SLOVENIA_REGIONS.find(r => r.id === selectedRegion)?.shortName || selectedRegion}</span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRegion('all')}
-                  title="Odstrani filter regije"
-                  className="hover:bg-surface-container-high rounded-full p-0.5 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            )}
-
-            {/* Specific Location chip */}
-            {locationFilter.trim() && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-secondary/10 text-secondary border border-secondary/25 text-xs font-bold">
-                <MapPin className="w-3.5 h-3.5" />
-                <span>Lokacija: {locationFilter}</span>
-                <button
-                  type="button"
-                  onClick={() => setLocationFilter('')}
-                  title="Odstrani filter lokacije"
-                  className="hover:bg-secondary/20 rounded-full p-0.5 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={clearAllFilters}
-            className="text-xs font-bold text-outline hover:text-primary transition-colors cursor-pointer underline"
-          >
-            Počisti vse filtre
-          </button>
-        </div>
-      )}
-
-      {/* Main Categories Pills */}
-      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-1">
-        <button
-          onClick={() => handleCategorySelect('all')}
-          className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
-            selectedCategory === 'all'
-              ? 'bg-primary text-on-primary font-bold'
-              : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
-          }`}
-        >
-          <span>Vsi dogodki</span>
-          <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
-            {categoryCounts.all || 0}
-          </span>
-        </button>
-        {categories.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => handleCategorySelect(cat.id)}
-            className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
-              selectedCategory === cat.id
-                ? 'bg-primary text-on-primary font-bold'
-                : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
-            }`}
-          >
-            <span>{cat.icon || '📅'}</span>
-            <span>{cat.name}</span>
-            {categoryCounts[cat.id] !== undefined && categoryCounts[cat.id] > 0 && (
-              <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
-                {categoryCounts[cat.id]}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Subcategory Pills - always visible when subcategories are available */}
-      {availableSubcategories.length > 0 && (
-        <div className="bg-surface-container-low/60 p-2 sm:p-2.5 rounded-xl border border-surface-container/60 flex flex-wrap items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="text-[11px] font-semibold text-outline uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
-            <Tag className="w-3 h-3 text-primary" />
-            <span>Zvrst:</span>
-          </div>
-          <button
-            onClick={() => { setSelectedSubcategory('all'); setPage(1); }}
-            className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-              selectedSubcategory === 'all'
-                ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
-                : 'text-on-surface-variant hover:bg-surface-container'
-            }`}
-          >
-            Vse zvrsti
-          </button>
-          {availableSubcategories.map(sub => (
-            <button
-              key={sub.id}
-              onClick={() => { setSelectedSubcategory(sub.id); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-                selectedSubcategory === sub.id || (selectedSubcatObj && (selectedSubcatObj.id === sub.id || selectedSubcatObj.name.toLowerCase() === sub.name.toLowerCase()))
-                  ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
-                  : 'text-on-surface-variant hover:bg-surface-container'
-              }`}
-            >
-              {sub.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* City & Localization Region filter */}
-      <div className="bg-surface-container-lowest rounded-2xl p-3 shadow-sm border border-surface-container/50 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <MapPin className="w-4 h-4 text-outline shrink-0" />
-          <select 
-            value={selectedRegion}
-            onChange={(e) => { setSelectedRegion(e.target.value); setPage(1); }}
-            className="bg-surface-container-low text-on-surface font-label-md text-xs px-2.5 py-1.5 rounded-lg focus:outline-none flex-1 cursor-pointer"
-          >
-            <option value="all">Vsa prizorišča (Vsa Slovenija)</option>
-            {SLOVENIA_REGIONS.map(reg => (
-              <option key={reg.id} value={reg.id}>
-                {reg.name} ({reg.cities.slice(0, 2).join(', ')})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-body-sm text-xs text-outline">
-            Najdenih {sortedEvents.length} dogodkov
-            {selectedDates.length > 0 && ` za izbrane datume`}
-          </span>
-        </div>
-      </div>
+      {/* Dedicated Category Badges and Dropdown Filter Component */}
+      <EventsCategoryLocationFilter
+        categories={categories}
+        categoryCounts={categoryCounts}
+        selectedCategory={selectedCategory}
+        onSelectCategory={(catId) => {
+          setSelectedCategory(catId);
+          setSelectedSubcategory('all');
+          setSelectedTertiaryCategory('all');
+          setPage(1);
+        }}
+        selectedSubcategory={selectedSubcategory}
+        onSelectSubcategory={(subId) => {
+          setSelectedSubcategory(subId);
+          setSelectedTertiaryCategory('all');
+          setPage(1);
+        }}
+        selectedTertiaryCategory={selectedTertiaryCategory}
+        onSelectTertiaryCategory={(tertiary) => {
+          setSelectedTertiaryCategory(tertiary);
+          setPage(1);
+        }}
+        selectedRegion={selectedRegion}
+        onSelectRegion={(reg) => {
+          setSelectedRegion(reg);
+          setPage(1);
+        }}
+        sortOption={sortOption}
+        onSelectSortOption={(sort) => {
+          setSortOption(sort);
+          setPage(1);
+        }}
+        totalResultsCount={filteredFirestore.length}
+        onResetFilters={handleResetFilters}
+        searchQuery={searchQuery}
+        selectedDates={selectedDates}
+        datesSummary={datesSummary}
+        onClearDates={clearDates}
+      />
 
       {/* Events List */}
       <div className="flex flex-col gap-space-md">
@@ -487,7 +409,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="px-4 py-2 rounded-xl bg-primary text-on-primary font-label-md text-xs font-bold transition-all shadow-sm cursor-pointer hover:bg-primary-container"
+                className="px-4 py-2 rounded-xl bg-tertiary-container text-on-tertiary-container font-label-md text-xs font-bold transition-all shadow-sm cursor-pointer hover:bg-tertiary-container/90"
               >
                 Počisti vse filtre in prikaži vse dogodke
               </button>

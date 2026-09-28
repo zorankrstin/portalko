@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { 
-  Zap, Copy, Check, CheckCircle2, Calculator, ShieldCheck, 
+  CheckCircle2, Calculator, ShieldCheck, 
   BookOpen, ExternalLink, Bell, Percent, Sparkles 
 } from 'lucide-react';
-import { TOP_VOUCHER_CODES, CATALOGUES_DATA } from '../data/mockDealsData';
+import { CATALOGUES_DATA } from '../data/mockDealsData';
 import { PostDetailTarget } from '../types';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
@@ -13,7 +13,6 @@ interface RightSidebarDealsProps {
 }
 
 export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {}) {
-  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [emailInput, setEmailInput] = useState('');
   const [subscribed, setSubscribed] = useState(false);
   const [userDeals, setUserDeals] = useState<FirestorePost[]>([]);
@@ -43,12 +42,6 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
       window.location.hash = `deal-${id}`;
     }
     scrollToPageTop();
-  };
-
-  const handleCopy = (code: string, id: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCodeId(id);
-    setTimeout(() => setCopiedCodeId(null), 2500);
   };
 
   const handleSubscribe = (e: React.FormEvent) => {
@@ -120,49 +113,7 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
         </div>
       </div>
 
-      {/* 1. TOP KODE TEDNA */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-primary" />
-            <h3 className="font-headline-sm text-sm font-bold text-on-surface">Top kode tedna</h3>
-          </div>
-          <span className="px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-caps text-[10px] uppercase font-bold">
-            Preverjeno
-          </span>
-        </div>
-        <p className="font-body-sm text-xs text-outline leading-snug">
-          Najbolj unovčene kode za popust v zadnjih 48 urah s strani članov:
-        </p>
-
-        <div className="space-y-2.5 pt-1">
-          {TOP_VOUCHER_CODES.slice(0, 4).map(item => {
-            const isCopied = copiedCodeId === item.id;
-            return (
-              <div 
-                key={item.id}
-                className="p-2.5 rounded-xl bg-surface-container-low flex items-center justify-between gap-2 hover:bg-surface-container transition-colors border border-surface-container/50"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="font-label-lg text-xs font-bold text-on-surface truncate">{item.store}</div>
-                  <div className="font-label-sm text-[11px] text-outline truncate">{item.description}</div>
-                </div>
-                <button 
-                  onClick={() => handleCopy(item.code, item.id)}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface-container-lowest text-primary font-mono text-xs font-bold shadow-xs hover:bg-primary hover:text-on-primary transition-all flex items-center gap-1 shrink-0 cursor-pointer border border-surface-container"
-                  type="button"
-                  title="Klikni za kopiranje kode"
-                >
-                  <span>{item.code}</span>
-                  {isCopied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3 h-3" />}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. PAMETNI KALKULATOR PRIHRANKOV */}
+      {/* 1. PAMETNI KALKULATOR PRIHRANKOV */}
       <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

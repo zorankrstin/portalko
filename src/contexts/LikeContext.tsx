@@ -2,10 +2,16 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
-import { subscribeToUserLikes, toggleItemLikeInFirestore } from '../services/firestoreService';
+import { 
+  subscribeToUserLikes, 
+  toggleItemLikeInFirestore, 
+  subscribeToUserReactions, 
+  toggleItemReactionInFirestore 
+} from '../services/firestoreService';
 import type { PostDetailType } from '../types';
 
 export type LikeTargetType = PostDetailType | 'news' | 'ad' | 'event' | 'blog' | 'deal' | 'post';
+export type ReactionType = 'like' | 'love' | 'dislike';
 
 interface LikeContextType {
   likedIds: string[];
@@ -19,18 +25,41 @@ interface LikeContextType {
       title?: string;
     }
   ) => Promise<{ success: boolean; liked: boolean; newCount: number }>;
+
+  // Rich reactions additions:
+  reactions: Record<string, ReactionType | null>;
+  getReaction: (id: string) => ReactionType | null;
+  getReactionsCounts: (
+    id: string, 
+    initialCounts?: { likes?: number; loves?: number; dislikes?: number }
+  ) => { likes: number; loves: number; dislikes: number };
+  toggleReaction: (
+    id: string,
+    reaction: ReactionType,
+    options?: {
+      targetType?: LikeTargetType;
+      initialCounts?: { likes?: number; loves?: number; dislikes?: number };
+      title?: string;
+    }
+  ) => Promise<{ 
+    success: boolean; 
+    reaction: ReactionType | null; 
+    counts: { likes: number; loves: number; dislikes: number } 
+  }>;
 }
 
 const LikeContext = createContext<LikeContextType | undefined>(undefined);
 
 const STORAGE_LIKES_PREFIX = 'portal_user_likes_';
+const STORAGE_REACTIONS_PREFIX = 'portal_user_reactions_';
 const STORAGE_COUNTS_KEY = 'portal_custom_likes_counts';
+const STORAGE_REACTIONS_COUNTS_KEY = 'portal_custom_reactions_counts';
 
 export function LikeProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth();
   const currentUserId = currentUser?.id || auth.currentUser?.uid || null;
 
-  // Track liked IDs for current user
+  // Track liked IDs for current user (standard likes)
   const [likedIds, setLikedIds] = useState<string[]>(() => {
     if (!currentUserId) return [];
     try {
@@ -41,7 +70,7 @@ export function LikeProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // Track counts override (live delta/updates)
+  // Track counts override for standard likes
   const [countsOverride, setCountsOverride] = useState<Record<string, number>>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_COUNTS_KEY);
@@ -51,30 +80,61 @@ export function LikeProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // Reload local liked IDs when user changes
+  // Track rich reactions for current user
+  const [reactions, setReactions] = useState<Record<string, ReactionType | null>>(() => {
+    if (!currentUserId) return {};
+    try {
+      const stored = localStorage.getItem(`${STORAGE_REACTIONS_PREFIX}${currentUserId}`);
+      return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  // Track reactions counts override
+  const [reactionsCounts, setReactionsCounts] = useState<Record<string, { likes: number; loves: number; dislikes: number }>>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_REACTIONS_COUNTS_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  // Reload local likes and reactions when user changes
   useEffect(() => {
     if (!currentUserId) {
       setLikedIds([]);
+      setReactions({});
       return;
     }
     try {
-      const stored = localStorage.getItem(`${STORAGE_LIKES_PREFIX}${currentUserId}`);
-      if (stored) {
-        setLikedIds(JSON.parse(stored));
+      const storedLikes = localStorage.getItem(`${STORAGE_LIKES_PREFIX}${currentUserId}`);
+      if (storedLikes) {
+        setLikedIds(JSON.parse(storedLikes));
+      }
+      const storedReactions = localStorage.getItem(`${STORAGE_REACTIONS_PREFIX}${currentUserId}`);
+      if (storedReactions) {
+        setReactions(JSON.parse(storedReactions));
       }
     } catch (e) {
-      console.error('Error reading likes from storage', e);
+      console.error('Error reading likes/reactions from storage', e);
     }
   }, [currentUserId]);
 
-  // Sync with Firestore real-time for authenticated user
+  // Sync likes and reactions with Firestore real-time
   useEffect(() => {
     let unsubscribeFirestoreLikes: (() => void) | null = null;
+    let unsubscribeFirestoreReactions: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
       if (unsubscribeFirestoreLikes) {
         unsubscribeFirestoreLikes();
         unsubscribeFirestoreLikes = null;
+      }
+      if (unsubscribeFirestoreReactions) {
+        unsubscribeFirestoreReactions();
+        unsubscribeFirestoreReactions = null;
       }
 
       if (fbUser) {
@@ -83,38 +143,52 @@ export function LikeProvider({ children }: { children: ReactNode }) {
             setLikedIds(prev => Array.from(new Set([...prev, ...firestoreLikedIds])));
           }
         });
+
+        unsubscribeFirestoreReactions = subscribeToUserReactions(fbUser.uid, (firestoreReactions) => {
+          if (firestoreReactions) {
+            setReactions(prev => ({ ...prev, ...firestoreReactions }));
+          }
+        });
       }
     });
 
     return () => {
       if (unsubscribeFirestoreLikes) unsubscribeFirestoreLikes();
+      if (unsubscribeFirestoreReactions) unsubscribeFirestoreReactions();
       unsubscribeAuth();
     };
   }, []);
 
-  // Persist likedIds to localStorage
+  // Persist likedIds & reactions to localStorage
   useEffect(() => {
     if (currentUserId) {
       try {
         localStorage.setItem(`${STORAGE_LIKES_PREFIX}${currentUserId}`, JSON.stringify(likedIds));
+        localStorage.setItem(`${STORAGE_REACTIONS_PREFIX}${currentUserId}`, JSON.stringify(reactions));
       } catch (e) {
-        console.error('Error persisting likes', e);
+        console.error('Error persisting likes/reactions', e);
       }
     }
-  }, [likedIds, currentUserId]);
+  }, [likedIds, reactions, currentUserId]);
 
-  // Persist countsOverride to localStorage
+  // Persist overrides to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_COUNTS_KEY, JSON.stringify(countsOverride));
+      localStorage.setItem(STORAGE_REACTIONS_COUNTS_KEY, JSON.stringify(reactionsCounts));
     } catch (e) {
-      console.error('Error persisting counts override', e);
+      console.error('Error persisting counts overrides', e);
     }
-  }, [countsOverride]);
+  }, [countsOverride, reactionsCounts]);
 
   const isLiked = (id: string): boolean => {
     if (!currentUserId) return false;
     return likedIds.includes(id);
+  };
+
+  const getReaction = (id: string): ReactionType | null => {
+    if (!currentUserId) return null;
+    return reactions[id] || null;
   };
 
   const parseCount = (cnt?: number | string): number => {
@@ -133,6 +207,20 @@ export function LikeProvider({ children }: { children: ReactNode }) {
     return parseCount(initialCount);
   };
 
+  const getReactionsCounts = (
+    id: string,
+    initialCounts?: { likes?: number; loves?: number; dislikes?: number }
+  ): { likes: number; loves: number; dislikes: number } => {
+    if (reactionsCounts[id] !== undefined) {
+      return reactionsCounts[id];
+    }
+    return {
+      likes: parseCount(initialCounts?.likes),
+      loves: parseCount(initialCounts?.loves),
+      dislikes: parseCount(initialCounts?.dislikes),
+    };
+  };
+
   const toggleLike = async (
     id: string,
     options?: {
@@ -141,13 +229,8 @@ export function LikeProvider({ children }: { children: ReactNode }) {
       title?: string;
     }
   ): Promise<{ success: boolean; liked: boolean; newCount: number }> => {
-    const rawInitial = parseCount(options?.initialCount);
-    const currentCount = countsOverride[id] !== undefined ? countsOverride[id] : rawInitial;
-
-    // Check if user is logged in
     const activeUid = currentUserId;
     if (!activeUid) {
-      // User is not authenticated -> prompt to login
       window.dispatchEvent(
         new CustomEvent('open_auth_modal', {
           detail: {
@@ -156,33 +239,123 @@ export function LikeProvider({ children }: { children: ReactNode }) {
           },
         })
       );
-      return { success: false, liked: false, newCount: currentCount };
+      return { success: false, liked: false, newCount: getLikesCount(id, options?.initialCount) };
     }
 
-    const currentlyLiked = likedIds.includes(id);
-    const nextLiked = !currentlyLiked;
-    const nextCount = nextLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
+    // Toggle reaction through toggleReaction for unification
+    const currentReaction = getReaction(id);
+    const result = await toggleReaction(id, 'like', {
+      targetType: options?.targetType,
+      initialCounts: { likes: parseCount(options?.initialCount) },
+      title: options?.title,
+    });
 
-    // 1. Optimistic state updates
-    setLikedIds(prev => (nextLiked ? [...prev, id] : prev.filter(i => i !== id)));
-    setCountsOverride(prev => ({
+    return {
+      success: result.success,
+      liked: result.reaction === 'like',
+      newCount: result.counts.likes,
+    };
+  };
+
+  const toggleReaction = async (
+    id: string,
+    reaction: ReactionType,
+    options?: {
+      targetType?: LikeTargetType;
+      initialCounts?: { likes?: number; loves?: number; dislikes?: number };
+      title?: string;
+    }
+  ): Promise<{ 
+    success: boolean; 
+    reaction: ReactionType | null; 
+    counts: { likes: number; loves: number; dislikes: number } 
+  }> => {
+    const activeUid = currentUserId;
+    if (!activeUid) {
+      window.dispatchEvent(
+        new CustomEvent('open_auth_modal', {
+          detail: {
+            mode: 'login',
+            message: 'Za reakcijo na objave se morate prijaviti.',
+          },
+        })
+      );
+      return { 
+        success: false, 
+        reaction: null, 
+        counts: getReactionsCounts(id, options?.initialCounts) 
+      };
+    }
+
+    const previousReaction = reactions[id] || null;
+    const isTogglingOff = previousReaction === reaction;
+    const nextReaction = isTogglingOff ? null : reaction;
+
+    const initialCounts = getReactionsCounts(id, options?.initialCounts);
+    const nextCounts = { ...initialCounts };
+
+    // Deduct old reaction
+    if (previousReaction === 'like') {
+      nextCounts.likes = Math.max(0, nextCounts.likes - 1);
+    } else if (previousReaction === 'love') {
+      nextCounts.loves = Math.max(0, nextCounts.loves - 1);
+    } else if (previousReaction === 'dislike') {
+      nextCounts.dislikes = Math.max(0, nextCounts.dislikes - 1);
+    }
+
+    // Add new reaction
+    if (nextReaction === 'like') {
+      nextCounts.likes += 1;
+    } else if (nextReaction === 'love') {
+      nextCounts.loves += 1;
+    } else if (nextReaction === 'dislike') {
+      nextCounts.dislikes += 1;
+    }
+
+    // Optimistically update reactions, standard likedIds, and overrides
+    setReactions(prev => ({
       ...prev,
-      [id]: nextCount,
+      [id]: nextReaction,
     }));
 
-    // 2. Persist to Firestore
+    setReactionsCounts(prev => ({
+      ...prev,
+      [id]: nextCounts,
+    }));
+
+    // Update standard likedIds array for 100% compatibility
+    setLikedIds(prev => (nextReaction === 'like' ? [...prev, id] : prev.filter(i => i !== id)));
+    setCountsOverride(prev => ({
+      ...prev,
+      [id]: nextCounts.likes,
+    }));
+
+    // Persist to Firestore
     try {
       const targetType = (options?.targetType || 'post') as any;
-      await toggleItemLikeInFirestore(targetType, id, activeUid, nextLiked);
+      await toggleItemReactionInFirestore(targetType, id, activeUid, nextReaction, previousReaction);
     } catch (err) {
-      console.error('Error persisting like to Firestore:', err);
+      console.error('Error persisting reaction to Firestore:', err);
     }
 
-    return { success: true, liked: nextLiked, newCount: nextCount };
+    return {
+      success: true,
+      reaction: nextReaction,
+      counts: nextCounts,
+    };
   };
 
   return (
-    <LikeContext.Provider value={{ likedIds, isLiked, getLikesCount, toggleLike }}>
+    <LikeContext.Provider value={{ 
+      likedIds, 
+      isLiked, 
+      getLikesCount, 
+      toggleLike,
+      reactions,
+      getReaction,
+      getReactionsCounts,
+      toggleReaction
+    }}>
       {children}
     </LikeContext.Provider>
   );

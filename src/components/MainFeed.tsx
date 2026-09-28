@@ -298,7 +298,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: Mai
             id="main-filter-tab-news"
           >
             <Rss className={`w-3.5 h-3.5 shrink-0 ${filterType === 'news' ? 'text-on-primary' : 'text-primary'}`} />
-            <span>Novice RSS</span>
+            <span>Novice</span>
           </button>
           <button 
             onClick={() => { 
@@ -312,8 +312,8 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: Mai
             className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'ad' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
             id="main-filter-tab-ads"
           >
-            <Store className={`w-3.5 h-3.5 shrink-0 ${filterType === 'ad' ? 'text-on-primary' : 'text-outline'}`} />
-            <span>Oglasi</span>
+            <Store className={`w-3.5 h-3.5 shrink-0 ${filterType === 'ad' ? 'text-on-primary' : 'text-primary'}`} />
+            <span>Mali oglasi</span>
           </button>
           <button 
             onClick={() => { 
@@ -324,11 +324,11 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: Mai
                 setPage(1); 
               }
             }} 
-            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'deal' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'deal' ? 'bg-secondary text-on-secondary font-bold shadow-xs' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
             id="main-filter-tab-deals"
           >
-            <Percent className={`w-3.5 h-3.5 shrink-0 ${filterType === 'deal' ? 'text-on-primary' : 'text-secondary'}`} />
-            <span>Ugodnosti</span>
+            <Percent className={`w-3.5 h-3.5 shrink-0 ${filterType === 'deal' ? 'text-on-secondary' : 'text-secondary'}`} />
+            <span>Akcije</span>
           </button>
           <button 
             onClick={() => { 
@@ -339,10 +339,10 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: Mai
                 setPage(1); 
               }
             }} 
-            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'event' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            className={`px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl font-label-md text-[11px] sm:text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${filterType === 'event' ? 'bg-tertiary-container text-on-tertiary-container font-bold shadow-xs' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
             id="main-filter-tab-events"
           >
-            <CalendarDays className={`w-3.5 h-3.5 shrink-0 ${filterType === 'event' ? 'text-on-primary' : 'text-tertiary-container'}`} />
+            <CalendarDays className={`w-3.5 h-3.5 shrink-0 ${filterType === 'event' ? 'text-on-tertiary-container' : 'text-tertiary-container'}`} />
             <span>Dogodki</span>
           </button>
           <button 

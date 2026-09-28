@@ -29,7 +29,9 @@ import {
   Trash2,
   Plus,
   Copy,
-  CalendarDays
+  CalendarDays,
+  SlidersHorizontal,
+  Sparkles
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { RichTextEditor } from './RichTextEditor';
@@ -37,7 +39,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createPostInFirestore, createAdInFirestore, createEventInFirestore } from '../services/firestoreService';
 import { LoginModal } from './LoginModal';
 import { useCategories } from '../hooks/useCategories';
-import { CategorySection, SLOVENIA_REGIONS } from '../services/categoryService';
+import { CategorySection, SLOVENIA_REGIONS, getAllSloveniaCities, getTertiaryCategories } from '../services/categoryService';
 import { compressImageFileToDataUrl } from '../utils/imageUtils';
 import { EventScheduleSlot } from '../types';
 
@@ -59,6 +61,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [price, setPrice] = useState('');
   const [oldPrice, setOldPrice] = useState('');
   const [newPrice, setNewPrice] = useState('');
+  const [startDate, setStartDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [dealLink, setDealLink] = useState('');
   const [discount, setDiscount] = useState('');
@@ -75,6 +78,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
+  const [selectedTertiaryCategory, setSelectedTertiaryCategory] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [compressingProgress, setCompressingProgress] = useState('');
@@ -104,15 +108,11 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       const reg = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
       return reg?.cities || [];
     }
-    return ['Ljubljana', 'Maribor', 'Celje', 'Kranj', 'Koper', 'Novo mesto'];
+    return ['Ljubljana', 'Maribor', 'Celje', 'Kranj', 'Koper', 'Novo mesto', 'Velenje', 'Ptuj'];
   }, [selectedRegion]);
 
   const allSloveniaCities = useMemo(() => {
-    const set = new Set<string>();
-    SLOVENIA_REGIONS.forEach(reg => {
-      reg.cities.forEach(c => set.add(c));
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'sl'));
+    return getAllSloveniaCities();
   }, []);
 
   // Multi-image handlers
@@ -192,6 +192,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setPrice('');
       setOldPrice('');
       setNewPrice('');
+      setStartDate('');
       setExpirationDate('');
       setDealLink('');
       setDiscount('');
@@ -203,6 +204,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setLocation('');
       setTagsString('');
       setSelectedRegion('all');
+      setSelectedTertiaryCategory('');
       setImageUrl('');
       setImages([]);
       setUrlImageInput('');
@@ -252,6 +254,113 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     return categories.find(c => c.id === selectedCategoryId) || categories[0] || null;
   }, [categories, selectedCategoryId]);
 
+  // Dynamic 3rd level options based on active category & subcategory from admin configuration
+  const availableTertiaryOptions = useMemo(() => {
+    return getTertiaryCategories(selectedCategoryId, selectedSubcategoryId, categories);
+  }, [selectedCategoryId, selectedSubcategoryId, categories]);
+
+  // Contextual labels & hints for 3rd level filter/input
+  const tertiaryConfig = useMemo(() => {
+    const catName = (activeCategory?.name || '').toLowerCase();
+    const catId = (selectedCategoryId || '').toLowerCase();
+    const subId = (selectedSubcategoryId || '').toLowerCase();
+
+    if (postType === 'ad') {
+      if (catId.includes('avto') || catName.includes('avto') || subId.includes('vozil') || subId.includes('kolesa') || subId.includes('motor')) {
+        return {
+          label: '3. stopnja: Znamka / Proizvajalec (npr. Fiat, Volkswagen, BMW, Yamaha...)',
+          placeholder: 'Vnesite ali izberite znamko (npr. Fiat)',
+          helper: 'Znamka vozila za natančno filtriranje med oglasi v spustnem meniju 3. stopnje.',
+        };
+      }
+      if (catId.includes('nepremicnin') || catName.includes('nepremičnin') || subId.includes('stanovan') || subId.includes('his') || subId.includes('posest')) {
+        return {
+          label: '3. stopnja: Tip / Velikost nepremičnine (npr. Garsonjera, 2-sobno, Hiša...)',
+          placeholder: 'Vnesite ali izberite tip (npr. 2-sobno)',
+          helper: 'Tip stanovanja, hiše ali zemljišča za filtriranje v spustnem meniju.',
+        };
+      }
+      if (catId.includes('tehnik') || catName.includes('tehnik') || subId.includes('telefon') || subId.includes('racunal') || subId.includes('tv')) {
+        return {
+          label: '3. stopnja: Znamka / Proizvajalec (npr. Apple, Samsung, Sony, Bosch...)',
+          placeholder: 'Vnesite ali izberite znamko (npr. Apple)',
+          helper: 'Znamka ali proizvajalec naprave za hitro iskanje.',
+        };
+      }
+      return {
+        label: '3. stopnja: Znamka / Tip / Pod-raven',
+        placeholder: 'Vnesite ali izberite podrobnejšo oznako',
+        helper: 'Določite specifično znamko ali tip predmeta.',
+      };
+    }
+
+    if (postType === 'deal') {
+      return {
+        label: '3. stopnja: Trgovec / Znamka / Ponudnik (npr. Spar, Hofer, Big Bang, About You...)',
+        placeholder: 'Vnesite ali izberite trgovino ali znamko (npr. Spar & Interspar)',
+        helper: 'Trgovec ali blagovna znamka za filtriranje v spustnem meniju akcij.',
+      };
+    }
+
+    if (postType === 'event') {
+      return {
+        label: '3. stopnja: Glasbeni žanr / Tip dogodka (npr. Rock & Metal, Pop, Komedija, Sejem...)',
+        placeholder: 'Vnesite ali izberite žanr ali tip (npr. Rock & Metal)',
+        helper: 'Zvrst ali tematika dogodka za filtriranje v spustnem meniju prireditev.',
+      };
+    }
+
+    // Blog posts (postType === 'post')
+    if (catId.includes('turiz') || catName.includes('turiz') || subId.includes('izlet') || subId.includes('biser') || subId.includes('hrib')) {
+      return {
+        label: '3. stopnja: Destinacija / Lokacija izleta (npr. Bled & Bohinj, Dolina Soče, Kranjska Gora...)',
+        placeholder: 'Vnesite ali izberite destinacijo (npr. Bled & Bohinj)',
+        helper: 'Lokacija ali destinacija izleta za natančno filtriranje v spustnem meniju 3. stopnje bloga.',
+      };
+    }
+    if (catId.includes('kulinari') || catName.includes('kulinarik') || subId.includes('recept') || subId.includes('jed')) {
+      return {
+        label: '3. stopnja: Tip jedi / Recept (npr. Tradicionalne jedi, Slovenska potica, Hitra kosila...)',
+        placeholder: 'Vnesite ali izberite tip jedi ali recept (npr. Slovenska potica)',
+        helper: 'Recept ali kulinarična usmeritev za filtriranje med članki.',
+      };
+    }
+    if (catId.includes('tehnolog') || catName.includes('tehnolog') || subId.includes('inteligen') || subId.includes('gadget') || subId.includes('varnost')) {
+      return {
+        label: '3. stopnja: Tehnologija / AI orodje (npr. ChatGPT & prompti, Apple iPhone, Pametni dom...)',
+        placeholder: 'Vnesite ali izberite tehnologijo (npr. Umetna inteligenca (AI))',
+        helper: 'Orodje, naprava ali tehnološko področje za filtriranje.',
+      };
+    }
+    if (catId.includes('dom') || catName.includes('dom') || subId.includes('prenov') || subId.includes('diy') || subId.includes('vrt')) {
+      return {
+        label: '3. stopnja: Tema za dom & vrt (npr. Prenova doma, Sončne elektrarne, Naredi sam DIY...)',
+        placeholder: 'Vnesite ali izberite temo doma (npr. Sončne elektrarne)',
+        helper: 'Področje urejanja doma ali vrta za filtriranje.',
+      };
+    }
+    if (catId.includes('financ') || catName.includes('financ') || subId.includes('osebn') || subId.includes('investic') || subId.includes('podjet')) {
+      return {
+        label: '3. stopnja: Finančna tema / Naložbe (npr. Osebne finance, Delniški ETF skladi, Nepremičnine...)',
+        placeholder: 'Vnesite ali izberite finančno temo (npr. Delniški ETF skladi)',
+        helper: 'Področje financ ali podjetništva za filtriranje.',
+      };
+    }
+    if (catId.includes('zdravj') || catName.includes('zdravj') || subId.includes('slog') || subId.includes('stres') || subId.includes('zelis')) {
+      return {
+        label: '3. stopnja: Tema zdravja / Počutje (npr. Zdrav življenjski slog, Domača zelišča, Premagovanje stresa...)',
+        placeholder: 'Vnesite ali izberite temo zdravja (npr. Domača zelišča)',
+        helper: 'Tema zdravja in dobrega počutja za filtriranje.',
+      };
+    }
+
+    return {
+      label: '3. stopnja: Zvrst / Ključna tema / Oznaka',
+      placeholder: 'Vnesite ali izberite ključno temo...',
+      helper: 'Določite podrobnejšo tematiko za 2. spustni filter.',
+    };
+  }, [postType, activeCategory, selectedCategoryId, selectedSubcategoryId]);
+
   // Handle category change
   const handleCategoryChange = (catId: string) => {
     setSelectedCategoryId(catId);
@@ -261,6 +370,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     } else {
       setSelectedSubcategoryId('');
     }
+    setSelectedTertiaryCategory('');
   };
 
   // Event multi-date & multi-hour schedule helpers
@@ -381,15 +491,25 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     const primaryImg = images[0] || imageUrl || undefined;
     const allImgs = images.length > 0 ? images : (imageUrl ? [imageUrl] : undefined);
 
+    const userTags = tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean);
+    if (selectedTertiaryCategory.trim() && !userTags.some(t => t.toLowerCase() === selectedTertiaryCategory.trim().toLowerCase())) {
+      userTags.push(selectedTertiaryCategory.trim());
+    }
+
     try {
       if (postType === 'post' || postType === 'deal') {
+        const cleanPostTitle = title.replace(/^\[Ugodnost\]\s*/i, '').trim();
         await createPostInFirestore({
-          title: title.trim(),
-          content: content.trim() || title.trim(),
+          title: cleanPostTitle,
+          content: content.trim() || cleanPostTitle,
           category: postType === 'deal' ? 'deal' : categorySlug,
-          categoryName: postType === 'deal' ? 'Ugodnosti' : categoryName,
+          categoryName: postType === 'deal' 
+            ? (categoryName && categoryName !== 'Ugodnosti' && categoryName !== 'Ugodnost' && categoryName !== 'Splošno' ? categoryName : (subcategoryName || '')) 
+            : categoryName,
           subcategory: subcategorySlug || undefined,
           subcategoryName: subcategoryName || undefined,
+          make: selectedTertiaryCategory.trim() || undefined,
+          thirdLevelCategory: selectedTertiaryCategory.trim() || undefined,
           region: regionName,
           location: finalLocation,
           authorId,
@@ -403,6 +523,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           price: postType === 'deal' ? (newPrice.trim() || discount.trim() || undefined) : undefined,
           oldPrice: postType === 'deal' ? (oldPrice.trim() || undefined) : undefined,
           newPrice: postType === 'deal' ? (newPrice.trim() || undefined) : undefined,
+          startDate: postType === 'deal' ? (startDate.trim() || undefined) : undefined,
           expirationDate: postType === 'deal' ? (expirationDate.trim() || undefined) : undefined,
           discount: postType === 'deal' ? (discount.trim() || undefined) : undefined,
           promoCode: postType === 'deal' ? (promoCode.trim() || undefined) : undefined,
@@ -410,7 +531,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           status: initialStatus,
           likesCount: 0,
           commentsCount: 0,
-          tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+          tags: userTags.length > 0 ? userTags : undefined,
         });
       } else if (postType === 'ad') {
         await createAdInFirestore({
@@ -420,6 +541,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           categoryName,
           subcategory: subcategorySlug || undefined,
           subcategoryName: subcategoryName || undefined,
+          make: selectedTertiaryCategory.trim() || undefined,
+          thirdLevelCategory: selectedTertiaryCategory.trim() || undefined,
           price: price.trim() || 'Po dogovoru',
           location: finalLocation,
           region: regionName,
@@ -430,7 +553,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           images: allImgs,
           embedCode: embedCode || undefined,
           status: initialAdStatus,
-          tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+          tags: userTags.length > 0 ? userTags : undefined,
         });
       } else if (postType === 'event') {
         // Prepare structured multi-date & multi-hour schedule
@@ -480,6 +603,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           categoryName,
           subcategory: subcategorySlug || undefined,
           subcategoryName: subcategoryName || undefined,
+          thirdLevelCategory: selectedTertiaryCategory.trim() || undefined,
           authorId,
           authorName,
           authorRole,
@@ -488,7 +612,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           embedCode: embedCode || undefined,
           status: initialStatus,
           isPromoted: false,
-          tags: tagsString.split(',').map(t => t.trim()).filter(Boolean).length > 0 ? tagsString.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+          tags: userTags.length > 0 ? userTags : undefined,
         });
       }
 
@@ -621,14 +745,29 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             />
           </div>
 
-          {/* DYNAMIC CATEGORY & SUBCATEGORY ROW */}
-          <div className="p-3 bg-surface-container-low/70 rounded-xl border border-surface-container flex flex-col gap-3">
+          {/* 3-LEVEL DYNAMIC CATEGORIZATION BLOCK */}
+          <div className="p-3.5 bg-surface-container-low/70 rounded-xl border border-surface-container flex flex-col gap-3">
+            <div className="flex items-center justify-between border-b border-surface-container/60 pb-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold text-on-surface">
+                  3-stopenjska kategorizacija objave
+                </span>
+              </div>
+              <span className="text-[10px] text-outline font-medium">
+                Usklajeno s skrbniško strukturo
+              </span>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Category Select */}
+              {/* 1. stopnja: Category Select */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-primary" />
-                  <span>Kategorija *</span>
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-primary" />
+                    <span>1. Glavna kategorija *</span>
+                  </span>
+                  <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.2 rounded font-semibold">Značka</span>
                 </label>
                 <select
                   value={selectedCategoryId}
@@ -643,15 +782,21 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 </select>
               </div>
 
-              {/* Subcategory Select */}
+              {/* 2. stopnja: Subcategory Select */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-primary" />
-                  <span>Podkategorija</span>
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-primary" />
+                    <span>2. Podkategorija</span>
+                  </span>
+                  <span className="text-[10px] text-outline">1. spustni filter</span>
                 </label>
                 <select
                   value={selectedSubcategoryId}
-                  onChange={e => setSelectedSubcategoryId(e.target.value)}
+                  onChange={e => {
+                    setSelectedSubcategoryId(e.target.value);
+                    setSelectedTertiaryCategory('');
+                  }}
                   disabled={!activeCategory || !activeCategory.subcategories || activeCategory.subcategories.length === 0}
                   className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer disabled:opacity-50"
                 >
@@ -666,6 +811,72 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                   )}
                 </select>
               </div>
+            </div>
+
+            {/* 3. stopnja: Znamka / Tip / Trgovec / Žanr (Combobox & Quick Select Chips) */}
+            <div className="flex flex-col gap-1.5 pt-2 border-t border-surface-container/60">
+              <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-primary font-bold">
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>{tertiaryConfig.label}</span>
+                </span>
+                <span className="text-[10px] text-outline">2. spustni filter</span>
+              </label>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  list="tertiary-options-datalist"
+                  value={selectedTertiaryCategory}
+                  onChange={e => setSelectedTertiaryCategory(e.target.value)}
+                  placeholder={tertiaryConfig.placeholder}
+                  className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-medium text-on-surface border border-surface-container focus:outline-none focus:border-primary placeholder:text-outline"
+                />
+                {selectedTertiaryCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTertiaryCategory('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface p-0.5"
+                    title="Počisti"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <datalist id="tertiary-options-datalist">
+                  {availableTertiaryOptions.map(opt => (
+                    <option key={opt} value={opt} />
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Quick-select chips based on admin dashboard configuration */}
+              {availableTertiaryOptions.length > 0 && (
+                <div className="flex flex-col gap-1 pt-1">
+                  <span className="text-[10px] text-outline font-medium">
+                    Hitra izbira med možnostmi, določenimi v administraciji:
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap max-h-24 overflow-y-auto pr-1">
+                    {availableTertiaryOptions.map(opt => {
+                      const isSelected = selectedTertiaryCategory.trim().toLowerCase() === opt.trim().toLowerCase();
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setSelectedTertiaryCategory(isSelected ? '' : opt)}
+                          className={`text-[11px] px-2.5 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary text-on-primary border-primary font-bold shadow-xs'
+                              : 'bg-surface-container-lowest text-on-surface-variant hover:text-on-surface hover:bg-surface-container border-surface-container/70'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-outline">{tertiaryConfig.helper}</p>
             </div>
 
             {/* LOCALIZATION & REGION ROW */}
@@ -696,7 +907,11 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-primary" />
                   <span>
-                    {postType === 'event' ? 'Točen kraj / prizorišče (neobvezno)' : 'Točen kraj (neobvezno)'}
+                    {postType === 'event' 
+                      ? 'Točen kraj / prizorišče (neobvezno)' 
+                      : postType === 'ad'
+                        ? 'Točen kraj / Mesto (neobvezno)'
+                        : 'Točen kraj (neobvezno)'}
                   </span>
                 </label>
                 <input
@@ -707,7 +922,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                   placeholder={
                     postType === 'event'
                       ? 'npr. Cankarjev dom, Arena Stožice, Celjski grad...'
-                      : 'npr. Ljubljana, Maribor, Celje...'
+                      : 'npr. Ljubljana, Maribor, Celje, Kranj...'
                   }
                   className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs text-on-surface border border-surface-container focus:outline-none focus:border-primary"
                 />
@@ -720,8 +935,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 {/* Quick suggestion chips for Mali oglasi and other non-event posts */}
                 {postType !== 'event' && (
                   <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                    <span className="text-[10px] text-outline">Hitra izbira:</span>
-                    {suggestedCities.slice(0, 6).map(city => (
+                    <span className="text-[10px] text-outline font-medium">Predlagana mesta:</span>
+                    {suggestedCities.slice(0, 8).map(city => (
                       <button
                         key={city}
                         type="button"
@@ -740,7 +955,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
                 <span className="text-[10px] text-outline">
                   {location.trim() ? (
-                    `Vpisana lokacija: ${location.trim()}`
+                    `Vpisano mesto / kraj: ${location.trim()}`
                   ) : (
                     `Če pustite prazno, se prikaže izbrana regija (${selectedRegion === 'all' ? 'Vsa Slovenija' : (SLOVENIA_REGIONS.find(r => r.id === selectedRegion)?.name || selectedRegion)})`
                   )}
@@ -806,12 +1021,28 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 </div>
               </div>
 
-              {/* Expiration date & Discount */}
+              {/* Dates: Datum začetka akcije & Datum poteka akcije */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-primary" />
-                    <span>Datum poteka ugodnosti (Expiration date)</span>
+                    <span>Datum začetka akcije (Start date)</span>
+                  </label>
+                  <input 
+                    type="date" 
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  <span className="text-[10px] text-outline">
+                    {startDate ? `Začetek: ${new Date(startDate).toLocaleDateString('sl-SI')}` : 'Izberite datum, od kdaj velja akcija (neobvezno)'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>Datum poteka akcije (Expiration date)</span>
                   </label>
                   <input 
                     type="date" 
@@ -820,10 +1051,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                     className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
                   />
                   <span className="text-[10px] text-outline">
-                    {expirationDate ? `Veljavno do: ${new Date(expirationDate).toLocaleDateString('sl-SI')}` : 'Izberite datum, do kdaj velja ugodnost (neobvezno)'}
+                    {expirationDate ? `Veljavno do: ${new Date(expirationDate).toLocaleDateString('sl-SI')}` : 'Izberite datum, do kdaj velja akcija (neobvezno)'}
                   </span>
                 </div>
+              </div>
 
+              {/* Discount & Promo Code */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
                     <Percent className="w-3.5 h-3.5 text-primary" />
@@ -838,10 +1072,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                   />
                   <span className="text-[10px] text-outline">Izračuna se samodejno ali vnesite po meri</span>
                 </div>
-              </div>
 
-              {/* Promo code & Deal link */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-surface-container/60">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
                     <Tag className="w-3.5 h-3.5 text-outline" />
@@ -855,20 +1086,21 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                     className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-mono text-xs font-bold text-primary uppercase focus:outline-none focus:border-primary border border-surface-container transition-colors" 
                   />
                 </div>
+              </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-                    <ExternalLink className="w-3.5 h-3.5 text-outline" />
-                    <span>Povezava do ugodnosti / trgovine</span>
-                  </label>
-                  <input 
-                    type="url" 
-                    value={dealLink}
-                    onChange={e => setDealLink(e.target.value)}
-                    placeholder="https://trgovina.si/akcija"
-                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
-                  />
-                </div>
+              {/* Deal link */}
+              <div className="flex flex-col gap-1 pt-1 border-t border-surface-container/60">
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5 text-outline" />
+                  <span>Povezava do ugodnosti / trgovine</span>
+                </label>
+                <input 
+                  type="url" 
+                  value={dealLink}
+                  onChange={e => setDealLink(e.target.value)}
+                  placeholder="https://trgovina.si/akcija"
+                  className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                />
               </div>
             </div>
           )}
@@ -1094,15 +1326,35 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             <RichTextEditor ref={editorRef} placeholder="Podrobnejši opis objave..." onChange={setContent} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-outline">Oznake (Tagi) - ločene z vejico</label>
+          <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-outline flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-primary" />
+                <span>Oznake (Tagi) - ločene z vejico</span>
+              </label>
+              <span className="text-[10px] text-outline font-medium">npr. avto, prodaja, ugodno</span>
+            </div>
             <input 
               type="text" 
               value={tagsString}
               onChange={e => setTagsString(e.target.value)}
-              placeholder="npr. avto, prodaja, ugodno"
-              className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
+              placeholder="npr. slovenija, novica, izlet, kulinarika, ugodno"
+              className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-surface-container transition-colors" 
             />
+            {/* Live preview badges */}
+            {tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-surface-container/40">
+                <span className="text-[10px] text-outline font-semibold">Predogled oznak:</span>
+                {tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).map((tag, idx) => (
+                  <span
+                    key={`compose-tag-pill-${idx}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-[11px] font-semibold"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 p-3 rounded-xl bg-surface-container-low/70 border border-surface-container">

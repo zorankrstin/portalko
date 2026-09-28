@@ -16,6 +16,7 @@ export interface DealPostProps {
   discount?: string;
   oldPrice?: string;
   newPrice?: string;
+  startDate?: string;
   expirationDate?: string;
   author?: string;
   authorRole?: string;
@@ -25,6 +26,8 @@ export interface DealPostProps {
   code?: string;
   link?: string;
   votesCount?: number;
+  lovesCount?: number;
+  dislikesCount?: number;
   image?: string;
   categoryName?: string;
   category?: string;
@@ -44,6 +47,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   discount = "-30%",
   oldPrice,
   newPrice,
+  startDate,
   expirationDate,
   author = "Hervis Slovenija",
   authorRole = "Preverjen partner",
@@ -53,6 +57,8 @@ export const DealPost: React.FC<DealPostProps> = ({
   code = "TEK30",
   link = "https://www.hervis.si",
   votesCount = 142,
+  lovesCount = 0,
+  dislikesCount = 0,
   image = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&auto=format&fit=crop&q=80",
   categoryName = "Šport & Obutev",
   category = "ugodnosti",
@@ -69,10 +75,12 @@ export const DealPost: React.FC<DealPostProps> = ({
   const [votes, setVotes] = useState(votesCount);
   const [hasVoted, setHasVoted] = useState(false);
 
+  const cleanTitle = (title || '').replace(/^\[Ugodnost\]\s*/i, '');
+
   const postUrl = buildPostUrl({
     type: 'deal',
     id,
-    title,
+    title: cleanTitle,
     category,
     categoryName,
     subcategory,
@@ -158,18 +166,25 @@ export const DealPost: React.FC<DealPostProps> = ({
   const hasVisibleImage = !!imgSrc && !hasError;
   const cleanDescription = getPlainTextSnippet(description);
 
-  const effectiveDate = expirationDate 
-    ? `Velja do ${expirationDate.includes('-') ? new Date(expirationDate).toLocaleDateString('sl-SI') : expirationDate}` 
-    : (date || "Veljavno do preklica");
+  const formatSlDate = (dStr: string) => dStr.includes('-') ? new Date(dStr).toLocaleDateString('sl-SI') : dStr;
+  let effectiveDate = date || "Veljavno do preklica";
+  if (startDate && expirationDate) {
+    effectiveDate = `Akcija: ${formatSlDate(startDate)} – ${formatSlDate(expirationDate)}`;
+  } else if (expirationDate) {
+    effectiveDate = `Velja do ${formatSlDate(expirationDate)}`;
+  } else if (startDate) {
+    effectiveDate = `Od ${formatSlDate(startDate)}`;
+  }
 
   const bookmarkData = {
     type: 'deal',
     category: 'deals',
-    title,
+    title: cleanTitle,
     price: newPrice || discount,
     discount,
     oldPrice,
     newPrice,
+    startDate,
     expirationDate,
     author,
     authorRole,
@@ -201,7 +216,7 @@ export const DealPost: React.FC<DealPostProps> = ({
         >
           <img 
             src={imgSrc} 
-            alt={title}
+            alt={cleanTitle}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
             loading="lazy"
             onError={handleImageError}
@@ -213,9 +228,11 @@ export const DealPost: React.FC<DealPostProps> = ({
             {isPromoted && (
               <PromotedBadge type={promotionBadgeType} size="sm" />
             )}
-            <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
-              {categoryName}
-            </span>
+            {categoryName && categoryName !== 'Ugodnosti' && categoryName !== 'Ugodnost' && (
+              <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
+                {categoryName}
+              </span>
+            )}
             {featured && !isPromoted && (
               <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5" />
@@ -238,9 +255,11 @@ export const DealPost: React.FC<DealPostProps> = ({
               <span className="px-2.5 py-0.5 rounded-md bg-secondary text-on-secondary font-bold text-xs shadow-xs">
                 {discount}
               </span>
-              <span className="px-2.5 py-0.5 rounded-md bg-surface-container text-on-surface-variant font-label-caps text-[10px] font-bold uppercase tracking-wider">
-                {categoryName}
-              </span>
+              {categoryName && categoryName !== 'Ugodnosti' && categoryName !== 'Ugodnost' && (
+                <span className="px-2.5 py-0.5 rounded-md bg-surface-container text-on-surface-variant font-label-caps text-[10px] font-bold uppercase tracking-wider">
+                  {categoryName}
+                </span>
+              )}
               {isPromoted && (
                 <PromotedBadge type={promotionBadgeType} size="sm" />
               )}
@@ -284,20 +303,22 @@ export const DealPost: React.FC<DealPostProps> = ({
               <LikeButton 
                 id={id} 
                 targetType="deal" 
-                initialLikesCount={0} 
+                initialLikesCount={votesCount} 
+                initialLovesCount={lovesCount}
+                initialDislikesCount={dislikesCount}
                 variant="minimal" 
                 showCount={true} 
-                itemTitle={title} 
+                itemTitle={cleanTitle} 
               />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}
               />
-              <ShareMenu id={id} type="deal" title={title} description={description} url={`${window.location.origin}${postUrl}`} />
+              <ShareMenu id={id} type="deal" title={cleanTitle} description={description} url={`${window.location.origin}${postUrl}`} />
               <ReportButton 
                 targetId={id} 
                 targetType="deal" 
-                targetTitle={title} 
+                targetTitle={cleanTitle} 
                 targetAuthor={author} 
               />
             </div>
@@ -310,7 +331,7 @@ export const DealPost: React.FC<DealPostProps> = ({
             className="block group/title cursor-pointer"
           >
             <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover/title:text-primary transition-colors leading-snug">
-              {title}
+              {cleanTitle}
             </h3>
           </a>
 

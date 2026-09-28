@@ -9,8 +9,10 @@ import {
   deleteField,
   onSnapshot, 
   query, 
+  where,
   orderBy, 
   limit,
+  increment,
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -87,6 +89,8 @@ export interface FirestorePost {
   categoryName?: string;
   subcategory?: string;
   subcategoryName?: string;
+  make?: string;
+  thirdLevelCategory?: string;
   authorId: string;
   authorName: string;
   authorAvatar?: string;
@@ -98,6 +102,7 @@ export interface FirestorePost {
   price?: string;
   oldPrice?: string;
   newPrice?: string;
+  startDate?: string;
   expirationDate?: string;
   discount?: string;
   promoCode?: string;
@@ -116,6 +121,7 @@ export interface FirestorePost {
   likesCount?: number;
   likedBy?: string[];
   commentsCount?: number;
+  viewsCount?: number;
   // Promotion / Featured Post fields
   isPromoted?: boolean;
   promotion?: PromotionConfig;
@@ -133,6 +139,8 @@ export interface FirestoreAd {
   categoryName?: string;
   subcategory?: string;
   subcategoryName?: string;
+  make?: string;
+  thirdLevelCategory?: string;
   price: string;
   location: string;
   region?: string;
@@ -150,6 +158,7 @@ export interface FirestoreAd {
   rejectionReason?: string;
   likesCount?: number;
   likedBy?: string[];
+  viewsCount?: number;
   // Promotion / Featured Post fields
   isPromoted?: boolean;
   promotion?: PromotionConfig;
@@ -177,6 +186,8 @@ export interface FirestoreEvent {
   categoryName?: string;
   subcategory?: string;
   subcategoryName?: string;
+  make?: string;
+  thirdLevelCategory?: string;
   authorId: string;
   authorName: string;
   authorRole?: string;
@@ -189,6 +200,7 @@ export interface FirestoreEvent {
   interestedCount?: number;
   likesCount?: number;
   likedBy?: string[];
+  viewsCount?: number;
   isPromoted?: boolean;
   promotion?: PromotionConfig;
   promotedUntil?: string;
@@ -276,6 +288,16 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
   }
 }
 
+export async function deleteUserFromFirestore(userId: string): Promise<void> {
+  const path = `users/${userId}`;
+  try {
+    const userRef = doc(db, 'users', userId);
+    await deleteDoc(userRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 export async function fetchUsersList(): Promise<User[]> {
   if (!auth.currentUser) {
     return [];
@@ -284,9 +306,16 @@ export async function fetchUsersList(): Promise<User[]> {
   try {
     const q = query(collection(db, path), limit(100));
     const snap = await getDocs(q);
-    return snap.docs.map(d => {
+    const users: User[] = [];
+    for (const d of snap.docs) {
       const data = d.data();
-      return {
+      const email = (data.email || '').toLowerCase().trim();
+      if (email === 'luka.n@example.com' || email === 'luka.novak.portal@gmail.com' || d.id === 'u2') {
+        // Automatically cleanup dummy users from database
+        deleteDoc(d.ref).catch(() => {});
+        continue;
+      }
+      users.push({
         id: data.id || d.id,
         name: data.name || '',
         email: data.email || '',
@@ -300,8 +329,9 @@ export async function fetchUsersList(): Promise<User[]> {
         verificationRequested: data.verificationRequested,
         verificationRequestedAt: data.verificationRequestedAt,
         verificationNote: data.verificationNote,
-      };
-    });
+      });
+    }
+    return users;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -316,9 +346,16 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
   try {
     const q = query(collection(db, path), limit(100));
     return onSnapshot(q, (snapshot) => {
-      const users = snapshot.docs.map(d => {
+      const users: User[] = [];
+      snapshot.docs.forEach(d => {
         const data = d.data();
-        return {
+        const email = (data.email || '').toLowerCase().trim();
+        if (email === 'luka.n@example.com' || email === 'luka.novak.portal@gmail.com' || d.id === 'u2') {
+          // Automatically cleanup dummy users from database
+          deleteDoc(d.ref).catch(() => {});
+          return;
+        }
+        users.push({
           id: data.id || d.id,
           name: data.name || '',
           email: data.email || '',
@@ -332,7 +369,7 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           verificationRequested: data.verificationRequested,
           verificationRequestedAt: data.verificationRequestedAt,
           verificationNote: data.verificationNote,
-        };
+        });
       });
       onUsers(users);
     }, (error) => {
@@ -356,7 +393,7 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
       const base: Partial<User> = fallbackUser || {};
       const fullDoc = {
         id: userId,
-        name: data.name || base.name || (userId === 'u2' ? 'Luka Novak' : userId === 'u3' ? 'Maja Zupan' : userId === 'u4' ? 'Janez Horvat' : 'Uporabnik'),
+        name: data.name || base.name || (userId === 'u3' ? 'Maja Zupan' : userId === 'u4' ? 'Janez Horvat' : 'Uporabnik'),
         email: data.email || base.email || `${userId}@portalko.net`,
         role: data.role || base.role || 'registered',
         status: data.status || base.status || 'active',
@@ -523,6 +560,7 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
         price: data.price || (mockDeal ? (mockDeal.discount || (mockDeal as any).price) : '') || '',
         oldPrice: data.oldPrice || (mockDeal as any)?.oldPrice || '',
         newPrice: data.newPrice || (mockDeal as any)?.newPrice || '',
+        startDate: data.startDate || '',
         expirationDate: data.expirationDate || (mockDeal as any)?.expirationDate || '',
         discount: data.discount || (mockDeal ? mockDeal.discount : '') || '',
         promoCode: data.promoCode || (mockDeal ? mockDeal.code : '') || '',
@@ -703,6 +741,152 @@ export function subscribeToUserLikes(userId: string, onLikes: (likedIds: string[
     handleFirestoreError(error, OperationType.GET, path);
     return () => {};
   }
+}
+
+export function subscribeToUserReactions(userId: string, onReactions: (reactions: Record<string, 'like' | 'love' | 'dislike'>) => void): () => void {
+  const path = `users/${userId}/reactions`;
+  try {
+    const q = query(collection(db, 'users', userId, 'reactions'));
+    return onSnapshot(q, (snapshot) => {
+      const reactions: Record<string, 'like' | 'love' | 'dislike'> = {};
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data && data.reactionType) {
+          reactions[doc.id] = data.reactionType as 'like' | 'love' | 'dislike';
+        }
+      });
+      onReactions(reactions);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return () => {};
+  }
+}
+
+export async function toggleItemReactionInFirestore(
+  targetType: 'post' | 'ad' | 'event' | 'blog' | 'news' | 'deal',
+  targetId: string,
+  userId: string,
+  newReaction: 'like' | 'love' | 'dislike' | null,
+  previousReaction: 'like' | 'love' | 'dislike' | null
+): Promise<{ likesCount: number; lovesCount: number; dislikesCount: number }> {
+  // 1. Update user's personal reactions subcollection
+  if (userId) {
+    try {
+      const userReactionRef = doc(db, 'users', userId, 'reactions', targetId);
+      if (newReaction) {
+        await setDoc(userReactionRef, {
+          id: targetId,
+          userId,
+          targetId,
+          targetType,
+          reactionType: newReaction,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        await deleteDoc(userReactionRef);
+      }
+
+      // Also maintain backward compatibility with 'likes' subcollection
+      const userLikeRef = doc(db, 'users', userId, 'likes', targetId);
+      if (newReaction === 'like') {
+        await setDoc(userLikeRef, {
+          id: targetId,
+          userId,
+          targetId,
+          targetType,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        await deleteDoc(userLikeRef);
+      }
+    } catch (error) {
+      console.warn('Could not persist reaction in user subcollection:', error);
+    }
+  }
+
+  // 2. Determine target collection
+  let colName = 'posts';
+  if (targetType === 'ad') colName = 'ads';
+  else if (targetType === 'event') colName = 'events';
+
+  let itemRef = doc(db, colName, targetId);
+  let snap = await getDoc(itemRef);
+
+  if (!snap.exists()) {
+    const fallbackCols = ['posts', 'ads', 'events'].filter(c => c !== colName);
+    for (const fc of fallbackCols) {
+      const altRef = doc(db, fc, targetId);
+      const altSnap = await getDoc(altRef);
+      if (altSnap.exists()) {
+        itemRef = altRef;
+        snap = altSnap;
+        colName = fc;
+        break;
+      }
+    }
+  }
+
+  let finalLikes = 0;
+  let finalLoves = 0;
+  let finalDislikes = 0;
+
+  if (snap.exists()) {
+    try {
+      const data = snap.data();
+      let likesCount = data?.likesCount || 0;
+      let lovesCount = data?.lovesCount || 0;
+      let dislikesCount = data?.dislikesCount || 0;
+
+      let likedBy = Array.isArray(data?.likedBy) ? [...data.likedBy] : [];
+      let lovedBy = Array.isArray(data?.lovedBy) ? [...data.lovedBy] : [];
+      let dislikedBy = Array.isArray(data?.dislikedBy) ? [...data.dislikedBy] : [];
+
+      // Remove from previous reaction if existed
+      if (previousReaction === 'like') {
+        likedBy = likedBy.filter(uid => uid !== userId);
+        likesCount = Math.max(0, likesCount - 1);
+      } else if (previousReaction === 'love') {
+        lovedBy = lovedBy.filter(uid => uid !== userId);
+        lovesCount = Math.max(0, lovesCount - 1);
+      } else if (previousReaction === 'dislike') {
+        dislikedBy = dislikedBy.filter(uid => uid !== userId);
+        dislikesCount = Math.max(0, dislikesCount - 1);
+      }
+
+      // Add to new reaction if specified
+      if (newReaction === 'like') {
+        if (!likedBy.includes(userId)) likedBy.push(userId);
+        likesCount = Math.max(likedBy.length, likesCount + 1);
+      } else if (newReaction === 'love') {
+        if (!lovedBy.includes(userId)) lovedBy.push(userId);
+        lovesCount = Math.max(lovedBy.length, lovesCount + 1);
+      } else if (newReaction === 'dislike') {
+        if (!dislikedBy.includes(userId)) dislikedBy.push(userId);
+        dislikesCount = Math.max(dislikedBy.length, dislikesCount + 1);
+      }
+
+      finalLikes = likesCount;
+      finalLoves = lovesCount;
+      finalDislikes = dislikesCount;
+
+      await updateDoc(itemRef, {
+        likesCount: finalLikes,
+        lovesCount: finalLoves,
+        dislikesCount: finalDislikes,
+        likedBy,
+        lovedBy,
+        dislikedBy,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `${colName}/${targetId}`);
+    }
+  }
+
+  return { likesCount: finalLikes, lovesCount: finalLoves, dislikesCount: finalDislikes };
 }
 
 export async function togglePostLikeInFirestore(postId: string, increment: boolean, userId?: string): Promise<void> {
@@ -1024,7 +1208,7 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
 
 export async function fetchDocumentById(
   id: string,
-  preferredType?: 'event' | 'deal' | 'ad' | 'blog' | 'post'
+  preferredType?: 'event' | 'deal' | 'ad' | 'blog' | 'post' | 'news' | string
 ): Promise<{ type: 'event' | 'deal' | 'ad' | 'blog'; data: any } | null> {
   if (!id) return null;
 
@@ -1309,5 +1493,210 @@ export async function removeBookmarkInFirestore(userId: string, itemId: string):
     await deleteDoc(ref);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// -------------------------------------------------------------
+// COMMENTS SERVICE
+// -------------------------------------------------------------
+
+export interface FirestoreComment {
+  id: string;
+  targetId: string;
+  targetType: string;
+  authorId?: string;
+  authorName: string;
+  authorAvatar?: string;
+  authorRole?: string;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/**
+ * Subscribes to real-time comments for a specific post, ad, event or deal.
+ */
+export function subscribeToPostComments(
+  targetId: string,
+  onComments: (comments: FirestoreComment[]) => void
+): () => void {
+  if (!targetId) {
+    onComments([]);
+    return () => {};
+  }
+  const path = 'comments';
+  try {
+    const q = query(
+      collection(db, path),
+      where('targetId', '==', targetId)
+    );
+    return onSnapshot(q, (snapshot) => {
+      const comments: FirestoreComment[] = snapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...(docSnap.data() as Omit<FirestoreComment, 'id'>)
+      }));
+      // Sort chronologically ascending
+      comments.sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime() || 0;
+        const timeB = new Date(b.createdAt).getTime() || 0;
+        return timeA - timeB;
+      });
+      onComments(comments);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return () => {};
+  }
+}
+
+/**
+ * Adds a new comment to Firestore with real-time sync.
+ */
+export async function addCommentToFirestore(
+  commentData: {
+    targetId: string;
+    targetType: string;
+    authorId?: string;
+    authorName: string;
+    authorAvatar?: string;
+    authorRole?: string;
+    content: string;
+  }
+): Promise<string> {
+  const path = 'comments';
+  try {
+    const commentRef = doc(collection(db, path));
+    const now = new Date().toISOString();
+    const newComment: FirestoreComment = {
+      id: commentRef.id,
+      targetId: commentData.targetId,
+      targetType: commentData.targetType,
+      authorId: commentData.authorId || auth.currentUser?.uid || '',
+      authorName: commentData.authorName || 'Gost Portalko',
+      authorAvatar: commentData.authorAvatar || '',
+      authorRole: commentData.authorRole || 'Gost',
+      content: commentData.content.trim(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    await setDoc(commentRef, cleanDataForFirestore(newComment));
+
+    // Optimistically update comment count on post document if applicable
+    try {
+      if (commentData.targetType === 'post' || commentData.targetType === 'blog' || commentData.targetType === 'deal') {
+        const postRef = doc(db, 'posts', commentData.targetId);
+        await updateDoc(postRef, { commentsCount: increment(1) });
+      } else if (commentData.targetType === 'ad') {
+        const adRef = doc(db, 'ads', commentData.targetId);
+        await updateDoc(adRef, { commentsCount: increment(1) });
+      } else if (commentData.targetType === 'event') {
+        const eventRef = doc(db, 'events', commentData.targetId);
+        await updateDoc(eventRef, { commentsCount: increment(1) });
+      }
+    } catch {
+      // ignore counter update error if target is mock item
+    }
+
+    return commentRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+}
+
+/**
+ * Deletes a comment from Firestore.
+ */
+export async function deleteCommentFromFirestore(
+  commentId: string,
+  targetId?: string,
+  targetType?: string
+): Promise<void> {
+  const path = `comments/${commentId}`;
+  try {
+    const commentRef = doc(db, 'comments', commentId);
+    await deleteDoc(commentRef);
+
+    if (targetId && targetType) {
+      try {
+        if (targetType === 'post' || targetType === 'blog' || targetType === 'deal') {
+          const postRef = doc(db, 'posts', targetId);
+          await updateDoc(postRef, { commentsCount: increment(-1) });
+        } else if (targetType === 'ad') {
+          const adRef = doc(db, 'ads', targetId);
+          await updateDoc(adRef, { commentsCount: increment(-1) });
+        } else if (targetType === 'event') {
+          const eventRef = doc(db, 'events', targetId);
+          await updateDoc(eventRef, { commentsCount: increment(-1) });
+        }
+      } catch {
+        // ignore counter decrement error
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
+  }
+}
+
+/**
+ * Atomically increments views count for a post, ad, or event in Firestore.
+ * If document does not exist yet (mock items or newly registered IDs), it initializes it.
+ */
+export async function recordItemViewInFirestore(
+  targetType: string,
+  targetId: string
+): Promise<number | null> {
+  const cleanType = targetType.toLowerCase();
+  const collectionName = (cleanType === 'ad') ? 'ads' : (cleanType === 'event') ? 'events' : 'posts';
+  const path = `${collectionName}/${targetId}`;
+
+  try {
+    const docRef = doc(db, collectionName, targetId);
+    const snap = await getDoc(docRef);
+
+    if (snap.exists()) {
+      await updateDoc(docRef, { viewsCount: increment(1) });
+      const currentViews = (snap.data().viewsCount || 0) + 1;
+      return currentViews;
+    } else {
+      // Create stub document with viewsCount initialized
+      await setDoc(docRef, { viewsCount: 1, updatedAt: new Date().toISOString() }, { merge: true });
+      return 1;
+    }
+  } catch (error) {
+    console.warn(`Could not record view for ${path}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Subscribes to live viewsCount changes for a single post/ad/event document.
+ */
+export function subscribeToItemViews(
+  targetType: string,
+  targetId: string,
+  onUpdate: (viewsCount: number) => void
+): () => void {
+  const cleanType = targetType.toLowerCase();
+  const collectionName = (cleanType === 'ad') ? 'ads' : (cleanType === 'event') ? 'events' : 'posts';
+  const path = `${collectionName}/${targetId}`;
+
+  try {
+    const docRef = doc(db, collectionName, targetId);
+    return onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (typeof data.viewsCount === 'number') {
+          onUpdate(data.viewsCount);
+        }
+      }
+    }, () => {
+      // Graceful fallback on permission error or offline state
+    });
+  } catch {
+    return () => {};
   }
 }

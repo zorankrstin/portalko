@@ -40,8 +40,8 @@ export const SECTION_TO_SLUG: Record<string, string> = {
   ad: 'mali-oglasi',
   events: 'dogodki',
   event: 'dogodki',
-  deals: 'ugodnosti',
-  deal: 'ugodnosti',
+  deals: 'akcije',
+  deal: 'akcije',
   blog: 'blog',
   post: 'blog',
   saved: 'shranjeno',
@@ -71,6 +71,8 @@ export const SLUG_TO_VIEW: Record<string, ViewMode> = {
   dogodki: 'events',
   prireditve: 'events',
   events: 'events',
+  akcije: 'deals',
+  akcija: 'deals',
   ugodnosti: 'deals',
   popusti: 'deals',
   kuponi: 'deals',
@@ -92,7 +94,7 @@ export const SLUG_TO_VIEW: Record<string, ViewMode> = {
 export function getSectionFromType(type?: PostDetailType | string): string {
   if (type === 'ad') return 'mali-oglasi';
   if (type === 'event') return 'dogodki';
-  if (type === 'deal') return 'ugodnosti';
+  if (type === 'deal') return 'akcije';
   return 'blog';
 }
 
@@ -103,7 +105,7 @@ export function getTypeFromSection(sectionSlug: string): PostDetailType {
   const clean = sectionSlug.toLowerCase().trim();
   if (clean === 'mali-oglasi' || clean === 'oglasi' || clean === 'ads' || clean === 'ad') return 'ad';
   if (clean === 'dogodki' || clean === 'prireditve' || clean === 'events' || clean === 'event') return 'event';
-  if (clean === 'ugodnosti' || clean === 'popusti' || clean === 'kuponi' || clean === 'deals' || clean === 'deal') return 'deal';
+  if (clean === 'akcije' || clean === 'akcija' || clean === 'ugodnosti' || clean === 'popusti' || clean === 'kuponi' || clean === 'deals' || clean === 'deal') return 'deal';
   return 'blog';
 }
 

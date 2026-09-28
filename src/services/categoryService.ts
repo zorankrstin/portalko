@@ -27,6 +27,7 @@ export interface SubCategory {
   name: string;
   description?: string;
   order?: number;
+  tertiaryItems?: string[];
 }
 
 export interface CategoryItem {
@@ -110,7 +111,7 @@ export const SLOVENIA_REGIONS: SloveniaRegion[] = [
   },
   { 
     id: 'jugovzhodna', 
-    name: 'Jugovzhodna Slovenija (Dolenjska & Bela krajina)', 
+    name: 'Jugovzhodna Slovenija', 
     shortName: 'Novo mesto & Dolenjska', 
     cities: [
       'Novo mesto', 'Kočevje', 'Črnomelj', 'Trebnje', 'Metlika', 'Ribnica', 'Šentjernej', 
@@ -947,3 +948,572 @@ export async function seedCategoriesToFirestore(forceResetAll = true): Promise<{
   notifyListeners();
   return { count };
 }
+
+// ---------------- 3RD-LEVEL SUB-CATEGORIES (ZNAMKE / MODELI / TIPI) ----------------
+
+export interface TertiaryCategory {
+  id: string;
+  name: string;
+  categoryId?: string;
+  subcategoryId?: string;
+}
+
+export const TERTIARY_CATEGORIES_DATA: Record<string, string[]> = {
+  // Avto-moto -> Osebna vozila (Car makes / brands)
+  'osebna-vozila': [
+    'Fiat', 'Volkswagen', 'Renault', 'BMW', 'Audi', 'Mercedes-Benz', 
+    'Škoda', 'Peugeot', 'Ford', 'Toyota', 'Citroën', 'Opel', 
+    'Hyundai', 'Kia', 'Honda', 'Seat', 'Mazda', 'Volvo', 
+    'Nissan', 'Alfa Romeo', 'Dacia', 'Suzuki', 'Porsche', 'Cupra', 
+    'Tesla', 'Mini', 'Land Rover', 'Jeep', 'Mitsubishi', 'Subaru', 'Jaguar', 'Smart'
+  ],
+  // Avto-moto -> Motorna kolesa & skuterji
+  'motorna-kolesa': [
+    'Yamaha', 'Honda', 'Kawasaki', 'Suzuki', 'KTM', 'BMW Motorrad', 
+    'Ducati', 'Piaggio', 'Vespa', 'Aprilia', 'Harley-Davidson', 
+    'Sym', 'Kymco', 'Husqvarna', 'Triumph', 'Tomos'
+  ],
+  // Avto-moto -> Gospodarska & tovorna vozila
+  'gospodarska-vozila': [
+    'Renault', 'Fiat Professional', 'Volkswagen', 'Ford', 'Mercedes-Benz', 
+    'Iveco', 'Peugeot', 'Citroën', 'MAN', 'Scania', 'DAF', 'Volvo Trucks'
+  ],
+  // Avto-moto -> Rezervni deli & oprema
+  'rezervni-deli': [
+    'Karoserija & deli', 'Motor & menjalnik', 'Zavore & podvozje', 
+    'Avtoakustika & navigacija', 'Svetila & žarometi', 'Izpušni sistem', 
+    'Akumulatorji', 'Prtljažniki & vlečne kljuke'
+  ],
+  // Avto-moto -> Pnevmatike & platišča
+  'pnevmatike-platisca': [
+    'Michelin', 'Continental', 'Goodyear', 'Bridgestone', 'Pirelli', 
+    'Dunlop', 'Sava', 'Hankook', 'Nokian', 'Alu platišča', 'Jeklena platišča'
+  ],
+  // Avto-moto -> Prikolice, bivalniki & navtika
+  'bivalniki-navtika': [
+    'Adria Mobil', 'Hobby', 'Hymer', 'Dethleffs', 'Knaus', 'Elan', 
+    'Bayliner', 'Gumenjaki', 'Tovorne prikolice', 'Prikolice za plovila'
+  ],
+
+  // Nepremičnine -> Stanovanja
+  'stanovanja-prodaja': [
+    'Garsonjera', '1-sobno stanovanje', '1.5-sobno stanovanje', '2-sobno stanovanje', 
+    '2.5-sobno stanovanje', '3-sobno stanovanje', '3.5-sobno stanovanje', 
+    '4-sobno in več', 'Meščansko stanovanje', 'Penthouse', 'Oskrbovano stanovanje'
+  ],
+  'stanovanja-oddaja': [
+    'Garsonjera', '1-sobno stanovanje', '1.5-sobno stanovanje', '2-sobno stanovanje', 
+    '2.5-sobno stanovanje', '3-sobno stanovanje', '3.5-sobno stanovanje', 
+    '4-sobno in več', 'Študentska soba', 'Penthouse'
+  ],
+  // Nepremičnine -> Hiše
+  'hise-prodaja': [
+    'Samostojna hiša', 'Vrstna hiša', 'Dvojček', 'Atrijska hiša', 
+    'Kmečka domačija', 'Vila', 'Bivalni vikend'
+  ],
+  'hise-oddaja': [
+    'Samostojna hiša', 'Vrstna hiša', 'Dvojček', 'Vila / Rezidenca'
+  ],
+  // Nepremičnine -> Posesti
+  'posesti-parcele': [
+    'Zazidljivo zemljišče', 'Kmetijsko zemljišče', 'Gozdno zemljišče', 'Posestvo', 'Industrijsko zemljišče'
+  ],
+  // Nepremičnine -> Poslovni prostori
+  'poslovni-prostori': [
+    'Pisarna', 'Skladišče & proizvodnja', 'Trgovski lokal', 'Gostinski lokal', 'Delavnica', 'Ordinacija'
+  ],
+  // Nepremičnine -> Počitniški objekti
+  'pocitniski-objekti': [
+    'Vikend / planinska koča', 'Apartma na morju', 'Apartma v gorah', 'Zidanica'
+  ],
+
+  // Tehnika & Elektronika -> Pametni telefoni & tablice
+  'telefoni-tablice': [
+    'Apple (iPhone)', 'Samsung Galaxy', 'Xiaomi / Redmi', 'Google Pixel', 
+    'Huawei', 'OnePlus', 'Motorola', 'Honor', 'Sony Xperia', 'Realme', 'iPad & tablice'
+  ],
+  // Tehnika & Elektronika -> Računalniki & prenosniki
+  'racunalniki-prenosniki': [
+    'Apple MacBook / iMac', 'Lenovo / ThinkPad', 'HP', 'Dell', 'Asus (ROG / ZenBook)', 
+    'Acer', 'Gaming PC namizni', 'Monitorji & zasloni', 'Računalniške komponente'
+  ],
+  // Tehnika & Elektronika -> TV, avdio & hi-fi
+  'tv-avdio-video': [
+    'Samsung', 'LG', 'Sony', 'Philips', 'TCL', 'Hisense', 
+    'JBL', 'Bose', 'Sonos', 'Marshall', 'Slušalke'
+  ],
+  // Tehnika & Elektronika -> Fotoaparati & kamere
+  'foto-kamere': [
+    'Canon', 'Sony', 'Nikon', 'Fujifilm', 'Panasonic Lumix', 'GoPro', 'DJI droni', 'Leica'
+  ],
+  // Tehnika & Elektronika -> Gaming & konzole
+  'gaming-konzole': [
+    'PlayStation 5 / PS4', 'Xbox Series X/S', 'Nintendo Switch', 'Steam Deck', 'Gaming dodatki'
+  ],
+  // Tehnika & Elektronika -> Bela tehnika
+  'bela-tehnika': [
+    'Bosch', 'Gorenje', 'Miele', 'Samsung', 'Beko', 'Electrolux', 'Whirlpool', 'Siemens', 'AEG', 'Dyson'
+  ],
+
+  // Dom in vrt -> Pohištvo
+  'pohistvo-oprema': [
+    'Sedežne garniture & kavči', 'Jedilne mize & stoli', 'Postelje & vzmetnice', 
+    'Garderobne omare', 'Kuhinje po meri', 'Pisarniško pohištvo', 'Vrtno pohištvo'
+  ],
+  // Dom in vrt -> Orodje & stroji
+  'orodje-stroji': [
+    'Makita', 'Bosch Professional', 'DeWalt', 'Milwaukee', 'Stihl', 
+    'Husqvarna', 'Parkside', 'Kärcher', 'Kosilnice & vrtni stroji'
+  ],
+  // Dom in vrt -> Ogrevanje & klima
+  'ogrevanje-hlajenje': [
+    'Toplotne črpalke', 'Drva, peleti & briketi', 'Kamini & peči', 'Klimatske naprave', 'Radiatorji'
+  ],
+
+  // Šport -> Kolesarstvo
+  'kolesarstvo': [
+    'Trek', 'Specialized', 'Scott', 'Giant', 'Cube', 'Cannondale', 
+    'Canyon', 'Merida', 'Bianchi', 'Rog', 'KTM Bike', 'Električna kolesa'
+  ],
+  // Šport -> Zimski športi
+  'zimski-sporti': [
+    'Elan', 'Atomic', 'Salomon', 'Head', 'Rossignol', 'Fischer', 'Volkl', 'Burton'
+  ],
+  // Šport -> Fitnes & vadba
+  'fitnes-vadba': [
+    'Uteži & ročke', 'Tekalne steze', 'Sobna kolesa', 'Multifunkcijske naprave', 'Drogovi & klopi'
+  ],
+
+  // ---------------- AKCIJE & UGODNOSTI ----------------
+  // Tehnika & Elektronika
+  'pametni-telefoni-akcija': [
+    'Apple (iPhone)', 'Samsung', 'Xiaomi', 'Big Bang', 'Mimovrste', 'A1', 'Telekom', 'Telemach', 'Shoppster'
+  ],
+  'prenosniki-racunalniki': [
+    'Apple MacBook', 'Lenovo', 'HP', 'Dell', 'Asus', 'Big Bang', 'Mimovrste', 'EPL', 'iStyle', 'Shoppster'
+  ],
+  'tv-avdio-znizanja': [
+    'Samsung', 'LG', 'Sony', 'Philips', 'JBL', 'Bose', 'Big Bang', 'Harvey Norman', 'Mimovrste'
+  ],
+  'bela-tehnika-ugodno': [
+    'Bosch', 'Gorenje', 'Beko', 'Miele', 'Electrolux', 'Big Bang', 'Harvey Norman', 'Mimovrste'
+  ],
+
+  // Trgovine & Hrana
+  'supermarketi-katalogi': [
+    'Spar & Interspar', 'Hofer', 'Lidl', 'Mercator', 'Tuš', 'Eurospin', 'Jager', 'E.Leclerc'
+  ],
+  'restavracije-dostava': [
+    'Wolt kuponi', 'Glovo kuponi', 'McDonalds kuponi', 'Pizzerije & kosila', 'Lokalne restavracije'
+  ],
+  'eko-lokalni-pridelki': [
+    'Lokalne kmetije', 'Bio & Eko trgovine', 'Tržnice', 'Med & olja', 'Domače mesnine'
+  ],
+
+  // Moda & Lepota
+  'sezonska-znizanja': [
+    'About You', 'Zalando', 'Answear', 'Zara', 'H&M', 'C&A', 'Mass', 'Deichmann', 'Peek & Cloppenburg'
+  ],
+  'sportna-obutev-oblacila': [
+    'Nike', 'Adidas', 'Puma', 'Hervis', 'Intersport', 'Decathlon', 'Sport Vision', 'Polleo Sport'
+  ],
+  'kozmetika-parfumi': [
+    'DM drogerie markt', 'Müller', 'Notino', 'Douglas', 'L’Occitane', 'Moja-Lekarna'
+  ],
+
+  // Dom & Bivanje
+  'pohistvo-vzmetnice': [
+    'Lesnina XXXL', 'Ikea', 'Mömax', 'Jysk', 'Harvey Norman', 'Rutar', 'Dormeo / Vitapur'
+  ],
+  'vrt-bivanje-akcija': [
+    'Bauhaus', 'Obi', 'Merkur', 'Kalia', 'Inpos', 'Vrtni centri'
+  ],
+  'dekor-gospodinjstvo': [
+    'Ikea', 'Mömax', 'Lesnina', 'Tedi', 'Pepco', 'Vitapur', 'Svilanit'
+  ],
+
+  // Potovanja & Wellness
+  'terme-wellness-kuponi': [
+    'Terme Olimia', 'Terme Čatež', 'Sava Hotels & Resorts', 'Terme Zreče', 'Thermana Laško', 'Terme Dobrna', 'Megabon kuponi', '1nadan kuponi'
+  ],
+  'nocitve-hoteli-vikend': [
+    'Booking.com popusti', 'Glamping Slovenija', 'Slovenska obala', 'Bled & Bohinj', 'Kranjska Gora', 'Kuponko'
+  ],
+  'dozivetja-vstopnice': [
+    'Postojnska jama', 'Vogel & Krvavec', 'Adrenalinski parki', 'Muzeji & gradovi', 'Woop Ljubljana & Maribor'
+  ],
+
+  // Storitve & Avto
+  'avtoservis-pnevmatike': [
+    'AMZS', 'LiderPnevmatik', 'Gume Direkt', 'Porsche Inter Auto', 'Avto Krka', 'Lokalni vulkanizerji'
+  ],
+  'zavarovanja-narocnine': [
+    'Zavarovalnica Triglav', 'Generali', 'Sava Zavarovalnica', 'Grawe', 'WIZ zavarovanja', 'Telekom Slovenije', 'A1', 'Telemach'
+  ],
+  'izobrazevanja-tecaji': [
+    'Šole vožnje', 'Jezikovni tečaji', 'Spletni tečaji & certifikati', 'Plesne šole'
+  ],
+
+  // ---------------- DOGODKI & PRIREDITVE ----------------
+  // Koncerti & Zabava
+  'koncerti-festivali': [
+    'Rock & Metal', 'Pop & Estrada', 'Festivali na prostem', 'Stadionski koncerti', 'Akustični večeri'
+  ],
+  'klubska-scena-dj': [
+    'House & Techno', 'EDM & Electronic', 'Trap & Hip-Hop', 'Tematske zabave / 90s', 'Afterparty'
+  ],
+  'narodnozabavni-veceri': [
+    'Veselice & šotori', 'Koncerti narodnozabavnih ansamblov', 'Praznovanja & fešte'
+  ],
+  'klasicna-glasba-opere': [
+    'Simfonični orkester', 'Komorni koncerti', 'Operne predstave', 'Zborovsko petje', 'Solistični recitali'
+  ],
+
+  // Kultura & Umetnost
+  'gledalisce-drame-komedije': [
+    'Komedija & Stand-up', 'Drama & Monodrama', 'Muzikal', 'Lutkovno gledališče', 'Impro liga'
+  ],
+  'razstave-muzeji-galerije': [
+    'Sodobna umetnost', 'Fotografske razstave', 'Zgodovinske razstave', 'Dnevi odprtih vrat muzejev', 'Kiparske razstave'
+  ],
+  'kino-filmski-veceri': [
+    'Kino na prostem', 'Filmski festivali (Liffe itd.)', 'Dokumentarni filmi', 'Premiera filma'
+  ],
+
+  // Šport & Rekreacija
+  'nogomet-kosarka-dvorana': [
+    'Prva liga & pokal', 'Evroliga & reprezentanca', 'Rokometna tekma', 'Odbojkarska tekma'
+  ],
+  'tek-maratoni-kolesarstvo': [
+    'Ljubljanski maraton', 'Istrski maraton', 'Kolesarski maraton Franja', 'Trail tek & gorski teki'
+  ],
+  'pohodnistvo-gore': [
+    'Organizirani pohodi', 'Planinski tabori', 'Nočni pohodi z baklami', 'Srečanja planincev'
+  ],
+
+  // Sejmi & Gastronomija
+  'kulinarični-festivali': [
+    'Odprta kuhna', 'Festivali čokolade', 'Festivali piva & craft pivovarji', 'Prazniki vina & Martinovanja'
+  ],
+  'mestni-prazniki': [
+    'Festival Lent', 'Pivo in cvetje Laško', 'Pustovanja & karnevali', 'Martinovanja po Sloveniji', 'Srednjeveški dnevi'
+  ],
+  'kmecki-obrtniski-sejmi': [
+    'Sejem Agra', 'Kmetijski sejmi', 'Obrtniški sejmi & bazarji', 'Božično-novoletni sejmi'
+  ],
+
+  // Družina & Otroci
+  'lutke-otroske-predstave': [
+    'Lutkovna predstava', 'Čarovniška predstava', 'Otroški muzikal', 'Pravljične urice'
+  ],
+  'ustvarjalne-delavnice': [
+    'Lego & robotika', 'Slikarske delavnice za otroke', 'Naravoslovne delavnice', 'Kuharske delavnice'
+  ],
+  'druzinski-izleti-dnevi': [
+    'Družinski dnevi v naravi', 'Pustolovski parki', 'Lov na zaklad', 'Animacija za otroke'
+  ],
+
+  // Posel & Delavnice
+  'konference-forumi': [
+    'Poslovne konference', 'IT & Tehnološki forumi', 'Marketing & Prodaja', 'Startupi & Investicije'
+  ],
+  'tecaji-delavnice': [
+    'Programiranje & AI', 'Podjetniški tečaji', 'Javni nastop & retorika', 'Finančno opismenjevanje'
+  ],
+
+  // ---------------- BLOG & ČLANKI ----------------
+  // Turizem & Izleti
+  'slovenski-biseri': [
+    'Bled & Bohinj', 'Dolina Soče', 'Kranjska Gora', 'Postojnska jama & Kras', 'Piran & Obala', 'Logarska dolina', 'Velika planina'
+  ],
+  'enodnevni-izleti': [
+    'Izlet z otroki', 'Sprehod ob jezeru', 'Ogled gradu', 'Piknik v naravi', 'Arboretum & parki', 'Učne poti'
+  ],
+  'hribi-planinske-poti': [
+    'Julijske Alpe', 'Kamniško-Savinjske Alpe', 'Karavanke', 'Pohorje', 'Triglav & visokogorje', 'Družinski hribi'
+  ],
+  'vikend-oddih-wellness': [
+    'Terme Olimia', 'Terme Čatež', 'Rogaška Slatina', 'Portorož & obala', 'Bled oddih', 'Glamping v naravi'
+  ],
+  'skriti-koticki': [
+    'Skriti slapovi', 'Gozdne poti', 'Zapuščene vasice', 'Panoramske točke', 'Divje soteske'
+  ],
+
+  // Kulinarika & Recepti
+  'tradicionalne-jedi': [
+    'Slovenska potica', 'Prekmurska gibanica', 'Kranjska klobasa', 'Idrijski žlikrofi', 'Jota & enolončnice', 'Štruklji'
+  ],
+  'sodobna-kuhinja': [
+    'Hitra kosila (30 min)', 'Vegetarijanski recepti', 'Veganski recepti', 'Enolončnice', 'Testenine & rižote', 'Jed iz pečice'
+  ],
+  'vino-lokalna-pijaca': [
+    'Teran & Kras', 'Rebula & Brda', 'Cviček & Dolenjska', 'Štajerska bela vina', 'Domači zeliščni likerji', 'Craft pivo'
+  ],
+  'zdrava-prehrana': [
+    'Brez glutena', 'Sezonska zelenjava', 'Smoothie & zajtrki', 'Prehrana za športnike', 'Domači kruh z drožmi'
+  ],
+  'priporocila-gostiln': [
+    'Domače gostilne', 'Michelin vodič Slovenija', 'Gostilne s tradicijo', 'Turistične kmetije', 'Mestni bistroji'
+  ],
+
+  // Tehnologija & Inovacije
+  'umetna-inteligenca': [
+    'ChatGPT & prompti', 'Generiranje slik & AI', 'Avtomatizacija dela', 'AI v šolstvu', 'Orodja za produktivnost'
+  ],
+  'pametni-telefoni-gadgeti': [
+    'Apple iPhone', 'Samsung Galaxy', 'Pametne ure & zapestnice', 'Brezžične slušalke', 'Baterije & polnilci'
+  ],
+  'spletna-varnost': [
+    'Preprečevanje spletnih prevar', 'Upravljanje gesel', 'Dvostopenjska avtentikacija', 'Varno spletno bančništvo'
+  ],
+  'pametni-dom': [
+    'Pametna razsvetljava', 'Pametni termostati', 'Robotski sesalniki', 'Varnostne kamere', 'Brezžična stikala'
+  ],
+
+  // Dom, Vrt & Gradnja
+  'prenova-ambient': [
+    'Prenova kopalnice', 'Kuhinjski trendi', 'Minimalizem & feng shui', 'Barvne palete', 'Osvetlitev prostora'
+  ],
+  'naredi-sam-diy': [
+    'Obnova starega pohištva', 'Leseni izdelki', 'Barvanje sten', 'Manjša popravila v hiši', 'Vrtno pohištvo DIY'
+  ],
+  'sezonski-vrt': [
+    'Zasaditev visoke grede', 'Zelenjavni vrt', 'Obrezovanje dreves', 'Trata & nega trave', 'Zeliščni vrtiček'
+  ],
+  'energetska-ucinkovitost': [
+    'Sončne elektrarne', 'Toplotne črpalke', 'Izolacija fasade', 'Menjava oken & vrat', 'Subvencije Eko sklada'
+  ],
+
+  // Finance & Podjetništvo
+  'osebne-finance': [
+    'Mesečni proračun', 'Varčevanje za rezervo', 'Zmanjšanje stroškov', 'Žepnina & otroci', 'Finančni cilji'
+  ],
+  'slovenski-podjetniki': [
+    'Startupi & inovacije', 'Družinska podjetja', 'Samostojni podjetniki (s.p.)', 'Uspešni izvozniki'
+  ],
+  'nepremicninski-nasveti': [
+    'Nakup prvega stanovanja', 'Stanovanjski kredit', 'Oddajanje nepremičnine', 'Zemljiška knjiga & davek'
+  ],
+  'investicije-skladi': [
+    'Delniški ETF skladi', 'Vzajemni skladi', 'Zlato & plemenite kovine', 'Kriptovalute', 'Obveznice'
+  ],
+
+  // Zdravje & Dobro počutje
+  'zdrav-zivljenjski-slog': [
+    'Jutranje rutine', 'Kakovosten spanec', 'Vsakodnevna hoja', 'Vnos vode & hidracija', 'Pretegovanje & drža'
+  ],
+  'dusevno-zdravje-stres': [
+    'Dihalne vaje', 'Meditacija & čuječnost', 'Digitalni odklop', 'Premagovanje izgorelosti', 'Pozitivno razmišljanje'
+  ],
+  'zelišča-narava': [
+    'Domači čaji (lipa, kamilica)', 'Ameriški slamnik', 'Sirup iz smrekovih vršičkov', 'Tinkture & mazila', 'Nabiranje gob & zelišč'
+  ]
+};
+
+// General fallback brands/makes for entire categories when no subcategory is selected
+export const CATEGORY_GENERAL_TERTIARY_DATA: Record<string, string[]> = {
+  'ads-avto-moto': [
+    'Fiat', 'Volkswagen', 'Renault', 'BMW', 'Audi', 'Mercedes-Benz', 
+    'Škoda', 'Peugeot', 'Ford', 'Toyota', 'Citroën', 'Opel', 
+    'Hyundai', 'Kia', 'Honda', 'Yamaha', 'Kawasaki', 'Adria Mobil'
+  ],
+  'ads-nepremicnine': [
+    'Garsonjera', '1-sobno', '2-sobno', '3-sobno', '4-sobno in več', 
+    'Samostojna hiša', 'Vrstna hiša', 'Dvojček', 'Zazidljiva parcela', 'Poslovni prostor', 'Vikend'
+  ],
+  'ads-tehnika': [
+    'Apple', 'Samsung', 'Xiaomi', 'Sony', 'Lenovo', 'HP', 
+    'Dell', 'Asus', 'LG', 'Philips', 'Bosch', 'Gorenje', 'Canon'
+  ],
+  'ads-dom-vrt': [
+    'Makita', 'Bosch', 'DeWalt', 'Stihl', 'Husqvarna', 
+    'Sedežne garniture', 'Postelje', 'Jedilne mize', 'Kuhinje', 'Toplotne črpalke'
+  ],
+  'ads-sport-prosti-cas': [
+    'Trek', 'Specialized', 'Scott', 'Giant', 'Cube', 
+    'Elan', 'Atomic', 'Salomon', 'Head', 'Fischer'
+  ],
+  'ads-storitve-delo': [
+    'Gradbeništvo & obrt', 'IT & programiranje', 'Avtoservis', 
+    'Slikopleskarstvo', 'Elektro inštalacije', 'Inštrukcije', 'Prevozi'
+  ],
+  // Deals general fallbacks
+  'deals-tehnika-elektronika': [
+    'Big Bang', 'Mimovrste', 'Shoppster', 'Apple', 'Samsung', 'Xiaomi', 'Harvey Norman', 'Sony', 'Bosch', 'Gorenje'
+  ],
+  'deals-trgovine-hrana': [
+    'Spar & Interspar', 'Hofer', 'Lidl', 'Mercator', 'Tuš', 'Eurospin', 'Wolt', 'Glovo', 'E.Leclerc'
+  ],
+  'deals-moda-lepota': [
+    'About You', 'Zalando', 'Hervis', 'Intersport', 'Decathlon', 'DM drogerie', 'Müller', 'Notino', 'Zara', 'H&M'
+  ],
+  'deals-dom-bivanje': [
+    'Lesnina XXXL', 'Ikea', 'Mömax', 'Jysk', 'Bauhaus', 'Obi', 'Merkur', 'Dormeo', 'Vitapur'
+  ],
+  'deals-potovanja-wellness': [
+    'Terme Olimia', 'Terme Čatež', 'Sava Hotels', 'Thermana Laško', 'Megabon', '1nadan', 'Booking.com', 'Woop'
+  ],
+  'deals-storitve-avto': [
+    'AMZS', 'Zavarovalnica Triglav', 'Generali', 'Telekom Slovenije', 'A1', 'Telemach', 'Porsche Inter Auto'
+  ],
+
+  // Events general fallbacks
+  'events-koncerti-zabava': [
+    'Rock & Metal', 'Pop & Estrada', 'Elektronska & DJ', 'Narodnozabavni večer', 'Festival na prostem', 'Klasični koncert'
+  ],
+  'events-kultura-umetnost': [
+    'Komedija & Stand-up', 'Gledališka predstava', 'Razstava & Galerija', 'Kino na prostem', 'Liffe & film'
+  ],
+  'events-sport-rekreacija': [
+    'Maraton & Tek', 'Kolesarska dirka', 'Nogomet & Košarka', 'Pohod & Gore', 'Tekme & turnirji'
+  ],
+  'events-sejmi-gastronomija': [
+    'Odprta kuhna', 'Sejem Agra', 'Praznik vina & Piva', 'Festival Lent', 'Pivo in cvetje', 'Kulinarični dnevi'
+  ],
+  'events-druzina-otroci': [
+    'Lutkovna predstava', 'Čarovniška predstava', 'Otroški muzikal', 'Družinski dan', 'Ustvarjalne delavnice'
+  ],
+  'events-posel-izobrazevanje': [
+    'Poslovna konferenca', 'IT & AI delavnica', 'Podjetniški forum', 'Predavanja & tečaji'
+  ],
+
+  // Blog general fallbacks
+  'blog-turizem-izleti': [
+    'Bled & Bohinj', 'Dolina Soče', 'Kranjska Gora', 'Piran & Obala', 'Julijske Alpe', 'Logarska dolina', 'Terme & wellness'
+  ],
+  'blog-kulinarika-recepti': [
+    'Tradicionalne jedi', 'Hitra kosila', 'Slovenska potica', 'Zdravi recepti', 'Vinska pot', 'Lokalne gostilne'
+  ],
+  'blog-tehnologija-inovacije': [
+    'Umetna inteligenca (AI)', 'Pametni telefoni', 'Spletna varnost', 'Pametni dom', 'Produktivnost'
+  ],
+  'blog-dom-vrt-gradnja': [
+    'Prenova doma', 'Naredi sam (DIY)', 'Urejanje vrta', 'Sončne elektrarne', 'Toplotne črpalke', 'Visoke grede'
+  ],
+  'blog-finance-gospodarstvo': [
+    'Osebne finance', 'Varčevanje', 'Nakup nepremičnine', 'Investiranje v ETF', 'Podjetniške zgodbe'
+  ],
+  'blog-zdravje-zivljenjski-slog': [
+    'Zdrav življenjski slog', 'Premagovanje stresa', 'Kakovosten spanec', 'Domača zelišča', 'Vitalnost'
+  ]
+};
+
+/**
+ * Returns available 3rd level category/make/type options based on category and subcategory.
+ */
+export function getTertiaryCategories(
+  categoryId: string, 
+  subcategoryId?: string, 
+  customCategories?: CategoryItem[]
+): string[] {
+  const categoryPool = customCategories && customCategories.length > 0 ? customCategories : activeCategories;
+
+  // 1. Check if admin configured custom tertiaryItems on active subcategory
+  if (subcategoryId && subcategoryId !== 'all') {
+    for (const c of categoryPool) {
+      const sub = (c.subcategories || []).find(s => 
+        s.id === subcategoryId || 
+        s.name.toLowerCase().trim() === subcategoryId.toLowerCase().trim()
+      );
+      if (sub && Array.isArray(sub.tertiaryItems) && sub.tertiaryItems.length > 0) {
+        return sub.tertiaryItems;
+      }
+    }
+  }
+
+  // 2. If subcategory is explicitly chosen and has a mapping in static tables
+  if (subcategoryId && subcategoryId !== 'all' && TERTIARY_CATEGORIES_DATA[subcategoryId]) {
+    return TERTIARY_CATEGORIES_DATA[subcategoryId];
+  }
+
+  // If subcategory ID might be matched by partial string
+  if (subcategoryId && subcategoryId !== 'all') {
+    const matchedKey = Object.keys(TERTIARY_CATEGORIES_DATA).find(k => 
+      k.toLowerCase() === subcategoryId.toLowerCase() || 
+      subcategoryId.toLowerCase().includes(k.toLowerCase())
+    );
+    if (matchedKey) return TERTIARY_CATEGORIES_DATA[matchedKey];
+  }
+
+  // If category is selected (e.g. 'ads-avto-moto', 'deals-trgovine-hrana', 'events-koncerti-zabava')
+  if (categoryId && categoryId !== 'all') {
+    if (CATEGORY_GENERAL_TERTIARY_DATA[categoryId]) {
+      return CATEGORY_GENERAL_TERTIARY_DATA[categoryId];
+    }
+    const catLower = categoryId.toLowerCase();
+    if (catLower.includes('koncert') || catLower.includes('zabav') || catLower.includes('glasb')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['events-koncerti-zabava'];
+    }
+    if (catLower.includes('kultur') || catLower.includes('umetnost') || catLower.includes('gledalis')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['events-kultura-umetnost'];
+    }
+    if (catLower.includes('sejm') || catLower.includes('gastronom') || catLower.includes('kulinari')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['events-sejmi-gastronomija'];
+    }
+    if (catLower.includes('druzina') || catLower.includes('otroc') || catLower.includes('lutk')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['events-druzina-otroci'];
+    }
+    if (catLower.includes('posel') || catLower.includes('izobrazev') || catLower.includes('konferenc')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['events-posel-izobrazevanje'];
+    }
+    if (catLower.includes('avto') || catLower.includes('moto') || catLower.includes('vozil')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['ads-avto-moto'];
+    }
+    if (catLower.includes('nepremicnin') || catLower.includes('stanovan') || catLower.includes('his')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['ads-nepremicnine'];
+    }
+    if (catLower.includes('tehnik') || catLower.includes('elektronik') || catLower.includes('telefon')) {
+      return (catLower.startsWith('deals') || catLower.includes('deal'))
+        ? CATEGORY_GENERAL_TERTIARY_DATA['deals-tehnika-elektronika']
+        : CATEGORY_GENERAL_TERTIARY_DATA['ads-tehnika'];
+    }
+    if (catLower.includes('hrana') || catLower.includes('trgovin') || catLower.includes('zivil')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['deals-trgovine-hrana'];
+    }
+    if (catLower.includes('moda') || catLower.includes('lepota') || catLower.includes('oblacil') || catLower.includes('kozmetik')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['deals-moda-lepota'];
+    }
+    if (catLower.includes('potovan') || catLower.includes('turiz') || catLower.includes('wellnes') || catLower.includes('term')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['deals-potovanja-wellness'];
+    }
+    if (catLower.includes('dom') || catLower.includes('vrt') || catLower.includes('bivanj')) {
+      return (catLower.startsWith('deals') || catLower.includes('deal'))
+        ? CATEGORY_GENERAL_TERTIARY_DATA['deals-dom-bivanje']
+        : CATEGORY_GENERAL_TERTIARY_DATA['ads-dom-vrt'];
+    }
+    if (catLower.includes('sport') || catLower.includes('koles')) {
+      return catLower.includes('event') || catLower.includes('dogod')
+        ? CATEGORY_GENERAL_TERTIARY_DATA['events-sport-rekreacija']
+        : CATEGORY_GENERAL_TERTIARY_DATA['ads-sport-prosti-cas'];
+    }
+    if (catLower.includes('storitv') || catLower.includes('zavarovanj')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['deals-storitve-avto'];
+    }
+    // Blog categories
+    if (catLower.includes('turiz') || catLower.includes('izlet') || catLower.includes('hrib') || catLower.includes('biser')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['blog-turizem-izleti'];
+    }
+    if (catLower.includes('kulinari') || catLower.includes('recept') || catLower.includes('kuhinj') || catLower.includes('jed')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['blog-kulinarika-recepti'];
+    }
+    if (catLower.includes('tehnolog') || catLower.includes('inovacij') || catLower.includes('umetna') || catLower.includes('ai')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['blog-tehnologija-inovacije'];
+    }
+    if (catLower.includes('gradnj') || catLower.includes('prenov') || catLower.includes('diy')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['blog-dom-vrt-gradnja'];
+    }
+    if (catLower.includes('financ') || catLower.includes('podjetn') || catLower.includes('investic') || catLower.includes('varcev')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['blog-finance-gospodarstvo'];
+    }
+    if (catLower.includes('zdravj') || catLower.includes('pocutj') || catLower.includes('zelisc') || catLower.includes('stres')) {
+      return CATEGORY_GENERAL_TERTIARY_DATA['blog-zdravje-zivljenjski-slog'];
+    }
+  }
+
+  // General popular makes & items when 'all' is selected
+  return [
+    'Rock & Metal', 'Pop & Estrada', 'Komedija & Stand-up', 'Gledališče', 'Maraton & Tek', 
+    'Odprta kuhna', 'Festival Lent', 'Lutkovna predstava', 'Poslovna konferenca', 'Kino na prostem'
+  ];
+}
+

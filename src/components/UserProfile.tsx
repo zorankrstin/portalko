@@ -189,6 +189,7 @@ export function UserProfile({
           imageUrl: p.imageUrl,
           price: p.price,
           location: p.location,
+          tags: p.tags,
           rejectionReason: p.rejectionReason,
         });
       }
@@ -224,6 +225,7 @@ export function UserProfile({
           imageUrl: a.imageUrl,
           price: a.price,
           location: a.location,
+          tags: a.tags,
           rejectionReason: a.rejectionReason,
         });
       }
@@ -264,6 +266,7 @@ export function UserProfile({
           eventDates: e.eventDates,
           eventSchedule: e.eventSchedule,
           ticketUrl: e.ticketUrl,
+          tags: e.tags,
           rejectionReason: e.rejectionReason,
         });
       }
@@ -740,6 +743,16 @@ export function UserProfile({
                         <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">
                           {item.content}
                         </p>
+
+                        {item.tags && Array.isArray(item.tags) && item.tags.length > 0 && (
+                          <div className="flex items-center gap-1 flex-wrap mt-1">
+                            {item.tags.map((tag, idx) => (
+                              <span key={idx} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                                #{tag.replace(/^#/, '')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
                         {item.status === 'rejected' && item.rejectionReason && (
                           <div className="mt-2 text-[11px] text-error bg-error/10 border border-error/20 rounded-lg p-2">

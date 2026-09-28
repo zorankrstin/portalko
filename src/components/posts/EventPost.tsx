@@ -34,6 +34,8 @@ export interface EventPostProps {
   image?: string;
   interestedCount?: string | number;
   likesCount?: number | string;
+  lovesCount?: number | string;
+  dislikesCount?: number | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -64,6 +66,8 @@ export const EventPost: React.FC<EventPostProps> = ({
   image,
   interestedCount = 86,
   likesCount = 0,
+  lovesCount = 0,
+  dislikesCount = 0,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
@@ -265,6 +269,8 @@ export const EventPost: React.FC<EventPostProps> = ({
                 id={id}
                 targetType="event"
                 initialLikesCount={likesCount}
+                initialLovesCount={lovesCount}
+                initialDislikesCount={dislikesCount}
                 variant="minimal"
                 showCount={true}
                 itemTitle={title}
@@ -371,6 +377,8 @@ export const EventPost: React.FC<EventPostProps> = ({
               id={id}
               targetType="event"
               initialLikesCount={likesCount}
+              initialLovesCount={lovesCount}
+              initialDislikesCount={dislikesCount}
               variant="pill"
               showCount={true}
               showLabel={true}

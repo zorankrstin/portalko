@@ -4,11 +4,15 @@ import { SLOVENIA_REGIONS } from '../services/categoryService';
  * Returns today's date formatted as YYYY-MM-DD in local time.
  */
 export function getTodayYmd(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Ljubljana' }).format(new Date());
+  } catch {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 }
 
 /**
@@ -97,14 +101,35 @@ export function formatSelectedDatesSummary(dates: string[]): string {
 
 /**
  * Normalizes any string representation of a date to YYYY-MM-DD if possible.
+ * Handles ISO strings, YYYY-MM-DD, DD.MM.YYYY, Slovenian month names, slash dates, and timestamps.
  */
-export function normalizeDateToYmd(str?: string | null): string | null {
-  if (!str || typeof str !== 'string') return null;
+export function normalizeDateToYmd(str?: any | null): string | null {
+  if (!str) return null;
+
+  // Handle Date instances
+  if (str instanceof Date) {
+    if (isNaN(str.getTime())) return null;
+    return formatYmd(str);
+  }
+
+  // Handle Firestore Timestamp
+  if (typeof str === 'object') {
+    if (typeof str.toDate === 'function') {
+      const d = str.toDate();
+      if (d instanceof Date && !isNaN(d.getTime())) return formatYmd(d);
+    }
+    if (typeof str.seconds === 'number') {
+      const d = new Date(str.seconds * 1000);
+      if (!isNaN(d.getTime())) return formatYmd(d);
+    }
+  }
+
+  if (typeof str !== 'string') return null;
   const trimmed = str.trim();
   if (!trimmed) return null;
 
-  // 1. Matches YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss
-  const ymd = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  // 1. Matches YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss or YYYY/MM/DD
+  const ymd = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   if (ymd) {
     const y = ymd[1];
     const m = ymd[2].padStart(2, '0');
@@ -112,7 +137,7 @@ export function normalizeDateToYmd(str?: string | null): string | null {
     return `${y}-${m}-${d}`;
   }
 
-  // 2. Matches DD.MM.YYYY (e.g. 28. 9. 2026 or 28.09.2026)
+  // 2. Matches DD.MM.YYYY or DD. MM. YYYY (e.g. 28. 9. 2026 or 28.09.2026.)
   const dmy = trimmed.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
   if (dmy) {
     const d = dmy[1].padStart(2, '0');
@@ -121,7 +146,34 @@ export function normalizeDateToYmd(str?: string | null): string | null {
     return `${y}-${m}-${d}`;
   }
 
-  // 3. Fallback: Date.parse
+  // 3. Matches Slovenian month names: e.g. "28. september 2026", "28. sep 2026", "28. september"
+  const slMonths: Record<string, string> = {
+    januar: '01', jan: '01',
+    februar: '02', feb: '02',
+    marec: '03', mar: '03',
+    april: '04', apr: '04',
+    maj: '05',
+    junij: '06', jun: '06',
+    julij: '07', jul: '07',
+    avgust: '08', avg: '08',
+    september: '09', sep: '09',
+    oktober: '10', okt: '10',
+    november: '11', nov: '11',
+    december: '12', dec: '12'
+  };
+
+  const slMatch = trimmed.match(/(\d{1,2})\.?\s+([a-zA-ZčšžČŠŽ]+)(?:\s+(\d{4}))?/i);
+  if (slMatch) {
+    const day = slMatch[1].padStart(2, '0');
+    const monthWord = slMatch[2].toLowerCase();
+    const monthNum = slMonths[monthWord];
+    if (monthNum) {
+      const year = slMatch[3] || String(new Date().getFullYear());
+      return `${year}-${monthNum}-${day}`;
+    }
+  }
+
+  // 4. Fallback: Date.parse
   const parsed = new Date(trimmed);
   if (!isNaN(parsed.getTime())) {
     const y = parsed.getFullYear();
@@ -251,21 +303,79 @@ export function getUpcomingEvents<T extends {
   eventDates?: string[] | null;
   eventSchedule?: { date?: string }[] | null;
   eventTime?: string | null;
+  status?: string;
   title?: string;
 }>(events: T[], todayYmd: string = getTodayYmd()): (T & { upcomingDate: string })[] {
   const result: (T & { upcomingDate: string })[] = [];
+  const now = new Date();
+
+  // Get current time in Europe/Ljubljana for same-day filtering
+  let currentMinutes = -1;
+  try {
+    const timeFormatter = new Intl.DateTimeFormat('sl-SI', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/Ljubljana',
+    });
+    const parts = timeFormatter.format(now).split(':').map(n => parseInt(n, 10));
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      currentMinutes = parts[0] * 60 + parts[1];
+    }
+  } catch {
+    currentMinutes = now.getHours() * 60 + now.getMinutes();
+  }
 
   for (const ev of events) {
+    // Exclude rejected, archived, draft
+    if (ev.status === 'rejected' || ev.status === 'archived' || ev.status === 'draft') {
+      continue;
+    }
+
     const nextDate = getEventNextUpcomingDate(ev, todayYmd);
-    if (nextDate) {
+    if (!nextDate) continue;
+
+    // If nextDate is strictly in the future, it is definitely upcoming
+    if (nextDate > todayYmd) {
       result.push({
         ...ev,
         upcomingDate: nextDate,
       });
+    } else if (nextDate === todayYmd) {
+      // It is scheduled for today. Check if the event time has already elapsed
+      let isElapsedToday = false;
+      if (ev.eventTime && ev.eventTime.includes(':')) {
+        const timeParts = ev.eventTime.split(':').map(n => parseInt(n, 10));
+        if (!isNaN(timeParts[0]) && !isNaN(timeParts[1])) {
+          const eventMinutes = timeParts[0] * 60 + timeParts[1];
+          // If event started more than 3 hours (180 mins) ago, consider it ended for today
+          if (currentMinutes !== -1 && currentMinutes > eventMinutes + 180) {
+            isElapsedToday = true;
+          }
+        }
+      }
+
+      if (isElapsedToday) {
+        // Check if there is another upcoming date in eventDates after today
+        const allDates = extractEventDateStrings(ev);
+        const futureDates = allDates.filter(d => d > todayYmd).sort();
+        if (futureDates.length > 0) {
+          result.push({
+            ...ev,
+            upcomingDate: futureDates[0],
+          });
+        }
+        // Otherwise event is over today
+      } else {
+        result.push({
+          ...ev,
+          upcomingDate: nextDate,
+        });
+      }
     }
   }
 
-  // Sort ascending by upcomingDate, then by eventTime if available
+  // Sort ascending by upcomingDate (earliest first), then by eventTime if available
   result.sort((a, b) => {
     if (a.upcomingDate !== b.upcomingDate) {
       return a.upcomingDate.localeCompare(b.upcomingDate);

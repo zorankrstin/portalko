@@ -12,6 +12,9 @@ export interface NewsPostProps {
   link?: string;
   title?: string;
   summary?: string;
+  likesCount?: number;
+  lovesCount?: number;
+  dislikesCount?: number;
 }
 
 export const NewsPost: React.FC<NewsPostProps> = ({ 
@@ -21,7 +24,10 @@ export const NewsPost: React.FC<NewsPostProps> = ({
   timeAgo = "pred 54 min",
   link = "https://www.24ur.com",
   title = "Prometna napoved: Predor Karavanke ponovno odprt za ves promet, popoldne krajše zapore",
-  summary = "Vzdrževalna dela na avstrijski strani so bila uspešno zaključena pred predvidenim rokom. Prometno-informacijski center voznike opozarja na meglo v pasovih na primorski avtocesti.",
+  summary = "Vzdrževalna dela na avstrijski strani so bila uspešno zakočena pred predvidenim rokom. Prometno-informacijski center voznike opozarja na meglo v pasovih na primorski avtocesti.",
+  likesCount = 0,
+  lovesCount = 0,
+  dislikesCount = 0,
 }) => {
   const bookmarkData = {
     type: 'news',
@@ -56,7 +62,9 @@ export const NewsPost: React.FC<NewsPostProps> = ({
           <LikeButton 
             id={id} 
             targetType="news" 
-            initialLikesCount={0} 
+            initialLikesCount={likesCount} 
+            initialLovesCount={lovesCount}
+            initialDislikesCount={dislikesCount}
             variant="minimal" 
             showCount={true} 
             itemTitle={title} 

@@ -54,6 +54,11 @@ service cloud.firestore {
       match /likes/{likeId} {
         allow read, write: if true;
       }
+
+      // User reactions subcollection (like, love, dislike)
+      match /reactions/{reactionId} {
+        allow read, write: if true;
+      }
     }
 
     // Posts Collection
@@ -90,6 +95,13 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow create: if true;
       allow read, update, delete: if true;
+    }
+
+    // Comments Collection
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
     }
 
     // Portal Settings Collection

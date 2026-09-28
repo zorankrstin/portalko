@@ -6,7 +6,6 @@ import { LikeButton } from "../LikeButton";
 import { BookOpen, MoreHorizontal, Camera, Heart, MessageCircle, Eye, ArrowRight } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType } from "../../types";
-import { AdSense } from "../ads/AdSense";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
@@ -30,6 +29,8 @@ export interface BlogPostProps {
   readTime?: string;
   photoCount?: string;
   likesCount?: string;
+  lovesCount?: string | number;
+  dislikesCount?: string | number;
   commentsCount?: string;
   viewsCount?: string;
   tags?: string[];
@@ -56,9 +57,11 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   readTime = "5 minut branja",
   photoCount = "8 fotografij",
   likesCount = "84 všečkov",
+  lovesCount = 0,
+  dislikesCount = 0,
   commentsCount = "0 komentarjev",
   viewsCount = "1.420 ogledov",
-  tags = ["turizem", "slovenija", "izlet", "socaValley"],
+  tags = [],
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
@@ -248,6 +251,8 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             id={id}
             targetType="blog"
             initialLikesCount={likesCount}
+            initialLovesCount={lovesCount}
+            initialDislikesCount={dislikesCount}
             variant="card-action"
             showCount={true}
             showLabel={true}
@@ -287,7 +292,6 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           </a>
         </div>
       </div>
-      <AdSense />
     </article>
   );
 };

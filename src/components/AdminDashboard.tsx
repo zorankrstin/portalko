@@ -52,6 +52,7 @@ import {
   deleteCategory, 
   deleteSubcategory 
 } from '../services/categoryService';
+import { buildPostUrl, slugify } from '../utils/urlUtils';
 
 export type { RssFeedConfig };
 
@@ -72,7 +73,7 @@ const MOCK_POSTS: AdminPost[] = [
 ];
 
 export function AdminDashboard() {
-  const { users, currentUser, updateUser, register } = useAuth();
+  const { users, currentUser, updateUser, deleteUser, register } = useAuth();
   const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'rss' | 'reports' | 'settings'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -288,6 +289,7 @@ export function AdminDashboard() {
         imageUrl: p.imageUrl,
         price: p.price,
         location: p.location,
+        tags: p.tags,
         rejectionReason: p.rejectionReason,
         isPromoted: p.isPromoted,
         promotion: p.promotion,
@@ -315,6 +317,7 @@ export function AdminDashboard() {
         imageUrl: a.imageUrl,
         price: a.price,
         location: a.location,
+        tags: a.tags,
         rejectionReason: a.rejectionReason,
         isPromoted: a.isPromoted,
         promotion: a.promotion,
@@ -344,6 +347,7 @@ export function AdminDashboard() {
         eventDates: e.eventDates,
         eventSchedule: e.eventSchedule,
         ticketUrl: e.ticketUrl,
+        tags: e.tags,
         rejectionReason: e.rejectionReason,
         isPromoted: e.isPromoted,
         promotion: e.promotion,
@@ -829,18 +833,34 @@ export function AdminDashboard() {
                     .map(user => {
                       const isSuperadmin = currentUser?.role === 'superadmin';
                       const canManageVerification = isSuperadmin || currentUser?.role === 'admin';
+                      const profileUrl = `/avtor/${slugify(user.name) || user.id}`;
 
                       return (
                         <tr key={user.id} className={`hover:bg-surface-container-lowest transition-colors ${user.verificationRequested ? 'bg-amber-500/5' : ''}`}>
                           <td className="p-3">
                             <div className="flex items-start gap-2.5">
-                              <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
+                              <a 
+                                href={profileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="shrink-0 group block"
+                                title={`Odpri profil uporabnika ${user.name} v novem oknu`}
+                              >
+                                <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover mt-0.5 ring-1 ring-surface-container group-hover:ring-primary transition-all" />
+                              </a>
                               <div className="flex flex-col min-w-0">
-                                <span className="font-bold text-sm text-on-surface flex items-center gap-1">
-                                  {user.name}
-                                  {user.role === 'superadmin' && <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />}
-                                  {user.role === 'verified' && <CheckCircle className="w-3.5 h-3.5 text-secondary" />}
-                                </span>
+                                <a 
+                                  href={profileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-bold text-sm text-on-surface hover:text-primary transition-colors flex items-center gap-1 group w-max"
+                                  title={`Odpri profil uporabnika ${user.name} v novem oknu`}
+                                >
+                                  <span>{user.name}</span>
+                                  {user.role === 'superadmin' && <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
+                                  {user.role === 'verified' && <CheckCircle className="w-3.5 h-3.5 text-secondary shrink-0" />}
+                                  <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                                </a>
                                 <span className="text-xs text-outline truncate">{user.email}</span>
 
                                 {user.verificationRequested && (
@@ -918,20 +938,46 @@ export function AdminDashboard() {
                                 </div>
                               )}
 
-                              {isSuperadmin && user.id !== currentUser?.id && (
-                                <button 
-                                  onClick={() => updateUser(user.id, { status: user.status === 'active' ? 'banned' : 'active' })}
-                                  className={`px-3 py-1 rounded text-xs font-bold ${user.status === 'active' ? 'bg-error/10 text-error hover:bg-error/20' : 'bg-secondary/10 text-secondary hover:bg-secondary/20'}`}
+                              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                <a
+                                  href={profileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2 py-1 rounded-lg text-xs font-semibold bg-surface-container-low hover:bg-surface-container text-on-surface hover:text-primary transition-colors flex items-center gap-1 cursor-pointer border border-surface-container"
+                                  title={`Odpri profil uporabnika ${user.name} v novem oknu`}
                                 >
-                                  {user.status === 'active' ? 'Blokiraj' : 'Odblokiraj'}
-                                </button>
-                              )}
+                                  <ExternalLink className="w-3.5 h-3.5 text-primary" />
+                                  <span className="hidden sm:inline">Profil</span>
+                                </a>
 
-                              {(!isSuperadmin || user.id === currentUser?.id) && !user.verificationRequested && (
-                                <button className="p-1.5 text-outline hover:text-primary transition-colors rounded-lg hover:bg-primary/10" title="Brez dodatnih akcij">
-                                  <MoreVertical className="w-4 h-4" />
-                                </button>
-                              )}
+                                {isSuperadmin && user.id !== currentUser?.id && (
+                                  <>
+                                    <button 
+                                      onClick={() => updateUser(user.id, { status: user.status === 'active' ? 'banned' : 'active' })}
+                                      className={`px-2.5 py-1 rounded text-xs font-bold ${user.status === 'active' ? 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20' : 'bg-secondary/10 text-secondary hover:bg-secondary/20'}`}
+                                    >
+                                      {user.status === 'active' ? 'Blokiraj' : 'Odblokiraj'}
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        if (window.confirm(`Ali ste prepričani, da želite izbrisati uporabnika ${user.name} (${user.email})?`)) {
+                                          deleteUser(user.id);
+                                          setActionFeedback({
+                                            id: `del-${user.id}`,
+                                            message: `Uporabnik ${user.name} je bil uspešno izbrisan.`,
+                                            type: 'success'
+                                          });
+                                        }
+                                      }}
+                                      className="p-1 rounded bg-error/10 text-error hover:bg-error/20 transition-colors cursor-pointer"
+                                      title="Izbriši uporabnika"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -1034,124 +1080,185 @@ export function AdminDashboard() {
                       </td>
                     </tr>
                   ) : (
-                    filteredPosts.map(post => (
-                      <tr key={post.id} className="hover:bg-surface-container-low/40 transition-colors">
-                        <td className="p-3">
-                          <div className="flex items-center gap-2.5 max-w-xs sm:max-w-md">
-                            {post.imageUrl && (
-                              <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-surface-container border border-surface-container">
-                                <img src={post.imageUrl} alt="" className="w-full h-full object-cover" onError={() => {}} />
-                              </div>
-                            )}
-                            <div className="flex flex-col min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-sm text-on-surface truncate">{post.title}</span>
-                                {post.isPromoted && (
-                                  <PromotedBadge 
-                                    type={post.promotionBadgeType || post.promotion?.badgeType || 'PROMO'} 
-                                    size="sm" 
-                                    showIcon={false}
-                                  />
+                    filteredPosts.map(post => {
+                      const postUrl = buildPostUrl({
+                        type: (post.type === 'ad' ? 'ad' : post.type === 'event' ? 'event' : post.type === 'deal' ? 'deal' : 'blog'),
+                        id: post.id,
+                        title: post.title,
+                        category: post.category,
+                        categoryName: post.category,
+                      });
+                      const authorUrl = `/avtor/${slugify(post.authorName)}`;
+
+                      return (
+                        <tr key={post.id} className="hover:bg-surface-container-low/40 transition-colors">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2.5 max-w-xs sm:max-w-md">
+                              {post.imageUrl && (
+                                <a
+                                  href={postUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-surface-container border border-surface-container group block"
+                                  title="Odpri objavo v novem oknu"
+                                >
+                                  <img src={post.imageUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" onError={() => {}} />
+                                </a>
+                              )}
+                              <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <a
+                                    href={postUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-bold text-sm text-on-surface hover:text-primary transition-colors flex items-center gap-1 group truncate"
+                                    title="Odpri objavo v novem oknu"
+                                  >
+                                    <span className="truncate">{post.title}</span>
+                                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                                  </a>
+                                  {post.isPromoted && (
+                                    <PromotedBadge 
+                                      type={post.promotionBadgeType || post.promotion?.badgeType || 'PROMO'} 
+                                      size="sm" 
+                                      showIcon={false}
+                                    />
+                                  )}
+                                </div>
+                                <span className="text-xs text-outline truncate">{post.content || 'Brez opisa'}</span>
+                                {post.tags && Array.isArray(post.tags) && post.tags.length > 0 && (
+                                  <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                    {post.tags.slice(0, 3).map((t, idx) => (
+                                      <span key={idx} className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/20">
+                                        #{t.replace(/^#/, '')}
+                                      </span>
+                                    ))}
+                                    {post.tags.length > 3 && (
+                                      <span className="text-[9px] text-outline font-medium">+{post.tags.length - 3}</span>
+                                    )}
+                                  </div>
+                                )}
+                                {(post.price || post.location || (post.isPromoted && post.promotedUntil)) && (
+                                  <span className="text-[11px] text-on-surface-variant font-medium mt-0.5 flex items-center gap-1 flex-wrap">
+                                    {post.price && <span>{post.price}</span>}
+                                    {post.location && <span>• {post.location}</span>}
+                                    {post.isPromoted && post.promotedUntil && (
+                                      <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                        • Do {new Date(post.promotedUntil).toLocaleDateString('sl-SI')}
+                                      </span>
+                                    )}
+                                  </span>
                                 )}
                               </div>
-                              <span className="text-xs text-outline truncate">{post.content || 'Brez opisa'}</span>
-                              {(post.price || post.location || (post.isPromoted && post.promotedUntil)) && (
-                                <span className="text-[11px] text-on-surface-variant font-medium mt-0.5 flex items-center gap-1 flex-wrap">
-                                  {post.price && <span>{post.price}</span>}
-                                  {post.location && <span>• {post.location}</span>}
-                                  {post.isPromoted && post.promotedUntil && (
-                                    <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                                      • Do {new Date(post.promotedUntil).toLocaleDateString('sl-SI')}
-                                    </span>
-                                  )}
-                                </span>
+                            </div>
+                          </td>
+
+                          <td className="p-3">
+                            <div className="flex flex-col">
+                              {post.authorName ? (
+                                <a
+                                  href={authorUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-xs text-on-surface hover:text-primary transition-colors inline-flex items-center gap-1 group w-max"
+                                  title={`Odpri profil avtorja ${post.authorName} v novem oknu`}
+                                >
+                                  <span>{post.authorName}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="font-medium text-xs text-on-surface">Neznan avtor</span>
+                              )}
+                              {post.authorRole && (
+                                <span className="text-[10px] text-outline">{post.authorRole}</span>
                               )}
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="p-3">
-                          <div className="flex flex-col">
-                            <span className="font-medium text-xs text-on-surface">{post.authorName}</span>
-                            {post.authorRole && (
-                              <span className="text-[10px] text-outline">{post.authorRole}</span>
-                            )}
-                          </div>
-                        </td>
+                          <td className="p-3">
+                            <div className="flex flex-col gap-0.5">
+                              <span className={`inline-block text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full w-max ${
+                                post.type === 'ad' ? 'bg-primary/10 text-primary' :
+                                post.type === 'event' ? 'bg-secondary/10 text-secondary' :
+                                post.type === 'deal' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                                'bg-surface-container-high text-on-surface-variant'
+                              }`}>
+                                {post.type === 'ad' ? 'Oglas' :
+                                 post.type === 'event' ? 'Dogodek' :
+                                 post.type === 'deal' ? 'Ugodnost' : 'Članek'}
+                              </span>
+                              <span className="text-[11px] text-outline">{post.category}</span>
+                            </div>
+                          </td>
 
-                        <td className="p-3">
-                          <div className="flex flex-col gap-0.5">
-                            <span className={`inline-block text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full w-max ${
-                              post.type === 'ad' ? 'bg-primary/10 text-primary' :
-                              post.type === 'event' ? 'bg-secondary/10 text-secondary' :
-                              post.type === 'deal' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
-                              'bg-surface-container-high text-on-surface-variant'
-                            }`}>
-                              {post.type === 'ad' ? 'Oglas' :
-                               post.type === 'event' ? 'Dogodek' :
-                               post.type === 'deal' ? 'Ugodnost' : 'Članek'}
-                            </span>
-                            <span className="text-[11px] text-outline">{post.category}</span>
-                          </div>
-                        </td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={post.status === 'active' ? 'published' : post.status}
+                                onChange={(e) => {
+                                  const newStatus = e.target.value as any;
+                                  if (newStatus === 'published') {
+                                    handleApproveItem(post);
+                                  } else if (newStatus === 'rejected') {
+                                    handleRejectItem(post);
+                                  }
+                                }}
+                                className={`text-[11px] font-bold py-1 px-2 rounded-lg border outline-none cursor-pointer transition-colors ${
+                                  post.status === 'published' || post.status === 'active'
+                                    ? 'bg-secondary/10 text-secondary border-secondary/30'
+                                    : 'bg-error/10 text-error border-error/30'
+                                }`}
+                              >
+                                <option value="published">Objavljeno</option>
+                                <option value="rejected">Zavrnjeno</option>
+                              </select>
+                            </div>
+                          </td>
 
-                        <td className="p-3">
-                          <div className="flex items-center gap-1.5">
-                            <select
-                              value={post.status === 'active' ? 'published' : post.status}
-                              onChange={(e) => {
-                                const newStatus = e.target.value as any;
-                                if (newStatus === 'published') {
-                                  handleApproveItem(post);
-                                } else if (newStatus === 'rejected') {
-                                  handleRejectItem(post);
-                                }
-                              }}
-                              className={`text-[11px] font-bold py-1 px-2 rounded-lg border outline-none cursor-pointer transition-colors ${
-                                post.status === 'published' || post.status === 'active'
-                                  ? 'bg-secondary/10 text-secondary border-secondary/30'
-                                  : 'bg-error/10 text-error border-error/30'
-                              }`}
-                            >
-                              <option value="published">Objavljeno</option>
-                              <option value="rejected">Zavrnjeno</option>
-                            </select>
-                          </div>
-                        </td>
-
-                        <td className="p-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => handlePromoteItem(post)}
-                              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer ${
-                                post.isPromoted 
-                                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500/30' 
-                                  : 'bg-surface-container-high hover:bg-surface-container text-on-surface'
-                              }`}
-                              title={post.isPromoted ? 'Uredi promocijo (PROMO / OGLAS)' : 'Nastavi promocijo (PROMO / OGLAS)'}
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                              <span className="hidden sm:inline">{post.isPromoted ? 'Promocija' : 'Promoviraj'}</span>
-                            </button>
-                            <button 
-                              onClick={() => handleEditItem(post)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-surface-container-high hover:bg-surface-container text-on-surface rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                              title="Uredi celotno objavo"
-                            >
-                              <Edit3 className="w-3.5 h-3.5 text-primary" />
-                              <span>Uredi</span>
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteItem(post)}
-                              className="p-1.5 text-outline hover:text-error hover:bg-error/10 transition-colors rounded-lg cursor-pointer"
-                              title="Odstrani objavo"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <a
+                                href={postUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2 py-1 text-xs font-semibold bg-surface-container-high hover:bg-surface-container hover:text-primary text-on-surface rounded-lg transition-colors flex items-center gap-1 cursor-pointer border border-surface-container"
+                                title="Odpri objavo v novem oknu"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-primary" />
+                                <span className="hidden sm:inline">Odpri</span>
+                              </a>
+                              <button
+                                onClick={() => handlePromoteItem(post)}
+                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer ${
+                                  post.isPromoted 
+                                    ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500/30' 
+                                    : 'bg-surface-container-high hover:bg-surface-container text-on-surface'
+                                }`}
+                                title={post.isPromoted ? 'Uredi promocijo (PROMO / OGLAS)' : 'Nastavi promocijo (PROMO / OGLAS)'}
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                <span className="hidden sm:inline">{post.isPromoted ? 'Promocija' : 'Promoviraj'}</span>
+                              </button>
+                              <button 
+                                onClick={() => handleEditItem(post)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-surface-container-high hover:bg-surface-container text-on-surface rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Uredi celotno objavo"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-primary" />
+                                <span>Uredi</span>
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteItem(post)}
+                                className="p-1.5 text-outline hover:text-error hover:bg-error/10 transition-colors rounded-lg cursor-pointer"
+                                title="Odstrani objavo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

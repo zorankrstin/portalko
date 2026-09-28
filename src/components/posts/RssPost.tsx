@@ -14,6 +14,9 @@ interface RssPostProps {
   sourceName?: string;
   pubDate?: string;
   thumbnail?: string;
+  likesCount?: number;
+  lovesCount?: number;
+  dislikesCount?: number;
 }
 
 export const RssPost: React.FC<RssPostProps> = ({ 
@@ -23,7 +26,10 @@ export const RssPost: React.FC<RssPostProps> = ({
   description = "Statistični urad RS (SURS) poroča o umiritvi cen hrane in brezalkoholnih pijač, medtem ko se cene storitev še naprej krepijo s povprečno 3,2-odstotno letno rastjo.",
   sourceName = "RTV Slovenija",
   pubDate = "pred 35 min",
-  thumbnail = "https://lh3.googleusercontent.com/aida-public/AB6AXuBwa3x1j5cEF-Q5lqAuTCNRDeCuUWlx07IL-SE9-c3bPNgf9mqKgoqSLqpi74z2tdnR_H1fDvgOsdbWrxsVpt5XBs9keJPGcD-RdiK80jklKPkTFRKen6kXVuTB_aaEDFw2RgOW2jFy3xwfMgT4P_HXw1S06uG0DJ59rQcK_T65fjqdl8nJT0EvOmjASY8u2InfluMhuWH9Z_ZLH2mgKmPNZx4N5kegWcqZdfGFfV67CDd9WIGh7qpl"
+  thumbnail = "https://lh3.googleusercontent.com/aida-public/AB6AXuBwa3x1j5cEF-Q5lqAuTCNRDeCuUWlx07IL-SE9-c3bPNgf9mqKgoqSLqpi74z2tdnR_H1fDvgOsdbWrxsVpt5XBs9keJPGcD-RdiK80jklKPkTFRKen6kXVuTB_aaEDFw2RgOW2jFy3xwfMgT4P_HXw1S06uG0DJ59rQcK_T65fjqdl8nJT0EvOmjASY8u2InfluMhuWH9Z_ZLH2mgKmPNZx4N5kegWcqZdfGFfV67CDd9WIGh7qpl",
+  likesCount = 0,
+  lovesCount = 0,
+  dislikesCount = 0,
 }) => {
   
   // Format the date to local Slovenian time (Europe/Ljubljana)
@@ -70,7 +76,9 @@ export const RssPost: React.FC<RssPostProps> = ({
           <LikeButton 
             id={id} 
             targetType="news" 
-            initialLikesCount={0} 
+            initialLikesCount={likesCount} 
+            initialLovesCount={lovesCount}
+            initialDislikesCount={dislikesCount}
             variant="minimal" 
             showCount={true} 
             itemTitle={title} 

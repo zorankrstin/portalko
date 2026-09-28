@@ -206,32 +206,6 @@ export function GoogleAuthButton({ mode, selectedRole = 'registered', onSuccess,
                 </div>
               </button>
 
-              {/* Luka Novak Google option */}
-              <button
-                type="button"
-                onClick={() => handleSelectAccount(
-                  'luka.novak.portal@gmail.com', 
-                  'Luka Novak', 
-                  'https://lh3.googleusercontent.com/aida/AEtjO1WzgwshpYtUlUT6B6hzTtlscXMkpKFYIjPiStIYfRrhCOV_MJeKV53x2D-tigu5SbHyESMyvILulBOUHZNfXTh6f8BRNGoWAkmZGhTeSWRB6n0Yw7IQRI0B91gU_U5KeEaSv6GZGH_W05qE5EOybPtK8yTXIY8KRAN88q_810UgS5RUyRmLSTI-zFjGHDUBCI7ELn7zCVDuy5Hy1SYdchdHKbBPfokQqaaMmc3liYXq_mNFC7yqQPYrfuA'
-                )}
-                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-surface-container-low border border-surface-container-low hover:border-primary/40 text-left transition-all group"
-              >
-                <img
-                  src="https://lh3.googleusercontent.com/aida/AEtjO1WzgwshpYtUlUT6B6hzTtlscXMkpKFYIjPiStIYfRrhCOV_MJeKV53x2D-tigu5SbHyESMyvILulBOUHZNfXTh6f8BRNGoWAkmZGhTeSWRB6n0Yw7IQRI0B91gU_U5KeEaSv6GZGH_W05qE5EOybPtK8yTXIY8KRAN88q_810UgS5RUyRmLSTI-zFjGHDUBCI7ELn7zCVDuy5Hy1SYdchdHKbBPfokQqaaMmc3liYXq_mNFC7yqQPYrfuA"
-                  alt="Luka Novak"
-                  className="w-10 h-10 rounded-full ring-1 ring-surface-container"
-                />
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors flex items-center gap-1.5">
-                    Luka Novak
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold">
-                      Google
-                    </span>
-                  </span>
-                  <span className="text-xs text-outline truncate">luka.novak.portal@gmail.com</span>
-                </div>
-              </button>
-
               {/* Custom Google Account Option */}
               {!useCustomAccount ? (
                 <button

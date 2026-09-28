@@ -13,6 +13,7 @@ import { useCategories } from '../hooks/useCategories';
 import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categoryService';
 import { PromotedBadge } from './common/PromotedBadge';
 import { isItemActivelyPromoted } from '../services/promotionService';
+import { AdsCategoryLocationFilter } from './ads/AdsCategoryLocationFilter';
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -29,11 +30,20 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
   // Filtering states
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
+  const [selectedTertiaryCategory, setSelectedTertiaryCategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [sortOption, setSortOption] = useState<string>('newest');
+  const [selectedSeller, setSelectedSeller] = useState<string>('all');
 
   // Load dynamic categories for ads
   const { categories } = useCategories('ads');
+
+  // Deduplicated list of Slovenian towns for the filter dropdown
+  const popularTownsList = useMemo(() => {
+    const set = new Set<string>();
+    POPULAR_SLOVENIA_TOWNS.forEach(t => set.add(t.trim()));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'sl'));
+  }, []);
 
   useEffect(() => {
     const unsub = subscribeToAds((ads) => {
@@ -82,9 +92,11 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
   }, [categories, selectedSubcategory]);
 
   // Handle category pill change
+  // Handle category pill change
   const handleCategorySelect = (catId: string) => {
     setSelectedCategory(catId);
     setSelectedSubcategory('all');
+    setSelectedTertiaryCategory('all');
     setPage(1);
   };
 
@@ -139,6 +151,35 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
           aSubNameLower === selectedSubcatObj.id.toLowerCase().trim()
         ));
 
+      // 3rd Level Category / Make / Brand / Model matching (e.g. Fiat, VW, Apple, etc.)
+      let matchesTertiary = true;
+      if (selectedTertiaryCategory !== 'all') {
+        const target = selectedTertiaryCategory.toLowerCase().trim();
+        const adTitle = (ad.title || '').toLowerCase();
+        const adDesc = (ad.description || '').toLowerCase();
+        const adMake = ((ad as any).make || '').toLowerCase();
+        const adBrand = ((ad as any).brand || '').toLowerCase();
+        const adThird = ((ad as any).thirdLevelCategory || (ad as any).subSubcategory || '').toLowerCase();
+        const adTags = Array.isArray(ad.tags) ? (ad.tags as string[]).map(t => String(t).toLowerCase()).join(' ') : String(ad.tags || '').toLowerCase();
+
+        matchesTertiary = 
+          adMake === target ||
+          adBrand === target ||
+          adThird === target ||
+          adTitle.includes(target) ||
+          adDesc.includes(target) ||
+          adTags.includes(target);
+
+        // Aliases check for common brands (e.g. VW for Volkswagen, iPhone for Apple)
+        if (!matchesTertiary) {
+          if (target === 'volkswagen' && (adTitle.includes('vw') || adDesc.includes('vw'))) matchesTertiary = true;
+          if (target === 'mercedes-benz' && (adTitle.includes('mercedes') || adDesc.includes('mercedes') || adTitle.includes('benz') || adDesc.includes('benz'))) matchesTertiary = true;
+          if (target === 'škoda' && (adTitle.includes('skoda') || adDesc.includes('skoda'))) matchesTertiary = true;
+          if (target.includes('apple') && (adTitle.includes('iphone') || adDesc.includes('iphone') || adTitle.includes('ipad') || adDesc.includes('ipad') || adTitle.includes('macbook') || adDesc.includes('macbook'))) matchesTertiary = true;
+          if (target === 'alfa romeo' && (adTitle.includes('alfa') || adDesc.includes('alfa'))) matchesTertiary = true;
+        }
+      }
+
       // Region & City/Location matching
       let matchesReg = false;
       if (selectedRegion === 'all') {
@@ -148,42 +189,48 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
         const adLoc = (ad.location || '').toLowerCase().trim();
         const adReg = (ad.region || '').toLowerCase().trim();
 
-        // 1. Direct match on ad.region or ad.location
-        if (adReg.includes(target) || adLoc.includes(target)) {
-          matchesReg = true;
+        if (target.startsWith('city-')) {
+          const cleanCity = target.replace('city-', '').trim().toLowerCase();
+          if (adLoc.includes(cleanCity) || adReg.includes(cleanCity)) {
+            matchesReg = true;
+          }
         } else {
-          // 2. Check if selectedRegion is a region ID (e.g. 'osrednjeslovenska', 'podravska', etc.)
-          const regObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
-          if (regObj) {
-            if (
-              adReg.includes(regObj.id) ||
-              adReg.includes(regObj.name.toLowerCase()) ||
-              adReg.includes(regObj.shortName.toLowerCase())
-            ) {
-              matchesReg = true;
-            } else {
-              // Check if ad location contains ANY town/city from this region
-              for (const city of regObj.cities) {
-                const cLower = city.toLowerCase();
-                if (adLoc.includes(cLower) || adReg.includes(cLower)) {
-                  matchesReg = true;
-                  break;
+          // 1. Direct match on ad.region or ad.location
+          if (adReg.includes(target) || adLoc.includes(target)) {
+            matchesReg = true;
+          } else {
+            // 2. Check if selectedRegion is a region ID (e.g. 'osrednjeslovenska', 'podravska', etc.)
+            const regObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
+            if (regObj) {
+              if (
+                adReg.includes(regObj.id) ||
+                adReg.includes(regObj.name.toLowerCase()) ||
+                adReg.includes(regObj.shortName.toLowerCase())
+              ) {
+                matchesReg = true;
+              } else {
+                // Check if ad location contains ANY town/city from this region
+                for (const city of regObj.cities) {
+                  const cLower = city.toLowerCase();
+                  if (adLoc.includes(cLower) || adReg.includes(cLower)) {
+                    matchesReg = true;
+                    break;
+                  }
                 }
               }
             }
           }
-
-          // 3. Check if selectedRegion is a specific town (e.g. 'city-Maribor' or 'Maribor')
-          const cleanCity = (target.startsWith('city-') ? target.replace('city-', '') : target).toLowerCase();
-          if (adLoc.includes(cleanCity) || adReg.includes(cleanCity)) {
-            matchesReg = true;
-          }
         }
       }
 
-      return matchesSearch && matchesCat && matchesSubcat && matchesReg;
+      // Seller filter match
+      const matchesSeller = selectedSeller === 'all' || 
+        (ad.authorName && ad.authorName.toLowerCase().trim() === selectedSeller.toLowerCase().trim()) ||
+        (ad.authorName && ad.authorName.toLowerCase().includes(selectedSeller.toLowerCase().trim()));
+
+      return matchesSearch && matchesCat && matchesSubcat && matchesTertiary && matchesReg && matchesSeller;
     });
-  }, [firestoreAds, searchQuery, selectedCategory, activeCategoryObj, selectedSubcategory, selectedSubcatObj, selectedRegion]);
+  }, [firestoreAds, searchQuery, selectedCategory, activeCategoryObj, selectedSubcategory, selectedSubcatObj, selectedTertiaryCategory, selectedRegion, selectedSeller]);
 
   // Unified items
   type UnifiedAd = { type: 'firestore'; data: FirestoreAd };
@@ -245,6 +292,16 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
     }, 450);
   };
 
+  const handleResetFilters = () => {
+    setSelectedCategory('all');
+    setSelectedSubcategory('all');
+    setSelectedTertiaryCategory('all');
+    setSelectedRegion('all');
+    setSortOption('newest');
+    setSelectedSeller('all');
+    setPage(1);
+  };
+
   return (
     <div className="flex flex-col gap-space-md">
       {/* Header */}
@@ -270,105 +327,40 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
         </div>
       </div>
 
-      {/* Main Categories Pills */}
-      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-1">
-        <button
-          onClick={() => handleCategorySelect('all')}
-          className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
-            selectedCategory === 'all'
-              ? 'bg-primary text-on-primary font-bold'
-              : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
-          }`}
-        >
-          <span>Vsi oglasi</span>
-          <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
-            {categoryCounts.all || 0}
-          </span>
-        </button>
-        {categories.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => handleCategorySelect(cat.id)}
-            className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs whitespace-nowrap transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
-              selectedCategory === cat.id
-                ? 'bg-primary text-on-primary font-bold'
-                : 'bg-surface-container-lowest hover:bg-surface-container border border-surface-container text-on-surface-variant'
-            }`}
-          >
-            <span>{cat.icon || '📁'}</span>
-            <span>{cat.name}</span>
-            {categoryCounts[cat.id] !== undefined && categoryCounts[cat.id] > 0 && (
-              <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
-                {categoryCounts[cat.id]}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Dynamic Subcategories Pills - always visible when subcategories are available */}
-      {availableSubcategories.length > 0 && (
-        <div className="bg-surface-container-low/60 p-2 sm:p-2.5 rounded-xl border border-surface-container/60 flex flex-wrap items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="text-[11px] font-semibold text-outline uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
-            <Tag className="w-3 h-3 text-primary" />
-            <span>Podkategorije:</span>
-          </div>
-          <button
-            onClick={() => { setSelectedSubcategory('all'); setPage(1); }}
-            className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-              selectedSubcategory === 'all'
-                ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
-                : 'text-on-surface-variant hover:bg-surface-container'
-            }`}
-          >
-            Vse podkategorije
-          </button>
-          {availableSubcategories.map(sub => (
-            <button
-              key={sub.id}
-              onClick={() => { setSelectedSubcategory(sub.id); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-                selectedSubcategory === sub.id || (selectedSubcatObj && (selectedSubcatObj.id === sub.id || selectedSubcatObj.name.toLowerCase() === sub.name.toLowerCase()))
-                  ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
-                  : 'text-on-surface-variant hover:bg-surface-container'
-              }`}
-            >
-              {sub.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Filter Row: Slovenian Region & Sorting */}
-      <div className="bg-surface-container-lowest rounded-2xl p-3 shadow-sm border border-surface-container/50 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <MapPin className="w-4 h-4 text-outline shrink-0" />
-          <select 
-            value={selectedRegion}
-            onChange={(e) => { setSelectedRegion(e.target.value); setPage(1); }}
-            className="bg-surface-container-low text-on-surface font-label-md text-xs px-2.5 py-1.5 rounded-lg focus:outline-none flex-1 cursor-pointer"
-          >
-            <option value="all">Vsa Slovenija (Vse regije)</option>
-            {SLOVENIA_REGIONS.map(reg => (
-              <option key={reg.id} value={reg.id}>
-                {reg.name} ({reg.cities.slice(0, 2).join(', ')})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-body-sm text-xs text-outline hidden sm:inline">Razvrsti:</span>
-          <select 
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value)}
-            className="bg-surface-container-low text-on-surface font-label-md text-xs px-2.5 py-1.5 rounded-lg focus:outline-none cursor-pointer"
-          >
-            <option value="newest">Najnovejši oglasi</option>
-            <option value="price-asc">Cena: najnižja najprej</option>
-            <option value="price-desc">Cena: najvišja najprej</option>
-          </select>
-        </div>
-      </div>
+      {/* Dedicated Category Badges and Dropdown Filter Component */}
+      <AdsCategoryLocationFilter
+        categories={categories}
+        categoryCounts={categoryCounts}
+        selectedCategory={selectedCategory}
+        onSelectCategory={(catId) => {
+          setSelectedCategory(catId);
+          setPage(1);
+        }}
+        selectedSubcategory={selectedSubcategory}
+        onSelectSubcategory={(subId) => {
+          setSelectedSubcategory(subId);
+          setSelectedTertiaryCategory('all');
+          setPage(1);
+        }}
+        selectedTertiaryCategory={selectedTertiaryCategory}
+        onSelectTertiaryCategory={(tertiary) => {
+          setSelectedTertiaryCategory(tertiary);
+          setPage(1);
+        }}
+        selectedRegion={selectedRegion}
+        onSelectRegion={(reg) => {
+          setSelectedRegion(reg);
+          setPage(1);
+        }}
+        sortOption={sortOption}
+        onSelectSortOption={(sort) => {
+          setSortOption(sort);
+          setPage(1);
+        }}
+        totalResultsCount={filteredFirestore.length}
+        onResetFilters={handleResetFilters}
+        searchQuery={searchQuery}
+      />
 
       {/* Ads List */}
       <div className="flex flex-col gap-space-md">
@@ -423,6 +415,8 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                             id={ad.id}
                             targetType="ad"
                             initialLikesCount={ad.likesCount || 0}
+                            initialLovesCount={(ad as any).lovesCount || 0}
+                            initialDislikesCount={(ad as any).dislikesCount || 0}
                             variant="minimal"
                             showCount={true}
                             itemTitle={ad.title}

@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Rss, Globe, RefreshCw } from 'lucide-react';
+import { Rss, Globe, RefreshCw, ExternalLink, Newspaper, Radio, Flame, Sparkles } from 'lucide-react';
 import { Weather } from './Weather';
 import { AdSense } from './ads/AdSense';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 import { formatSlovenianDate } from '../utils/dateUtils';
 import type { PostDetailTarget } from '../types';
 
-export interface RightSidebarProps {
+export interface RightSidebarNewsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
 }
 
-export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
+export function RightSidebarNews({ onNavigatePost }: RightSidebarNewsProps = {}) {
   const [latestNews, setLatestNews] = useState<RealNewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
 
@@ -19,7 +19,7 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
       try {
         setNewsLoading(true);
         const news = await fetchRealRssNews();
-        setLatestNews(news.slice(0, 4));
+        setLatestNews(news.slice(0, 5));
       } catch (e) {
         console.error('Failed to load sidebar news', e);
       } finally {
@@ -36,6 +36,15 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
     window.addEventListener('rss_feeds_updated', handleUpdate);
     return () => window.removeEventListener('rss_feeds_updated', handleUpdate);
   }, []);
+
+  const newsSources = [
+    { name: 'RTV Slovenija', url: 'https://www.rtvslo.si', tag: 'rtvslo' },
+    { name: '24ur.com', url: 'https://www.24ur.com', tag: '24ur' },
+    { name: 'Siol.net', url: 'https://siol.net', tag: 'siol' },
+    { name: 'Delo', url: 'https://www.delo.si', tag: 'delo' },
+    { name: 'Dnevnik', url: 'https://www.dnevnik.si', tag: 'dnevnik' },
+    { name: 'Večer', url: 'https://vecer.com', tag: 'vecer' }
+  ];
 
   return (
     <aside 
@@ -94,6 +103,32 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
           </div>
         </div>
       </div>
+
+      {/* VODILNI MEDIJSKI VIRI */}
+      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
+        <div className="flex items-center justify-between pb-1 border-b border-surface-container-low">
+          <div className="flex items-center gap-2">
+            <Newspaper className="w-4 h-4 text-secondary" />
+            <h3 className="font-headline-sm text-sm font-bold text-on-surface">Vodilni mediji</h3>
+          </div>
+          <span className="text-[10px] font-bold text-outline uppercase tracking-wider">Slovenija</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          {newsSources.map(source => (
+            <a
+              key={source.tag}
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface hover:text-primary transition-colors text-xs font-semibold flex items-center justify-between group border border-surface-container/60"
+            >
+              <span className="truncate">{source.name}</span>
+              <ExternalLink className="w-3 h-3 text-outline group-hover:text-primary shrink-0 opacity-75" />
+            </a>
+          ))}
+        </div>
+      </div>
       
       {/* IMENIK PRILJUBLJENIH POVEZAV */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
@@ -121,15 +156,6 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
               <a className="p-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors truncate" href="https://www.promet.si" target="_blank" rel="noopener noreferrer">Promet.si</a>
               <a className="p-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors truncate" href="https://meteo.arso.gov.si" target="_blank" rel="noopener noreferrer">ARSO vreme</a>
               <a className="p-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors truncate" href="https://potniski.sz.si" target="_blank" rel="noopener noreferrer">SŽ Vozni red</a>
-            </div>
-          </div>
-          
-          <div className="flex flex-col gap-1 pt-1">
-            <span className="font-label-caps text-label-caps text-outline uppercase tracking-wider">Medijski viri</span>
-            <div className="flex items-center gap-1.5">
-              <a className="flex-1 p-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors" href="https://www.delo.si" target="_blank" rel="noopener noreferrer">Delo.si</a>
-              <a className="flex-1 p-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors" href="https://www.dnevnik.si" target="_blank" rel="noopener noreferrer">Dnevnik</a>
-              <a className="flex-1 p-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-center font-label-md text-xs font-medium text-on-surface transition-colors" href="https://www.vecer.com" target="_blank" rel="noopener noreferrer">Večer</a>
             </div>
           </div>
         </div>

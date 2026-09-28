@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Rocket, ShieldCheck, Lock, TrendingUp, Link as LinkIcon, ShoppingBag } from 'lucide-react';
+import { ShieldCheck, Lock, TrendingUp, Link as LinkIcon, ShoppingBag } from 'lucide-react';
 import { PostDetailTarget } from '../types';
 import { subscribeToAds, FirestoreAd } from '../services/firestoreService';
 import { scrollToPageTop } from '../utils/scrollUtils';
@@ -77,27 +77,6 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
             ))
           )}
         </div>
-      </div>
-
-      {/* Hitrejša prodaja */}
-      <div className="bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-2xl p-space-md shadow-md flex flex-col gap-3 relative overflow-hidden">
-        <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-surface-container-lowest/10 rounded-full blur-xl pointer-events-none"></div>
-        <div className="flex items-center justify-between">
-          <span className="px-2 py-0.5 rounded-full bg-secondary text-on-secondary font-label-caps text-label-caps uppercase font-bold tracking-wider">
-            Hitrejša prodaja
-          </span>
-          <Rocket className="w-[1em] h-[1em] text-lg text-secondary-fixed" />
-        </div>
-        <div>
-          <h4 className="font-headline-sm text-base font-bold text-white">Izpostavite svoj oglas</h4>
-          <p className="font-body-sm text-xs text-on-primary-container/90 mt-1">
-            Želite hitrejšo prodajo? Izberite paket TOP Izpostavitev za 3x več ogledov in neposreden stik s kupci.
-          </p>
-        </div>
-        <button className="w-full py-2 px-3 rounded-xl bg-surface-container-lowest text-primary hover:bg-surface-container-high font-label-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1" type="button">
-          <span>Izberi promocijo od 2,99 €</span>
-          <svg className="w-[1em] h-[1em] text-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
-        </button>
       </div>
 
       {/* Varni spletni nakupi */}

@@ -3,7 +3,6 @@ import {
   Plus, 
   Trash2, 
   Edit3, 
-  FolderPlus, 
   RotateCcw, 
   Search, 
   Check, 
@@ -18,7 +17,11 @@ import {
   ChevronDown, 
   AlertTriangle,
   Sparkles,
-  Info
+  Info,
+  SlidersHorizontal,
+  MapPin,
+  ListPlus,
+  ArrowRight
 } from 'lucide-react';
 import { 
   CategoryItem, 
@@ -33,7 +36,8 @@ import {
   addSubcategory, 
   updateSubcategory, 
   deleteSubcategory, 
-  seedCategoriesToFirestore 
+  seedCategoriesToFirestore,
+  getTertiaryCategories
 } from '../../services/categoryService';
 
 export interface CategoryManagerProps {
@@ -75,6 +79,9 @@ export function CategoryManager({
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
+  // Quick inline add state per category
+  const [quickAddInput, setQuickAddInput] = useState<Record<string, string>>({});
+
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
@@ -91,6 +98,12 @@ export function CategoryManager({
   const [subName, setSubName] = useState('');
   const [subId, setSubId] = useState('');
   const [subDescription, setSubDescription] = useState('');
+  const [subTertiaryItemsString, setSubTertiaryItemsString] = useState('');
+
+  // Bulk Subcategory Add Modal State
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [targetCategoryForBulk, setTargetCategoryForBulk] = useState<CategoryItem | null>(null);
+  const [bulkSubcategoriesText, setBulkSubcategoriesText] = useState('');
 
   // Status & Feedback
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -179,7 +192,6 @@ export function CategoryManager({
           order: Number(catOrder) || 1,
         };
 
-        // State update: merge new category data with existing list, never replacing or overwriting the entire array
         setCategories(prev => 
           prev.map(item => 
             item.id === editingCategory.id 
@@ -207,7 +219,6 @@ export function CategoryManager({
           updatedAt: new Date().toISOString(),
         };
 
-        // State update: merge new category into existing list
         setCategories(prev => {
           const exists = prev.some(item => item.id === newCatPayload.id);
           if (exists) {
@@ -257,6 +268,7 @@ export function CategoryManager({
     setSubName('');
     setSubId('');
     setSubDescription('');
+    setSubTertiaryItemsString('');
     setIsSubcategoryModalOpen(true);
   };
 
@@ -266,6 +278,7 @@ export function CategoryManager({
     setSubName(sub.name);
     setSubId(sub.id);
     setSubDescription(sub.description || '');
+    setSubTertiaryItemsString((sub.tertiaryItems || []).join(', '));
     setIsSubcategoryModalOpen(true);
   };
 
@@ -278,15 +291,19 @@ export function CategoryManager({
     }
 
     const generatedSubId = subId.trim() || slugify(subName);
+    const parsedTertiaryItems = subTertiaryItemsString
+      .split(/[,;\n]/)
+      .map(item => item.trim())
+      .filter(Boolean);
 
     try {
       if (editingSubcategory) {
-        const updateSubPayload = {
+        const updateSubPayload: Partial<SubCategory> = {
           name: subName.trim(),
           description: subDescription.trim(),
+          tertiaryItems: parsedTertiaryItems.length > 0 ? parsedTertiaryItems : undefined,
         };
 
-        // State update: merge new subcategory data with existing list of categories and their subcategories
         setCategories(prev => 
           prev.map(cat => {
             if (cat.id !== targetCategoryForSub.id) return cat;
@@ -315,9 +332,9 @@ export function CategoryManager({
           name: subName.trim(),
           description: subDescription.trim(),
           order: (targetCategoryForSub.subcategories?.length || 0) + 1,
+          tertiaryItems: parsedTertiaryItems.length > 0 ? parsedTertiaryItems : undefined,
         };
 
-        // State update: merge new subcategory into the existing category's subcategories array
         setCategories(prev => 
           prev.map(cat => {
             if (cat.id !== targetCategoryForSub.id) return cat;
@@ -345,6 +362,97 @@ export function CategoryManager({
     } catch (err) {
       console.error(err);
       showNotification('error', 'Napaka pri shranjevanju podkategorije.');
+    }
+  };
+
+  // Quick inline add subcategory handler
+  const handleQuickAddSubcategory = async (cat: CategoryItem) => {
+    const rawInput = quickAddInput[cat.id]?.trim();
+    if (!rawInput) return;
+
+    // Support comma-separated items
+    const names = rawInput.split(',').map(n => n.trim()).filter(Boolean);
+    if (names.length === 0) return;
+
+    try {
+      for (const name of names) {
+        const newSub: SubCategory = {
+          id: slugify(name),
+          name,
+          order: (cat.subcategories?.length || 0) + 1,
+        };
+        await addSubcategory(cat.id, newSub);
+      }
+
+      setCategories(prev => 
+        prev.map(c => {
+          if (c.id !== cat.id) return c;
+          const currentSubs = [...(c.subcategories || [])];
+          names.forEach(name => {
+            const sid = slugify(name);
+            if (!currentSubs.some(s => s.id === sid)) {
+              currentSubs.push({ id: sid, name, order: currentSubs.length + 1 });
+            }
+          });
+          return { ...c, subcategories: currentSubs, updatedAt: new Date().toISOString() };
+        })
+      );
+
+      setQuickAddInput(prev => ({ ...prev, [cat.id]: '' }));
+      showNotification('success', `Uspešno dodano: ${names.join(', ')}`);
+    } catch (err) {
+      console.error(err);
+      showNotification('error', 'Napaka pri hitrem dodajanju podkategorije.');
+    }
+  };
+
+  // Bulk add modal open
+  const handleOpenBulkAdd = (cat: CategoryItem) => {
+    setTargetCategoryForBulk(cat);
+    setBulkSubcategoriesText('');
+    setIsBulkModalOpen(true);
+  };
+
+  // Save Bulk Subcategories
+  const handleSaveBulkSubcategories = async () => {
+    if (!targetCategoryForBulk || !bulkSubcategoriesText.trim()) return;
+
+    const lines = bulkSubcategoriesText
+      .split(/[\n,;]/)
+      .map(l => l.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) return;
+
+    try {
+      for (const line of lines) {
+        const sub: SubCategory = {
+          id: slugify(line),
+          name: line,
+          order: (targetCategoryForBulk.subcategories?.length || 0) + 1,
+        };
+        await addSubcategory(targetCategoryForBulk.id, sub);
+      }
+
+      setCategories(prev => 
+        prev.map(c => {
+          if (c.id !== targetCategoryForBulk.id) return c;
+          const currentSubs = [...(c.subcategories || [])];
+          lines.forEach(name => {
+            const sid = slugify(name);
+            if (!currentSubs.some(s => s.id === sid)) {
+              currentSubs.push({ id: sid, name, order: currentSubs.length + 1 });
+            }
+          });
+          return { ...c, subcategories: currentSubs, updatedAt: new Date().toISOString() };
+        })
+      );
+
+      setIsBulkModalOpen(false);
+      showNotification('success', `Uspešno dodanih ${lines.length} novih podkategorij.`);
+    } catch (err) {
+      console.error(err);
+      showNotification('error', 'Napaka pri množičnem dodajanju podkategorij.');
     }
   };
 
@@ -380,7 +488,7 @@ export function CategoryManager({
 
   // Seed / Reset to defaults
   const handleSeedDefaults = async () => {
-    if (!window.confirm('Ali želite sinhronizirati in naložiti privzete kategorije ter podkategorije v Firestore? To bo osvežilo celoten nabor za vseh 4 sekcij.')) {
+    if (!window.confirm('Ali želite sinhronizirati in naložiti privzete kategorije ter podkategorije v Firestore? To bo osvežilo celoten nabor za vse 4 sekcije.')) {
       return;
     }
 
@@ -396,11 +504,11 @@ export function CategoryManager({
     }
   };
 
-  const sections: Array<{ id: CategorySection; label: string; icon: any; count: number }> = [
-    { id: 'ads', label: 'Mali oglasi', icon: ShoppingBag, count: categories.filter(c => c.section === 'ads').length },
-    { id: 'events', label: 'Dogodki', icon: Calendar, count: categories.filter(c => c.section === 'events').length },
-    { id: 'blog', label: 'Blog & Članki', icon: FileText, count: categories.filter(c => c.section === 'blog').length },
-    { id: 'deals', label: 'Ugodnosti & Popusti', icon: Percent, count: categories.filter(c => c.section === 'deals').length },
+  const sections: Array<{ id: CategorySection; label: string; icon: any; count: number; theme: string }> = [
+    { id: 'ads', label: 'Mali oglasi', icon: ShoppingBag, count: categories.filter(c => c.section === 'ads').length, theme: 'text-primary' },
+    { id: 'events', label: 'Dogodki', icon: Calendar, count: categories.filter(c => c.section === 'events').length, theme: 'text-primary' },
+    { id: 'deals', label: 'Akcije & Ugodnosti', icon: Percent, count: categories.filter(c => c.section === 'deals').length, theme: 'text-secondary' },
+    { id: 'blog', label: 'Blog & Članki', icon: FileText, count: categories.filter(c => c.section === 'blog').length, theme: 'text-outline' },
   ];
 
   const totalSubcategories = sectionCategories.reduce((acc, c) => acc + (c.subcategories?.length || 0), 0);
@@ -424,6 +532,47 @@ export function CategoryManager({
           </button>
         </div>
       )}
+
+      {/* Hierarchical Filtering Guide Banner */}
+      <div className="bg-primary/5 rounded-2xl p-4 border border-primary/20 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary shrink-0" />
+          <h4 className="font-headline-sm text-sm font-bold text-on-surface">
+            Enotna 3-stopenjska struktura kategorij & filtrov (Mali oglasi, Dogodki, Akcije in Blog)
+          </h4>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 text-xs text-on-surface-variant">
+          <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-surface-container/60 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 font-bold text-primary">
+              <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px]">1</span>
+              <span>Glavne kategorije (Značke)</span>
+            </div>
+            <p className="text-[11px] text-outline leading-tight">
+              Prikazane kot pregledne značke s števci na vrhu vira (npr. <em>Avto-moto</em>, <em>Koncerti</em>, <em>Turizem & Izleti</em>).
+            </p>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-surface-container/60 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 font-bold text-primary">
+              <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px]">2</span>
+              <span>Podkategorije (1. Spustni meni)</span>
+            </div>
+            <p className="text-[11px] text-outline leading-tight">
+              Kompakten spustni meni, ki se dinamično prilagodi glede na izbrano glavno kategorijo.
+            </p>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-surface-container/60 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 font-bold text-primary">
+              <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px]">3</span>
+              <span>Znamke / Žanri / Destinacije / Teme (2. Spustni meni)</span>
+            </div>
+            <p className="text-[11px] text-outline leading-tight">
+              Spustni meni za npr. znamke vozil (Fiat, VW), trgovine (Spar), žanre (Rock, Pop) ali destinacije/recepte (Bled, Potica).
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Section Navigation Tabs */}
       <div className="bg-surface-container-low p-1.5 rounded-2xl flex flex-wrap gap-1.5 border border-surface-container/60">
@@ -499,7 +648,7 @@ export function CategoryManager({
             className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Nova kategorija</span>
+            <span>Nova glavna kategorija</span>
           </button>
         </div>
       </div>
@@ -557,18 +706,27 @@ export function CategoryManager({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <span className="text-xs text-outline font-semibold px-2 py-1 rounded-lg bg-surface-container-low">
                       {subCount} {subCount === 1 ? 'podkategorija' : subCount === 2 ? 'podkategoriji' : 'podkategorij'}
                     </span>
 
                     <button
                       onClick={() => handleOpenAddSubcategory(cat)}
-                      className="p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      className="p-1.5 px-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer"
                       title="Dodaj podkategorijo"
                     >
-                      <Plus className="w-4 h-4" />
-                      <span className="hidden sm:inline">Dodaj podkat.</span>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Dodaj podkategorijo</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenBulkAdd(cat)}
+                      className="p-1.5 px-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface-variant text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      title="Množično dodajanje podkategorij"
+                    >
+                      <ListPlus className="w-3.5 h-3.5 text-primary" />
+                      <span className="hidden sm:inline">Množično</span>
                     </button>
 
                     <button
@@ -598,7 +756,35 @@ export function CategoryManager({
 
                 {/* Subcategories Container */}
                 {isExpanded && (
-                  <div className="px-4 pb-4 pt-1 border-t border-surface-container-low/60 bg-surface-container-lowest">
+                  <div className="px-4 pb-4 pt-2 border-t border-surface-container-low/60 bg-surface-container-lowest flex flex-col gap-3">
+                    
+                    {/* Quick Inline Add Subcategory Bar */}
+                    <div className="flex items-center gap-2 p-1.5 rounded-xl bg-surface-container-low/70 border border-surface-container/60">
+                      <Tag className="w-3.5 h-3.5 text-primary ml-2 shrink-0" />
+                      <input
+                        type="text"
+                        value={quickAddInput[cat.id] || ''}
+                        onChange={(e) => setQuickAddInput({ ...quickAddInput, [cat.id]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleQuickAddSubcategory(cat);
+                          }
+                        }}
+                        placeholder={`Hitro dodaj podkategorijo v ${cat.name} (npr. Novo ime ali več ločenih z vejico)...`}
+                        className="flex-1 bg-transparent text-xs text-on-surface placeholder:text-outline focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleQuickAddSubcategory(cat)}
+                        disabled={!quickAddInput[cat.id]?.trim()}
+                        className="px-3 py-1 rounded-lg bg-primary text-on-primary text-xs font-bold hover:bg-primary-container disabled:opacity-40 transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Dodaj</span>
+                      </button>
+                    </div>
+
                     {subCount === 0 ? (
                       <div className="py-3 px-4 rounded-xl bg-surface-container-low/50 text-xs text-outline text-center flex items-center justify-center gap-2">
                         <span>Ta kategorija še nima podkategorij.</span>
@@ -610,45 +796,77 @@ export function CategoryManager({
                         </button>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                        {cat.subcategories.map(sub => (
-                          <div
-                            key={sub.id}
-                            className="p-2.5 rounded-xl bg-surface-container-low hover:bg-surface-container border border-surface-container/50 transition-colors flex items-start justify-between gap-2 group"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="font-label-md text-xs font-bold text-on-surface truncate flex items-center gap-1.5">
-                                <Tag className="w-3 h-3 text-primary shrink-0" />
-                                <span>{sub.name}</span>
-                              </div>
-                              <div className="text-[10px] text-outline font-mono truncate mt-0.5">
-                                #{sub.id}
-                              </div>
-                              {sub.description && (
-                                <p className="text-[11px] text-on-surface-variant truncate mt-0.5" title={sub.description}>
-                                  {sub.description}
-                                </p>
-                              )}
-                            </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-1">
+                        {cat.subcategories.map(sub => {
+                          const tertiaryList = sub.tertiaryItems || getTertiaryCategories(cat.id, sub.id);
+                          const hasCustomTertiary = Array.isArray(sub.tertiaryItems) && sub.tertiaryItems.length > 0;
 
-                            <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={() => handleOpenEditSubcategory(cat, sub)}
-                                className="p-1 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-                                title="Uredi podkategorijo"
-                              >
-                                <Edit3 className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteSubcategory(cat, sub)}
-                                className="p-1 rounded hover:bg-error/10 text-error transition-colors cursor-pointer"
-                                title="Izbriši podkategorijo"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                          return (
+                            <div
+                              key={sub.id}
+                              className="p-3 rounded-xl bg-surface-container-low hover:bg-surface-container border border-surface-container/50 transition-all flex flex-col justify-between gap-2 group"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-1">
+                                  <div className="font-label-md text-xs font-bold text-on-surface truncate flex items-center gap-1.5">
+                                    <Tag className="w-3 h-3 text-primary shrink-0" />
+                                    <span>{sub.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => handleOpenEditSubcategory(cat, sub)}
+                                      className="p-1 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                                      title="Uredi podkategorijo in 3. nivo"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteSubcategory(cat, sub)}
+                                      className="p-1 rounded hover:bg-error/10 text-error transition-colors cursor-pointer"
+                                      title="Izbriši podkategorijo"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="text-[10px] text-outline font-mono truncate mt-0.5">
+                                  #{sub.id}
+                                </div>
+                                {sub.description && (
+                                  <p className="text-[11px] text-on-surface-variant truncate mt-0.5" title={sub.description}>
+                                    {sub.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* 3rd Level Badges Preview */}
+                              <div className="pt-1.5 border-t border-surface-container/60 flex flex-col gap-1">
+                                <div className="flex items-center justify-between text-[10px] text-outline font-semibold">
+                                  <span className="flex items-center gap-1">
+                                    <SlidersHorizontal className="w-2.5 h-2.5 text-primary" />
+                                    <span>3. nivo ({tertiaryList.length}):</span>
+                                  </span>
+                                  {hasCustomTertiary && (
+                                    <span className="text-[9px] px-1 rounded bg-primary/10 text-primary font-bold">Po meri</span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1 max-h-12 overflow-hidden">
+                                  {tertiaryList.slice(0, 5).map((item, idx) => (
+                                    <span key={idx} className="px-1.5 py-0.2 rounded-md bg-surface-container-lowest text-[10px] text-on-surface-variant font-medium border border-surface-container/50">
+                                      {item}
+                                    </span>
+                                  ))}
+                                  {tertiaryList.length > 5 && (
+                                    <span className="text-[10px] text-outline self-center">
+                                      +{tertiaryList.length - 5}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -772,7 +990,7 @@ export function CategoryManager({
           onClick={() => setIsSubcategoryModalOpen(false)}
         >
           <div 
-            className="bg-surface-container-lowest rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 border border-surface-container"
+            className="bg-surface-container-lowest rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 border border-surface-container max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
@@ -794,7 +1012,7 @@ export function CategoryManager({
 
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-outline">Ime podkategorije *</label>
+                <label className="text-xs font-semibold text-outline">Ime podkategorije (2. nivo) *</label>
                 <input
                   type="text"
                   value={subName}
@@ -804,7 +1022,7 @@ export function CategoryManager({
                       setSubId(slugify(e.target.value));
                     }
                   }}
-                  placeholder="npr. Osebna vozila"
+                  placeholder="npr. Osebna vozila, Koncerti & festivali, Supermarketi..."
                   className="w-full p-2.5 rounded-xl bg-surface-container-low text-xs font-bold text-on-surface border border-transparent focus:border-primary focus:outline-none"
                 />
               </div>
@@ -826,10 +1044,43 @@ export function CategoryManager({
                 <textarea
                   value={subDescription}
                   onChange={e => setSubDescription(e.target.value)}
-                  placeholder="Kratek opis..."
+                  placeholder="Kratek opis vsebine..."
                   rows={2}
                   className="w-full p-2.5 rounded-xl bg-surface-container-low text-xs text-on-surface border border-transparent focus:border-primary focus:outline-none"
                 />
+              </div>
+
+              {/* 3rd Level items (Znamke / Modeli / Tipi / Trgovine / Žanri / Destinacije / Teme) */}
+              <div className="flex flex-col gap-1 pt-2 border-t border-surface-container-low">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-primary flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>
+                      3. nivo: {
+                        activeSection === 'ads' ? 'Znamke / Modeli / Tipi' :
+                        activeSection === 'events' ? 'Glasbeni žanri / Tipi dogodkov' :
+                        activeSection === 'deals' ? 'Trgovine / Ponudniki / Znamke' :
+                        'Destinacije / Recepti / Teme / AI orodja'
+                      }
+                    </span>
+                  </label>
+                  <span className="text-[10px] text-outline">Ločite z vejicami</span>
+                </div>
+                <textarea
+                  value={subTertiaryItemsString}
+                  onChange={e => setSubTertiaryItemsString(e.target.value)}
+                  placeholder={
+                    activeSection === 'ads' ? 'npr. Fiat, Volkswagen, Renault, BMW, Audi, Mercedes-Benz, Škoda, Ford...' :
+                    activeSection === 'events' ? 'npr. Rock & Metal, Pop & Estrada, Komedija, Stand-up, Sejem, Odprta kuhna...' :
+                    activeSection === 'deals' ? 'npr. Spar, Hofer, Lidl, Mercator, Big Bang, Mimovrste, Hervis...' :
+                    'npr. Bled & Bohinj, Dolina Soče, Kranjska Gora, Potica, Gibanica, ChatGPT, Prenova doma...'
+                  }
+                  rows={3}
+                  className="w-full p-2.5 rounded-xl bg-surface-container-low text-xs text-on-surface border border-transparent focus:border-primary focus:outline-none font-medium"
+                />
+                <p className="text-[10px] text-outline leading-snug">
+                  Elementi, vpisani tukaj, se bodo v spustnem meniju 3. nivoja pojavili kot možnosti izbire za uporabnika.
+                </p>
               </div>
             </div>
 
@@ -845,6 +1096,66 @@ export function CategoryManager({
                 className="px-5 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary-container transition-colors shadow-xs"
               >
                 {editingSubcategory ? 'Shrani spremembe' : 'Dodaj podkategorijo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Subcategory Add Modal */}
+      {isBulkModalOpen && targetCategoryForBulk && (
+        <div 
+          className="fixed inset-0 z-50 bg-inverse-surface/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsBulkModalOpen(false)}
+        >
+          <div 
+            className="bg-surface-container-lowest rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 border border-surface-container"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
+              <div>
+                <h3 className="font-headline-sm text-base font-bold text-on-surface flex items-center gap-1.5">
+                  <ListPlus className="w-4 h-4 text-primary" />
+                  <span>Množično dodajanje podkategorij</span>
+                </h3>
+                <p className="text-xs text-outline mt-0.5">
+                  Kategorija: <strong className="text-primary">{targetCategoryForBulk.name}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsBulkModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-surface-container text-outline"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-semibold text-outline">
+                Prilepite ali vnesite imena podkategorij (vsako v svojo vrstico ali ločeno z vejico):
+              </label>
+              <textarea
+                value={bulkSubcategoriesText}
+                onChange={e => setBulkSubcategoriesText(e.target.value)}
+                placeholder={`Osebna vozila\nMotorna kolesa & skuterji\nGospodarska vozila\nRezervni deli & oprema`}
+                rows={6}
+                className="w-full p-3 rounded-xl bg-surface-container-low text-xs text-on-surface border border-transparent focus:border-primary focus:outline-none font-medium leading-relaxed"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-surface-container-low pt-3">
+              <button
+                onClick={() => setIsBulkModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold hover:bg-surface-container text-on-surface-variant"
+              >
+                Prekliči
+              </button>
+              <button
+                onClick={handleSaveBulkSubcategories}
+                disabled={!bulkSubcategoriesText.trim()}
+                className="px-5 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary-container disabled:opacity-50 transition-colors shadow-xs"
+              >
+                Dodaj vse vnesene
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
-import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers } from '../services/firestoreService';
+import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers, deleteUserFromFirestore } from '../services/firestoreService';
 
 export type Role = 'superadmin' | 'admin' | 'verified' | 'registered' | 'guest';
 
@@ -89,21 +89,6 @@ export const DEFAULT_USERS: User[] = [
     googleId: 'g_zoran_krstin'
   },
   { 
-    id: 'u2', 
-    name: 'Luka Novak', 
-    email: 'luka.n@example.com', 
-    role: 'admin', 
-    status: 'active', 
-    avatar: 'https://lh3.googleusercontent.com/aida/AEtjO1WzgwshpYtUlUT6B6hzTtlscXMkpKFYIjPiStIYfRrhCOV_MJeKV53x2D-tigu5SbHyESMyvILulBOUHZNfXTh6f8BRNGoWAkmZGhTeSWRB6n0Yw7IQRI0B91gU_U5KeEaSv6GZGH_W05qE5EOybPtK8yTXIY8KRAN88q_810UgS5RUyRmLSTI-zFjGHDUBCI7ELn7zCVDuy5Hy1SYdchdHKbBPfokQqaaMmc3liYXq_mNFC7yqQPYrfuA',
-    bio: 'Urednik novic in tehnološki navdušenec.',
-    username: '@luka_n',
-    socialLinks: [
-      { id: 's1', platform: 'website', url: 'https://portalko.net', label: 'Portalko.net' },
-    ],
-    profileMenu: DEFAULT_PROFILE_MENU,
-    password: 'geslo123'
-  },
-  { 
     id: 'u3', 
     name: 'Maja Zupan', 
     email: 'maja.z@example.com', 
@@ -132,6 +117,19 @@ export const DEFAULT_USERS: User[] = [
   },
 ];
 
+export function isDummyUser(user?: { email?: string; id?: string } | null): boolean {
+  if (!user) return false;
+  const email = (user.email || '').toLowerCase().trim();
+  const id = (user.id || '').trim();
+  return (
+    email === 'luka.n@example.com' ||
+    email === 'luka.novak.portal@gmail.com' ||
+    id === 'u2' ||
+    email.startsWith('luka.n@') ||
+    email.startsWith('luka.novak.portal@')
+  );
+}
+
 export interface RegisterData {
   name: string;
   email: string;
@@ -156,6 +154,7 @@ interface AuthContextType {
   loginById: (id: string) => { success: boolean; error?: string; user?: User };
   logout: () => void;
   updateUser: (id: string, data: Partial<User>) => void;
+  deleteUser: (id: string) => void;
   changePassword: (userId: string, oldPass: string, newPass: string) => { success: boolean; error?: string };
   register: (data: RegisterData) => { success: boolean; error?: string; user?: User };
   loginOrRegisterWithGoogle: (data: GoogleAuthData) => { success: boolean; error?: string; user?: User; isNewUser: boolean };
@@ -173,16 +172,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const savedUsers = localStorage.getItem('portal_users');
-    let initialUsers = DEFAULT_USERS;
+    let initialUsers = DEFAULT_USERS.filter(u => !isDummyUser(u));
     if (savedUsers) {
       try {
         const parsed = JSON.parse(savedUsers);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Ensure default passwords if missing from older saved states
-          initialUsers = parsed.map((u: User) => ({
-            ...u,
-            password: u.password || (u.role === 'superadmin' ? 'admin123' : 'geslo123'),
-          }));
+          // Ensure default passwords if missing from older saved states and filter dummy users
+          initialUsers = parsed
+            .filter((u: User) => !isDummyUser(u))
+            .map((u: User) => ({
+              ...u,
+              password: u.password || (u.role === 'superadmin' ? 'admin123' : 'geslo123'),
+            }));
         }
       } catch (e) {
         console.error('Error parsing stored users', e);
@@ -194,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const savedCurrentUserId = localStorage.getItem('portal_current_user_id');
     if (savedCurrentUserId) {
       const user = initialUsers.find(u => u.id === savedCurrentUserId && u.status === 'active');
-      if (user) {
+      if (user && !isDummyUser(user)) {
         setCurrentUser(user);
       } else {
         localStorage.removeItem('portal_current_user_id');
@@ -209,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const email = fbUser.email.toLowerCase();
         const profile = await fetchUserProfile(fbUser.uid);
         let activeProfile: User;
-        if (profile && profile.status === 'active') {
+        if (profile && profile.status === 'active' && !isDummyUser(profile)) {
           activeProfile = profile;
           setCurrentUser(profile);
           localStorage.setItem('portal_current_user_id', profile.id);
@@ -233,12 +234,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Align users list so that the logged-in user is recognized with proper ID
         setUsers(prev => {
-          const updated = prev.map(u => {
-            if (u.email.toLowerCase() === email || (email === 'zoran.krstin@gmail.com' && u.id === 'u1')) {
-              return { ...u, ...activeProfile, id: activeProfile.id };
-            }
-            return u;
-          });
+          const updated = prev
+            .filter(u => !isDummyUser(u))
+            .map(u => {
+              if (u.email.toLowerCase() === email || (email === 'zoran.krstin@gmail.com' && u.id === 'u1')) {
+                return { ...u, ...activeProfile, id: activeProfile.id };
+              }
+              return u;
+            });
           if (!updated.some(u => u.id === activeProfile.id)) {
             updated.unshift(activeProfile);
           }
@@ -252,13 +255,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (firestoreUsers && firestoreUsers.length > 0) {
             setUsers(prev => {
               const map = new Map<string, User>();
-              DEFAULT_USERS.forEach(u => map.set(u.id, u));
-              prev.forEach(u => map.set(u.id, u));
-              firestoreUsers.forEach(u => {
+              DEFAULT_USERS.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
+              prev.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
+              firestoreUsers.filter(u => !isDummyUser(u)).forEach(u => {
                 const existing = map.get(u.id);
                 map.set(u.id, existing ? { ...existing, ...u } : u);
               });
-              const merged = Array.from(map.values());
+              const merged = Array.from(map.values()).filter(u => !isDummyUser(u));
               localStorage.setItem('portal_users', JSON.stringify(merged));
               return merged;
             });
@@ -358,6 +361,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       return newUsers;
+    });
+  };
+
+  const deleteUser = (userId: string) => {
+    deleteUserFromFirestore(userId).catch(console.error);
+    setUsers(prev => {
+      const filtered = prev.filter(u => u.id !== userId);
+      localStorage.setItem('portal_users', JSON.stringify(filtered));
+      if (currentUser?.id === userId) {
+        logout();
+      }
+      return filtered;
     });
   };
 
@@ -560,6 +575,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginById, 
       logout, 
       updateUser, 
+      deleteUser,
       changePassword, 
       register,
       loginOrRegisterWithGoogle,

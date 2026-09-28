@@ -27,6 +27,8 @@ export interface AdPostProps {
   images?: string[];
   status?: string;
   likesCount?: number | string;
+  lovesCount?: number | string;
+  dislikesCount?: number | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -49,6 +51,8 @@ export const AdPost: React.FC<AdPostProps> = ({
   images,
   status = "Aktivno",
   likesCount = 0,
+  lovesCount = 0,
+  dislikesCount = 0,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
@@ -176,6 +180,8 @@ export const AdPost: React.FC<AdPostProps> = ({
                 id={id}
                 targetType="ad"
                 initialLikesCount={likesCount}
+                initialLovesCount={lovesCount}
+                initialDislikesCount={dislikesCount}
                 variant="minimal"
                 showCount={true}
                 itemTitle={title}

@@ -62,3 +62,23 @@ export function getCleanHtml(html?: string): string {
     ]
   });
 }
+
+/**
+ * Formats views count with correct Slovenian pluralization and thousands separator.
+ * e.g. 1 -> "1 ogled", 2 -> "2 ogleda", 3 -> "3 ogledi", 4 -> "4 ogledi", 5 -> "5 ogledov", 1240 -> "1.240 ogledov"
+ */
+export function formatViewsCount(count: number): string {
+  const rounded = Math.max(0, Math.floor(count));
+  const mod100 = rounded % 100;
+  
+  if (mod100 === 1) {
+    return `${rounded.toLocaleString('sl-SI')} ogled`;
+  }
+  if (mod100 === 2) {
+    return `${rounded.toLocaleString('sl-SI')} ogleda`;
+  }
+  if (mod100 === 3 || mod100 === 4) {
+    return `${rounded.toLocaleString('sl-SI')} ogledi`;
+  }
+  return `${rounded.toLocaleString('sl-SI')} ogledov`;
+}

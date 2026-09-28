@@ -35,6 +35,8 @@
         "authorAvatar": { "type": "string", "maxLength": 500 },
         "imageUrl": { "type": "string", "maxLength": 500 },
         "price": { "type": "string", "maxLength": 50 },
+        "startDate": { "type": "string", "maxLength": 100 },
+        "expirationDate": { "type": "string", "maxLength": 100 },
         "eventDate": { "type": "string", "maxLength": 100 },
         "eventTime": { "type": "string", "maxLength": 50 },
         "ticketUrl": { "type": "string", "maxLength": 500 },
@@ -43,6 +45,7 @@
         "rejectionReason": { "type": "string", "maxLength": 500 },
         "likesCount": { "type": "number" },
         "likedBy": { "type": "array" },
+        "viewsCount": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -68,6 +71,7 @@
         "rejectionReason": { "type": "string", "maxLength": 500 },
         "likesCount": { "type": "number" },
         "likedBy": { "type": "array" },
+        "viewsCount": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -99,6 +103,7 @@
         "rejectionReason": { "type": "string", "maxLength": 500 },
         "likesCount": { "type": "number" },
         "likedBy": { "type": "array" },
+        "viewsCount": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -116,6 +121,38 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "userId", "targetId", "targetType"]
+    },
+    "Reaction": {
+      "title": "User Post Reaction",
+      "description": "Rich reaction record (like, love, dislike) on an individual post, ad, event or blog item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "maxLength": 50 },
+        "reactionType": { "type": "string", "enum": ["like", "love", "dislike"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "targetId", "targetType", "reactionType"]
+    },
+    "Comment": {
+      "title": "Post Comment",
+      "description": "Public discussion comments on posts, ads, events, deals, and blog articles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "maxLength": 50 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorAvatar": { "type": "string" },
+        "authorRole": { "type": "string", "maxLength": 50 },
+        "content": { "type": "string", "maxLength": 5000 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "targetId", "targetType", "authorName", "content", "createdAt"]
     },
     "Bookmark": {
       "title": "User Bookmark",
@@ -196,6 +233,14 @@
     "/users/{userId}/likes/{likeId}": {
       "schema": "Like",
       "description": "User specific likes on posts, ads, events and blog"
+    },
+    "/users/{userId}/reactions/{reactionId}": {
+      "schema": "Reaction",
+      "description": "User specific reactions (like, love, dislike) on posts, ads, events and blog"
+    },
+    "/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Public user discussion comments across all post types"
     }
   }
 }

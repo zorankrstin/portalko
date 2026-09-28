@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, Sparkles, Trash2, Loader2, Calendar, Tag, TrendingDown, Percent, Clock, Plus, Copy, CalendarDays } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, 
+  Sparkles, Trash2, Loader2, Calendar, Tag, TrendingDown, Percent, 
+  Clock, Plus, Copy, CalendarDays, Layers, SlidersHorizontal 
+} from 'lucide-react';
 import { 
   FirestorePost, 
   FirestoreAd, 
@@ -15,6 +19,8 @@ import { PromotionConfig, PromotionBadgeType, EventScheduleSlot } from '../../ty
 import { PromotedBadge } from '../common/PromotedBadge';
 import { RichTextEditor } from '../RichTextEditor';
 import { compressImageFileToDataUrl } from '../../utils/imageUtils';
+import { useCategories } from '../../hooks/useCategories';
+import { CategorySection, getTertiaryCategories } from '../../services/categoryService';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -25,6 +31,10 @@ export interface EditablePostItem {
   content: string;
   category: string;
   categoryName?: string;
+  subcategory?: string;
+  subcategoryName?: string;
+  make?: string;
+  thirdLevelCategory?: string;
   authorName: string;
   authorRole?: string;
   authorId?: string;
@@ -34,6 +44,7 @@ export interface EditablePostItem {
   price?: string;
   oldPrice?: string;
   newPrice?: string;
+  startDate?: string;
   expirationDate?: string;
   discount?: string;
   promoCode?: string;
@@ -44,6 +55,7 @@ export interface EditablePostItem {
   eventDates?: string[];
   eventSchedule?: EventScheduleSlot[];
   ticketUrl?: string;
+  tags?: string[];
   rejectionReason?: string;
   isPromoted?: boolean;
   promotion?: PromotionConfig;
@@ -63,6 +75,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('');
+  const [subcategory, setSubcategory] = useState('');
+  const [thirdLevelCategory, setThirdLevelCategory] = useState('');
   const [status, setStatus] = useState<'published' | 'active' | 'pending' | 'rejected'>('published');
   const [imageUrl, setImageUrl] = useState('');
   const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('url');
@@ -70,6 +84,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [price, setPrice] = useState('');
   const [oldPrice, setOldPrice] = useState('');
   const [newPrice, setNewPrice] = useState('');
+  const [startDate, setStartDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [discount, setDiscount] = useState('');
   const [promoCode, setPromoCode] = useState('');
@@ -81,11 +96,118 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     { id: '1', date: '', times: [''], label: '' }
   ]);
   const [ticketUrl, setTicketUrl] = useState('');
+  const [tagsString, setTagsString] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const section: CategorySection = useMemo(() => {
+    if (item?.type === 'ad') return 'ads';
+    if (item?.type === 'event') return 'events';
+    if (item?.type === 'deal') return 'deals';
+    return 'blog';
+  }, [item]);
+
+  const { categories } = useCategories(section);
+
+  const activeCategoryObj = useMemo(() => {
+    return categories.find(c => c.id === category || c.name.toLowerCase() === category.toLowerCase()) || categories[0] || null;
+  }, [categories, category]);
+
+  const availableTertiaryOptions = useMemo(() => {
+    return getTertiaryCategories(category, subcategory, categories);
+  }, [category, subcategory, categories]);
+
+  // Contextual labels & hints for 3rd level filter/input
+  const tertiaryConfig = useMemo(() => {
+    const catName = (activeCategoryObj?.name || '').toLowerCase();
+    const catId = (category || '').toLowerCase();
+    const subId = (subcategory || '').toLowerCase();
+
+    if (section === 'ads') {
+      if (catId.includes('avto') || catName.includes('avto') || subId.includes('vozil') || subId.includes('kolesa') || subId.includes('motor')) {
+        return {
+          label: '3. stopnja: Znamka / Proizvajalec (npr. Fiat, Volkswagen, BMW, Yamaha...)',
+          placeholder: 'Vnesite ali izberite znamko (npr. Fiat)',
+        };
+      }
+      if (catId.includes('nepremicnin') || catName.includes('nepremičnin') || subId.includes('stanovan') || subId.includes('his') || subId.includes('posest')) {
+        return {
+          label: '3. stopnja: Tip / Velikost nepremičnine (npr. Garsonjera, 2-sobno, Hiša...)',
+          placeholder: 'Vnesite ali izberite tip (npr. 2-sobno)',
+        };
+      }
+      if (catId.includes('tehnik') || catName.includes('tehnik') || subId.includes('telefon') || subId.includes('racunal') || subId.includes('tv')) {
+        return {
+          label: '3. stopnja: Znamka / Proizvajalec (npr. Apple, Samsung, Sony, Bosch...)',
+          placeholder: 'Vnesite ali izberite znamko (npr. Apple)',
+        };
+      }
+      return {
+        label: '3. stopnja: Znamka / Tip / Pod-raven',
+        placeholder: 'Vnesite ali izberite podrobnejšo oznako',
+      };
+    }
+
+    if (section === 'deals') {
+      return {
+        label: '3. stopnja: Trgovec / Znamka / Ponudnik (npr. Spar, Hofer, Big Bang, About You...)',
+        placeholder: 'Vnesite ali izberite trgovino ali znamko (npr. Spar & Interspar)',
+      };
+    }
+
+    if (section === 'events') {
+      return {
+        label: '3. stopnja: Glasbeni žanr / Tip dogodka (npr. Rock & Metal, Pop, Komedija, Sejem...)',
+        placeholder: 'Vnesite ali izberite žanr ali tip (npr. Rock & Metal)',
+      };
+    }
+
+    // Blog posts
+    if (catId.includes('turiz') || catName.includes('turiz') || subId.includes('izlet') || subId.includes('biser') || subId.includes('hrib')) {
+      return {
+        label: '3. stopnja: Destinacija / Lokacija izleta (npr. Bled & Bohinj, Dolina Soče...)',
+        placeholder: 'Vnesite ali izberite destinacijo (npr. Bled & Bohinj)',
+      };
+    }
+    if (catId.includes('kulinari') || catName.includes('kulinarik') || subId.includes('recept') || subId.includes('jed')) {
+      return {
+        label: '3. stopnja: Tip jedi / Recept (npr. Tradicionalne jedi, Slovenska potica...)',
+        placeholder: 'Vnesite ali izberite tip jedi ali recept (npr. Slovenska potica)',
+      };
+    }
+    if (catId.includes('tehnolog') || catName.includes('tehnolog') || subId.includes('inteligen') || subId.includes('gadget') || subId.includes('varnost')) {
+      return {
+        label: '3. stopnja: Tehnologija / AI orodje (npr. ChatGPT, Apple iPhone, Pametni dom...)',
+        placeholder: 'Vnesite ali izberite tehnologijo (npr. Umetna inteligenca (AI))',
+      };
+    }
+    if (catId.includes('dom') || catName.includes('dom') || subId.includes('prenov') || subId.includes('diy') || subId.includes('vrt')) {
+      return {
+        label: '3. stopnja: Tema za dom & vrt (npr. Prenova doma, Sončne elektrarne, DIY...)',
+        placeholder: 'Vnesite ali izberite temo doma (npr. Sončne elektrarne)',
+      };
+    }
+    if (catId.includes('financ') || catName.includes('financ') || subId.includes('osebn') || subId.includes('investic') || subId.includes('podjet')) {
+      return {
+        label: '3. stopnja: Finančna tema / Naložbe (npr. Osebne finance, ETF skladi...)',
+        placeholder: 'Vnesite ali izberite finančno temo (npr. Delniški ETF skladi)',
+      };
+    }
+    if (catId.includes('zdravj') || catName.includes('zdravj') || subId.includes('slog') || subId.includes('stres') || subId.includes('zelis')) {
+      return {
+        label: '3. stopnja: Tema zdravja / Počutje (npr. Zdrav življenjski slog, Domača zelišča...)',
+        placeholder: 'Vnesite ali izberite temo zdravja (npr. Domača zelišča)',
+      };
+    }
+
+    return {
+      label: '3. stopnja: Zvrst / Ključna tema / Oznaka',
+      placeholder: 'Vnesite ali izberite ključno temo...',
+    };
+  }, [section, activeCategoryObj, category, subcategory]);
 
   // Event schedule helper functions
   const handleAddDateSlot = (suggestedDate?: string, prefillTimes?: string[]) => {
@@ -164,12 +286,15 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         ? (item.category && item.category !== 'blog' && item.category !== 'post' ? item.category : 'deal')
         : (item.category || '');
       setCategory(initialCat);
+      setSubcategory(item.subcategory || '');
+      setThirdLevelCategory(item.thirdLevelCategory || item.make || '');
       const normalizedStatus = item.status === 'active' ? 'published' : (item.status || 'published');
       setStatus(normalizedStatus as any);
       setImageUrl(item.imageUrl || '');
       setPrice(item.price || '');
       setOldPrice(item.oldPrice || '');
       setNewPrice(item.newPrice || '');
+      setStartDate(item.startDate || '');
       setExpirationDate(item.expirationDate || '');
       setDiscount(item.discount || '');
       setPromoCode(item.promoCode || '');
@@ -202,6 +327,11 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       }
 
       setTicketUrl(item.ticketUrl || '');
+      const rawTags = item.tags;
+      const initialTagsStr = Array.isArray(rawTags) 
+        ? rawTags.join(', ') 
+        : (typeof rawTags === 'string' ? rawTags : '');
+      setTagsString(initialTagsStr);
       setRejectionReason(item.rejectionReason || '');
       setErrorMsg('');
       setSuccessMsg('');
@@ -248,6 +378,17 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     setSuccessMsg('');
 
     const targetStatus = overrideStatus || status;
+    const parsedTags = tagsString
+      .split(',')
+      .map(t => t.replace(/^#/, '').trim())
+      .filter(Boolean);
+
+    if (thirdLevelCategory.trim() && !parsedTags.some(t => t.toLowerCase() === thirdLevelCategory.trim().toLowerCase())) {
+      parsedTags.push(thirdLevelCategory.trim());
+    }
+
+    const subObj = activeCategoryObj?.subcategories?.find(s => s.id === subcategory || s.name.toLowerCase() === subcategory.toLowerCase());
+    const resolvedSubName = subObj?.name || (subcategory ? subcategory : undefined);
 
     try {
       if (item.type === 'ad') {
@@ -256,10 +397,15 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           title: title.trim(),
           description: content.trim(),
           category: category.trim() || item.category || 'ostalo',
-          categoryName: item.categoryName,
+          categoryName: activeCategoryObj?.name || item.categoryName,
+          subcategory: subcategory.trim() || undefined,
+          subcategoryName: resolvedSubName,
+          make: thirdLevelCategory.trim() || undefined,
+          thirdLevelCategory: thirdLevelCategory.trim() || undefined,
           price: price.trim() || 'Po dogovoru',
           location: location.trim() || 'Slovenija',
           imageUrl: imageUrl.trim() || '',
+          tags: parsedTags,
           status: adStatus as any,
           authorId: item.authorId,
           authorName: item.authorName,
@@ -298,7 +444,10 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           title: title.trim(),
           description: content.trim(),
           category: category.trim() || item.category || 'dogodki',
-          categoryName: item.categoryName,
+          categoryName: activeCategoryObj?.name || item.categoryName,
+          subcategory: subcategory.trim() || undefined,
+          subcategoryName: resolvedSubName,
+          thirdLevelCategory: thirdLevelCategory.trim() || undefined,
           price: price.trim() || '',
           location: location.trim() || 'Slovenija',
           eventDate: primaryDate,
@@ -308,6 +457,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           eventSchedule: cleanSchedules.length > 0 ? cleanSchedules : undefined,
           ticketUrl: ticketUrl.trim() || '',
           imageUrl: imageUrl.trim() || '',
+          tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
           authorName: item.authorName,
@@ -336,19 +486,25 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           : item.categoryName;
 
         await updatePostInFirestore(item.id, {
-          title: title.trim(),
+          title: title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
           content: content.trim(),
           category: preservedCategory,
           categoryName: preservedCategoryName,
+          subcategory: subcategory.trim() || undefined,
+          subcategoryName: resolvedSubName,
+          make: thirdLevelCategory.trim() || undefined,
+          thirdLevelCategory: thirdLevelCategory.trim() || undefined,
           price: isDeal ? (newPrice.trim() || price.trim() || item.price || '') : (price.trim() || item.price || ''),
           oldPrice: isDeal ? (oldPrice.trim() || undefined) : undefined,
           newPrice: isDeal ? (newPrice.trim() || undefined) : undefined,
+          startDate: isDeal ? (startDate.trim() || undefined) : undefined,
           expirationDate: isDeal ? (expirationDate.trim() || undefined) : undefined,
           discount: isDeal ? (discount.trim() || undefined) : undefined,
           promoCode: isDeal ? (promoCode.trim() || undefined) : undefined,
           dealLink: isDeal ? (dealLink.trim() || undefined) : undefined,
           location: location.trim() || item.location || '',
           imageUrl: imageUrl.trim() || item.imageUrl || '',
+          tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
           authorName: item.authorName,
@@ -541,27 +697,159 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
             />
           </div>
 
-          {/* Category */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="font-label-caps uppercase font-semibold text-outline">Kategorija</label>
-                {(item.type === 'deal' || item.category === 'deal' || item.category === 'ugodnosti' || item.categoryName === 'Ugodnosti') && (
-                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                    Ugodnosti
-                  </span>
-                )}
+          {/* 3-LEVEL DYNAMIC CATEGORIZATION BLOCK */}
+          <div className="p-3.5 bg-surface-container-low/70 rounded-xl border border-surface-container flex flex-col gap-3">
+            <div className="flex items-center justify-between border-b border-surface-container/60 pb-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold text-on-surface">
+                  3-stopenjska kategorizacija objave
+                </span>
               </div>
-              <input
-                type="text"
-                value={category}
-                onChange={e => setCategory(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
-                placeholder={item.type === 'deal' ? "Ugodnosti / Popusti" : "Npr. Tehnika, Šport, Nepremičnine..."}
-              />
+              <span className="text-[10px] text-outline font-medium">
+                Sekcija: {section === 'ads' ? 'Mali oglasi' : section === 'events' ? 'Dogodki' : section === 'deals' ? 'Akcije' : 'Blog'}
+              </span>
             </div>
 
-            {/* Price or Event Date or Deal indicator */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 1. stopnja: Category Select */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-primary" />
+                    <span>1. Glavna kategorija *</span>
+                  </span>
+                  <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.2 rounded font-semibold">Značka</span>
+                </label>
+                <select
+                  value={category}
+                  onChange={e => {
+                    const newCat = e.target.value;
+                    setCategory(newCat);
+                    const catObj = categories.find(c => c.id === newCat);
+                    if (catObj && catObj.subcategories && catObj.subcategories.length > 0) {
+                      setSubcategory(catObj.subcategories[0].id);
+                    } else {
+                      setSubcategory('');
+                    }
+                    setThirdLevelCategory('');
+                  }}
+                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.icon || '📁'} {cat.name}
+                    </option>
+                  ))}
+                  {/* Custom category fallback */}
+                  {category && !categories.some(c => c.id === category) && (
+                    <option value={category}>{category}</option>
+                  )}
+                </select>
+              </div>
+
+              {/* 2. stopnja: Subcategory Select */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-primary" />
+                    <span>2. Podkategorija</span>
+                  </span>
+                  <span className="text-[10px] text-outline">1. spustni filter</span>
+                </label>
+                <select
+                  value={subcategory}
+                  onChange={e => {
+                    setSubcategory(e.target.value);
+                    setThirdLevelCategory('');
+                  }}
+                  disabled={!activeCategoryObj || !activeCategoryObj.subcategories || activeCategoryObj.subcategories.length === 0}
+                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer disabled:opacity-50"
+                >
+                  {(!activeCategoryObj?.subcategories || activeCategoryObj.subcategories.length === 0) ? (
+                    <option value="">(Brez podkategorij)</option>
+                  ) : (
+                    activeCategoryObj.subcategories.map(sub => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name}
+                      </option>
+                    ))
+                  )}
+                  {subcategory && activeCategoryObj?.subcategories && !activeCategoryObj.subcategories.some(s => s.id === subcategory) && (
+                    <option value={subcategory}>{subcategory}</option>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            {/* 3. stopnja: Znamka / Tip / Trgovec / Žanr / Destinacija (Combobox & Quick Select Chips) */}
+            <div className="flex flex-col gap-1.5 pt-2 border-t border-surface-container/60">
+              <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-primary font-bold">
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>{tertiaryConfig.label}</span>
+                </span>
+                <span className="text-[10px] text-outline">2. spustni filter</span>
+              </label>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  list="edit-tertiary-options-datalist"
+                  value={thirdLevelCategory}
+                  onChange={e => setThirdLevelCategory(e.target.value)}
+                  placeholder={tertiaryConfig.placeholder}
+                  className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-medium text-on-surface border border-surface-container focus:outline-none focus:border-primary placeholder:text-outline"
+                />
+                {thirdLevelCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setThirdLevelCategory('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface p-0.5"
+                    title="Počisti"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <datalist id="edit-tertiary-options-datalist">
+                  {availableTertiaryOptions.map(opt => (
+                    <option key={opt} value={opt} />
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Quick-select chips based on admin dashboard configuration */}
+              {availableTertiaryOptions.length > 0 && (
+                <div className="flex flex-col gap-1 pt-1">
+                  <span className="text-[10px] text-outline font-medium">
+                    Hitra izbira med možnostmi iz administracije:
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap max-h-20 overflow-y-auto pr-1">
+                    {availableTertiaryOptions.map(opt => {
+                      const isSelected = thirdLevelCategory.trim().toLowerCase() === opt.trim().toLowerCase();
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setThirdLevelCategory(isSelected ? '' : opt)}
+                          className={`text-[11px] px-2.5 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary text-on-primary border-primary font-bold shadow-xs'
+                              : 'bg-surface-container-lowest text-on-surface-variant hover:text-on-surface hover:bg-surface-container border-surface-container/70'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Price or Event Date or Deal indicator */}
+          <div className="grid grid-cols-1 gap-3">
             {item.type === 'event' ? (
               <div className="flex flex-col gap-1.5">
                 <label className="font-label-caps uppercase font-semibold text-outline">Vstopnina / Cena</label>
@@ -648,7 +936,23 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-primary" />
-                    <span>Datum poteka (Expiration date)</span>
+                    <span>Datum začetka akcije (Start date)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                  />
+                  <span className="text-[10px] text-outline">
+                    {startDate ? `Začetek: ${new Date(startDate).toLocaleDateString('sl-SI')}` : 'Od kdaj velja (neobvezno)'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>Datum poteka akcije (Expiration date)</span>
                   </label>
                   <input
                     type="date"
@@ -657,7 +961,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                     className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
                   />
                   <span className="text-[10px] text-outline">
-                    {expirationDate ? `Do: ${new Date(expirationDate).toLocaleDateString('sl-SI')}` : 'Veljavnost (neobvezno)'}
+                    {expirationDate ? `Do: ${new Date(expirationDate).toLocaleDateString('sl-SI')}` : 'Do kdaj velja (neobvezno)'}
                   </span>
                 </div>
               </div>
@@ -905,6 +1209,38 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
               placeholder="Npr. Ljubljana, Maribor, Celje..."
               className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
             />
+          </div>
+
+          {/* Tags (Oznake) */}
+          <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">
+            <div className="flex items-center justify-between">
+              <label className="font-label-caps uppercase font-semibold text-outline flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-primary" />
+                <span>Oznake (Tagi) & Ključne besede</span>
+              </label>
+              <span className="text-[10px] text-outline font-medium">Ločite z vejico (npr. novice, popusti, tehnika)</span>
+            </div>
+            <input
+              type="text"
+              value={tagsString}
+              onChange={e => setTagsString(e.target.value)}
+              placeholder="npr. slovenija, novica, izlet, kulinarika, ugodno"
+              className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+            />
+            {/* Live tag badges preview */}
+            {tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-surface-container/40">
+                <span className="text-[10px] text-outline font-semibold">Predogled oznak:</span>
+                {tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).map((tag, idx) => (
+                  <span
+                    key={`tag-pill-${idx}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-[11px] font-semibold"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Image */}

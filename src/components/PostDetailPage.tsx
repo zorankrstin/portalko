@@ -27,19 +27,21 @@ import {
   FirestoreAd,
   deletePostInFirestore,
   deleteAdInFirestore,
-  deleteEventInFirestore
+  deleteEventInFirestore,
+  recordItemViewInFirestore,
+  subscribeToItemViews
 } from '../services/firestoreService';
 import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
+import { ShareModal } from './common/ShareModal';
 import { scrollToPageTop, scrollToSidebarsTop } from '../utils/scrollUtils';
 import { parseEventDateInfo } from '../utils/dateUtils';
-import { getCleanHtml } from '../utils/textUtils';
+import { getCleanHtml, formatViewsCount } from '../utils/textUtils';
 import { parseSocialEmbed } from '../utils/embedUtils';
-import { getActiveFallbackImage } from '../services/portalSettingsService';
+import { getActiveFallbackImage, handleImageFallbackError } from '../services/portalSettingsService';
 import { buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { updatePageSeo } from '../utils/seoUtils';
 import { buildPostUrl, slugify } from '../utils/urlUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
-import { SocialShareWidget } from './SocialShareWidget';
 import { DEFAULT_CATEGORIES } from '../services/categoryService';
 
 // Mapping of mock blog post IDs to their actual categories
@@ -245,6 +247,7 @@ export function PostDetailPage({
   // Carousel & Lightbox state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Comments state
   const [comments, setComments] = useState<PostComment[]>([]);
@@ -254,6 +257,38 @@ export function PostDetailPage({
   // Edit / Delete post modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Real-time views counter state and live Firestore subscription
+  const [realtimeViews, setRealtimeViews] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!target.id) return;
+    let isSubscribed = true;
+    setRealtimeViews(null);
+
+    const sessionKey = `viewed_${target.type}_${target.id}`;
+    const alreadyViewed = sessionStorage.getItem(sessionKey);
+
+    if (!alreadyViewed) {
+      sessionStorage.setItem(sessionKey, '1');
+      recordItemViewInFirestore(target.type, target.id).then((newCount) => {
+        if (isSubscribed && typeof newCount === 'number') {
+          setRealtimeViews(newCount);
+        }
+      }).catch(() => {});
+    }
+
+    const unsub = subscribeToItemViews(target.type, target.id, (count) => {
+      if (isSubscribed) {
+        setRealtimeViews(count);
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+      unsub();
+    };
+  }, [target.type, target.id]);
 
   useEffect(() => {
     const unsubPosts = subscribeToPosts(setFirestorePosts);
@@ -301,11 +336,13 @@ export function PostDetailPage({
         authorName: fs.authorName,
         authorId: fs.authorId,
         status: fs.status,
+        tags: fs.tags,
         categoryName: fs.categoryName || fs.category || 'Dogodek v živo',
         image: fs.imageUrl || (getActiveFallbackImage(true) || ''),
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
         interestedCount: fs.interestedCount || 42,
         likesCount: fs.likesCount || 0,
+        viewsCount: fs.viewsCount ?? 0,
       };
     };
 
@@ -319,6 +356,7 @@ export function PostDetailPage({
         discount: fs.discount || fs.price || 'Ugodnost',
         oldPrice: fs.oldPrice,
         newPrice: fs.newPrice,
+        startDate: fs.startDate,
         expirationDate: fs.expirationDate,
         partner: fs.authorName,
         authorName: fs.authorName,
@@ -326,6 +364,7 @@ export function PostDetailPage({
         status: fs.status,
         partnerRole: fs.authorRole,
         partnerAvatar: fs.authorAvatar,
+        tags: fs.tags,
         date: fs.expirationDate ? `Velja do ${fs.expirationDate}` : (fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes'),
         image: fs.imageUrl || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
@@ -333,6 +372,7 @@ export function PostDetailPage({
         categoryName: fs.categoryName || 'Ugodnosti & Popusti',
         region: fs.location || 'Vsa Slovenija',
         votes: fs.likesCount || 12,
+        viewsCount: fs.viewsCount ?? 0,
         code: fs.promoCode,
         link: fs.dealLink || 'https://www.portalko.net',
       };
@@ -352,11 +392,13 @@ export function PostDetailPage({
         authorName: fs.authorName,
         authorId: fs.authorId,
         status: fs.status,
+        tags: fs.tags,
         categoryName: fs.category || 'Mali oglas',
         image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
         authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
         likesCount: fs.likesCount || 0,
+        viewsCount: fs.viewsCount ?? 0,
       };
     };
 
@@ -380,7 +422,7 @@ export function PostDetailPage({
         categoryName: fs.categoryName,
         title: fs.title,
         description: fs.content,
-        tags: fs.category ? [fs.category] : undefined,
+        tags: fs.tags,
       });
       return {
         id: fs.id,
@@ -404,8 +446,8 @@ export function PostDetailPage({
         photoCount: fs.imageUrl ? '1 fotografija' : undefined,
         likesCount: fs.likesCount || 0,
         commentsCount: fs.commentsCount || 0,
-        viewsCount: '1.240',
-        tags: ['blog', 'portal', 'slovenija', fs.category || 'zgodbe'],
+        viewsCount: fs.viewsCount ?? 0,
+        tags: (fs.tags && fs.tags.length > 0) ? fs.tags : undefined,
       };
     };
 
@@ -901,7 +943,7 @@ export function PostDetailPage({
     });
   };
 
-  // Determine 3 related articles from the same category as the currently viewed blog post
+  // Determine 3-4 related articles from the same category as the currently viewed blog post
   const relatedArticles = useMemo(() => {
     if (target.type !== 'blog' && target.type !== 'post') return [];
     if (!itemData) return [];
@@ -929,7 +971,7 @@ export function PostDetailPage({
 
     // 1. From Firestore posts
     firestorePosts
-      .filter(p => p.category !== 'deal' && p.status !== 'archived')
+      .filter(p => p.category !== 'deal' && p.status !== 'archived' && p.status !== 'rejected')
       .forEach(p => {
         if (p.id === currentId || p.id === target.id) return;
         const cat = resolveBlogCategory({
@@ -941,7 +983,10 @@ export function PostDetailPage({
         });
         let score = 0;
         if (cat.id === currentCat.id || cat.name.toLowerCase() === currentCat.name.toLowerCase()) {
-          score += 25;
+          score += 30;
+        }
+        if (p.category === itemData.category) {
+          score += 15;
         }
         candidates.push({
           id: p.id,
@@ -949,7 +994,7 @@ export function PostDetailPage({
           description: p.content,
           author: p.authorName,
           authorAvatar: p.authorAvatar,
-          image: p.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
+          image: p.imageUrl || getActiveFallbackImage(true, 'blog') || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
           readTime: '4 min branja',
           date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : 'Nedavno',
           categoryName: cat.name,
@@ -966,11 +1011,11 @@ export function PostDetailPage({
       const cat = resolveBlogCategory(b);
       let score = 0;
       if (cat.id === currentCat.id || cat.name.toLowerCase() === currentCat.name.toLowerCase()) {
-        score += 25;
+        score += 30;
       }
       if (b.tags && currentTags.length > 0) {
         const sharedTags = b.tags.filter(t => currentTags.includes(String(t).toLowerCase()));
-        score += sharedTags.length * 4;
+        score += sharedTags.length * 5;
       }
 
       candidates.push({
@@ -995,39 +1040,39 @@ export function PostDetailPage({
 
     sameCategoryCandidates.sort((a, b) => b.score - a.score);
 
-    if (sameCategoryCandidates.length >= 3) {
-      return sameCategoryCandidates.slice(0, 3);
+    if (sameCategoryCandidates.length >= 4) {
+      return sameCategoryCandidates.slice(0, 4);
     }
 
-    // If fewer than 3 exact matches, take all of them and backfill with top scored remaining candidates
+    // If fewer than 4 exact matches, take all of them and backfill with top scored remaining candidates
     const selected = [...sameCategoryCandidates];
     const remaining = candidates
       .filter(c => !selected.some(s => s.id === c.id))
       .sort((a, b) => b.score - a.score);
 
     for (const item of remaining) {
-      if (selected.length >= 3) break;
+      if (selected.length >= 4) break;
       selected.push(item);
     }
 
-    return selected.slice(0, 3);
+    return selected.slice(0, 4);
   }, [target.type, target.id, itemData, firestorePosts]);
 
-  // Related 3 ads from same category
+  // Related 3-4 ads from same category
   const relatedAds = useMemo(() => {
     if (target.type !== 'ad' || !itemData) return [];
     const seenIds = new Set<string>();
     const allAds: any[] = [];
 
     firestoreAds.forEach(a => {
-      if (a.id && !seenIds.has(a.id)) {
+      if (a.id && !seenIds.has(a.id) && a.status !== 'rejected') {
         seenIds.add(a.id);
         allAds.push({
           id: a.id,
           title: a.title,
           price: a.price,
           location: a.location,
-          image: a.imageUrl,
+          image: a.imageUrl || (a.imageUrls && a.imageUrls[0]) || getActiveFallbackImage(true, 'ad') || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&auto=format&fit=crop&q=80',
           category: a.category || 'splosno',
           categoryName: a.categoryName || a.category || 'Mali oglas'
         });
@@ -1042,36 +1087,42 @@ export function PostDetailPage({
     });
 
     const currentId = itemData.id;
-    const currentCat = itemData.category || itemData.categoryName;
+    const currentCat = (itemData.category || itemData.categoryName || '').toLowerCase();
+    const currentSubcat = (itemData.subcategory || itemData.subcategoryName || '').toLowerCase();
 
     const filtered = allAds.filter(a => a.id !== currentId);
-    const sameCat = filtered.filter(a => 
-      (currentCat && (a.category === currentCat || a.categoryName === currentCat))
-    );
+    const sameCat = filtered.filter(a => {
+      const aCat = (a.category || a.categoryName || '').toLowerCase();
+      const aSub = (a.subcategory || a.subcategoryName || '').toLowerCase();
+      return (currentSubcat && (aSub === currentSubcat || aCat.includes(currentSubcat))) ||
+             (currentCat && (aCat === currentCat || aCat.includes(currentCat)));
+    });
 
-    if (sameCat.length >= 3) return sameCat.slice(0, 3);
+    if (sameCat.length >= 4) return sameCat.slice(0, 4);
     const others = filtered.filter(a => !sameCat.some(s => s.id === a.id));
-    return [...sameCat, ...others].slice(0, 3);
+    return [...sameCat, ...others].slice(0, 4);
   }, [target.type, itemData, firestoreAds]);
 
-  // Related 3 events from same category
+  // Related 3-4 events from same category
   const relatedEvents = useMemo(() => {
     if (target.type !== 'event' || !itemData) return [];
     const seenIds = new Set<string>();
     const allEvents: any[] = [];
 
     firestoreEvents.forEach(e => {
-      if (e.id && !seenIds.has(e.id)) {
+      if (e.id && !seenIds.has(e.id) && e.status !== 'rejected') {
         seenIds.add(e.id);
+        const dateInfo = parseEventDateInfo(e.eventDate || e.date, e.eventTime);
         allEvents.push({
           id: e.id,
           title: e.title,
-          location: e.location,
-          city: e.location,
-          month: 'DOG',
-          day: '★',
-          image: e.imageUrl,
-          category: e.category || 'splosno',
+          location: e.location || 'Slovenija',
+          city: e.location || 'Slovenija',
+          month: dateInfo.month,
+          day: dateInfo.day,
+          time: e.eventTime || '19:00',
+          image: e.imageUrl || (e.imageUrls && e.imageUrls[0]) || getActiveFallbackImage(true, 'event') || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&auto=format&fit=crop&q=80',
+          category: e.category || 'dogodki',
           categoryName: e.categoryName || e.category || 'Dogodek'
         });
       }
@@ -1085,32 +1136,294 @@ export function PostDetailPage({
     });
 
     const currentId = itemData.id;
-    const currentCat = itemData.category || itemData.categoryName;
+    const currentCat = (itemData.category || itemData.categoryName || '').toLowerCase();
+    const currentSubcat = (itemData.subcategory || itemData.subcategoryName || '').toLowerCase();
 
     const filtered = allEvents.filter(e => e.id !== currentId);
-    const sameCat = filtered.filter(e => 
-      (currentCat && (e.category === currentCat || e.categoryName === currentCat))
-    );
+    const sameCat = filtered.filter(e => {
+      const eCat = (e.category || e.categoryName || '').toLowerCase();
+      const eSub = (e.subcategory || e.subcategoryName || '').toLowerCase();
+      return (currentSubcat && (eSub === currentSubcat || eCat.includes(currentSubcat))) ||
+             (currentCat && (eCat === currentCat || eCat.includes(currentCat)));
+    });
 
-    if (sameCat.length >= 3) return sameCat.slice(0, 3);
+    if (sameCat.length >= 4) return sameCat.slice(0, 4);
     const others = filtered.filter(a => !sameCat.some(s => s.id === a.id));
-    return [...sameCat, ...others].slice(0, 3);
+    return [...sameCat, ...others].slice(0, 4);
   }, [target.type, itemData, firestoreEvents]);
 
-  // Related 3 deals
+  // Related 3-4 deals from same category
   const relatedDeals = useMemo(() => {
     if (target.type !== 'deal' || !itemData) return [];
     const seenIds = new Set<string>();
     const allDeals: any[] = [];
+
+    firestorePosts
+      .filter(p => (p.category === 'deal' || p.category === 'ugodnosti' || p.id.startsWith('deal-') || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost') && p.status !== 'rejected')
+      .forEach(p => {
+        if (p.id && !seenIds.has(p.id)) {
+          seenIds.add(p.id);
+          allDeals.push({
+            id: p.id,
+            title: p.title,
+            partner: p.authorName || 'Portalko partner',
+            discount: p.price || '-20%',
+            image: p.imageUrl || getActiveFallbackImage(true, 'deal') || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&auto=format&fit=crop&q=80',
+            category: p.category || 'ugodnosti',
+            categoryName: p.categoryName || p.subcategoryName || 'Ugodnosti',
+            description: p.content
+          });
+        }
+      });
+
     [...INITIAL_DEALS, ...HERO_BENTO_DEALS].forEach(d => {
       if (d.id && !seenIds.has(d.id)) {
         seenIds.add(d.id);
         allDeals.push(d);
       }
     });
+
     const currentId = itemData.id;
-    return allDeals.filter(d => d.id !== currentId).slice(0, 3);
-  }, [target.type, itemData]);
+    const currentCat = (itemData.category || itemData.categoryName || '').toLowerCase();
+    const currentSubcat = (itemData.subcategory || itemData.subcategoryName || '').toLowerCase();
+
+    const filtered = allDeals.filter(d => d.id !== currentId);
+    const sameCat = filtered.filter(d => {
+      const dCat = (d.category || d.categoryName || '').toLowerCase();
+      const dSub = (d.subcategory || d.subcategoryName || '').toLowerCase();
+      return (currentSubcat && (dSub === currentSubcat || dCat.includes(currentSubcat))) ||
+             (currentCat && (dCat === currentCat || dCat.includes(currentCat)));
+    });
+
+    if (sameCat.length >= 4) return sameCat.slice(0, 4);
+    const others = filtered.filter(d => !sameCat.some(s => s.id === d.id));
+    return [...sameCat, ...others].slice(0, 4);
+  }, [target.type, itemData, firestorePosts]);
+
+  // Determine 3-4 other posts from the same author across all categories
+  const authorPosts = useMemo(() => {
+    if (!itemData) return [];
+    const currentId = itemData.id;
+    const currentAuthorName = (itemData.author || itemData.authorName || itemData.partner || itemData.organizer || '').trim().toLowerCase();
+    const currentAuthorId = (itemData.authorId || '').trim().toLowerCase();
+
+    if (!currentAuthorName && !currentAuthorId) return [];
+
+    interface CandidateAuthorPost {
+      id: string;
+      type: 'blog' | 'ad' | 'event' | 'deal';
+      title: string;
+      description?: string;
+      author: string;
+      authorAvatar?: string;
+      authorRole?: string;
+      image?: string;
+      categoryName: string;
+      categoryId?: string;
+      price?: string;
+      location?: string;
+      date?: string;
+      readTime?: string;
+      eventDay?: string;
+      eventMonth?: string;
+      eventTime?: string;
+    }
+
+    const matchesAuthor = (authId?: string, authName?: string) => {
+      if (currentAuthorId && authId && authId.trim().toLowerCase() === currentAuthorId) return true;
+      if (currentAuthorName && authName && authName.trim().toLowerCase() === currentAuthorName) return true;
+      return false;
+    };
+
+    const results: CandidateAuthorPost[] = [];
+    const seenIds = new Set<string>([currentId, target.id]);
+
+    // 1. From Firestore posts (Blog and Deals)
+    firestorePosts.forEach(p => {
+      if (seenIds.has(p.id) || p.status === 'rejected' || p.status === 'archived') return;
+      if (matchesAuthor(p.authorId, p.authorName)) {
+        seenIds.add(p.id);
+        const isDeal = p.category === 'deal' || 
+                       p.category === 'ugodnosti' || 
+                       p.category?.startsWith('deal') || 
+                       p.categoryName === 'Ugodnosti' || 
+                       p.categoryName === 'Ugodnost' ||
+                       p.id.startsWith('deal-') || 
+                       p.id.startsWith('hero-bento-') || 
+                       !!p.price;
+        
+        if (isDeal) {
+          results.push({
+            id: p.id,
+            type: 'deal',
+            title: p.title,
+            description: p.content,
+            author: p.authorName || itemData.author || 'Avtor',
+            authorAvatar: p.authorAvatar || itemData.authorAvatar,
+            authorRole: p.authorRole || 'Ugodnost',
+            image: p.imageUrl || getActiveFallbackImage(true, 'deal') || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&auto=format&fit=crop&q=80',
+            categoryName: p.categoryName || 'Ugodnosti',
+            price: p.price || p.discount || '-20%',
+            date: p.expirationDate ? `Do ${p.expirationDate}` : (p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : 'Ugodnost'),
+          });
+        } else {
+          const cat = resolveBlogCategory(p);
+          results.push({
+            id: p.id,
+            type: 'blog',
+            title: p.title,
+            description: p.content,
+            author: p.authorName || itemData.author || 'Avtor',
+            authorAvatar: p.authorAvatar || itemData.authorAvatar,
+            authorRole: p.authorRole || 'Avtor',
+            image: p.imageUrl || getActiveFallbackImage(true, 'blog') || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
+            categoryName: cat.name,
+            categoryId: cat.id,
+            readTime: '4 min branja',
+            date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : 'Nedavno',
+          });
+        }
+      }
+    });
+
+    // 2. From Firestore ads
+    firestoreAds.forEach(a => {
+      if (seenIds.has(a.id) || a.status === 'rejected' || a.status === 'closed') return;
+      if (matchesAuthor(a.authorId, a.authorName)) {
+        seenIds.add(a.id);
+        results.push({
+          id: a.id,
+          type: 'ad',
+          title: a.title,
+          description: a.description,
+          author: a.authorName || itemData.author || 'Avtor',
+          authorAvatar: a.authorAvatar || itemData.authorAvatar,
+          authorRole: a.authorRole || 'Prodajalec',
+          image: a.imageUrl || (a.imageUrls && a.imageUrls[0]) || getActiveFallbackImage(true, 'ad') || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&auto=format&fit=crop&q=80',
+          categoryName: a.categoryName || a.category || 'Mali oglas',
+          price: a.price || 'Po dogovoru',
+          location: a.location || 'Slovenija',
+          date: a.createdAt ? new Date(a.createdAt).toLocaleDateString('sl-SI') : 'Danes',
+        });
+      }
+    });
+
+    // 3. From Firestore events
+    firestoreEvents.forEach(e => {
+      if (seenIds.has(e.id) || e.status === 'rejected') return;
+      if (matchesAuthor(e.authorId, e.authorName)) {
+        seenIds.add(e.id);
+        const dateInfo = parseEventDateInfo(e.eventDate || e.date, e.eventTime);
+        results.push({
+          id: e.id,
+          type: 'event',
+          title: e.title,
+          description: e.description,
+          author: e.authorName || itemData.author || 'Organizator',
+          authorAvatar: e.authorAvatar || itemData.authorAvatar,
+          authorRole: e.authorRole || 'Organizator',
+          image: e.imageUrl || (e.imageUrls && e.imageUrls[0]) || getActiveFallbackImage(true, 'event') || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&auto=format&fit=crop&q=80',
+          categoryName: e.categoryName || e.category || 'Dogodek',
+          location: e.location || 'Slovenija',
+          price: e.price || 'Vstop prost',
+          date: dateInfo.fullDate,
+          eventDay: dateInfo.day,
+          eventMonth: dateInfo.month,
+          eventTime: e.eventTime || '19:00',
+        });
+      }
+    });
+
+    // 4. From Mock Data
+    INITIAL_BLOG_POSTS.forEach(b => {
+      if (seenIds.has(b.id)) return;
+      if (matchesAuthor((b as any).authorId, b.author)) {
+        seenIds.add(b.id);
+        const cat = resolveBlogCategory(b);
+        results.push({
+          id: b.id,
+          type: 'blog',
+          title: b.title,
+          description: b.description,
+          author: b.author,
+          authorAvatar: b.authorAvatar,
+          authorRole: 'Avtor',
+          image: b.image,
+          categoryName: cat.name,
+          categoryId: cat.id,
+          readTime: b.readTime || '5 min branja',
+          date: b.date,
+        });
+      }
+    });
+
+    INITIAL_ADS.forEach(a => {
+      if (seenIds.has(a.id)) return;
+      if (matchesAuthor((a as any).authorId, a.author)) {
+        seenIds.add(a.id);
+        results.push({
+          id: a.id,
+          type: 'ad',
+          title: a.title,
+          description: a.description,
+          author: a.author,
+          authorAvatar: (a as any).authorAvatar,
+          authorRole: 'Prodajalec',
+          image: a.image,
+          categoryName: a.categoryName || 'Mali oglas',
+          price: a.price,
+          location: a.location,
+          date: a.date,
+        });
+      }
+    });
+
+    INITIAL_EVENTS.forEach(e => {
+      if (seenIds.has(e.id)) return;
+      if (matchesAuthor((e as any).authorId, e.organizer || (e as any).author)) {
+        seenIds.add(e.id);
+        results.push({
+          id: e.id,
+          type: 'event',
+          title: e.title,
+          description: e.description,
+          author: e.organizer,
+          authorAvatar: (e as any).authorAvatar,
+          authorRole: 'Organizator',
+          image: e.image,
+          categoryName: e.categoryName || 'Dogodek',
+          location: e.location || 'Slovenija',
+          price: e.price,
+          date: `${e.day} ${e.month}`,
+          eventDay: e.day,
+          eventMonth: e.month,
+          eventTime: (e as any).time || '19:00',
+        });
+      }
+    });
+
+    [...INITIAL_DEALS, ...HERO_BENTO_DEALS].forEach(d => {
+      if (seenIds.has(d.id)) return;
+      if (matchesAuthor((d as any).authorId, d.partner)) {
+        seenIds.add(d.id);
+        results.push({
+          id: d.id,
+          type: 'deal',
+          title: d.title,
+          description: d.description,
+          author: d.partner,
+          authorAvatar: d.partnerAvatar,
+          authorRole: d.partnerRole || 'Trgovec',
+          image: d.image,
+          categoryName: d.categoryName || 'Ugodnosti',
+          price: d.discount || d.newPrice || '-20%',
+          date: d.date,
+        });
+      }
+    });
+
+    return results.slice(0, 4);
+  }, [itemData, target.id, firestorePosts, firestoreAds, firestoreEvents]);
 
   if (isDirectLoading && !itemData) {
     return (
@@ -1245,6 +1558,7 @@ export function PostDetailPage({
     eventDate: itemData.eventDate || itemData.date,
     eventTime: itemData.eventTime,
     ticketUrl: itemData.ticketUrl,
+    tags: itemData.tags,
     authorName: itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor',
     authorId: itemData.authorId,
     authorRole: itemData.partnerRole || itemData.authorRole,
@@ -1255,6 +1569,16 @@ export function PostDetailPage({
   const authorAvatar = itemData.partnerAvatar || itemData.authorAvatar;
   const authorRole = itemData.partnerRole || itemData.authorRole;
   const authorId = itemData.authorId;
+
+  const rawItemViews = typeof itemData.viewsCount === 'number' 
+    ? itemData.viewsCount 
+    : (parseInt(String(itemData.viewsCount || '0').replace(/\D/g, ''), 10) || 0);
+
+  const currentViewsCount = typeof realtimeViews === 'number' 
+    ? realtimeViews 
+    : (rawItemViews > 0 ? rawItemViews : 1);
+
+  const formattedViews = formatViewsCount(currentViewsCount);
 
   const handleAuthorClick = () => {
     if (onAuthorClick) {
@@ -1404,12 +1728,6 @@ export function PostDetailPage({
                   </span>
                 )}
 
-                {target.type === 'event' && itemData.price && (
-                  <span className="px-3.5 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-sm font-extrabold shadow-md">
-                    {itemData.price}
-                  </span>
-                )}
-
                 {target.type === 'ad' && itemData.price && (
                   <span className="px-3.5 py-1 rounded-lg bg-emerald-600 text-white font-headline-sm text-sm font-extrabold shadow-md">
                     {itemData.price}
@@ -1443,6 +1761,21 @@ export function PostDetailPage({
                     <span>{activeImageIndex + 1} / {postImages.length}</span>
                   </span>
                 )}
+
+                <button
+                  type="button"
+                  id="btn-post-hero-share"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShareModalOpen(true);
+                  }}
+                  className="p-2 rounded-xl bg-black/70 hover:bg-black/90 backdrop-blur-md text-white shadow-md border border-white/15 transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  title="Deli objavo"
+                  aria-label="Deli objavo"
+                >
+                  <Share2 className="w-4 h-4 text-white" />
+                  <span className="hidden sm:inline text-xs font-bold pr-0.5">Deli</span>
+                </button>
 
                 <button
                   type="button"
@@ -1548,6 +1881,11 @@ export function PostDetailPage({
                     <Clock className="w-3.5 h-3.5 text-primary" />
                     <span>{itemData.date || itemData.eventDate || 'Objavljeno danes'}</span>
                   </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-2.5 py-0.5 rounded-full text-white font-semibold text-xs border border-white/10" title="Priljubljenost v živo: število ogledov objave">
+                    <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
+                    <span>{formattedViews}</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -1620,32 +1958,16 @@ export function PostDetailPage({
               className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
             />
 
-            {/* Deli */}
-            <ShareMenu
-              id={itemData.id}
-              type={target.type}
-              title={itemData.title}
-              description={itemData.description || itemData.content}
-              showLabel={true}
-              dropDirection="down"
-              buttonClassName="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
-            />
-
-            {/* Hitro deljenje na omrežjih */}
+            {/* Deli objavo - Odpre Share Modal */}
             <button
               type="button"
-              id="btn-scroll-to-share"
-              onClick={() => {
-                const el = document.getElementById('social-share-widget');
-                if (el) {
-                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 cursor-pointer border border-primary/25 shadow-2xs"
-              title="Deli na Facebook, X, Viber, WhatsApp in e-pošto s predpripravljeno vsebino"
+              id="btn-post-open-share-modal"
+              onClick={() => setIsShareModalOpen(true)}
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs hover:scale-102 active:scale-95"
+              title="Deli objavo (kopiraj povezavo ali deli na družbena omrežja)"
             >
-              <Share2 className="w-3.5 h-3.5 text-primary" />
-              <span className="hidden sm:inline">Družbena omrežja</span>
+              <Share2 className="w-4 h-4" />
+              <span>Deli</span>
             </button>
 
             {/* Prijavi */}
@@ -1693,7 +2015,7 @@ export function PostDetailPage({
                 <span className="px-2.5 py-0.5 rounded-md bg-primary/10 text-primary font-label-caps text-xs font-bold uppercase">
                   {itemData.categoryName || feedCategoryName}
                 </span>
-                {itemData.price && (
+                {target.type !== 'event' && itemData.price && (
                   <span className="px-2.5 py-0.5 rounded-md bg-secondary/10 text-secondary font-bold text-xs">
                     {itemData.price}
                   </span>
@@ -1715,6 +2037,11 @@ export function PostDetailPage({
                 </button>
                 <span>•</span>
                 <span>{itemData.date || itemData.eventDate || 'Objavljeno danes'}</span>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1.5 bg-surface-container-high px-2.5 py-0.5 rounded-full text-xs font-semibold text-on-surface" title="Priljubljenost v živo: število ogledov objave">
+                  <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
+                  <span>{formattedViews}</span>
+                </span>
               </div>
             </div>
           )}
@@ -1840,10 +2167,20 @@ export function PostDetailPage({
                 </>
               )}
 
+              <div 
+                className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors border border-surface-container shadow-xs"
+                title="Število ogledov v živo (priljubljenost objave)"
+              >
+                <Eye className="w-4 h-4 text-secondary shrink-0" />
+                <span className="font-bold">{formattedViews}</span>
+              </div>
+
               <LikeButton
                 id={itemData.id || target.id}
                 targetType={target.type}
                 initialLikesCount={itemData.likesCount || 0}
+                initialLovesCount={itemData.lovesCount || 0}
+                initialDislikesCount={itemData.dislikesCount || 0}
                 variant="pill"
                 showCount={true}
                 showLabel={true}
@@ -1870,8 +2207,11 @@ export function PostDetailPage({
                   <Eye className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Ogledov</div>
-                  <div className="text-sm font-bold text-on-surface">{itemData.viewsCount || '1.450'}</div>
+                  <div className="text-[11px] text-outline uppercase font-semibold">Ogledov (v živo)</div>
+                  <div className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                    <span>{formattedViews}</span>
+                    <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" title="Posodabljanje v živo" />
+                  </div>
                 </div>
               </div>
 
@@ -1893,7 +2233,7 @@ export function PostDetailPage({
                 </div>
                 <div>
                   <div className="text-[11px] text-outline uppercase font-semibold">Glavna tema</div>
-                  <div className="text-sm font-bold text-on-surface truncate capitalize">{itemData.tags?.[0] || 'Zgodbe'}</div>
+                  <div className="text-sm font-bold text-on-surface truncate capitalize">{itemData.categoryName || feedCategoryName || 'Zgodbe'}</div>
                 </div>
               </div>
             </div>
@@ -1934,9 +2274,13 @@ export function PostDetailPage({
                 <p className="text-xs text-outline flex items-center gap-1.5 mt-0.5">
                   <Clock className="w-3.5 h-3.5 text-error" />
                   <span>
-                    {itemData.expirationDate 
-                      ? `Veljavno do: ${itemData.expirationDate.includes('-') ? new Date(itemData.expirationDate).toLocaleDateString('sl-SI') : itemData.expirationDate}` 
-                      : (itemData.date || 'Veljavno do preklica ali odprodaje zalog.')}
+                    {itemData.startDate && itemData.expirationDate
+                      ? `Akcija velja: ${itemData.startDate.includes('-') ? new Date(itemData.startDate).toLocaleDateString('sl-SI') : itemData.startDate} – ${itemData.expirationDate.includes('-') ? new Date(itemData.expirationDate).toLocaleDateString('sl-SI') : itemData.expirationDate}`
+                      : itemData.expirationDate
+                        ? `Veljavno do: ${itemData.expirationDate.includes('-') ? new Date(itemData.expirationDate).toLocaleDateString('sl-SI') : itemData.expirationDate}`
+                        : itemData.startDate
+                          ? `Začetek akcije: ${itemData.startDate.includes('-') ? new Date(itemData.startDate).toLocaleDateString('sl-SI') : itemData.startDate}`
+                          : (itemData.date || 'Veljavno do preklica ali odprodaje zalog.')}
                   </span>
                 </p>
               </div>
@@ -2152,64 +2496,31 @@ export function PostDetailPage({
             </div>
           )}
 
-          {/* Tags & Metadata */}
-          <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-surface-container-low text-xs">
-            <span className="text-outline font-semibold">Oznake:</span>
-            <button
-              type="button"
-              onClick={() => handleTagClick(target.type)}
-              className="px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-primary/10 hover:text-primary text-on-surface-variant font-medium transition-colors cursor-pointer"
-              title={`Išči vsebine z oznako #${target.type}`}
-            >
-              #{target.type}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTagClick(itemData.categoryName || feedCategoryName)}
-              className="px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-primary/10 hover:text-primary text-on-surface-variant font-medium transition-colors cursor-pointer"
-              title={`Išči vsebine v kategoriji ${itemData.categoryName || feedCategoryName}`}
-            >
-              #{itemData.categoryName || feedCategoryName}
-            </button>
-            {(itemData.location || itemData.region) && (
-              <button
-                type="button"
-                onClick={() => handleTagClick(itemData.location || itemData.region)}
-                className="px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-primary/10 hover:text-primary text-on-surface-variant font-medium transition-colors cursor-pointer"
-                title={`Išči objave v kraju ${itemData.location || itemData.region}`}
-              >
-                #{itemData.location || itemData.region}
-              </button>
-            )}
-            {itemData.tags && Array.isArray(itemData.tags) && itemData.tags.map((tag: string, idx: number) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleTagClick(tag)}
-                className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-on-primary font-medium transition-colors cursor-pointer flex items-center gap-1"
-                title={`Išči objave z oznako #${tag.replace(/^#/, '')}`}
-              >
-                <Search className="w-2.5 h-2.5 opacity-70" />
-                <span>#{tag.replace(/^#/, '')}</span>
-              </button>
-            ))}
-          </div>
+          {/* Tags & Metadata - Only render real user/admin defined tags */}
+          {itemData.tags && Array.isArray(itemData.tags) && itemData.tags.filter((t: string) => t && t.trim().length > 0).length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-surface-container-low text-xs">
+              <span className="text-outline font-semibold">Oznake:</span>
+              {itemData.tags
+                .filter((tag: string) => tag && tag.trim().length > 0)
+                .map((tag: string, idx: number) => {
+                  const cleanTag = tag.replace(/^#/, '').trim();
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleTagClick(cleanTag)}
+                      className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-on-primary font-medium transition-colors cursor-pointer flex items-center gap-1"
+                      title={`Išči objave z oznako #${cleanTag}`}
+                    >
+                      <Search className="w-2.5 h-2.5 opacity-70" />
+                      <span>#{cleanTag}</span>
+                    </button>
+                  );
+                })}
+            </div>
+          )}
         </div>
       </article>
-
-      {/* Social Media Sharing Widget with pre-filled content */}
-      <SocialShareWidget
-        url={typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : ''}
-        title={itemData.title}
-        description={itemData.description || itemData.content}
-        type={target.type}
-        category={itemData.categoryName || feedCategoryName}
-        author={authorDisplayName}
-        date={itemData.date || itemData.eventDate}
-        price={itemData.price}
-        location={itemData.location || itemData.region}
-        discount={itemData.discount}
-      />
 
       {/* Discussion & Comments Section */}
       <section className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-5">
@@ -2340,9 +2651,9 @@ export function PostDetailPage({
         </div>
       </section>
 
-      {/* Suggested & Related Posts */}
+      {/* Suggested & Related Posts Section */}
       {(target.type === 'blog' || target.type === 'post') ? (
-        /* Dedicated Related Articles Section for Blog Posts (suggests 3 other posts from the same category) */
+        /* Dedicated Related Articles Section for Blog Posts (suggests 3-4 posts from the same category) */
         <section 
           id="related-articles-section"
           className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-4"
@@ -2354,13 +2665,13 @@ export function PostDetailPage({
               </div>
               <div>
                 <h3 className="font-headline-md text-base sm:text-lg font-bold text-on-surface flex flex-wrap items-center gap-2">
-                  <span>Sorodni članki</span>
+                  <span>Sorodne objave</span>
                   <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                     {itemData.categoryName || resolveBlogCategory(itemData).name}
                   </span>
                 </h3>
                 <p className="text-xs text-on-surface-variant">
-                  3 priporočeni članki iz iste kategorije za nadaljnje branje
+                  Priporočeni članki iz iste kategorije za nadaljnje branje
                 </p>
               </div>
             </div>
@@ -2380,181 +2691,512 @@ export function PostDetailPage({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {relatedArticles.map((article, idx) => (
-              <div
-                key={`rel-art-${article.id}-${idx}`}
-                id={`related-article-${article.id}`}
-                onClick={() => {
-                  scrollToPageTop();
-                  onNavigatePost({ type: 'blog', id: article.id });
-                }}
-                className="group flex flex-col bg-surface-container-low/50 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-primary/40 transition-all duration-200 overflow-hidden shadow-2xs hover:shadow-md cursor-pointer"
-              >
-                {/* Thumbnail container */}
-                <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
-                  {article.image ? (
-                    <img 
-                      src={article.image} 
-                      alt={article.title} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
-                      <BookOpen className="w-8 h-8" />
-                    </div>
-                  )}
-                  
-                  {/* Category Pill */}
-                  <span className="absolute top-2 left-2 px-2.5 py-1 rounded-lg bg-surface-container-lowest/90 backdrop-blur-xs text-[11px] font-bold text-primary shadow-2xs border border-surface-container/40">
-                    {article.categoryName}
-                  </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {relatedArticles.map((article, idx) => {
+              const postUrl = buildPostUrl({
+                type: 'blog',
+                id: article.id,
+                title: article.title,
+                categoryName: article.categoryName,
+                category: article.categoryId
+              });
 
-                  {/* Read Time Pill */}
-                  {article.readTime && (
-                    <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      <span>{article.readTime}</span>
+              return (
+                <a
+                  key={`rel-art-${article.id}-${idx}`}
+                  id={`related-article-${article.id}`}
+                  href={postUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToPageTop();
+                    onNavigatePost({ type: 'blog', id: article.id });
+                  }}
+                  className="group flex flex-col bg-surface-container-low/50 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-primary/40 transition-all duration-200 overflow-hidden shadow-2xs hover:shadow-md cursor-pointer"
+                  title={article.title}
+                >
+                  {/* Thumbnail container */}
+                  <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
+                    {article.image ? (
+                      <img 
+                        src={article.image} 
+                        alt={article.title} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        loading="lazy"
+                        onError={handleImageFallbackError}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
+                        <BookOpen className="w-8 h-8" />
+                      </div>
+                    )}
+                    
+                    {/* Category Pill */}
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-surface-container-lowest/90 backdrop-blur-xs text-[10px] font-bold text-primary shadow-2xs border border-surface-container/40">
+                      {article.categoryName}
                     </span>
-                  )}
-                </div>
 
-                {/* Content */}
-                <div className="p-3.5 sm:p-4 flex-1 flex flex-col gap-2">
-                  <h4 className="font-bold text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
-                    {article.title}
-                  </h4>
-                  {article.description && (
-                    <p className="text-xs text-on-surface-variant line-clamp-2 leading-relaxed">
-                      {article.description}
-                    </p>
-                  )}
-
-                  <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-on-surface-variant truncate max-w-[60%]">
-                      {article.authorAvatar ? (
-                        <img 
-                          src={article.authorAvatar} 
-                          alt={article.author || 'Avtor'} 
-                          className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-black/5" 
-                        />
-                      ) : (
-                        <User className="w-3.5 h-3.5 text-outline shrink-0" />
-                      )}
-                      <span className="truncate text-[11px] font-medium">{article.author || 'Portalko avtor'}</span>
-                    </div>
-                    <span className="font-bold text-primary text-xs flex items-center gap-1 group-hover:underline">
-                      <span>Preberi</span>
-                      <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
+                    {/* Read Time Pill */}
+                    {article.readTime && (
+                      <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{article.readTime}</span>
+                      </span>
+                    )}
                   </div>
-                </div>
-              </div>
-            ))}
+
+                  {/* Content */}
+                  <div className="p-3.5 flex-1 flex flex-col gap-1.5">
+                    <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                      {article.title}
+                    </h4>
+                    {article.description && (
+                      <p className="text-[11px] text-on-surface-variant line-clamp-2 leading-relaxed">
+                        {article.description}
+                      </p>
+                    )}
+
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 text-on-surface-variant truncate max-w-[65%]">
+                        {article.authorAvatar ? (
+                          <img 
+                            src={article.authorAvatar} 
+                            alt={article.author || 'Avtor'} 
+                            className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-black/5" 
+                          />
+                        ) : (
+                          <User className="w-3.5 h-3.5 text-outline shrink-0" />
+                        )}
+                        <span className="truncate text-[11px] font-medium">{article.author || 'Portalko avtor'}</span>
+                      </div>
+                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                        <span>Preberi</span>
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
           </div>
         </section>
       ) : (
-        /* Related section for Deals, Events, and Ads */
-        <section className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-headline-md text-base font-bold text-on-surface">
-              {target.type === 'deal'
-                ? 'Podobne ugodnosti & ponudbe'
-                : target.type === 'event'
-                ? `Podobni dogodki v kategoriji ${itemData.categoryName || feedCategoryName}`
-                : `Podobni oglasi v kategoriji ${itemData.categoryName || feedCategoryName}`}
-            </h3>
+        /* Related section for Deals, Events, and Ads (suggests 3-4 other posts from the same category) */
+        <section 
+          id="related-posts-section"
+          className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-surface-container-low pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className={`p-2 rounded-xl shrink-0 ${
+                target.type === 'deal' ? 'bg-amber-500/10 text-amber-600' :
+                target.type === 'event' ? 'bg-secondary/10 text-secondary' :
+                'bg-primary/10 text-primary'
+              }`}>
+                {target.type === 'deal' ? <Sparkles className="w-5 h-5" /> :
+                 target.type === 'event' ? <Calendar className="w-5 h-5" /> :
+                 <Tag className="w-5 h-5" />}
+              </div>
+              <div>
+                <h3 className="font-headline-md text-base sm:text-lg font-bold text-on-surface flex flex-wrap items-center gap-2">
+                  <span>
+                    {target.type === 'deal'
+                      ? 'Sorodne ugodnosti & akcije'
+                      : target.type === 'event'
+                      ? 'Sorodni dogodki'
+                      : 'Sorodni mali oglasi'}
+                  </span>
+                  {(itemData.categoryName || feedCategoryName) && (
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                      target.type === 'deal' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' :
+                      target.type === 'event' ? 'bg-secondary/10 text-secondary border-secondary/20' :
+                      'bg-primary/10 text-primary border-primary/20'
+                    }`}>
+                      {itemData.categoryName || feedCategoryName}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-on-surface-variant">
+                  {target.type === 'deal'
+                    ? 'Priporočeni prihranki in ponudbe iz iste kategorije'
+                    : target.type === 'event'
+                    ? 'Prihajajoči dogodki in prireditve iz iste kategorije'
+                    : 'Podobne ponudbe in oglasi iz iste kategorije'}
+                </p>
+              </div>
+            </div>
             <button
-              onClick={() => onViewChange(target.type === 'deal' ? 'deals' : target.type === 'event' ? 'events' : 'ads')}
-              className="text-xs text-primary font-bold hover:underline flex items-center gap-1 cursor-pointer"
+              type="button"
+              onClick={() => {
+                const targetView = target.type === 'deal' ? 'deals' : target.type === 'event' ? 'events' : 'ads';
+                const catName = itemData.categoryName || feedCategoryName;
+                if (catName) {
+                  onSearchChange?.(buildSearchQuery(target.type as SearchCategory, catName));
+                }
+                onViewChange(targetView);
+                scrollToPageTop();
+              }}
+              className="text-xs text-primary font-bold hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-auto"
             >
-              <span>Poglej vse</span>
+              <span>
+                {target.type === 'deal' ? 'Vse ugodnosti' : target.type === 'event' ? 'Vsi dogodki' : 'Vsi mali oglasi'}
+              </span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-            {target.type === 'deal' && relatedDeals.map((deal, idx) => (
-              <div
-                key={`rel-deal-${deal.id}-${idx}`}
-                onClick={() => {
-                  scrollToPageTop();
-                  onNavigatePost({ type: 'deal', id: deal.id });
-                }}
-                className="p-3 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-low border border-surface-container hover:border-primary/40 transition-all cursor-pointer flex flex-col gap-2 group"
-              >
-                {deal.image && (
-                  <div className="h-28 w-full rounded-lg overflow-hidden bg-surface-container relative">
-                    <img src={deal.image} alt={deal.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-primary text-on-primary text-[10px] font-bold">
-                      {deal.discount}
-                    </span>
-                  </div>
-                )}
-                <h4 className="font-bold text-xs text-on-surface line-clamp-2 group-hover:text-primary transition-colors">
-                  {deal.title}
-                </h4>
-                <div className="mt-auto flex items-center justify-between text-[11px] text-outline">
-                  <span>{deal.partner}</span>
-                  <span className="font-bold text-primary">Odpri objavo →</span>
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {target.type === 'deal' && relatedDeals.map((deal, idx) => {
+              const dealUrl = buildPostUrl({
+                type: 'deal',
+                id: deal.id,
+                title: deal.title,
+                categoryName: deal.categoryName,
+                category: deal.category
+              });
 
-            {target.type === 'event' && relatedEvents.map((evt, idx) => (
-              <div
-                key={`rel-evt-${evt.id}-${idx}`}
-                onClick={() => {
-                  scrollToPageTop();
-                  onNavigatePost({ type: 'event', id: evt.id });
-                }}
-                className="p-3 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-low border border-surface-container hover:border-primary/40 transition-all cursor-pointer flex flex-col gap-2 group"
-              >
-                {evt.image && (
-                  <div className="h-28 w-full rounded-lg overflow-hidden bg-surface-container relative">
-                    <img src={evt.image} alt={evt.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-black/75 text-white text-[10px] font-bold">
-                      {evt.month} {evt.day}
-                    </span>
+              return (
+                <a
+                  key={`rel-deal-${deal.id}-${idx}`}
+                  href={dealUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToPageTop();
+                    onNavigatePost({ type: 'deal', id: deal.id });
+                  }}
+                  className="group flex flex-col bg-surface-container-low/50 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-amber-500/40 transition-all duration-200 overflow-hidden shadow-2xs hover:shadow-md cursor-pointer"
+                  title={deal.title}
+                >
+                  <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
+                    {deal.image ? (
+                      <img 
+                        src={deal.image} 
+                        alt={deal.title} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        loading="lazy"
+                        onError={handleImageFallbackError}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
+                        <Sparkles className="w-8 h-8" />
+                      </div>
+                    )}
+                    {deal.discount && (
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-primary text-on-primary text-[10px] font-bold shadow-xs">
+                        {deal.discount}
+                      </span>
+                    )}
+                    {deal.categoryName && (
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium">
+                        {deal.categoryName}
+                      </span>
+                    )}
                   </div>
-                )}
-                <h4 className="font-bold text-xs text-on-surface line-clamp-2 group-hover:text-primary transition-colors">
-                  {evt.title}
-                </h4>
-                <div className="mt-auto flex items-center justify-between text-[11px] text-outline">
-                  <span>{evt.city || evt.location}</span>
-                  <span className="font-bold text-primary">Odpri objavo →</span>
-                </div>
-              </div>
-            ))}
+                  <div className="p-3.5 flex-1 flex flex-col gap-1.5">
+                    <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                      {deal.title}
+                    </h4>
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1 text-[11px] text-outline truncate max-w-[65%]">
+                        <Store className="w-3.5 h-3.5 text-outline shrink-0" />
+                        <span className="truncate font-medium">{deal.partner}</span>
+                      </div>
+                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                        <span>Odpri</span>
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
 
-            {target.type === 'ad' && relatedAds.map((ad, idx) => (
-              <div
-                key={`rel-ad-${ad.id}-${idx}`}
-                onClick={() => {
-                  scrollToPageTop();
-                  onNavigatePost({ type: 'ad', id: ad.id });
-                }}
-                className="p-3 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-low border border-surface-container hover:border-primary/40 transition-all cursor-pointer flex flex-col gap-2 group"
-              >
-                {ad.image && (
-                  <div className="h-28 w-full rounded-lg overflow-hidden bg-surface-container relative">
-                    <img src={ad.image} alt={ad.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold">
-                      {ad.price}
-                    </span>
+            {target.type === 'event' && relatedEvents.map((evt, idx) => {
+              const eventUrl = buildPostUrl({
+                type: 'event',
+                id: evt.id,
+                title: evt.title,
+                categoryName: evt.categoryName,
+                category: evt.category
+              });
+
+              return (
+                <a
+                  key={`rel-evt-${evt.id}-${idx}`}
+                  href={eventUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToPageTop();
+                    onNavigatePost({ type: 'event', id: evt.id });
+                  }}
+                  className="group flex flex-col bg-surface-container-low/50 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-secondary/40 transition-all duration-200 overflow-hidden shadow-2xs hover:shadow-md cursor-pointer"
+                  title={evt.title}
+                >
+                  <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
+                    {evt.image ? (
+                      <img 
+                        src={evt.image} 
+                        alt={evt.title} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        loading="lazy"
+                        onError={handleImageFallbackError}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
+                        <Calendar className="w-8 h-8" />
+                      </div>
+                    )}
+                    {evt.day && (
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/75 backdrop-blur-xs text-white text-[10px] font-bold shadow-xs flex items-center gap-1">
+                        <span>{evt.day}</span>
+                        <span>{evt.month}</span>
+                      </span>
+                    )}
+                    {evt.categoryName && (
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium">
+                        {evt.categoryName}
+                      </span>
+                    )}
                   </div>
-                )}
-                <h4 className="font-bold text-xs text-on-surface line-clamp-2 group-hover:text-primary transition-colors">
-                  {ad.title}
-                </h4>
-                <div className="mt-auto flex items-center justify-between text-[11px] text-outline">
-                  <span>{ad.location}</span>
-                  <span className="font-bold text-primary">Odpri oglas →</span>
-                </div>
+                  <div className="p-3.5 flex-1 flex flex-col gap-1.5">
+                    <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                      {evt.title}
+                    </h4>
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1 text-[11px] text-outline truncate max-w-[65%]">
+                        <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
+                        <span className="truncate">{evt.city || evt.location}</span>
+                      </div>
+                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                        <span>Odpri</span>
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
+
+            {target.type === 'ad' && relatedAds.map((ad, idx) => {
+              const adUrl = buildPostUrl({
+                type: 'ad',
+                id: ad.id,
+                title: ad.title,
+                categoryName: ad.categoryName,
+                category: ad.category
+              });
+
+              return (
+                <a
+                  key={`rel-ad-${ad.id}-${idx}`}
+                  href={adUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToPageTop();
+                    onNavigatePost({ type: 'ad', id: ad.id });
+                  }}
+                  className="group flex flex-col bg-surface-container-low/50 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-primary/40 transition-all duration-200 overflow-hidden shadow-2xs hover:shadow-md cursor-pointer"
+                  title={ad.title}
+                >
+                  <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
+                    {ad.image ? (
+                      <img 
+                        src={ad.image} 
+                        alt={ad.title} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        loading="lazy"
+                        onError={handleImageFallbackError}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
+                        <Tag className="w-8 h-8" />
+                      </div>
+                    )}
+                    {ad.price && (
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-bold shadow-xs">
+                        {ad.price}
+                      </span>
+                    )}
+                    {ad.categoryName && (
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium">
+                        {ad.categoryName}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3.5 flex-1 flex flex-col gap-1.5">
+                    <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                      {ad.title}
+                    </h4>
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1 text-[11px] text-outline truncate max-w-[65%]">
+                        <MapPin className="w-3.5 h-3.5 text-outline shrink-0" />
+                        <span className="truncate">{ad.location}</span>
+                      </div>
+                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                        <span>Odpri</span>
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* From Same Author Section (suggests 3-4 other posts from the same author) */}
+      {authorPosts.length > 0 && (
+        <section 
+          id="author-posts-section"
+          className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-surface-container-low pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
+                <User className="w-5 h-5" />
               </div>
-            ))}
+              <div>
+                <h3 className="font-headline-md text-base sm:text-lg font-bold text-on-surface flex flex-wrap items-center gap-2">
+                  <span>Od istega avtorja</span>
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    {authorDisplayName}
+                  </span>
+                </h3>
+                <p className="text-xs text-on-surface-variant">
+                  Druge objave, novice in prispevki avtorja {authorDisplayName}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (onAuthorClick) {
+                  onAuthorClick({
+                    id: authorId,
+                    name: authorDisplayName,
+                    avatar: authorAvatar,
+                    role: authorRole,
+                    fromPostTarget: target
+                  });
+                } else {
+                  onViewChange('profile');
+                }
+                scrollToPageTop();
+              }}
+              className="text-xs text-primary font-bold hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+              title={`Prikaži vse objave avtorja ${authorDisplayName}`}
+            >
+              <span>Vse objave avtorja</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {authorPosts.map((post, idx) => {
+              const postUrl = buildPostUrl({
+                type: post.type,
+                id: post.id,
+                title: post.title,
+                categoryName: post.categoryName,
+                category: post.categoryId || post.categoryName
+              });
+
+              return (
+                <a
+                  key={`author-post-${post.id}-${idx}`}
+                  id={`author-post-${post.id}`}
+                  href={postUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToPageTop();
+                    onNavigatePost({ type: post.type, id: post.id });
+                  }}
+                  className="group flex flex-col bg-surface-container-low/50 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-primary/40 transition-all duration-200 overflow-hidden shadow-2xs hover:shadow-md cursor-pointer"
+                  title={post.title}
+                >
+                  {/* Thumbnail container */}
+                  <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
+                    {post.image ? (
+                      <img 
+                        src={post.image} 
+                        alt={post.title} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        loading="lazy"
+                        onError={handleImageFallbackError}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
+                        {post.type === 'deal' ? <Sparkles className="w-8 h-8" /> :
+                         post.type === 'event' ? <Calendar className="w-8 h-8" /> :
+                         post.type === 'ad' ? <Tag className="w-8 h-8" /> :
+                         <BookOpen className="w-8 h-8" />}
+                      </div>
+                    )}
+                    
+                    {/* Category Pill */}
+                    {post.categoryName && (
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-surface-container-lowest/90 backdrop-blur-xs text-[10px] font-bold text-primary shadow-2xs border border-surface-container/40">
+                        {post.categoryName}
+                      </span>
+                    )}
+
+                    {/* Price Badge */}
+                    {post.price && (
+                      <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold shadow-xs">
+                        {post.price}
+                      </span>
+                    )}
+
+                    {/* Read Time Pill */}
+                    {post.readTime && !post.price && (
+                      <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{post.readTime}</span>
+                      </span>
+                    )}
+
+                    {/* Event Date Pill */}
+                    {post.eventDay && (
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        <span>{post.eventDay} {post.eventMonth}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="p-3.5 flex-1 flex flex-col gap-1.5">
+                    <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                      {post.title}
+                    </h4>
+                    {post.description && (
+                      <p className="text-[11px] text-on-surface-variant line-clamp-2 leading-relaxed">
+                        {post.description}
+                      </p>
+                    )}
+
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 text-on-surface-variant truncate max-w-[65%]">
+                        {post.location ? (
+                          <div className="flex items-center gap-1 text-[11px] text-outline truncate">
+                            <MapPin className="w-3.5 h-3.5 text-outline shrink-0" />
+                            <span className="truncate">{post.location}</span>
+                          </div>
+                        ) : post.date ? (
+                          <span className="text-[11px] text-outline truncate">{post.date}</span>
+                        ) : (
+                          <span className="text-[11px] text-outline truncate">{authorDisplayName}</span>
+                        )}
+                      </div>
+                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                        <span>{post.type === 'event' || post.type === 'ad' ? 'Odpri' : 'Preberi'}</span>
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
           </div>
         </section>
       )}
@@ -2668,6 +3310,25 @@ export function PostDetailPage({
           onClose={() => setIsEditModalOpen(false)}
           item={editableItem}
           onSaved={() => setIsEditModalOpen(false)}
+        />
+      )}
+
+      {/* Share Modal */}
+      {isShareModalOpen && (
+        <ShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          id={itemData.id}
+          type={target.type}
+          title={itemData.title}
+          description={itemData.description || itemData.content}
+          imageUrl={itemData.image || (postImages && postImages[0])}
+          category={itemData.categoryName || feedCategoryName}
+          author={authorDisplayName}
+          price={itemData.price || itemData.discount}
+          location={itemData.location || itemData.region}
+          discount={itemData.discount}
+          date={itemData.date || itemData.eventDate}
         />
       )}
     </div>

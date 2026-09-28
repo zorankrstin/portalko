@@ -107,6 +107,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     price: post.price,
     oldPrice: post.oldPrice,
     newPrice: post.newPrice,
+    startDate: post.startDate,
     expirationDate: post.expirationDate,
     discount: post.discount,
     promoCode: post.promoCode,
@@ -207,6 +208,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           discount={post.discount || post.price || "Ugodnost"}
           oldPrice={post.oldPrice}
           newPrice={post.newPrice}
+          startDate={post.startDate}
           expirationDate={post.expirationDate}
           author={post.authorName}
           authorRole={post.authorRole || "Partner"}
@@ -484,6 +486,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             id={post.id}
             targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
             initialLikesCount={post.likesCount || 0}
+            initialLovesCount={(post as any).lovesCount || 0}
+            initialDislikesCount={(post as any).dislikesCount || 0}
             variant="card-action"
             showCount={true}
             showLabel={true}

@@ -13,6 +13,7 @@ export interface DealItem {
   discount: string;
   oldPrice?: string;
   newPrice?: string;
+  startDate?: string;
   expirationDate?: string;
   dealType: 'code' | 'flyer' | 'coupon' | 'bogo' | 'sale';
   dealTypeName: string;

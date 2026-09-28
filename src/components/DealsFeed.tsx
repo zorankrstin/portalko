@@ -49,6 +49,7 @@ import { PromotedBadge } from './common/PromotedBadge';
 import { UserDisplayName } from './common/UserDisplayName';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { PromotionConfig, PromotionBadgeType } from '../types';
+import { DealsCategoryLocationFilter } from './deals/DealsCategoryLocationFilter';
 
 interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -73,9 +74,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
+  const [selectedTertiaryCategory, setSelectedTertiaryCategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
-  const [sortOption, setSortOption] = useState<string>('featured');
+  const [sortOption, setSortOption] = useState<string>('newest');
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
@@ -99,8 +101,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     discount: '-20%',
     oldPrice: '',
     newPrice: '',
+    startDate: '',
     expirationDate: '',
     link: '',
+    tagsString: '',
     date: 'Velja do konca meseca',
     image: '',
     images: [] as string[],
@@ -120,20 +124,21 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         .filter(p => p.category === 'deal' || p.category === 'ugodnosti' || p.category?.startsWith('deal') || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost' || p.id.startsWith('deal-') || p.id.startsWith('hero-bento-'))
         .map(p => ({
           id: p.id,
-          title: p.title,
+          title: p.title.replace(/^\[Ugodnost\]\s*/i, ''),
           partner: p.authorName || 'Član skupnosti',
           partnerRole: p.authorRole || 'Uporabniški predlog',
           partnerInitial: (p.authorName || 'Č')[0].toUpperCase(),
           partnerLogoBg: 'bg-primary text-on-primary',
           partnerAvatar: p.authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.authorName || 'clan')}`,
           category: (p.category === 'deal' ? 'tehnika' : (p.category || 'tehnika')) as any,
-          categoryName: p.categoryName || 'Ugodnosti',
+          categoryName: (p.categoryName && p.categoryName !== 'Ugodnosti' && p.categoryName !== 'Ugodnost') ? p.categoryName : (p.subcategoryName || ''),
           subcategory: p.subcategory || '',
           subcategoryName: p.subcategoryName || '',
           region: p.region || p.location || 'Vsa Slovenija',
           discount: p.discount || p.price || 'Ugodnost',
           oldPrice: p.oldPrice,
           newPrice: p.newPrice,
+          startDate: p.startDate,
           expirationDate: p.expirationDate,
           dealType: 'code' as const,
           dealTypeName: 'Uporabniški kupon',
@@ -217,6 +222,19 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   const handleCategorySelect = (catId: string) => {
     setSelectedCategory(catId);
     setSelectedSubcategory('all');
+    setSelectedTertiaryCategory('all');
+    setPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setSelectedCategory('all');
+    setSelectedSubcategory('all');
+    setSelectedTertiaryCategory('all');
+    setSelectedRegion('all');
+    setSelectedStatus('all');
+    setSelectedType('all');
+    setSortOption('newest');
+    setLocalSearch('');
     setPage(1);
   };
 
@@ -302,11 +320,45 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         if (!matchesSub) return false;
       }
 
-      // 6. Region filter
+      // 5b. Tertiary Category / Store / Brand / Type filter (e.g. Spar, Big Bang, Apple, Terme Olimia)
+      if (selectedTertiaryCategory !== 'all') {
+        const target = selectedTertiaryCategory.toLowerCase().trim();
+        const dealTitle = (deal.title || '').toLowerCase();
+        const dealPartner = (deal.partner || '').toLowerCase();
+        const dealDesc = (deal.description || '').toLowerCase();
+        const dealTags = ((deal as any).tags || '').toLowerCase();
+        const dealThird = ((deal as any).thirdLevelCategory || (deal as any).store || '').toLowerCase();
+
+        const matchesTertiary = 
+          dealPartner.includes(target) ||
+          dealTitle.includes(target) ||
+          dealDesc.includes(target) ||
+          dealTags.includes(target) ||
+          dealThird.includes(target) ||
+          (target === 'spar & interspar' && (dealTitle.includes('spar') || dealPartner.includes('spar') || dealDesc.includes('spar'))) ||
+          (target === 'lesnina xxxl' && (dealTitle.includes('lesnina') || dealPartner.includes('lesnina') || dealDesc.includes('lesnina'))) ||
+          (target === 'dm drogerie markt' && (dealTitle.includes('dm') || dealPartner.includes('dm') || dealDesc.includes('dm'))) ||
+          (target.includes('apple') && (dealTitle.includes('apple') || dealTitle.includes('iphone') || dealTitle.includes('macbook')));
+
+        if (!matchesTertiary) return false;
+      }
+
+      // 6. Region & Location filter
       if (selectedRegion !== 'all') {
-        const regLower = selectedRegion.toLowerCase();
-        if (!deal.region.toLowerCase().includes(regLower) && !deal.region.toLowerCase().includes('vsa slo')) {
-          return false;
+        const target = selectedRegion.toLowerCase().trim();
+        const dealReg = (deal.region || '').toLowerCase().trim();
+        if (!dealReg.includes('vsa slo') && !dealReg.includes('splet')) {
+          if (target.startsWith('city-')) {
+            const cleanCity = target.replace('city-', '').trim().toLowerCase();
+            if (!dealReg.includes(cleanCity)) return false;
+          } else {
+            const regObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
+            let matches = dealReg.includes(target);
+            if (!matches && regObj) {
+              matches = dealReg.includes(regObj.id) || dealReg.includes(regObj.name.toLowerCase()) || regObj.cities.some(c => dealReg.includes(c.toLowerCase()));
+            }
+            if (!matches) return false;
+          }
         }
       }
 
@@ -350,9 +402,13 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         const votesB = votesMap[b.id] ?? b.votes;
         return votesB - votesA;
       }
-      return 0; // default order
+      if (sortOption === 'expiring') {
+        if (a.statusTag === 'expiring' && b.statusTag !== 'expiring') return -1;
+        if (a.statusTag !== 'expiring' && b.statusTag === 'expiring') return 1;
+      }
+      return 0; // default / newest order
     });
-  }, [combinedDeals, searchQuery, localSearch, selectedStatus, selectedCategory, selectedSubcategory, activeCategoryObj, selectedRegion, selectedType, sortOption, votesMap]);
+  }, [combinedDeals, searchQuery, localSearch, selectedStatus, selectedCategory, selectedSubcategory, selectedTertiaryCategory, activeCategoryObj, selectedRegion, selectedType, sortOption, votesMap]);
 
   // Pagination (10 items per page)
   const PAGE_SIZE = 10;
@@ -454,7 +510,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
     const newDeal: DealItem = {
       id: `user-deal-${Date.now()}`,
-      title: modalForm.title,
+      title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
       partner: modalForm.store,
       partnerRole: 'Uporabniški predlog',
       partnerInitial: modalForm.store.substring(0, 2).toUpperCase(),
@@ -470,6 +526,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       discount: modalForm.discount || '-20%',
       oldPrice: modalForm.oldPrice || undefined,
       newPrice: modalForm.newPrice || undefined,
+      startDate: modalForm.startDate || undefined,
       expirationDate: modalForm.expirationDate || undefined,
       dealType: modalForm.code ? 'code' : 'sale',
       dealTypeName: modalForm.code ? 'Koda za popust' : 'Letak & Akcija',
@@ -492,10 +549,16 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     try {
       if (currentUser) {
         await createPostInFirestore({
-          title: `[Ugodnost] ${modalForm.title}`,
-          content: modalForm.description || `${modalForm.title}. Trgovec: ${modalForm.store}. Koda: ${modalForm.code || 'Brez kode'}`,
+          title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
+          content: modalForm.description || `${modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim()}. Trgovec: ${modalForm.store}. Koda: ${modalForm.code || 'Brez kode'}`,
           category: 'deal',
-          categoryName: 'Ugodnosti',
+          categoryName: modalForm.category ? (
+            modalForm.category === 'tehnika' ? 'Tehnika & Elektronika' :
+            modalForm.category === 'prehrana' ? 'Prehrana & Trgovine' :
+            modalForm.category === 'turizem' ? 'Turizem & Doživetja' :
+            modalForm.category === 'sport' ? 'Moda & Šport' :
+            modalForm.category === 'dom' ? 'Dom & Vrt' : 'Avto & Mobilnost'
+          ) : '',
           authorId: currentUser.id,
           authorName: currentUser.name,
           authorRole: currentUser.role,
@@ -503,11 +566,15 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           price: modalForm.newPrice || modalForm.discount,
           oldPrice: modalForm.oldPrice || undefined,
           newPrice: modalForm.newPrice || undefined,
+          startDate: modalForm.startDate || undefined,
           expirationDate: modalForm.expirationDate || undefined,
           discount: modalForm.discount || undefined,
           promoCode: modalForm.code ? modalForm.code.toUpperCase() : undefined,
           dealLink: modalForm.link || undefined,
           embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
+          tags: modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).length > 0 
+            ? modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean) 
+            : undefined,
           likesCount: 1,
           commentsCount: 0,
           imageUrl: primaryImg,
@@ -532,8 +599,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         discount: '-20%',
         oldPrice: '',
         newPrice: '',
+        startDate: '',
         expirationDate: '',
         link: '',
+        tagsString: '',
         date: 'Velja do konca meseca',
         image: '',
         images: [],
@@ -569,194 +638,42 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         </div>
       </div>
 
-      {/* 2. FILTER & SEARCH MODULE */}
-      <div className="flex flex-col gap-3.5 p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/50">
-        
-        {/* Status Quick Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pb-0.5">
-          <button 
-            onClick={() => { setSelectedStatus('all'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-              selectedStatus === 'all' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <Star className="w-3.5 h-3.5" />
-            <span>Vse ponudbe</span>
-          </button>
-          <button 
-            onClick={() => { setSelectedStatus('expiring'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-              selectedStatus === 'expiring' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <Timer className="w-3.5 h-3.5 text-error" />
-            <span>Poteče kmalu</span>
-          </button>
-          <button 
-            onClick={() => { setSelectedStatus('today'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-              selectedStatus === 'today' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <Zap className="w-3.5 h-3.5 text-secondary" />
-            <span>Danes dodano</span>
-          </button>
-          <button 
-            onClick={() => { setSelectedStatus('exclusive'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-              selectedStatus === 'exclusive' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <Award className="w-3.5 h-3.5 text-primary" />
-            <span>Ekskluzivno</span>
-          </button>
-          <button 
-            onClick={() => { setSelectedStatus('shipping'); setPage(1); }}
-            className={`px-3 py-1.5 rounded-full font-label-md text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-              selectedStatus === 'shipping' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <Truck className="w-3.5 h-3.5" />
-            <span>Brezplačna dostava</span>
-          </button>
-        </div>
-
-        {/* Category Rail with Dynamic Categories */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 pb-0.5">
-          <button 
-            onClick={() => handleCategorySelect('all')}
-            className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
-              selectedCategory === 'all' 
-                ? 'bg-primary text-on-primary font-bold' 
-                : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-            }`}
-            type="button"
-          >
-            <span>Vse ugodnosti</span>
-            <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-surface-container-highest text-on-surface-variant'}`}>
-              {categoryCounts.all}
-            </span>
-          </button>
-          {categories.map(cat => (
-            <button 
-              key={cat.id}
-              onClick={() => handleCategorySelect(cat.id)}
-              className={`px-3 py-1.5 rounded-xl font-label-sm text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
-                selectedCategory === cat.id 
-                  ? 'bg-primary text-on-primary font-bold' 
-                  : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'
-              }`}
-              type="button"
-            >
-              <span>{cat.icon || '🏷️'}</span>
-              <span>{cat.name}</span>
-              {categoryCounts[cat.id] !== undefined && categoryCounts[cat.id] > 0 && (
-                <span className={`text-[11px] px-1.5 py-0.2 rounded-full ${selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-surface-container text-outline'}`}>
-                  {categoryCounts[cat.id]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Subcategory Rail - always visible when subcategories are available */}
-        {availableSubcategories.length > 0 && (
-          <div className="bg-surface-container-low/60 p-2 sm:p-2.5 rounded-xl border border-surface-container/60 flex flex-wrap items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="text-[11px] font-semibold text-outline uppercase tracking-wider px-2 flex items-center gap-1 shrink-0">
-              <Tag className="w-3 h-3 text-primary" />
-              <span>Podkategorije:</span>
-            </div>
-            <button
-              onClick={() => { setSelectedSubcategory('all'); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-                selectedSubcategory === 'all'
-                  ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
-                  : 'text-on-surface-variant hover:bg-surface-container'
-              }`}
-            >
-              Vse podkategorije
-            </button>
-            {availableSubcategories.map(sub => (
-              <button
-                key={sub.id}
-                onClick={() => { setSelectedSubcategory(sub.id); setPage(1); }}
-                className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer ${
-                  selectedSubcategory === sub.id || (selectedSubcatObj && (selectedSubcatObj.id === sub.id || selectedSubcatObj.name.toLowerCase() === sub.name.toLowerCase()))
-                    ? 'bg-surface-container-lowest text-primary font-bold shadow-xs border border-surface-container'
-                    : 'text-on-surface-variant hover:bg-surface-container'
-                }`}
-              >
-                {sub.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Multi-Param Search & Select Filter Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1">
-          <div className="sm:col-span-5 relative">
-            <Search className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input 
-              type="text" 
-              value={localSearch}
-              onChange={(e) => { setLocalSearch(e.target.value); setPage(1); }}
-              placeholder="Išči po trgovini, znamki ali izdelku..."
-              className="w-full bg-surface-container-low pl-9 pr-3 py-2 rounded-xl font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container transition-colors border border-surface-container/60"
-            />
-            {localSearch && (
-              <button onClick={() => setLocalSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          <div className="sm:col-span-3 relative">
-            <select 
-              value={selectedRegion}
-              onChange={(e) => { setSelectedRegion(e.target.value); setPage(1); }}
-              className="w-full appearance-none bg-surface-container-low pl-3 pr-8 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:bg-surface-container transition-colors cursor-pointer border border-surface-container/60"
-            >
-              <option value="all">Vsa Slovenija</option>
-              {SLOVENIA_REGIONS.map(reg => (
-                <option key={reg.id} value={reg.id}>
-                  {reg.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-          <div className="sm:col-span-2 relative">
-            <select 
-              value={selectedType}
-              onChange={(e) => { setSelectedType(e.target.value); setPage(1); }}
-              className="w-full appearance-none bg-surface-container-low pl-3 pr-7 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:bg-surface-container transition-colors cursor-pointer border border-surface-container/60"
-            >
-              <option value="all">Vse vrste</option>
-              <option value="code">Koda</option>
-              <option value="flyer">Letak</option>
-              <option value="coupon">Kupon</option>
-              <option value="bogo">1+1</option>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-          <div className="sm:col-span-2 relative">
-            <select 
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value)}
-              className="w-full appearance-none bg-surface-container-low pl-3 pr-7 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:bg-surface-container transition-colors cursor-pointer border border-surface-container/60"
-            >
-              <option value="featured">Najnovejše</option>
-              <option value="highest_discount">Največ %</option>
-              <option value="popular">Priljubljeno</option>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-        </div>
-      </div>
+      {/* 2. DEDICATED CATEGORY BADGES AND DROPDOWN FILTER MODULE */}
+      <DealsCategoryLocationFilter
+        categories={categories}
+        categoryCounts={categoryCounts}
+        selectedCategory={selectedCategory}
+        onSelectCategory={(catId) => {
+          setSelectedCategory(catId);
+          setSelectedSubcategory('all');
+          setSelectedTertiaryCategory('all');
+          setPage(1);
+        }}
+        selectedSubcategory={selectedSubcategory}
+        onSelectSubcategory={(subId) => {
+          setSelectedSubcategory(subId);
+          setSelectedTertiaryCategory('all');
+          setPage(1);
+        }}
+        selectedTertiaryCategory={selectedTertiaryCategory}
+        onSelectTertiaryCategory={(tertiary) => {
+          setSelectedTertiaryCategory(tertiary);
+          setPage(1);
+        }}
+        selectedRegion={selectedRegion}
+        onSelectRegion={(reg) => {
+          setSelectedRegion(reg);
+          setPage(1);
+        }}
+        sortOption={sortOption}
+        onSelectSortOption={(sort) => {
+          setSortOption(sort);
+          setPage(1);
+        }}
+        totalResultsCount={filteredDeals.length}
+        onResetFilters={handleResetFilters}
+        searchQuery={searchQuery || localSearch}
+      />
 
       {/* 3. FEED OF DEALS WITH PHOTOS */}
       <div className="flex flex-col gap-3.5">
@@ -836,9 +753,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     {isPromoted && (
                       <PromotedBadge type={badgeType} size="sm" />
                     )}
-                    <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
-                      {deal.categoryName}
-                    </span>
+                    {deal.categoryName && deal.categoryName !== 'Ugodnosti' && deal.categoryName !== 'Ugodnost' && (
+                      <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
+                        {deal.categoryName}
+                      </span>
+                    )}
                     {deal.featured && !isPromoted && (
                       <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                         <Sparkles className="w-2.5 h-2.5" />
@@ -1186,11 +1105,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                   </div>
                 </div>
 
-                {/* Old Price & New Price & Expiration Date */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-surface-container-low/70 border border-surface-container">
+                {/* Old Price & New Price */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl bg-surface-container-low/70 border border-surface-container">
                   <div>
                     <label className="block font-label-md text-outline font-semibold mb-1">
-                      <span className="line-through">Stara cena</span>
+                      <span className="line-through">Stara cena</span> (redna)
                     </label>
                     <input 
                       type="text" 
@@ -1232,9 +1151,27 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                       className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm font-bold text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
                     />
                   </div>
+                </div>
+
+                {/* Dates: Datum začetka akcije & Datum poteka akcije */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl bg-surface-container-low/70 border border-surface-container">
                   <div>
                     <label className="block font-label-md text-on-surface-variant font-semibold mb-1">
-                      Datum poteka (Expiration date)
+                      Datum začetka akcije (Start date)
+                    </label>
+                    <input 
+                      type="date" 
+                      value={modalForm.startDate}
+                      onChange={(e) => setModalForm({ 
+                        ...modalForm, 
+                        startDate: e.target.value,
+                      })}
+                      className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-label-md text-on-surface-variant font-semibold mb-1">
+                      Datum poteka akcije (Expiration date)
                     </label>
                     <input 
                       type="date" 
@@ -1450,6 +1387,38 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     onChange={(html) => setModalForm(prev => ({ ...prev, description: html }))}
                     minHeight="min-h-[140px]"
                   />
+                </div>
+
+                {/* Oznake (Tagi) */}
+                <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-outline flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-primary" />
+                      <span>Oznake (Tagi) - ločene z vejico</span>
+                    </label>
+                    <span className="text-[10px] text-outline font-medium">npr. kupon, popust, tehnika, akcija</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={modalForm.tagsString}
+                    onChange={(e) => setModalForm({ ...modalForm, tagsString: e.target.value })}
+                    placeholder="npr. popusti, kupon, slovenija, prihranek"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                  />
+                  {/* Live preview badges */}
+                  {modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-surface-container/40">
+                      <span className="text-[10px] text-outline font-semibold">Predogled oznak:</span>
+                      {modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).map((tag, idx) => (
+                        <span
+                          key={`deal-tag-pill-${idx}`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-[11px] font-semibold"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Vdelana vsebina (Embed koda / povezava z omrežij) */}

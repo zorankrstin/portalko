@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, LayoutList, Store, Percent, Calendar, FileText, Network, PlusCircle, ChevronDown, Tag, CalendarPlus, PiggyBank, Bookmark } from 'lucide-react';
+import { Settings, LayoutList, Store, Percent, Calendar, FileText, Rss, Network, PlusCircle, ChevronDown, Tag, CalendarPlus, PiggyBank, Bookmark } from 'lucide-react';
 import type { ViewMode } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -24,72 +24,72 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
       {/* Glavna navigacija vira */}
       <nav className="bg-surface-container-lowest rounded-2xl p-2 shadow-sm border border-surface-container/50 flex flex-col gap-1">
         <a 
-          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'main' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'main' ? 'bg-primary text-on-primary shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('main'); }}
           href="#domov"
         >
           <span className="flex items-center gap-2.5">
-            <LayoutList className="w-[1em] h-[1em] text-lg" />
+            <LayoutList className={`w-[1em] h-[1em] text-lg ${currentView === 'main' ? 'text-on-primary' : 'text-primary'}`} />
             <span>Vse objave</span>
           </span>
         </a>
         <a 
-          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'news' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'news' ? 'bg-primary text-on-primary shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('news'); }}
           href="#novice"
         >
           <span className="flex items-center gap-2.5">
-            <Network className={`w-[1em] h-[1em] text-lg ${currentView === 'news' ? '' : 'text-primary'}`} />
+            <Rss className={`w-[1em] h-[1em] text-lg ${currentView === 'news' ? 'text-on-primary' : 'text-primary'}`} />
             <span>Novice</span>
           </span>
         </a>
         <a 
-          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'ads' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'ads' ? 'bg-primary text-on-primary shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('ads'); }}
           href="#mali-oglasi"
         >
           <span className="flex items-center gap-2.5">
-            <Store className={`w-[1em] h-[1em] text-lg ${currentView === 'ads' ? '' : 'text-outline'}`} />
+            <Store className={`w-[1em] h-[1em] text-lg ${currentView === 'ads' ? 'text-on-primary' : 'text-primary'}`} />
             <span>Mali oglasi</span>
           </span>
         </a>
         <a 
-          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'deals' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'deals' ? 'bg-secondary text-on-secondary shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('deals'); }}
-          href="#ugodnosti"
+          href="#akcije"
         >
           <span className="flex items-center gap-2.5">
-            <Percent className={`w-[1em] h-[1em] text-lg ${currentView === 'deals' ? '' : 'text-secondary'}`} />
+            <Percent className={`w-[1em] h-[1em] text-lg ${currentView === 'deals' ? 'text-on-secondary' : 'text-secondary'}`} />
             <span>Akcije</span>
           </span>
         </a>
         <a 
-          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'events' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'events' ? 'bg-tertiary-container text-on-tertiary-container shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('events'); }}
           href="#dogodki"
         >
           <span className="flex items-center gap-2.5">
-            <Calendar className={`w-[1em] h-[1em] text-lg ${currentView === 'events' ? '' : 'text-tertiary-container'}`} />
+            <Calendar className={`w-[1em] h-[1em] text-lg ${currentView === 'events' ? 'text-on-tertiary-container' : 'text-tertiary-container'}`} />
             <span>Dogodki</span>
           </span>
         </a>
         <a 
-          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'blog' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'blog' ? 'bg-primary text-on-primary shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('blog'); }}
           href="#blog"
         >
           <span className="flex items-center gap-2.5">
-            <FileText className={`w-[1em] h-[1em] text-lg ${currentView === 'blog' ? '' : 'text-outline'}`} />
+            <FileText className={`w-[1em] h-[1em] text-lg ${currentView === 'blog' ? 'text-on-primary' : 'text-primary'}`} />
             <span>Blog</span>
           </span>
         </a>
         <a 
-          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'saved' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'saved' ? 'bg-primary text-on-primary shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
           onClick={(e) => { e.preventDefault(); onViewChange('saved'); }}
           href="#shranjeno"
         >
           <span className="flex items-center gap-2.5">
-            <Bookmark className={`w-[1em] h-[1em] text-lg ${currentView === 'saved' ? '' : 'text-primary'}`} />
+            <Bookmark className={`w-[1em] h-[1em] text-lg ${currentView === 'saved' ? 'text-on-primary' : 'text-primary'}`} />
             <span>Shranjeno</span>
           </span>
         </a>
@@ -102,13 +102,13 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
         </a>
         {(role === 'admin' || role === 'superadmin') && (
           <a 
-            className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors ${currentView === 'admin' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
+            className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'admin' ? 'bg-error text-on-error shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`} 
             onClick={(e) => { e.preventDefault(); onViewChange('admin'); }}
             href="#admin"
           >
             <span className="flex items-center gap-2.5">
-              <Settings className="w-[1em] h-[1em] text-lg text-error" />
-              <span className="text-error font-semibold">Admin Panel</span>
+              <Settings className={`w-[1em] h-[1em] text-lg ${currentView === 'admin' ? 'text-on-error' : 'text-error'}`} />
+              <span className={currentView === 'admin' ? 'text-on-error font-semibold' : 'text-error font-semibold'}>Admin Panel</span>
             </span>
           </a>
         )}
@@ -143,7 +143,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
             </a>
             <a className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-surface-container-low text-on-surface transition-colors" href="#ustvari-dogodek">
               <div className="flex items-center gap-2.5">
-                <CalendarPlus className="w-[1em] h-[1em] text-primary text-lg" />
+                <CalendarPlus className="w-[1em] h-[1em] text-tertiary-container text-lg" />
                 <span className="font-label-md text-label-md font-semibold">Objavi dogodek</span>
               </div>
               <span className="font-label-caps text-label-caps text-outline">Reg+</span>

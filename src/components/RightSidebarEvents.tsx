@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Bookmark, Building, Navigation, Plus, MapPin } from 'lucide-react';
+import { Bookmark, Building, Navigation, MapPin } from 'lucide-react';
 import { PostDetailTarget } from '../types';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { subscribeToEvents, FirestoreEvent } from '../services/firestoreService';
@@ -35,9 +35,9 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
     return () => unsub();
   }, []);
 
-  // Filter only upcoming events (date >= today) sorted chronologically (earliest first)
+  // Filter strictly upcoming events (date >= today) sorted chronologically (earliest first)
   const upcomingEvents = useMemo(() => {
-    return getUpcomingEvents(allEvents, todayYmd).slice(0, 4);
+    return getUpcomingEvents(allEvents, todayYmd).slice(0, 5);
   }, [allEvents, todayYmd]);
 
   const handleOpenEvent = (id: string, e?: React.MouseEvent) => {
@@ -119,28 +119,7 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
         </div>
       </div>
 
-      {/* 3. Promocijski okvir za organizatorje */}
-      <div className="bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-2xl p-space-md shadow-md flex flex-col gap-3 relative overflow-hidden">
-        <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-surface-container-lowest/10 rounded-full blur-xl pointer-events-none"></div>
-        <div className="flex items-center justify-between">
-          <span className="px-2 py-0.5 rounded-full bg-secondary text-on-secondary font-label-caps text-label-caps uppercase font-bold tracking-wider">Za organizatorje</span>
-          <svg className="w-[1em] h-[1em] text-lg text-primary-fixed" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 20h2" /><path d="M16 20h-4" /><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" /><path d="M12 2v1" /><path d="M12 7v1" /><path d="M12 12v1" /><path d="M19 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" /><path d="M9 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" /></svg>
-        </div>
-        <div>
-          <h4 className="font-headline-sm text-base font-bold text-white">Organizirate dogodek ali koncert?</h4>
-          <p className="font-body-sm text-xs text-on-primary-container/90 mt-1 leading-relaxed">Brezplačno vpišite vašo prireditev v koledar Portalko ali izberite paket Izpostavljenosti za dosego obiskovalcev.</p>
-        </div>
-        <button 
-          onClick={() => { window.location.hash = 'new-event'; }}
-          className="w-full py-2.5 px-3 rounded-xl bg-surface-container-lowest text-primary hover:bg-surface-container-high font-label-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer" 
-          type="button"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Oddaj prireditev</span>
-        </button>
-      </div>
-
-      {/* 4. Prizorišča v Sloveniji (Interactive Location Filter) */}
+      {/* 3. Prizorišča v Sloveniji (Interactive Location Filter) */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
         <div className="flex items-center justify-between pb-1 border-b border-surface-container-low">
           <div className="flex items-center gap-2">
