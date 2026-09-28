@@ -5,7 +5,7 @@ import firebaseProjectConfig from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
   ...firebaseProjectConfig,
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (firebaseProjectConfig as any).apiKey || "AIzaSyB35ggTZeyyH50V9mRoOAKcc3KNFugrdfg",
 };
 
 // Initialize Firebase App
