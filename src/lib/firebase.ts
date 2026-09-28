@@ -5,7 +5,13 @@ import firebaseProjectConfig from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
   ...firebaseProjectConfig,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseProjectConfig.projectId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseProjectConfig.appId,
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (firebaseProjectConfig as any).apiKey || "AIzaSyB35ggTZeyyH50V9mRoOAKcc3KNFugrdfg",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseProjectConfig.authDomain,
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseProjectConfig.firestoreDatabaseId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseProjectConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseProjectConfig.messagingSenderId,
 };
 
 // Initialize Firebase App
