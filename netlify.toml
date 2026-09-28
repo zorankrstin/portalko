@@ -1,0 +1,4 @@
+[build.environment]
+  # Firebase browser keys are public identifiers. Keep all other secret
+  # scanning enabled while allowing this restricted client-side value.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY"
