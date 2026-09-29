@@ -290,8 +290,17 @@ export function UserProfile({
     }
   };
 
-  // If a target author is selected (clicked author link/photo in feed or URL), always render their public profile
-  if (targetAuthor && targetAuthor.name) {
+  // Check if viewing another specific author
+  const isViewingOtherAuthor = Boolean(
+    targetAuthor &&
+    targetAuthor.name &&
+    (!currentUser || (
+      (targetAuthor.id && currentUser.id !== targetAuthor.id) ||
+      (!targetAuthor.id && currentUser.name?.toLowerCase().trim() !== targetAuthor.name.toLowerCase().trim())
+    ))
+  );
+
+  if (isViewingOtherAuthor && targetAuthor) {
     return (
       <PublicAuthorProfile
         targetAuthor={targetAuthor}

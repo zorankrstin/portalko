@@ -755,18 +755,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <a
-                          href={`/avtor/${slugify(deal.partner)}`}
-                          data-author-name={deal.partner}
-                          data-author-id={deal.partnerId || (deal as any).authorId}
-                          data-author-avatar={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`}
-                          data-author-role={deal.partnerRole || 'partner'}
-                          data-post-id={deal.id}
-                          data-post-type="deal"
-                          data-post-title={deal.title}
-                          data-post-image={dealImg}
-                          data-post-category={deal.categoryName || deal.category}
-                          data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
-                          data-post-location={deal.region}
+                          href={`#author-${encodeURIComponent(deal.partner.replace(/\s+/g, '_'))}`}
                           className="shrink-0 group/avatar focus:outline-none"
                           title={`Ogled profila partnerja: ${deal.partner}`}
                         >
@@ -782,18 +771,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                         </a>
                         <div className="flex items-center gap-2 flex-wrap min-w-0">
                           <a
-                            href={`/avtor/${slugify(deal.partner)}`}
-                            data-author-name={deal.partner}
-                            data-author-id={deal.partnerId || (deal as any).authorId}
-                            data-author-avatar={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`}
-                            data-author-role={deal.partnerRole || 'partner'}
-                            data-post-id={deal.id}
-                            data-post-type="deal"
-                            data-post-title={deal.title}
-                            data-post-image={dealImg}
-                            data-post-category={deal.categoryName || deal.category}
-                            data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
-                            data-post-location={deal.region}
+                            href={`#author-${encodeURIComponent(deal.partner.replace(/\s+/g, '_'))}`}
                             className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
                             title={`Ogled profila partnerja: ${deal.partner}`}
                           >

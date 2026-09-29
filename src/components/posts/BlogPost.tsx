@@ -152,16 +152,6 @@ export const BlogPost: React.FC<BlogPostProps> = ({
         <div className="flex items-center gap-3">
           <a
             href={authorUrl}
-            data-author-name={author}
-            data-author-id={authorId}
-            data-author-avatar={authorAvatar}
-            data-author-role={authorRole}
-            data-post-id={id}
-            data-post-type="blog"
-            data-post-title={title}
-            data-post-image={image}
-            data-post-category={categoryName || category}
-            data-post-location={location}
             className="group/avatar shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${author}`}
           >
@@ -171,16 +161,6 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             <div className="flex items-center gap-2">
               <a
                 href={authorUrl}
-                data-author-name={author}
-                data-author-id={authorId}
-                data-author-avatar={authorAvatar}
-                data-author-role={authorRole}
-                data-post-id={id}
-                data-post-type="blog"
-                data-post-title={title}
-                data-post-image={image}
-                data-post-category={categoryName || category}
-                data-post-location={location}
                 className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors"
                 title={`Ogled profila avtorja: ${author}`}
               >

@@ -227,6 +227,15 @@ export default function App() {
         const pathPart = path.split('#')[0] || '/';
         const hashPart = path.includes('#') ? '#' + path.split('#')[1] : '';
 
+        // Check legacy author hash
+        const authorMatch = hashPart.match(/^#author-(.+)$/);
+        if (authorMatch) {
+          e.preventDefault();
+          const decodedName = decodeURIComponent(authorMatch[1]).replace(/_/g, ' ');
+          handleAuthorClick({ name: decodedName });
+          return;
+        }
+
         // Parse path and hash
         const parsed = parseUrlPath(pathPart, hashPart);
         if (parsed.isPostDetail && parsed.target) {
@@ -234,46 +243,9 @@ export default function App() {
           handleNavigatePost(parsed.target);
           return;
         }
-
-        // Check legacy author hash or clean author path (/avtor/:name)
-        const authorMatch = hashPart.match(/^#author-(.+)$/);
-        if (authorMatch || parsed.author) {
+        if (parsed.author) {
           e.preventDefault();
-          const decodedName = authorMatch 
-            ? decodeURIComponent(authorMatch[1]).replace(/_/g, ' ') 
-            : parsed.author!.name;
-          const imgElem = target instanceof HTMLImageElement ? target : anchor.querySelector('img');
-          const dataName = anchor.getAttribute('data-author-name') || target.getAttribute('data-author-name') || imgElem?.alt || anchor.textContent?.trim() || decodedName;
-          const dataId = anchor.getAttribute('data-author-id') || target.getAttribute('data-author-id');
-          const dataAvatar = anchor.getAttribute('data-author-avatar') || target.getAttribute('data-author-avatar') || imgElem?.getAttribute('src') || undefined;
-          const dataRole = anchor.getAttribute('data-author-role') || target.getAttribute('data-author-role') || undefined;
-          
-          // Capture originating post target if clicked within a post card
-          let fromPostTarget: PostDetailTarget | undefined;
-          const postCardElem = target.closest('article, [data-post-id]');
-          const postId = anchor.getAttribute('data-post-id') || target.getAttribute('data-post-id') || postCardElem?.getAttribute('data-post-id');
-          const postType = (anchor.getAttribute('data-post-type') || target.getAttribute('data-post-type') || postCardElem?.getAttribute('data-post-type')) as PostDetailType | null;
-          if (postId && postType) {
-            fromPostTarget = {
-              type: postType,
-              id: postId,
-              initialData: {
-                title: anchor.getAttribute('data-post-title') || postCardElem?.getAttribute('data-post-title') || undefined,
-                image: anchor.getAttribute('data-post-image') || postCardElem?.getAttribute('data-post-image') || undefined,
-                category: anchor.getAttribute('data-post-category') || postCardElem?.getAttribute('data-post-category') || undefined,
-                price: anchor.getAttribute('data-post-price') || postCardElem?.getAttribute('data-post-price') || undefined,
-                location: anchor.getAttribute('data-post-location') || postCardElem?.getAttribute('data-post-location') || undefined,
-              }
-            };
-          }
-
-          handleAuthorClick({ 
-            name: dataName,
-            id: dataId || undefined,
-            avatar: dataAvatar,
-            role: dataRole,
-            fromPostTarget,
-          });
+          handleAuthorClick(parsed.author);
           return;
         }
         if (pathPart !== window.location.pathname || (hashPart && hashPart !== window.location.hash)) {

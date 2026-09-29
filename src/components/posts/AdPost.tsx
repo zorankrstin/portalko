@@ -15,9 +15,6 @@ export interface AdPostProps {
   title?: string;
   price?: string;
   author?: string;
-  authorId?: string;
-  authorAvatar?: string;
-  authorRole?: string;
   authorInitials?: string;
   location?: string;
   date?: string;
@@ -42,9 +39,6 @@ export const AdPost: React.FC<AdPostProps> = ({
   title = "Apple iPhone 15 Pro 128GB - Naravni Titan, garancija do nov. 2025",
   price = "790 €",
   author = "Marko K.",
-  authorId,
-  authorAvatar,
-  authorRole = "Uporabnik",
   authorInitials = "MK",
   location = "Ljubljana",
   date = "Danes",
@@ -222,31 +216,12 @@ export const AdPost: React.FC<AdPostProps> = ({
               <>
                 <a
                   href={authorUrl}
-                  data-author-name={author}
-                  data-author-id={authorId}
-                  data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`}
-                  data-author-role={authorRole}
-                  data-post-id={id}
-                  data-post-type="ad"
-                  data-post-title={title}
-                  data-post-image={image}
-                  data-post-category={categoryName || category}
-                  data-post-price={price}
-                  data-post-location={location}
                   className="inline-flex items-center gap-1.5 font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
                   title={`Ogled profila prodajalca: ${author}`}
                 >
-                  {authorAvatar ? (
-                    <img 
-                      src={authorAvatar} 
-                      alt={author} 
-                      className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
-                    />
-                  ) : (
-                    <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] shrink-0">
-                      {authorInitials || author.slice(0, 2).toUpperCase()}
-                    </span>
-                  )}
+                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] shrink-0">
+                    {authorInitials || author.slice(0, 2).toUpperCase()}
+                  </span>
                   <span>{author}</span>
                 </a>
                 <span>•</span>

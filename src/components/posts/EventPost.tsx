@@ -15,9 +15,6 @@ export interface EventPostProps {
   id?: string;
   title?: string;
   organizer?: string;
-  authorId?: string;
-  authorAvatar?: string;
-  authorRole?: string;
   categoryName?: string;
   category?: string;
   subcategory?: string;
@@ -50,9 +47,6 @@ export const EventPost: React.FC<EventPostProps> = ({
   id = "event",
   title = "Literarni večer z domačimi avtorji in akustični koncert Dua Sever",
   organizer = "Mestna knjižnica Kranj",
-  authorId,
-  authorAvatar,
-  authorRole = "Organizator",
   categoryName = "Kultura & Umetnost • Kranj",
   category = "dogodki",
   subcategory,
@@ -269,27 +263,10 @@ export const EventPost: React.FC<EventPostProps> = ({
                   <span className="text-[11px] text-outline">•</span>
                   <a
                     href={authorUrl}
-                    data-author-name={organizer}
-                    data-author-id={authorId}
-                    data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(organizer)}`}
-                    data-author-role={authorRole}
-                    data-post-id={id}
-                    data-post-type="event"
-                    data-post-title={title}
-                    data-post-image={image}
-                    data-post-category={categoryName || category}
-                    data-post-location={location}
-                    className="inline-flex items-center gap-1.5 font-label-caps text-[11px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
+                    className="font-label-caps text-[11px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
                     title={`Ogled profila organizatorja: ${organizer}`}
                   >
-                    {authorAvatar && (
-                      <img 
-                        src={authorAvatar} 
-                        alt={organizer} 
-                        className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
-                      />
-                    )}
-                    <span>{organizer}</span>
+                    {organizer}
                   </a>
                 </>
               )}
@@ -382,27 +359,10 @@ export const EventPost: React.FC<EventPostProps> = ({
                 <span>•</span>
                 <a
                   href={authorUrl}
-                  data-author-name={organizer}
-                  data-author-id={authorId}
-                  data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(organizer)}`}
-                  data-author-role={authorRole}
-                  data-post-id={id}
-                  data-post-type="event"
-                  data-post-title={title}
-                  data-post-image={image}
-                  data-post-category={categoryName || category}
-                  data-post-location={location}
-                  className="hover:text-primary hover:underline font-medium text-on-surface transition-colors inline-flex items-center gap-1"
+                  className="hover:text-primary hover:underline font-medium text-on-surface transition-colors"
                   title={`Ogled profila organizatorja: ${organizer}`}
                 >
-                  {authorAvatar && (
-                    <img 
-                      src={authorAvatar} 
-                      alt={organizer} 
-                      className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
-                    />
-                  )}
-                  <span>{organizer}</span>
+                  {organizer}
                 </a>
               </>
             )}
