@@ -8,6 +8,7 @@ export interface EventScheduleSlot {
   times?: string[];     // Array of time strings, e.g. ["10:00", "14:00", "18:00"]
   time?: string;        // Formatted comma-separated string e.g. "10:00, 14:00"
   label?: string;       // Optional custom label, e.g. "Matineja", "Večerni koncert"
+  location?: string;    // Specific location/town for this date, e.g. "Narodni dom Maribor" or "Celje"
 }
 
 export interface PostDetailTarget {

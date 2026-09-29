@@ -69,9 +69,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [promoCode, setPromoCode] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
-  // Multi-date and multi-hour schedule state for events
-  const [eventSchedules, setEventSchedules] = useState<{ id: string; date: string; times: string[]; label: string }[]>([
-    { id: '1', date: '', times: [''], label: '' }
+  // Multi-date, multi-hour and multi-location schedule state for events
+  const [eventSchedules, setEventSchedules] = useState<{ id: string; date: string; times: string[]; label: string; location?: string }[]>([
+    { id: '1', date: '', times: [''], label: '', location: '' }
   ]);
   const [ticketUrl, setTicketUrl] = useState('');
   const [location, setLocation] = useState('');
@@ -374,8 +374,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     setSelectedTertiaryCategory('');
   };
 
-  // Event multi-date & multi-hour schedule helpers
-  const handleAddDateSlot = (suggestedDate?: string, prefillTimes?: string[]) => {
+  // Event multi-date, multi-hour & multi-location schedule helpers
+  const handleAddDateSlot = (suggestedDate?: string, prefillTimes?: string[], suggestedLocation?: string) => {
     setEventSchedules(prev => {
       const lastSlot = prev[prev.length - 1];
       let nextDate = suggestedDate || '';
@@ -401,6 +401,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           date: nextDate,
           times: timesToUse.length > 0 ? timesToUse : [''],
           label: '',
+          location: suggestedLocation !== undefined ? suggestedLocation : (lastSlot?.location || ''),
         }
       ];
     });
@@ -419,6 +420,10 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
   const handleSlotLabelChange = (slotId: string, label: string) => {
     setEventSchedules(prev => prev.map(s => s.id === slotId ? { ...s, label } : s));
+  };
+
+  const handleSlotLocationChange = (slotId: string, loc: string) => {
+    setEventSchedules(prev => prev.map(s => s.id === slotId ? { ...s, location: loc } : s));
   };
 
   const handleAddTime = (slotId: string) => {
@@ -550,6 +555,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorId,
           authorName,
           authorRole,
+          authorAvatar: authorAvatar || undefined,
           imageUrl: primaryImg,
           images: allImgs,
           embedCode: embedCode || undefined,
@@ -557,7 +563,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           tags: userTags.length > 0 ? userTags : undefined,
         });
       } else if (postType === 'event') {
-        // Prepare structured multi-date & multi-hour schedule
+        // Prepare structured multi-date, multi-hour & multi-location schedule
         const cleanSchedules = eventSchedules
           .filter(s => s.date && s.date.trim())
           .map(s => {
@@ -567,6 +573,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               times: cleanTimes,
               time: cleanTimes.join(', '),
               label: s.label?.trim() || undefined,
+              location: s.location?.trim() || undefined,
             };
           })
           .sort((a, b) => a.date.localeCompare(b.date));
@@ -588,10 +595,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           primaryTime = eventTime.trim();
         }
 
+        const firstSlotLocation = cleanSchedules.find(s => s.location)?.location;
+        const effectiveLocation = finalLocation || firstSlotLocation || 'Slovenija';
+
         await createEventInFirestore({
           title: title.trim(),
           description: content.trim() || title.trim(),
-          location: finalLocation,
+          location: effectiveLocation,
           region: regionName,
           eventDate: primaryDate,
           eventTime: primaryTime || undefined,
@@ -599,7 +609,6 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           eventTimes: allTimes.length > 0 ? allTimes : (primaryTime ? [primaryTime] : undefined),
           eventSchedule: cleanSchedules.length > 0 ? cleanSchedules : undefined,
           ticketUrl: ticketUrl.trim() || undefined,
-          price: price.trim() || 'Vstop prost',
           category: categorySlug,
           categoryName,
           subcategory: subcategorySlug || undefined,
@@ -608,6 +617,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorId,
           authorName,
           authorRole,
+          authorAvatar: authorAvatar || undefined,
           imageUrl: primaryImg,
           images: allImgs,
           embedCode: embedCode || undefined,
@@ -1122,7 +1132,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                      <span>Termini & ure dogodka</span>
+                      <span>Termini, ure & lokacije dogodka</span>
                       {eventSchedules.length > 1 && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                           {eventSchedules.length} terminov
@@ -1130,7 +1140,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                       )}
                     </h4>
                     <p className="text-[11px] text-outline">
-                      Vnesite več datumov ali več različnih ur na isti dan za ponovitve dogodka.
+                      Vnesite več datumov, različne lokacije/mesta (npr. gledališka predstava v različnih mestih) ali več ur na isti dan.
                     </p>
                   </div>
                 </div>
@@ -1200,6 +1210,33 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                           onChange={e => handleSlotLabelChange(slot.id, e.target.value)}
                           placeholder="npr. Predpremiera, Dopoldan, Večerni termin..."
                           className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                        />
+                      </div>
+
+                      {/* Slot Location Input for different towns/venues */}
+                      <div className="flex flex-col gap-1 sm:col-span-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-secondary" />
+                            <span>Lokacija / Mesto za ta datum (neobvezno)</span>
+                          </label>
+                          {location && (
+                            <button
+                              type="button"
+                              onClick={() => handleSlotLocationChange(slot.id, location)}
+                              className="text-[10px] text-primary hover:underline cursor-pointer"
+                              title="Kopiraj glavno lokacijo dogodka"
+                            >
+                              Uporabi glavno: {location}
+                            </button>
+                          )}
+                        </div>
+                        <input 
+                          type="text" 
+                          value={slot.location || ''}
+                          onChange={e => handleSlotLocationChange(slot.id, e.target.value)}
+                          placeholder={location ? `Privzeta lokacija: ${location}` : "npr. Cankarjev dom Ljubljana ali SNG Maribor ali Celje"}
+                          className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-surface-container transition-colors" 
                         />
                       </div>
                     </div>
@@ -1296,21 +1333,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 )}
               </div>
 
-              {/* Price & Ticket URL row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-surface-container/60">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-secondary" />
-                    <span>Vstopnina / Cena</span>
-                  </label>
-                  <input 
-                    type="text" 
-                    value={price}
-                    onChange={e => setPrice(e.target.value)}
-                    placeholder="npr. Brezplačno ali 15 €"
-                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
-                  />
-                </div>
+              {/* Ticket URL row */}
+              <div className="pt-2 border-t border-surface-container/60">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
                     <Ticket className="w-3.5 h-3.5 text-amber-500" />

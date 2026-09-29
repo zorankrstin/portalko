@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
@@ -15,6 +15,9 @@ export interface EventPostProps {
   id?: string;
   title?: string;
   organizer?: string;
+  authorId?: string;
+  authorAvatar?: string;
+  authorRole?: string;
   categoryName?: string;
   category?: string;
   subcategory?: string;
@@ -47,6 +50,9 @@ export const EventPost: React.FC<EventPostProps> = ({
   id = "event",
   title = "Literarni večer z domačimi avtorji in akustični koncert Dua Sever",
   organizer = "Mestna knjižnica Kranj",
+  authorId,
+  authorAvatar,
+  authorRole = "Organizator",
   categoryName = "Kultura & Umetnost • Kranj",
   category = "dogodki",
   subcategory,
@@ -199,6 +205,13 @@ export const EventPost: React.FC<EventPostProps> = ({
   const effectiveTime = eventTime || time;
   const showDistinctTime = effectiveTime && !date?.includes(effectiveTime);
 
+  const distinctScheduleLocations = useMemo(() => {
+    if (!eventSchedule || !Array.isArray(eventSchedule)) return [];
+    const locs = eventSchedule.map(s => s.location?.trim()).filter(Boolean) as string[];
+    return Array.from(new Set(locs));
+  }, [eventSchedule]);
+  const hasMultipleLocations = distinctScheduleLocations.length > 1;
+
   return (
     <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border hover:shadow-md transition-shadow flex flex-col sm:flex-row ${
       isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
@@ -256,10 +269,27 @@ export const EventPost: React.FC<EventPostProps> = ({
                   <span className="text-[11px] text-outline">•</span>
                   <a
                     href={authorUrl}
-                    className="font-label-caps text-[11px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
+                    data-author-name={organizer}
+                    data-author-id={authorId}
+                    data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(organizer)}`}
+                    data-author-role={authorRole}
+                    data-post-id={id}
+                    data-post-type="event"
+                    data-post-title={title}
+                    data-post-image={image}
+                    data-post-category={categoryName || category}
+                    data-post-location={location}
+                    className="inline-flex items-center gap-1.5 font-label-caps text-[11px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
                     title={`Ogled profila organizatorja: ${organizer}`}
                   >
-                    {organizer}
+                    {authorAvatar && (
+                      <img 
+                        src={authorAvatar} 
+                        alt={organizer} 
+                        className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
+                      />
+                    )}
+                    <span>{organizer}</span>
                   </a>
                 </>
               )}
@@ -303,15 +333,27 @@ export const EventPost: React.FC<EventPostProps> = ({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              type="button"
-              onClick={handleLocationClick}
-              className="flex items-center gap-1 text-outline hover:text-primary hover:underline transition-colors cursor-pointer text-left"
-              title={`Filtriraj dogodke po lokaciji: ${location}`}
-            >
-              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-              <span>{location}</span>
-            </button>
+            {hasMultipleLocations ? (
+              <button
+                type="button"
+                onClick={handleOpenDetail}
+                className="flex items-center gap-1 text-secondary hover:underline transition-colors cursor-pointer text-left font-medium"
+                title={`Različne lokacije po datumih: ${distinctScheduleLocations.join(', ')}`}
+              >
+                <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
+                <span>{distinctScheduleLocations.length} krajev ({distinctScheduleLocations.slice(0, 2).join(', ')}{distinctScheduleLocations.length > 2 ? '...' : ''})</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleLocationClick}
+                className="flex items-center gap-1 text-outline hover:text-primary hover:underline transition-colors cursor-pointer text-left"
+                title={`Filtriraj dogodke po lokaciji: ${location}`}
+              >
+                <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>{location}</span>
+              </button>
+            )}
             {date && (
               <>
                 <span>•</span>
@@ -340,16 +382,32 @@ export const EventPost: React.FC<EventPostProps> = ({
                 <span>•</span>
                 <a
                   href={authorUrl}
-                  className="hover:text-primary hover:underline font-medium text-on-surface transition-colors"
+                  data-author-name={organizer}
+                  data-author-id={authorId}
+                  data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(organizer)}`}
+                  data-author-role={authorRole}
+                  data-post-id={id}
+                  data-post-type="event"
+                  data-post-title={title}
+                  data-post-image={image}
+                  data-post-category={categoryName || category}
+                  data-post-location={location}
+                  className="hover:text-primary hover:underline font-medium text-on-surface transition-colors inline-flex items-center gap-1"
                   title={`Ogled profila organizatorja: ${organizer}`}
                 >
-                  {organizer}
+                  {authorAvatar && (
+                    <img 
+                      src={authorAvatar} 
+                      alt={organizer} 
+                      className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
+                    />
+                  )}
+                  <span>{organizer}</span>
                 </a>
               </>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-headline-sm text-sm font-bold text-primary">{displayPrice}</span>
             {ticketUrl && (
               <a 
                 href={ticketUrl.startsWith('http') ? ticketUrl : `https://${ticketUrl}`}
@@ -384,17 +442,6 @@ export const EventPost: React.FC<EventPostProps> = ({
               showLabel={true}
               itemTitle={title}
             />
-            <button 
-              onClick={handleInterest}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
-                isInterested 
-                  ? 'bg-primary-container text-on-primary-container' 
-                  : 'bg-primary hover:bg-primary-container text-on-primary'
-              }`}
-            >
-              <Star className={`w-3 h-3 ${isInterested ? 'fill-current' : ''}`} />
-              <span>Zanima me ({currentCount})</span>
-            </button>
           </div>
         </div>
       </div>

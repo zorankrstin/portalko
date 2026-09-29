@@ -137,7 +137,15 @@ export function buildPostUrl(options: BuildPostUrlOptions): string {
     subcatRaw = options.categoryName || options.category;
   }
   
-  let subcategorySlug = slugify(subcatRaw || '');
+  // Strip section prefixes (e.g. deals-trgovine-hrana -> trgovine-hrana)
+  const cleanedRaw = (subcatRaw || '').replace(/^(deals|ads|events|blog)-/, '');
+  let subcategorySlug = slugify(cleanedRaw || '');
+  if (!subcategorySlug || subcategorySlug === sectionSlug || subcategorySlug === type) {
+    if (options.categoryName || options.category) {
+      const catClean = (options.categoryName || options.category || '').replace(/^(deals|ads|events|blog)-/, '');
+      subcategorySlug = slugify(catClean);
+    }
+  }
   if (!subcategorySlug || subcategorySlug === sectionSlug || subcategorySlug === type) {
     // If the subcategory is identical to section name, use meaningful default based on type
     subcategorySlug = type === 'ad' ? 'razno' :
@@ -151,6 +159,64 @@ export function buildPostUrl(options: BuildPostUrlOptions): string {
   if (!titleSlug) titleSlug = 'objava';
 
   return `/${sectionSlug}/${subcategorySlug}/${titleSlug}`;
+}
+
+/**
+ * Checks if the current pathname is already a valid URL representation of the post.
+ * If the current path already matches the post's section and title slug, and its category segment
+ * matches the post's category or subcategory, we should NOT rewrite/replace the URL.
+ * Example: /akcije/trgovine-hrana/subway-italian-bmt is already valid for Subway deal
+ * (whose category is Trgovine & Hrana and subcategory is restavracije-dostava).
+ */
+export function isCurrentPathValidForPost(
+  pathname: string,
+  item: {
+    id?: string;
+    title?: string;
+    category?: string;
+    categoryName?: string;
+    subcategory?: string;
+    subcategoryName?: string;
+  } | null | undefined,
+  type: PostDetailType | string
+): boolean {
+  if (!pathname || pathname === '/' || !item || !item.title) return false;
+  const segments = pathname.replace(/^\/+|\/+$/g, '').split('/').map(s => decodeURIComponent(s).toLowerCase().trim());
+  if (segments.length < 2) return false;
+
+  const currentSection = segments[0];
+  const expectedSection = getSectionFromType(type);
+  if (currentSection !== expectedSection) return false;
+
+  const currentTitleSlug = segments[segments.length - 1];
+  const expectedTitleSlug = slugify(item.title);
+  const cleanId = String(item.id || '').toLowerCase().replace(/^(event|ad|deal|blog|post)-/, '');
+  if (currentTitleSlug !== expectedTitleSlug && currentTitleSlug !== String(item.id).toLowerCase() && currentTitleSlug !== cleanId) {
+    return false;
+  }
+
+  // If 3 or more segments (e.g. /akcije/trgovine-hrana/subway-italian-bmt)
+  if (segments.length >= 3) {
+    const currentSubcat = segments[1];
+    const rawCategory = (item.categoryName || item.category || '').toLowerCase();
+    const rawSubcategory = (item.subcategoryName || item.subcategory || '').toLowerCase();
+    const cleanCategorySlug = slugify(rawCategory.replace(/^(deals|ads|events|blog)-/, ''));
+    const cleanSubcategorySlug = slugify(rawSubcategory.replace(/^(deals|ads|events|blog)-/, ''));
+
+    const validSubcats = [
+      slugify(item.subcategoryName),
+      slugify(item.subcategory),
+      cleanSubcategorySlug,
+      slugify(item.categoryName),
+      slugify(item.category),
+      cleanCategorySlug,
+      expectedSection,
+    ].filter(Boolean);
+
+    return validSubcats.includes(currentSubcat);
+  }
+
+  return true;
 }
 
 /**

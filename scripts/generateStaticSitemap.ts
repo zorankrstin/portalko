@@ -69,7 +69,14 @@ async function buildStaticSitemap() {
         const postsSnap = await getDocs(collection(db, 'posts'));
         postsSnap.forEach(docSnap => {
           const data = docSnap.data();
-          const type = data.type === 'deal' ? 'deal' : data.type === 'news' ? 'news' : 'blog';
+          if (!data || !data.title) return;
+          const isDeal = data.type === 'deal' || 
+                         data.category === 'deal' || 
+                         data.category?.startsWith('deal') || 
+                         (data.categoryName && /ugodnost|akcij|popust|trgovin|hrana/i.test(data.categoryName)) || 
+                         Boolean(data.discount) || 
+                         Boolean(data.promoCode);
+          const type = isDeal ? 'deal' : data.type === 'news' ? 'news' : 'blog';
           const entry = formatFirestoreDocToSitemapEntry(data, docSnap.id, type);
           if (entry && !seenLocs.has(entry.loc)) {
             seenLocs.add(entry.loc);

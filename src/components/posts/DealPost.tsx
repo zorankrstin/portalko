@@ -222,55 +222,28 @@ export const DealPost: React.FC<DealPostProps> = ({
             loading="lazy"
             onError={handleImageError}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent sm:hidden"></div>
-          
-          {/* Badges on image */}
-          <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
-            {isPromoted && (
-              <PromotedBadge type={promotionBadgeType} size="sm" />
-            )}
-            {categoryName && categoryName !== 'Ugodnosti' && categoryName !== 'Ugodnost' && (
-              <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
-                {categoryName}
-              </span>
-            )}
-            {featured && !isPromoted && (
-              <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5" />
-                Top
-              </span>
-            )}
-          </div>
-
-          <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-secondary text-on-secondary font-bold text-xs shadow-md">
-            {discount}
-          </div>
         </a>
       )}
 
       {/* CONTENT AREA */}
       <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-3">
         <div>
-          {!hasVisibleImage && (
-            <div className="flex items-center gap-2 mb-2">
-              <span className="px-2.5 py-0.5 rounded-md bg-secondary text-on-secondary font-bold text-xs shadow-xs">
-                {discount}
-              </span>
-              {categoryName && categoryName !== 'Ugodnosti' && categoryName !== 'Ugodnost' && (
-                <span className="px-2.5 py-0.5 rounded-md bg-surface-container text-on-surface-variant font-label-caps text-[10px] font-bold uppercase tracking-wider">
-                  {categoryName}
-                </span>
-              )}
-              {isPromoted && (
-                <PromotedBadge type={promotionBadgeType} size="sm" />
-              )}
-            </div>
-          )}
           {/* Header Row: Partner info, role, and actions */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
               <a
                 href={authorUrl}
+                data-author-name={author}
+                data-author-id={authorId}
+                data-author-avatar={avatarSrc || authorAvatar}
+                data-author-role={authorRole || 'partner'}
+                data-post-id={id}
+                data-post-type="deal"
+                data-post-title={cleanTitle}
+                data-post-image={imgSrc}
+                data-post-category={categoryName || category}
+                data-post-price={newPrice || discount || oldPrice}
+                data-post-location={region}
                 className="shrink-0 group/avatar focus:outline-none"
                 title={`Ogled profila partnerja: ${author}`}
               >
@@ -287,16 +260,22 @@ export const DealPost: React.FC<DealPostProps> = ({
               <div className="flex items-center gap-2 flex-wrap min-w-0">
                 <a
                   href={authorUrl}
+                  data-author-name={author}
+                  data-author-id={authorId}
+                  data-author-avatar={avatarSrc || authorAvatar}
+                  data-author-role={authorRole || 'partner'}
+                  data-post-id={id}
+                  data-post-type="deal"
+                  data-post-title={cleanTitle}
+                  data-post-image={imgSrc}
+                  data-post-category={categoryName || category}
+                  data-post-price={newPrice || discount || oldPrice}
+                  data-post-location={region}
                   className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
                   title={`Ogled profila partnerja: ${author}`}
                 >
                   {author}
                 </a>
-                {authorRole && (
-                  <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold shrink-0">
-                    {authorRole}
-                  </span>
-                )}
               </div>
             </div>
             
@@ -354,11 +333,6 @@ export const DealPost: React.FC<DealPostProps> = ({
                     {oldPrice}
                   </span>
                 </div>
-              )}
-              {discount && (
-                <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-secondary/15 text-secondary border border-secondary/20">
-                  {discount}
-                </span>
               )}
             </div>
           )}
@@ -429,9 +403,7 @@ export const DealPost: React.FC<DealPostProps> = ({
                 </button>
                 {copied && <span className="text-[10px] font-bold text-secondary">Kopirano!</span>}
               </div>
-            ) : (
-              <span className="text-xs text-outline italic">Koda ni potrebna (akcija)</span>
-            )}
+            ) : null}
 
             <div className="flex items-center gap-2 ml-auto">
               <ShareMenu 

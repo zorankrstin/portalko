@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, 
   Sparkles, Trash2, Loader2, Calendar, Tag, TrendingDown, Percent, 
-  Clock, Plus, Copy, CalendarDays, Layers, SlidersHorizontal 
+  Clock, Plus, Copy, CalendarDays, Layers, SlidersHorizontal, MapPin 
 } from 'lucide-react';
 import { 
   FirestorePost, 
@@ -92,8 +92,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [location, setLocation] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
-  const [eventSchedules, setEventSchedules] = useState<{ id: string; date: string; times: string[]; label: string }[]>([
-    { id: '1', date: '', times: [''], label: '' }
+  const [eventSchedules, setEventSchedules] = useState<{ id: string; date: string; times: string[]; label: string; location?: string }[]>([
+    { id: '1', date: '', times: [''], label: '', location: '' }
   ]);
   const [ticketUrl, setTicketUrl] = useState('');
   const [tagsString, setTagsString] = useState('');
@@ -210,7 +210,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   }, [section, activeCategoryObj, category, subcategory]);
 
   // Event schedule helper functions
-  const handleAddDateSlot = (suggestedDate?: string, prefillTimes?: string[]) => {
+  const handleAddDateSlot = (suggestedDate?: string, prefillTimes?: string[], suggestedLocation?: string) => {
     setEventSchedules(prev => {
       const lastSlot = prev[prev.length - 1];
       let nextDate = suggestedDate || '';
@@ -234,6 +234,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           date: nextDate,
           times: timesToUse.length > 0 ? timesToUse : [''],
           label: '',
+          location: suggestedLocation !== undefined ? suggestedLocation : (lastSlot?.location || ''),
         }
       ];
     });
@@ -249,6 +250,10 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
   const handleSlotLabelChange = (slotId: string, label: string) => {
     setEventSchedules(prev => prev.map(s => s.id === slotId ? { ...s, label } : s));
+  };
+
+  const handleSlotLocationChange = (slotId: string, loc: string) => {
+    setEventSchedules(prev => prev.map(s => s.id === slotId ? { ...s, location: loc } : s));
   };
 
   const handleAddTime = (slotId: string) => {
@@ -310,6 +315,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           date: s.date || '',
           times: s.times && s.times.length > 0 ? s.times : (s.time ? s.time.split(',').map(t => t.trim()) : ['']),
           label: s.label || '',
+          location: s.location || '',
         })));
       } else if (item.eventDates && item.eventDates.length > 0) {
         const timeArr = item.eventTime ? item.eventTime.split(',').map(t => t.trim()) : [''];
@@ -318,11 +324,12 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           date: d,
           times: [...timeArr],
           label: '',
+          location: '',
         })));
       } else {
         const timeArr = item.eventTime ? item.eventTime.split(',').map(t => t.trim()) : [''];
         setEventSchedules([
-          { id: '1', date: item.eventDate || '', times: timeArr.length > 0 ? timeArr : [''], label: '' }
+          { id: '1', date: item.eventDate || '', times: timeArr.length > 0 ? timeArr : [''], label: '', location: '' }
         ]);
       }
 
@@ -423,6 +430,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
               times: cleanTimes,
               time: cleanTimes.join(', '),
               label: s.label?.trim() || undefined,
+              location: s.location?.trim() || undefined,
             };
           })
           .sort((a, b) => a.date.localeCompare(b.date));
@@ -440,6 +448,9 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           ? (cleanSchedules[0].time || (cleanSchedules[0].times ? cleanSchedules[0].times.join(', ') : '')) 
           : eventTime.trim();
 
+        const firstSlotLocation = cleanSchedules.find(s => s.location)?.location;
+        const effectiveLocation = location.trim() || firstSlotLocation || 'Slovenija';
+
         await updateEventInFirestore(item.id, {
           title: title.trim(),
           description: content.trim(),
@@ -448,8 +459,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           subcategory: subcategory.trim() || undefined,
           subcategoryName: resolvedSubName,
           thirdLevelCategory: thirdLevelCategory.trim() || undefined,
-          price: price.trim() || '',
-          location: location.trim() || 'Slovenija',
+          price: '',
+          location: effectiveLocation,
           eventDate: primaryDate,
           eventTime: primaryTime,
           eventDates: allDates,
@@ -848,46 +859,37 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
             </div>
           </div>
 
-          {/* Price or Event Date or Deal indicator */}
-          <div className="grid grid-cols-1 gap-3">
-            {item.type === 'event' ? (
-              <div className="flex flex-col gap-1.5">
-                <label className="font-label-caps uppercase font-semibold text-outline">Vstopnina / Cena</label>
-                <input
-                  type="text"
-                  value={price}
-                  onChange={e => setPrice(e.target.value)}
-                  placeholder="Npr. Brezplačno ali 15 €"
-                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
-                />
-              </div>
-            ) : isDeal ? (
-              <div className="flex flex-col gap-1.5">
-                <label className="font-label-caps uppercase font-semibold text-outline">Glavna cena / Popust</label>
-                <input
-                  type="text"
-                  value={newPrice || price}
-                  onChange={e => {
-                    setNewPrice(e.target.value);
-                    setPrice(e.target.value);
-                  }}
-                  placeholder="Npr. 69,90 € ali -30%"
-                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary font-bold text-secondary"
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <label className="font-label-caps uppercase font-semibold text-outline">Cena</label>
-                <input
-                  type="text"
-                  value={price}
-                  onChange={e => setPrice(e.target.value)}
-                  placeholder="Npr. 250 € ali Po dogovoru"
-                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
-                />
-              </div>
-            )}
-          </div>
+          {/* Price or Deal indicator (not shown for events) */}
+          {item.type !== 'event' && (
+            <div className="grid grid-cols-1 gap-3">
+              {isDeal ? (
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-label-caps uppercase font-semibold text-outline">Glavna cena / Popust</label>
+                  <input
+                    type="text"
+                    value={newPrice || price}
+                    onChange={e => {
+                      setNewPrice(e.target.value);
+                      setPrice(e.target.value);
+                    }}
+                    placeholder="Npr. 69,90 € ali -30%"
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary font-bold text-secondary"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-label-caps uppercase font-semibold text-outline">Cena</label>
+                  <input
+                    type="text"
+                    value={price}
+                    onChange={e => setPrice(e.target.value)}
+                    placeholder="Npr. 250 € ali Po dogovoru"
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Deal-specific extra fields: Old price, New price, Expiration date, Discount, Promo code */}
           {isDeal && (
@@ -1016,7 +1018,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                      <span>Termini & ure dogodka</span>
+                      <span>Termini, ure & lokacije dogodka</span>
                       {eventSchedules.length > 1 && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                           {eventSchedules.length} terminov
@@ -1024,7 +1026,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                       )}
                     </h4>
                     <p className="text-[11px] text-outline">
-                      Vnesite več datumov ali več različnih ur na isti dan za ponovitve dogodka.
+                      Vnesite več datumov, različne lokacije/mesta (npr. gledališka predstava v različnih mestih) ali več ur na isti dan.
                     </p>
                   </div>
                 </div>
@@ -1090,6 +1092,33 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                           onChange={e => handleSlotLabelChange(slot.id, e.target.value)}
                           placeholder="npr. Predpremiera, Dopoldan..."
                           className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface focus:outline-none focus:border-primary border border-surface-container transition-colors" 
+                        />
+                      </div>
+
+                      {/* Slot Location Input for different towns/venues */}
+                      <div className="flex flex-col gap-1 sm:col-span-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-secondary" />
+                            <span>Lokacija / Mesto za ta datum (neobvezno)</span>
+                          </label>
+                          {location && (
+                            <button
+                              type="button"
+                              onClick={() => handleSlotLocationChange(slot.id, location)}
+                              className="text-[10px] text-primary hover:underline cursor-pointer"
+                              title="Kopiraj glavno lokacijo dogodka"
+                            >
+                              Uporabi glavno: {location}
+                            </button>
+                          )}
+                        </div>
+                        <input 
+                          type="text" 
+                          value={slot.location || ''}
+                          onChange={e => handleSlotLocationChange(slot.id, e.target.value)}
+                          placeholder={location ? `Privzeta lokacija: ${location}` : "npr. Cankarjev dom Ljubljana ali SNG Maribor ali Celje"}
+                          className="w-full bg-surface-container-low px-3 py-2 rounded-lg font-body-sm text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-surface-container transition-colors" 
                         />
                       </div>
                     </div>

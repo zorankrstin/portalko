@@ -127,12 +127,16 @@ export function formatFirestoreDocToSitemapEntry(
   docId: string,
   type: 'event' | 'ad' | 'deal' | 'blog' | 'news' | 'post'
 ): SitemapEntry | null {
-  if (!docData || docData.status === 'rejected' || docData.status === 'archived') {
+  if (!docData || !docData.title || docData.status === 'rejected' || docData.status === 'archived') {
     return null;
   }
 
+  const catLower = (docData.category || '').toLowerCase();
+  const catNameLower = (docData.categoryName || '').toLowerCase();
+  const effectiveType = (type === 'deal' || catLower === 'deal' || catLower.startsWith('deal') || catNameLower.includes('ugodnost') || catNameLower.includes('akcij') || catNameLower.includes('popust') || catNameLower.includes('trgovin') || Boolean(docData.discount) || Boolean(docData.promoCode)) ? 'deal' : type;
+
   const cleanPath = buildPostUrl({
-    type,
+    type: effectiveType,
     id: docId,
     title: docData.title,
     category: docData.category,

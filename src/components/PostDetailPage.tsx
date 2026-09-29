@@ -40,7 +40,7 @@ import { parseSocialEmbed } from '../utils/embedUtils';
 import { getActiveFallbackImage, handleImageFallbackError } from '../services/portalSettingsService';
 import { buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { updatePageSeo } from '../utils/seoUtils';
-import { buildPostUrl, slugify } from '../utils/urlUtils';
+import { buildPostUrl, slugify, isCurrentPathValidForPost } from '../utils/urlUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { DEFAULT_CATEGORIES } from '../services/categoryService';
 
@@ -116,7 +116,7 @@ export function resolveBlogCategory(post: {
     return { id: 'blog-finance-podjetnistvo', name: 'Finance & Posel' };
   }
 
-  return { id: 'blog-turizem-izleti', name: 'Turizem & Izleti' };
+  return { id: 'blog-splosno', name: 'Zgodbe & Blog' };
 }
 
 interface PostDetailPageProps {
@@ -214,7 +214,9 @@ export function PostDetailPage({
       try {
         const res = await fetchDocumentById(target.id, target.type);
         if (!isCancelled && res) {
-          setDirectItem(res as { type: PostDetailType; data: any });
+          if (res.data && (res.data.title || res.data.content || res.data.description)) {
+            setDirectItem(res as { type: PostDetailType; data: any });
+          }
         }
       } catch (err) {
         console.warn('Error fetching item directly:', err);
@@ -260,35 +262,6 @@ export function PostDetailPage({
 
   // Real-time views counter state and live Firestore subscription
   const [realtimeViews, setRealtimeViews] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!target.id) return;
-    let isSubscribed = true;
-    setRealtimeViews(null);
-
-    const sessionKey = `viewed_${target.type}_${target.id}`;
-    const alreadyViewed = sessionStorage.getItem(sessionKey);
-
-    if (!alreadyViewed) {
-      sessionStorage.setItem(sessionKey, '1');
-      recordItemViewInFirestore(target.type, target.id).then((newCount) => {
-        if (isSubscribed && typeof newCount === 'number') {
-          setRealtimeViews(newCount);
-        }
-      }).catch(() => {});
-    }
-
-    const unsub = subscribeToItemViews(target.type, target.id, (count) => {
-      if (isSubscribed) {
-        setRealtimeViews(count);
-      }
-    });
-
-    return () => {
-      isSubscribed = false;
-      unsub();
-    };
-  }, [target.type, target.id]);
 
   const [hasCollectionsLoaded, setHasCollectionsLoaded] = useState(false);
 
@@ -438,13 +411,26 @@ export function PostDetailPage({
 
     // Helper to format blog object
     const formatBlogData = (fs: FirestorePost) => {
-      const isActuallyDeal = fs.category === 'deal' || 
-                             fs.category === 'ugodnosti' || 
-                             fs.category?.startsWith('deal') || 
-                             fs.categoryName === 'Ugodnosti' || 
-                             fs.categoryName === 'Ugodnost' ||
+      const catLower = (fs.category || '').toLowerCase();
+      const catNameLower = (fs.categoryName || '').toLowerCase();
+      const isActuallyDeal = catLower === 'deal' || 
+                             catLower === 'ugodnosti' || 
+                             catLower.startsWith('deal') || 
+                             catNameLower.includes('ugodnost') || 
+                             catNameLower.includes('akcij') ||
+                             catNameLower.includes('popust') ||
+                             catNameLower.includes('trgovin') ||
+                             catNameLower.includes('tehnik') ||
+                             catNameLower.includes('moda') ||
+                             catNameLower.includes('wellness') ||
+                             catNameLower.includes('storitv') ||
+                             fs.type === 'deal' ||
+                             Boolean(fs.discount) ||
+                             Boolean(fs.promoCode) ||
+                             Boolean(fs.dealLink) ||
                              fs.id.startsWith('deal-') ||
-                             fs.id.startsWith('hero-bento-');
+                             fs.id.startsWith('hero-bento-') ||
+                             target.type === 'deal';
 
       if (isActuallyDeal) {
         return formatDealData(fs);
@@ -501,6 +487,7 @@ export function PostDetailPage({
 
     const itemMatches = (item: any, searchId?: string, searchSlug?: string) => {
       if (!item) return false;
+      if (!item.title && !item.content && !item.description) return false;
       if (searchId && idMatches(item.id, searchId)) return true;
 
       const targetSlug = searchSlug || (searchId ? slugify(searchId) : '');
@@ -532,7 +519,7 @@ export function PostDetailPage({
     };
 
     // 1. Check directItem from guaranteed fetch
-    if (directItem) {
+    if (directItem && directItem.data && (directItem.data.title || directItem.data.content || directItem.data.description)) {
       if (directItem.type === 'event') return formatEventData(directItem.data);
       if (directItem.type === 'deal') return formatDealData(directItem.data);
       if (directItem.type === 'ad') return formatAdData(directItem.data);
@@ -641,6 +628,38 @@ export function PostDetailPage({
 
     return null;
   }, [target, firestorePosts, firestoreEvents, firestoreAds, directItem]);
+
+  useEffect(() => {
+    if (!itemData || !itemData.id || !itemData.title) return;
+    const realId = itemData.id;
+    const realType = itemData.type || target.type;
+
+    let isSubscribed = true;
+    setRealtimeViews(null);
+
+    const sessionKey = `viewed_${realType}_${realId}`;
+    const alreadyViewed = sessionStorage.getItem(sessionKey);
+
+    if (!alreadyViewed) {
+      sessionStorage.setItem(sessionKey, '1');
+      recordItemViewInFirestore(realType, realId).then((newCount) => {
+        if (isSubscribed && typeof newCount === 'number') {
+          setRealtimeViews(newCount);
+        }
+      }).catch(() => {});
+    }
+
+    const unsub = subscribeToItemViews(realType, realId, (count) => {
+      if (isSubscribed) {
+        setRealtimeViews(count);
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+      unsub();
+    };
+  }, [itemData?.id, itemData?.type, itemData?.title, target.type]);
 
   // Calculate resolved post images list for carousel/gallery
   const postImages = useMemo(() => {
@@ -778,10 +797,14 @@ export function PostDetailPage({
         subcategoryName: itemData.subcategoryName,
       });
 
-      const fullUrl = `${window.location.origin}${cleanPath}`;
+      // Check if current URL is already valid for this item (e.g. /akcije/trgovine-hrana/subway-italian-bmt)
+      // If so, keep user's URL intact and do not arbitrarily rewrite or overwrite it!
+      const isAlreadyValid = isCurrentPathValidForPost(window.location.pathname, itemData, target.type);
+      const effectivePath = isAlreadyValid ? window.location.pathname : cleanPath;
+      const fullUrl = `${window.location.origin}${effectivePath}`;
 
-      // Update URL cleanly without hash
-      if (window.location.pathname !== cleanPath || window.location.hash) {
+      // Update URL cleanly without hash if not already valid
+      if ((!isAlreadyValid && window.location.pathname !== cleanPath) || window.location.hash) {
         window.history.replaceState({ type: target.type, id: itemData.id || target.id }, '', cleanPath);
       }
       scrollToPageTop();
@@ -789,7 +812,7 @@ export function PostDetailPage({
       onTitleLoaded?.(itemData.title, {
         categoryName: itemData.categoryName || itemData.category,
         subcategoryName: itemData.subcategoryName || itemData.subcategory,
-        cleanUrl: cleanPath,
+        cleanUrl: effectivePath,
       });
 
       let jsonLd: Record<string, any> | undefined;
@@ -2185,36 +2208,18 @@ export function PostDetailPage({
                 </button>
               )}
 
-              {target.type === 'event' && (
-                <>
-                  {itemData.ticketUrl && (
-                    <a
-                      href={itemData.ticketUrl.startsWith('http') ? itemData.ticketUrl : `https://${itemData.ticketUrl}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-label-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs hover:shadow-md"
-                      title="Odpri zunanjo povezavo za nakup vstopnic"
-                    >
-                      <Ticket className="w-4 h-4" />
-                      <span>Kupi vstopnice</span>
-                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-                    </a>
-                  )}
-                  <button
-                    onClick={handleRsvp}
-                    className={`px-4 py-2 rounded-xl font-label-md text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
-                      isRsvpActive 
-                        ? 'bg-secondary text-white' 
-                        : 'bg-primary hover:bg-primary-container text-on-primary'
-                    }`}
-                  >
-                    <CalendarPlus className="w-4 h-4" />
-                    <span>{isRsvpActive ? 'Prijavljen (Bom tam)' : 'Zanima me'}</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-black/20 text-[10px]">
-                      {rsvpCount}
-                    </span>
-                  </button>
-                </>
+              {target.type === 'event' && itemData.ticketUrl && (
+                <a
+                  href={itemData.ticketUrl.startsWith('http') ? itemData.ticketUrl : `https://${itemData.ticketUrl}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-label-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs hover:shadow-md"
+                  title="Odpri zunanjo povezavo za nakup vstopnic"
+                >
+                  <Ticket className="w-4 h-4" />
+                  <span>Kupi vstopnice</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                </a>
               )}
 
               <div 
@@ -2370,7 +2375,7 @@ export function PostDetailPage({
 
           {target.type === 'event' && (
             <div className="flex flex-col gap-3">
-              <div className={`grid grid-cols-1 sm:grid-cols-2 ${itemData.eventTime ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container`}>
+              <div className={`grid grid-cols-1 ${itemData.eventTime ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container`}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
                     <Calendar className="w-5 h-5" />
@@ -2393,25 +2398,31 @@ export function PostDetailPage({
                   </div>
                 )}
 
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
-                    <MapPin className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
-                    <div className="text-sm font-bold text-on-surface truncate max-w-[160px]">{itemData.location || 'Slovenija'}</div>
-                  </div>
-                </div>
+                {(() => {
+                  const distinctScheduleLocations = Array.isArray(itemData.eventSchedule)
+                    ? Array.from(new Set(itemData.eventSchedule.map((s: any) => s.location?.trim()).filter(Boolean)))
+                    : [];
+                  const hasMultipleLocations = distinctScheduleLocations.length > 1;
 
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-tertiary-container/30 text-tertiary flex items-center justify-center shrink-0">
-                    <Tag className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Vstopnina / Cena</div>
-                    <div className="text-sm font-bold text-primary">{itemData.price || 'Vstop prost'}</div>
-                  </div>
-                </div>
+                  return (
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
+                        <MapPin className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
+                        <div 
+                          className="text-sm font-bold text-on-surface truncate max-w-[220px]" 
+                          title={hasMultipleLocations ? distinctScheduleLocations.join(', ') : (itemData.location || 'Slovenija')}
+                        >
+                          {hasMultipleLocations 
+                            ? `Več lokacij (${distinctScheduleLocations.length} mest)` 
+                            : (itemData.location || 'Slovenija')}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Detailed Schedule & Hours section if repetitive dates or specific schedule slots exist */}
@@ -2423,11 +2434,11 @@ export function PostDetailPage({
                         <CalendarDays className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-on-surface">Razpored terminov & ure dogodka</h4>
+                        <h4 className="text-xs font-bold text-on-surface">Razpored terminov, ur & lokacij dogodka</h4>
                         <p className="text-[11px] text-outline">
                           {itemData.eventSchedule.length > 1 
                             ? `Ta dogodek ima ${itemData.eventSchedule.length} razpisanih terminov/ponovitev` 
-                            : 'Vsi razpisani termini in ure tega dogodka'}
+                            : 'Vsi razpisani termini, ure in prizorišča tega dogodka'}
                         </p>
                       </div>
                     </div>
@@ -2439,6 +2450,8 @@ export function PostDetailPage({
                       const timesList = slot.times && slot.times.length > 0 
                         ? slot.times 
                         : (slot.time ? slot.time.split(',').map((t: string) => t.trim()).filter(Boolean) : []);
+                      const slotLocation = slot.location?.trim() || itemData.location;
+
                       return (
                         <div key={idx} className="p-3.5 rounded-xl bg-surface-container-lowest border border-surface-container flex flex-col gap-2.5 shadow-xs">
                           <div className="flex items-center justify-between">
@@ -2461,6 +2474,19 @@ export function PostDetailPage({
                               </div>
                             </div>
                           </div>
+
+                          {/* Specific location for this date/show */}
+                          {slot.location ? (
+                            <div className="flex items-center gap-1.5 text-xs text-on-surface font-medium pt-1">
+                              <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
+                              <span className="font-semibold text-on-surface">{slot.location}</span>
+                            </div>
+                          ) : itemData.location ? (
+                            <div className="flex items-center gap-1.5 text-xs text-outline pt-1">
+                              <MapPin className="w-3.5 h-3.5 text-outline/70 shrink-0" />
+                              <span>{itemData.location}</span>
+                            </div>
+                          ) : null}
 
                           {timesList.length > 0 && (
                             <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-surface-container/50">

@@ -473,11 +473,29 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                         <span className="text-[10px] text-outline flex items-center gap-1">
                           <span>Objavil:</span>
                           <a
-                            href={`#author-${encodeURIComponent((ad.authorName || 'Uporabnik').replace(/\s+/g, '_'))}`}
-                            className="font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
+                            href={`/avtor/${slugify(ad.authorName || 'Uporabnik')}`}
+                            data-author-name={ad.authorName || 'Uporabnik'}
+                            data-author-id={ad.authorId}
+                            data-author-avatar={ad.authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(ad.authorName || 'Uporabnik')}`}
+                            data-author-role={ad.authorRole || 'uporabnik'}
+                            data-post-id={ad.id}
+                            data-post-type="ad"
+                            data-post-title={ad.title}
+                            data-post-image={ad.imageUrl}
+                            data-post-category={ad.categoryName || ad.category}
+                            data-post-price={ad.price}
+                            data-post-location={ad.location || ad.region}
+                            className="font-semibold text-on-surface hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
                             title={`Ogled profila: ${ad.authorName || 'Uporabnik'}`}
                           >
-                            {ad.authorName || 'Uporabnik'}
+                            {ad.authorAvatar && (
+                              <img 
+                                src={ad.authorAvatar} 
+                                alt={ad.authorName || 'Uporabnik'} 
+                                className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
+                              />
+                            )}
+                            <span>{ad.authorName || 'Uporabnik'}</span>
                           </a>
                         </span>
                       </div>

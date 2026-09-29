@@ -84,6 +84,7 @@ export function cleanDataForFirestore<T extends Record<string, any>>(obj: T): Re
 
 export interface FirestorePost {
   id: string;
+  type?: 'post' | 'blog' | 'deal' | 'news' | string;
   title: string;
   content: string;
   category: string;
@@ -1091,18 +1092,21 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
       snap = await getDoc(doc(db, 'events', `event-${cleanId}`));
     }
     if (snap.exists()) {
-      const item = {
-        id: snap.id,
-        ...(snap.data() as Omit<FirestoreEvent, 'id'>),
-      };
-      const mockEvent = INITIAL_EVENTS.find(x => x.id === item.id);
-      if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
-        item.authorName = mockEvent.organizer;
-        item.authorRole = 'Organizator';
-        item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
-        item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const data = snap.data();
+      if (data && (data.title || data.description)) {
+        const item = {
+          id: snap.id,
+          ...(data as Omit<FirestoreEvent, 'id'>),
+        };
+        const mockEvent = INITIAL_EVENTS.find(x => x.id === item.id);
+        if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
+          item.authorName = mockEvent.organizer;
+          item.authorRole = 'Organizator';
+          item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+          item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        }
+        return item;
       }
-      return item;
     }
     // Case-insensitive fallback search and title slug search
     const q = query(collection(db, 'events'), limit(100));
@@ -1110,9 +1114,10 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
     const targetSlug = slugify(eventId);
     const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
+      const data = d.data();
+      if (!data || (!data.title && !data.description)) return false;
       const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
       if (d.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId) return true;
-      const data = d.data();
       const itemTitleSlug = slugify(data.title || '');
       if (itemTitleSlug) {
         if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === eventId.toLowerCase()) return true;
@@ -1156,19 +1161,23 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
       snap = await getDoc(doc(db, 'posts', `deal-${cleanId}`));
     }
     if (snap.exists()) {
-      return {
-        id: snap.id,
-        ...(snap.data() as Omit<FirestorePost, 'id'>),
-      };
+      const data = snap.data();
+      if (data && (data.title || data.content || data.description)) {
+        return {
+          id: snap.id,
+          ...(data as Omit<FirestorePost, 'id'>),
+        };
+      }
     }
     const q = query(collection(db, 'posts'), limit(100));
     const allSnaps = await getDocs(q);
     const targetSlug = slugify(postId);
     const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
+      const data = d.data();
+      if (!data || (!data.title && !data.content && !data.description)) return false;
       const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
       if (d.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId) return true;
-      const data = d.data();
       const itemTitleSlug = slugify(data.title || '');
       if (itemTitleSlug) {
         if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === postId.toLowerCase()) return true;
@@ -1201,19 +1210,23 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
       snap = await getDoc(doc(db, 'ads', `ad-${cleanId}`));
     }
     if (snap.exists()) {
-      return {
-        id: snap.id,
-        ...(snap.data() as Omit<FirestoreAd, 'id'>),
-      };
+      const data = snap.data();
+      if (data && (data.title || data.description)) {
+        return {
+          id: snap.id,
+          ...(data as Omit<FirestoreAd, 'id'>),
+        };
+      }
     }
     const q = query(collection(db, 'ads'), limit(100));
     const allSnaps = await getDocs(q);
     const targetSlug = slugify(adId);
     const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
+      const data = d.data();
+      if (!data || (!data.title && !data.description)) return false;
       const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
       if (d.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId) return true;
-      const data = d.data();
       const itemTitleSlug = slugify(data.title || '');
       if (itemTitleSlug) {
         if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === adId.toLowerCase()) return true;
@@ -1242,20 +1255,33 @@ export async function fetchDocumentById(
 
   const checkEvent = async () => {
     const ev = await getEventById(id);
-    if (ev) return { type: 'event' as const, data: ev };
+    if (ev && (ev.title || ev.description)) return { type: 'event' as const, data: ev };
     return null;
   };
 
   const checkPost = async () => {
     const post = await getPostById(id);
-    if (post) {
-      const isDeal = post.category === 'deal' || 
-                     post.category === 'ugodnosti' || 
-                     post.category?.startsWith('deal') || 
-                     post.categoryName === 'Ugodnosti' || 
-                     post.categoryName === 'Ugodnost' ||
+    if (post && (post.title || post.content || (post as any).description)) {
+      const catLower = (post.category || '').toLowerCase();
+      const catNameLower = (post.categoryName || '').toLowerCase();
+      const isDeal = catLower === 'deal' || 
+                     catLower === 'ugodnosti' || 
+                     catLower.startsWith('deal') || 
+                     catNameLower.includes('ugodnost') || 
+                     catNameLower.includes('akcij') ||
+                     catNameLower.includes('popust') ||
+                     catNameLower.includes('trgovin') ||
+                     catNameLower.includes('tehnik') ||
+                     catNameLower.includes('moda') ||
+                     catNameLower.includes('wellness') ||
+                     catNameLower.includes('storitv') ||
+                     post.type === 'deal' ||
+                     Boolean(post.discount) ||
+                     Boolean(post.promoCode) ||
+                     Boolean(post.dealLink) ||
                      post.id.startsWith('deal-') ||
-                     post.id.startsWith('hero-bento-');
+                     post.id.startsWith('hero-bento-') ||
+                     preferredType === 'deal';
       return { type: (isDeal ? 'deal' : 'blog') as ('deal' | 'blog'), data: post };
     }
     return null;
@@ -1263,7 +1289,7 @@ export async function fetchDocumentById(
 
   const checkAd = async () => {
     const ad = await getAdById(id);
-    if (ad) return { type: 'ad' as const, data: ad };
+    if (ad && (ad.title || ad.description)) return { type: 'ad' as const, data: ad };
     return null;
   };
 
@@ -1271,10 +1297,12 @@ export async function fetchDocumentById(
     return (await checkEvent()) || (await checkPost()) || (await checkAd());
   } else if (preferredType === 'ad') {
     return (await checkAd()) || (await checkPost()) || (await checkEvent());
-  } else if (preferredType === 'deal' || preferredType === 'blog' || preferredType === 'post') {
+  } else if (preferredType === 'deal') {
+    return (await checkPost()) || (await checkEvent()) || (await checkAd());
+  } else if (preferredType === 'blog' || preferredType === 'post') {
     return (await checkPost()) || (await checkEvent()) || (await checkAd());
   } else {
-    return (await checkEvent()) || (await checkPost()) || (await checkAd());
+    return (await checkPost()) || (await checkEvent()) || (await checkAd());
   }
 }
 
@@ -1677,6 +1705,7 @@ export async function recordItemViewInFirestore(
   targetType: string,
   targetId: string
 ): Promise<number | null> {
+  if (!targetId) return null;
   const cleanType = targetType.toLowerCase();
   const collectionName = (cleanType === 'ad') ? 'ads' : (cleanType === 'event') ? 'events' : 'posts';
   const path = `${collectionName}/${targetId}`;
@@ -1686,14 +1715,37 @@ export async function recordItemViewInFirestore(
     const snap = await getDoc(docRef);
 
     if (snap.exists()) {
-      await updateDoc(docRef, { viewsCount: increment(1) });
-      const currentViews = (snap.data().viewsCount || 0) + 1;
-      return currentViews;
-    } else {
-      // Create stub document with viewsCount initialized
-      await setDoc(docRef, { viewsCount: 1, updatedAt: new Date().toISOString() }, { merge: true });
-      return 1;
+      const data = snap.data();
+      if (data && (data.title || data.content || data.description)) {
+        await updateDoc(docRef, { viewsCount: increment(1) });
+        return (data.viewsCount || 0) + 1;
+      }
     }
+
+    // If not found by direct doc ID, it might be a slug or clean ID: find real document
+    const cleanId = targetId.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+    const targetSlug = slugify(targetId);
+    const cleanSlug = slugify(cleanId);
+    const q = query(collection(db, collectionName), limit(50));
+    const allSnaps = await getDocs(q);
+
+    const match = allSnaps.docs.find(d => {
+      const data = d.data();
+      if (!data || (!data.title && !data.description && !data.content)) return false;
+      const docClean = d.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+      if (d.id.toLowerCase() === targetId.toLowerCase() || docClean === cleanId) return true;
+      const itemTitleSlug = slugify(data.title || '');
+      return itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || (targetSlug && targetSlug.startsWith(itemTitleSlug));
+    });
+
+    if (match) {
+      const realDocRef = doc(db, collectionName, match.id);
+      await updateDoc(realDocRef, { viewsCount: increment(1) });
+      return (match.data().viewsCount || 0) + 1;
+    }
+
+    // For transient/mock posts or non-persisted items: return 1 without creating empty stub docs
+    return 1;
   } catch (error) {
     console.warn(`Could not record view for ${path}:`, error);
     return null;

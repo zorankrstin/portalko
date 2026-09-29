@@ -192,22 +192,27 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
           (target.includes('odprta kuhna') && (evTitle.includes('kuhna') || evDesc.includes('kuhna') || evTitle.includes('kulinari')));
       }
 
+      // Extract all locations (main location + any per-slot locations)
+      const allLocations = [
+        event.location || '',
+        ...(Array.isArray(event.eventSchedule) ? event.eventSchedule.map((s: any) => s.location || '') : [])
+      ].map(l => l.toLowerCase().trim()).filter(Boolean);
+
       // Region & City/Town filter
       let matchesReg = false;
       if (selectedRegion === 'all') {
         matchesReg = true;
       } else {
         const target = selectedRegion.toLowerCase().trim();
-        const evLoc = (event.location || '').toLowerCase().trim();
         const evReg = (event.region || '').toLowerCase().trim();
 
         if (target.startsWith('city-')) {
           const cleanCity = target.replace('city-', '').trim().toLowerCase();
-          if (evLoc.includes(cleanCity) || evReg.includes(cleanCity)) {
+          if (allLocations.some(l => l.includes(cleanCity)) || evReg.includes(cleanCity)) {
             matchesReg = true;
           }
         } else {
-          if (evReg.includes(target) || evLoc.includes(target)) {
+          if (evReg.includes(target) || allLocations.some(l => l.includes(target))) {
             matchesReg = true;
           } else {
             const regObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
@@ -216,7 +221,8 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
                 matchesReg = true;
               } else {
                 for (const city of regObj.cities) {
-                  if (evLoc.includes(city.toLowerCase()) || evReg.includes(city.toLowerCase())) {
+                  const cLower = city.toLowerCase();
+                  if (allLocations.some(l => l.includes(cLower)) || evReg.includes(cLower)) {
                     matchesReg = true;
                     break;
                   }
@@ -235,7 +241,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
       // 2. Location / Venue Keyword Filtering
       const targetLocLower = locationFilter.toLowerCase().trim();
       const matchesLocation = !targetLocLower ||
-        (event.location && event.location.toLowerCase().includes(targetLocLower)) ||
+        allLocations.some(l => l.includes(targetLocLower)) ||
         (event.region && event.region.toLowerCase().includes(targetLocLower)) ||
         (event.title && event.title.toLowerCase().includes(targetLocLower));
 
@@ -428,6 +434,9 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
                 id={event.id}
                 title={event.title}
                 organizer={event.authorName}
+                authorId={event.authorId}
+                authorAvatar={event.authorAvatar}
+                authorRole={event.authorRole}
                 category={event.category}
                 categoryName={event.categoryName || event.category || 'Dogodek'}
                 subcategory={event.subcategory}

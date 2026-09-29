@@ -746,39 +746,27 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                     loading="lazy"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent sm:hidden"></div>
-                  
-                  {/* Badges on image */}
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
-                    {isPromoted && (
-                      <PromotedBadge type={badgeType} size="sm" />
-                    )}
-                    {deal.categoryName && deal.categoryName !== 'Ugodnosti' && deal.categoryName !== 'Ugodnost' && (
-                      <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white font-label-caps text-[10px] font-bold uppercase tracking-wider">
-                        {deal.categoryName}
-                      </span>
-                    )}
-                    {deal.featured && !isPromoted && (
-                      <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                        <Sparkles className="w-2.5 h-2.5" />
-                        Top
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-secondary text-on-secondary font-bold text-xs shadow-md">
-                    {deal.discount}
-                  </div>
                 </a>
 
                 {/* CONTENT AREA */}
                 <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-3">
                   <div>
-                    {/* Header Row: Partner info, role, and actions */}
+                    {/* Header Row: Partner info and actions */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <a
-                          href={`#author-${encodeURIComponent(deal.partner.replace(/\s+/g, '_'))}`}
+                          href={`/avtor/${slugify(deal.partner)}`}
+                          data-author-name={deal.partner}
+                          data-author-id={deal.partnerId || (deal as any).authorId}
+                          data-author-avatar={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`}
+                          data-author-role={deal.partnerRole || 'partner'}
+                          data-post-id={deal.id}
+                          data-post-type="deal"
+                          data-post-title={deal.title}
+                          data-post-image={dealImg}
+                          data-post-category={deal.categoryName || deal.category}
+                          data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
+                          data-post-location={deal.region}
                           className="shrink-0 group/avatar focus:outline-none"
                           title={`Ogled profila partnerja: ${deal.partner}`}
                         >
@@ -794,17 +782,23 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                         </a>
                         <div className="flex items-center gap-2 flex-wrap min-w-0">
                           <a
-                            href={`#author-${encodeURIComponent(deal.partner.replace(/\s+/g, '_'))}`}
+                            href={`/avtor/${slugify(deal.partner)}`}
+                            data-author-name={deal.partner}
+                            data-author-id={deal.partnerId || (deal as any).authorId}
+                            data-author-avatar={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`}
+                            data-author-role={deal.partnerRole || 'partner'}
+                            data-post-id={deal.id}
+                            data-post-type="deal"
+                            data-post-title={deal.title}
+                            data-post-image={dealImg}
+                            data-post-category={deal.categoryName || deal.category}
+                            data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
+                            data-post-location={deal.region}
                             className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
                             title={`Ogled profila partnerja: ${deal.partner}`}
                           >
                             <UserDisplayName name={deal.partner} role={deal.partnerRole} />
                           </a>
-                          {deal.partnerRole && (
-                            <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline font-semibold shrink-0">
-                              {deal.partnerRole}
-                            </span>
-                          )}
                         </div>
                       </div>
                       
@@ -878,11 +872,6 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             </span>
                           </div>
                         )}
-                        {deal.discount && (
-                          <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-secondary/15 text-secondary border border-secondary/20">
-                            {deal.discount}
-                          </span>
-                        )}
                       </div>
                     )}
 
@@ -948,9 +937,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           </button>
                           {isCopied && <span className="text-[10px] font-bold text-secondary">Kopirano!</span>}
                         </div>
-                      ) : (
-                        <span className="text-xs text-outline italic">Koda ni potrebna (akcija)</span>
-                      )}
+                      ) : null}
 
                       <div className="flex items-center gap-2 ml-auto">
                         <ShareMenu 
