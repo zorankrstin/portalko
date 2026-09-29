@@ -2,6 +2,7 @@ export interface MockBlogItem {
   id: string;
   title: string;
   author: string;
+  authorId?: string;
   authorRole: string;
   authorAvatar: string;
   date: string;
@@ -22,6 +23,9 @@ export interface MockAdItem {
   title: string;
   price: string;
   author: string;
+  authorId?: string;
+  authorAvatar?: string;
+  authorRole?: string;
   authorInitials: string;
   location: string;
   date: string;
@@ -37,6 +41,10 @@ export interface MockEventItem {
   id: string;
   title: string;
   organizer: string;
+  organizerId?: string;
+  authorId?: string;
+  authorAvatar?: string;
+  authorRole?: string;
   categoryName: string;
   category: string;
   location: string;

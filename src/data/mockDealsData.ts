@@ -3,6 +3,8 @@ export interface DealItem {
   title: string;
   subtitle?: string;
   partner: string;
+  partnerId?: string;
+  authorId?: string;
   partnerRole?: string;
   partnerInitial?: string;
   partnerLogoBg?: string;

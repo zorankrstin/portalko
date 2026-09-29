@@ -19,6 +19,7 @@ export interface BlogPostProps {
   subcategory?: string;
   subcategoryName?: string;
   author?: string;
+  authorId?: string;
   authorRole?: string;
   authorAvatar?: string;
   date?: string;
@@ -47,6 +48,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   subcategory,
   subcategoryName,
   author = "Maja Zupan",
+  authorId,
   authorRole = "Registrirana",
   authorAvatar = "https://lh3.googleusercontent.com/aida-public/AB6AXuA0aillBK42foqYYRs3Hl0i5psDvvr2NDlrZX_P-FXMFxLDlTrJyttrIRyIM7OjAMIeCA8VDw5Da046gdbXusHkNnSCNLmgTP1y3GLJPh-_spwBhPsrnwKXD-zF6zEb144nZU8FLIklzGTs5sg8xvIs7NcM-R4fOwdNJHr4sPnR2x0Im8d6D1xpgLSCk-6lXFjnWO5W4kUTP6QjtqfjqwL9sD3BxP22cIPCehiW4qkKlJEasSlcrIVW",
   date = "Pred 2 urama",
@@ -152,6 +154,16 @@ export const BlogPost: React.FC<BlogPostProps> = ({
         <div className="flex items-center gap-3">
           <a
             href={authorUrl}
+            data-author-name={author}
+            data-author-id={authorId}
+            data-author-avatar={authorAvatar}
+            data-author-role={authorRole}
+            data-post-id={id}
+            data-post-type="blog"
+            data-post-title={title}
+            data-post-image={image}
+            data-post-category={categoryName || category}
+            data-post-location={location}
             className="group/avatar shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${author}`}
           >
@@ -161,6 +173,16 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             <div className="flex items-center gap-2">
               <a
                 href={authorUrl}
+                data-author-name={author}
+                data-author-id={authorId}
+                data-author-avatar={authorAvatar}
+                data-author-role={authorRole}
+                data-post-id={id}
+                data-post-type="blog"
+                data-post-title={title}
+                data-post-image={image}
+                data-post-category={categoryName || category}
+                data-post-location={location}
                 className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors"
                 title={`Ogled profila avtorja: ${author}`}
               >

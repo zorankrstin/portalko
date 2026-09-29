@@ -20,6 +20,7 @@ import {
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../../data/mockFeedData';
 import { INITIAL_DEALS, HERO_BENTO_DEALS } from '../../data/mockDealsData';
 import { updatePageSeo } from '../../utils/seoUtils';
+import { slugify } from '../../utils/urlUtils';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
@@ -65,28 +66,148 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
   const matchedUser = useMemo(() => {
     if (!targetAuthor) return null;
     const authorNameLower = (targetAuthor.name || '').trim().toLowerCase();
+    const authorSlug = slugify(targetAuthor.name);
     return users.find(u => 
       (targetAuthor.id && u.id === targetAuthor.id) ||
       (u.name && u.name.trim().toLowerCase() === authorNameLower) ||
-      (u.username && authorNameLower.includes(u.username.replace('@', '').toLowerCase()))
+      (u.name && slugify(u.name) === authorSlug) ||
+      (u.username && slugify(u.username.replace('@', '')) === authorSlug)
     ) || null;
   }, [users, targetAuthor]);
 
+  // Find real author metadata (avatar, proper capitalized name, role) from matching posts
+  const realAuthorMetadata = useMemo(() => {
+    const targetNameRaw = targetAuthor.name ? targetAuthor.name.trim() : '';
+    const targetNameLower = targetNameRaw.toLowerCase();
+    const targetSlug = slugify(targetNameRaw);
+    const targetId = targetAuthor.id;
+
+    const matches = (name?: string | null, id?: string | null) => {
+      if (targetId && id && id === targetId) return true;
+      if (!name && !id) return false;
+      if (name) {
+        const nLower = name.trim().toLowerCase();
+        if (targetNameLower && nLower === targetNameLower) return true;
+        if (targetSlug && slugify(name) === targetSlug) return true;
+        if (targetNameLower && nLower.replace(/[-_]/g, ' ') === targetNameLower.replace(/[-_]/g, ' ')) return true;
+      }
+      if (id && targetSlug) {
+        if (slugify(id) === targetSlug) return true;
+        const cleanId = id.replace(/^(author|partner|user|organizer)-/, '');
+        if (slugify(cleanId) === targetSlug) return true;
+      }
+      return false;
+    };
+
+    // Check posts
+    for (const p of firestorePosts) {
+      if (matches(p.authorName, p.authorId)) {
+        return {
+          name: p.authorName,
+          avatar: p.authorAvatar,
+          role: p.authorRole,
+          id: p.authorId,
+        };
+      }
+    }
+    // Check ads
+    for (const a of firestoreAds) {
+      if (matches(a.authorName, a.authorId)) {
+        return {
+          name: a.authorName,
+          avatar: a.authorAvatar,
+          role: a.authorRole,
+          id: a.authorId,
+        };
+      }
+    }
+    // Check events
+    for (const e of firestoreEvents) {
+      if (matches(e.authorName, e.authorId)) {
+        return {
+          name: e.authorName,
+          avatar: e.authorAvatar,
+          role: e.authorRole,
+          id: e.authorId,
+        };
+      }
+    }
+    // Check mock deals
+    for (const d of [...HERO_BENTO_DEALS, ...INITIAL_DEALS]) {
+      if (matches(d.partner, d.partnerId)) {
+        return {
+          name: d.partner,
+          avatar: d.partnerAvatar,
+          role: d.partnerRole || 'Partner',
+          id: d.partnerId,
+        };
+      }
+    }
+    // Check mock blogs
+    for (const b of INITIAL_BLOG_POSTS) {
+      if (matches(b.author, b.authorId)) {
+        return {
+          name: b.author,
+          avatar: b.authorAvatar,
+          role: b.authorRole || 'Avtor',
+          id: b.authorId,
+        };
+      }
+    }
+    // Check mock ads
+    for (const ad of INITIAL_ADS) {
+      if (matches(ad.author, ad.authorId)) {
+        return {
+          name: ad.author,
+          avatar: ad.authorAvatar,
+          role: 'Prodajalec',
+          id: ad.authorId,
+        };
+      }
+    }
+    // Check mock events
+    for (const ev of INITIAL_EVENTS) {
+      if (matches(ev.organizer, ev.organizerId)) {
+        return {
+          name: ev.organizer,
+          avatar: ev.authorAvatar,
+          role: 'Organizator',
+          id: ev.organizerId,
+        };
+      }
+    }
+
+    return null;
+  }, [firestorePosts, firestoreAds, firestoreEvents, targetAuthor]);
+
   // Consolidated author profile details
   const authorProfile = useMemo(() => {
-    const name = matchedUser?.name || targetAuthor.name || 'Avtor';
-    const avatar = matchedUser?.avatar || targetAuthor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff`;
+    const rawName = targetAuthor.name || 'Avtor';
+    const name = matchedUser?.name || realAuthorMetadata?.name || (
+      rawName.includes(' ') 
+        ? rawName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+        : rawName.charAt(0).toUpperCase() + rawName.slice(1)
+    );
+
+    const avatar = targetAuthor.avatar || 
+                   matchedUser?.avatar || 
+                   realAuthorMetadata?.avatar || 
+                   `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`;
+
     const role = matchedUser?.role || (
       targetAuthor.role?.toLowerCase().includes('superadmin') ? 'superadmin' :
       targetAuthor.role?.toLowerCase().includes('admin') ? 'admin' :
+      targetAuthor.role?.toLowerCase().includes('partner') ? 'partner' :
+      realAuthorMetadata?.role?.toLowerCase().includes('partner') ? 'partner' :
       targetAuthor.role?.toLowerCase().includes('preverjen') ? 'verified' : 'registered'
     );
-    const roleTitle = targetAuthor.role || (
+    const roleTitle = targetAuthor.role || realAuthorMetadata?.role || (
       role === 'superadmin' ? 'Superadmin Portalko' :
       role === 'admin' ? 'Administrator' :
+      role === 'partner' ? 'Partner Portalko' :
       role === 'verified' ? 'Preverjen uporabnik' : 'Član skupnosti'
     );
-    const username = matchedUser?.username || `@${name.toLowerCase().replace(/\s+/g, '_')}`;
+    const username = matchedUser?.username || `@${slugify(name).replace(/-/g, '_')}`;
     const bio = matchedUser?.bio || targetAuthor.bio || 'Aktiven član in soustvarjalec vsebin na platformi Portalko.net.';
     const socialLinks = matchedUser?.socialLinks || [];
 
@@ -99,7 +220,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
       bio,
       socialLinks,
     };
-  }, [matchedUser, targetAuthor]);
+  }, [matchedUser, targetAuthor, realAuthorMetadata]);
 
   // Update dynamic SEO & Person Schema.org for author profile
   useEffect(() => {
@@ -130,34 +251,43 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
   // Aggregate author's items
   const authorItems = useMemo<AuthorItemCardData[]>(() => {
-    const targetNameLower = (targetAuthor.name || '').trim().toLowerCase();
+    const targetNameRaw = targetAuthor.name ? targetAuthor.name.trim() : '';
+    const targetNameLower = targetNameRaw.toLowerCase();
+    const targetSlug = slugify(targetNameRaw);
     const targetId = targetAuthor.id;
-    const isTargetAdmin = targetAuthor.role === 'superadmin' || 
-                          targetAuthor.role === 'admin' || 
-                          targetNameLower === 'superadmin' || 
-                          targetNameLower === 'zoran krstin' || 
-                          targetId === 'admin' || 
-                          targetId === 'AABsRoeGCgaddFMh9S2cZqN9CaG3';
+
+    const isMatchingAuthor = (itemAuthorName?: string | null, itemAuthorId?: string | null) => {
+      if (targetId && itemAuthorId && itemAuthorId === targetId) return true;
+      if (!itemAuthorName && !itemAuthorId) return false;
+
+      if (itemAuthorName) {
+        const itemLower = itemAuthorName.trim().toLowerCase();
+        if (targetNameLower && itemLower === targetNameLower) return true;
+        if (targetSlug && slugify(itemAuthorName) === targetSlug) return true;
+        if (targetNameLower && itemLower.replace(/[-_]/g, ' ') === targetNameLower.replace(/[-_]/g, ' ')) return true;
+      }
+
+      if (itemAuthorId && targetSlug) {
+        if (slugify(itemAuthorId) === targetSlug) return true;
+        const cleanAuthorId = itemAuthorId.replace(/^(author|partner|user|organizer)-/, '');
+        if (slugify(cleanAuthorId) === targetSlug) return true;
+      }
+
+      return false;
+    };
+
     const itemsMap = new Map<string, AuthorItemCardData>();
 
     // 1. Firestore Posts / Deals
     firestorePosts.forEach(p => {
-      const isMockOrSystemDeal = p.id.startsWith('deal-') || p.id.startsWith('hero-bento-');
-      const isPartnerAuthor = p.authorId?.startsWith('partner-') || p.authorId?.startsWith('author-');
-      if (isTargetAdmin && (isMockOrSystemDeal || isPartnerAuthor || (p.authorName && p.authorName.trim().toLowerCase() !== targetNameLower && p.authorName !== 'Superadmin'))) {
-        return;
-      }
-
-      const matchId = Boolean(targetId && p.authorId === targetId);
-      const matchName = Boolean(p.authorName && p.authorName.trim().toLowerCase() === targetNameLower);
-      if (matchId || matchName) {
-        const itemType = p.category === 'deal' ? 'deal' : 'post';
+      if (isMatchingAuthor(p.authorName, p.authorId)) {
+        const itemType = (p.category === 'deal' || p.category === 'ugodnosti' || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost') ? 'deal' : 'post';
         itemsMap.set(`${itemType}-${p.id}`, {
           id: p.id,
           type: itemType,
           title: p.title,
           description: p.content,
-          category: p.category,
+          category: p.categoryName || p.category,
           imageUrl: p.imageUrl,
           price: p.price,
           location: p.location,
@@ -168,21 +298,13 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 2. Firestore Ads
     firestoreAds.forEach(a => {
-      const isMockAd = a.id.startsWith('ad-');
-      const isAuthorAd = a.authorId?.startsWith('author-');
-      if (isTargetAdmin && (isMockAd || isAuthorAd || (a.authorName && a.authorName.trim().toLowerCase() !== targetNameLower && a.authorName !== 'Superadmin'))) {
-        return;
-      }
-
-      const matchId = Boolean(targetId && a.authorId === targetId);
-      const matchName = Boolean(a.authorName && a.authorName.trim().toLowerCase() === targetNameLower);
-      if (matchId || matchName) {
+      if (isMatchingAuthor(a.authorName, a.authorId)) {
         itemsMap.set(`ad-${a.id}`, {
           id: a.id,
           type: 'ad',
           title: a.title,
           description: a.description,
-          category: a.category,
+          category: a.categoryName || a.category,
           imageUrl: a.imageUrl,
           price: a.price,
           location: a.location,
@@ -193,21 +315,13 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 3. Firestore Events
     firestoreEvents.forEach(e => {
-      const isMockEvent = e.id.startsWith('event-');
-      const isOrganizerEvent = e.authorId?.startsWith('organizer-');
-      if (isTargetAdmin && (isMockEvent || isOrganizerEvent || (e.authorName && e.authorName.trim().toLowerCase() !== targetNameLower && e.authorName !== 'Superadmin'))) {
-        return;
-      }
-
-      const matchId = Boolean(targetId && e.authorId === targetId);
-      const matchName = Boolean(e.authorName && e.authorName.trim().toLowerCase() === targetNameLower);
-      if (matchId || matchName) {
+      if (isMatchingAuthor(e.authorName, e.authorId)) {
         itemsMap.set(`event-${e.id}`, {
           id: e.id,
           type: 'event',
           title: e.title,
           description: e.description,
-          category: e.category,
+          category: e.categoryName || e.category,
           imageUrl: e.imageUrl,
           price: e.price,
           location: e.location,
@@ -218,7 +332,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 4. Mock Blogs
     INITIAL_BLOG_POSTS.forEach(b => {
-      if (b.author && b.author.trim().toLowerCase() === targetNameLower) {
+      if (isMatchingAuthor(b.author, b.authorId)) {
         itemsMap.set(`post-${b.id}`, {
           id: b.id,
           type: 'post',
@@ -235,7 +349,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 5. Mock Ads
     INITIAL_ADS.forEach(ad => {
-      if (ad.author && ad.author.trim().toLowerCase() === targetNameLower) {
+      if (isMatchingAuthor(ad.author, ad.authorId)) {
         itemsMap.set(`ad-${ad.id}`, {
           id: ad.id,
           type: 'ad',
@@ -252,7 +366,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 6. Mock Events
     INITIAL_EVENTS.forEach(ev => {
-      if (ev.organizer && ev.organizer.trim().toLowerCase() === targetNameLower) {
+      if (isMatchingAuthor(ev.organizer, ev.organizerId)) {
         itemsMap.set(`event-${ev.id}`, {
           id: ev.id,
           type: 'event',
@@ -269,7 +383,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 7. Mock Deals
     [...HERO_BENTO_DEALS, ...INITIAL_DEALS].forEach(d => {
-      if (d.partner && d.partner.trim().toLowerCase() === targetNameLower) {
+      if (isMatchingAuthor(d.partner, d.partnerId)) {
         itemsMap.set(`deal-${d.id}`, {
           id: d.id,
           type: 'deal',
@@ -277,7 +391,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           description: d.description,
           category: d.categoryName || d.category,
           imageUrl: d.image,
-          price: d.discount,
+          price: d.discount || d.newPrice,
           location: d.region,
           date: d.date,
         });

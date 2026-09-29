@@ -203,7 +203,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setIsLoaded(true);
 
-    let unsubUsers: (() => void) | null = null;
+    // Always subscribe to live user updates from Firestore for all visitors
+    const unsubUsers = subscribeToUsers((firestoreUsers) => {
+      if (firestoreUsers && firestoreUsers.length > 0) {
+        setUsers(prev => {
+          const map = new Map<string, User>();
+          DEFAULT_USERS.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
+          prev.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
+          firestoreUsers.filter(u => !isDummyUser(u)).forEach(u => {
+            const existing = map.get(u.id);
+            map.set(u.id, existing ? { ...existing, ...u } : u);
+          });
+          const merged = Array.from(map.values()).filter(u => !isDummyUser(u));
+          localStorage.setItem('portal_users', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    });
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser && fbUser.email) {
@@ -248,36 +264,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem('portal_users', JSON.stringify(updated));
           return updated;
         });
-
-        // Subscribe to live user updates from Firestore
-        if (unsubUsers) unsubUsers();
-        unsubUsers = subscribeToUsers((firestoreUsers) => {
-          if (firestoreUsers && firestoreUsers.length > 0) {
-            setUsers(prev => {
-              const map = new Map<string, User>();
-              DEFAULT_USERS.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
-              prev.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
-              firestoreUsers.filter(u => !isDummyUser(u)).forEach(u => {
-                const existing = map.get(u.id);
-                map.set(u.id, existing ? { ...existing, ...u } : u);
-              });
-              const merged = Array.from(map.values()).filter(u => !isDummyUser(u));
-              localStorage.setItem('portal_users', JSON.stringify(merged));
-              return merged;
-            });
-          }
-        });
-      } else {
-        if (unsubUsers) {
-          unsubUsers();
-          unsubUsers = null;
-        }
       }
     });
 
     return () => {
       unsubscribe();
-      if (unsubUsers) unsubUsers();
+      unsubUsers();
     };
   }, []);
 

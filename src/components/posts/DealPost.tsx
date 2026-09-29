@@ -19,6 +19,7 @@ export interface DealPostProps {
   startDate?: string;
   expirationDate?: string;
   author?: string;
+  authorId?: string;
   authorRole?: string;
   authorAvatar?: string;
   date?: string;
@@ -50,6 +51,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   startDate,
   expirationDate,
   author = "Partner",
+  authorId,
   authorRole = "Preverjen partner",
   authorAvatar,
   date = "",
@@ -233,6 +235,17 @@ export const DealPost: React.FC<DealPostProps> = ({
             <div className="flex items-center gap-2.5 min-w-0">
               <a
                 href={authorUrl}
+                data-author-name={author}
+                data-author-id={authorId}
+                data-author-avatar={avatarSrc || authorAvatar}
+                data-author-role={authorRole || 'partner'}
+                data-post-id={id}
+                data-post-type="deal"
+                data-post-title={cleanTitle}
+                data-post-image={imgSrc}
+                data-post-category={categoryName || category}
+                data-post-price={newPrice || discount || oldPrice}
+                data-post-location={region}
                 className="shrink-0 group/avatar focus:outline-none"
                 title={`Ogled profila partnerja: ${author}`}
               >
@@ -249,6 +262,17 @@ export const DealPost: React.FC<DealPostProps> = ({
               <div className="flex items-center gap-2 flex-wrap min-w-0">
                 <a
                   href={authorUrl}
+                  data-author-name={author}
+                  data-author-id={authorId}
+                  data-author-avatar={avatarSrc || authorAvatar}
+                  data-author-role={authorRole || 'partner'}
+                  data-post-id={id}
+                  data-post-type="deal"
+                  data-post-title={cleanTitle}
+                  data-post-image={imgSrc}
+                  data-post-category={categoryName || category}
+                  data-post-price={newPrice || discount || oldPrice}
+                  data-post-location={region}
                   className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
                   title={`Ogled profila partnerja: ${author}`}
                 >

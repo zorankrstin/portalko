@@ -173,6 +173,9 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           title={post.title}
           price={post.price || "Po dogovoru"}
           author={post.authorName}
+          authorId={post.authorId}
+          authorAvatar={post.authorAvatar}
+          authorRole={post.authorRole}
           location="Slovenija"
           date="Ravno objavljeno"
           description={post.content}
@@ -208,6 +211,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           startDate={post.startDate}
           expirationDate={post.expirationDate}
           author={post.authorName}
+          authorId={post.authorId}
           authorRole={post.authorRole || "Partner"}
           authorAvatar={post.authorAvatar}
           date={post.expirationDate ? `Velja do ${post.expirationDate}` : "Aktualno"}
@@ -247,6 +251,9 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           id={post.id}
           title={post.title}
           organizer={post.authorName}
+          authorId={post.authorId}
+          authorAvatar={post.authorAvatar}
+          authorRole={post.authorRole}
           categoryName={post.categoryName || "Dogodek"}
           category="dogodki"
           location={post.location || "Slovenija"}
@@ -365,6 +372,17 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         <div className="flex items-center gap-3">
           <a
             href={authorUrl}
+            data-author-name={post.authorName}
+            data-author-id={post.authorId}
+            data-author-avatar={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`}
+            data-author-role={post.authorRole}
+            data-post-id={post.id}
+            data-post-type={post.category === 'deal' || post.category === 'ugodnosti' ? 'deal' : post.category === 'event' ? 'event' : 'blog'}
+            data-post-title={post.title}
+            data-post-image={post.imageUrl || (post.images && post.images[0])}
+            data-post-category={post.categoryName || post.category}
+            data-post-price={post.price || post.discount}
+            data-post-location={post.location}
             className="group/author shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${post.authorName}`}
           >
@@ -378,6 +396,17 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             <div className="flex items-center gap-1.5">
               <a
                 href={authorUrl}
+                data-author-name={post.authorName}
+                data-author-id={post.authorId}
+                data-author-avatar={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`}
+                data-author-role={post.authorRole}
+                data-post-id={post.id}
+                data-post-type={post.category === 'deal' || post.category === 'ugodnosti' ? 'deal' : post.category === 'event' ? 'event' : 'blog'}
+                data-post-title={post.title}
+                data-post-image={post.imageUrl || (post.images && post.images[0])}
+                data-post-category={post.categoryName || post.category}
+                data-post-price={post.price || post.discount}
+                data-post-location={post.location}
                 className="font-label-md text-label-md font-bold text-on-surface hover:text-primary hover:underline transition-colors"
                 title={`Ogled profila avtorja: ${post.authorName}`}
               >
