@@ -4,7 +4,7 @@ import {
   ThumbsUp, Tag, ShieldCheck, User, Clock, MessageSquare, 
   Phone, Send, Heart, AlertTriangle, Sparkles, CheckCircle2, 
   CalendarPlus, Bookmark, Eye, ChevronRight, ChevronLeft, Store, ArrowRight,
-  Edit3, Trash2, Search, X, BookOpen, Maximize2, Images, Ticket, CalendarDays
+  Edit3, Trash2, Search, X, BookOpen, Maximize2, Minimize2, ZoomIn, Images, Ticket, CalendarDays
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from '../types';
@@ -250,6 +250,7 @@ export function PostDetailPage({
 
   // Carousel & Lightbox state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [imageFitMode, setImageFitMode] = useState<'contain' | 'cover'>('contain');
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
@@ -308,8 +309,6 @@ export function PostDetailPage({
   // Resolve item data
   const itemData = useMemo(() => {
     const { type, id, initialData } = target;
-
-    if (initialData) return initialData;
 
     // Helper to format event object
     const formatEventData = (fs: FirestoreEvent) => {
@@ -522,115 +521,137 @@ export function PostDetailPage({
       return false;
     };
 
-    // 1. Check directItem from guaranteed fetch
-    if (directItem && directItem.data && (directItem.data.title || directItem.data.content || directItem.data.description)) {
-      if (directItem.type === 'event') return formatEventData(directItem.data);
-      if (directItem.type === 'deal') return formatDealData(directItem.data);
-      if (directItem.type === 'ad') return formatAdData(directItem.data);
-      if (directItem.type === 'blog') return formatBlogData(directItem.data);
+    const resolveMatchedDoc = () => {
+      // 1. Check directItem from guaranteed fetch
+      if (directItem && directItem.data && (directItem.data.title || directItem.data.content || directItem.data.description)) {
+        if (directItem.type === 'event') return formatEventData(directItem.data);
+        if (directItem.type === 'deal') return formatDealData(directItem.data);
+        if (directItem.type === 'ad') return formatAdData(directItem.data);
+        if (directItem.type === 'blog') return formatBlogData(directItem.data);
+      }
+
+      const titleSlug = target.titleSlug;
+
+      if (type === 'deal') {
+        // Look in Firestore posts
+        const fs = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+        if (fs) return formatDealData(fs);
+
+        // Cross-collection fallback
+        const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+        if (fsEvt) return formatEventData(fsEvt);
+
+        // Look in Mock Deals
+        const allDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
+        const d = allDeals.find(x => itemMatches(x, id, titleSlug));
+        if (!d) return null;
+        return {
+          ...d,
+          type: 'deal',
+          oldPrice: d.oldPrice,
+          newPrice: d.newPrice,
+          expirationDate: d.expirationDate,
+          category: d.category || 'deal',
+          categoryName: d.categoryName || 'Ugodnosti',
+          images: d.images || (d.image ? [d.image] : undefined),
+        };
+      }
+
+      if (type === 'event') {
+        // Look in Firestore events
+        const fs = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+        if (fs) return formatEventData(fs);
+
+        // Cross-collection fallback: check posts
+        const fsPost = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+        if (fsPost) return formatBlogData(fsPost);
+
+        // Cross-collection fallback: check ads
+        const fsAd = firestoreAds.find(a => itemMatches(a, id, titleSlug));
+        if (fsAd) return formatAdData(fsAd);
+
+        // Look in Mock Events
+        const e = INITIAL_EVENTS.find(x => itemMatches(x, id, titleSlug));
+        if (!e) return null;
+        return {
+          ...e,
+          type: 'event',
+          images: e.images || (e.image ? [e.image] : undefined),
+        };
+      }
+
+      if (type === 'ad') {
+        // Look in Firestore ads
+        const fs = firestoreAds.find(a => itemMatches(a, id, titleSlug));
+        if (fs) return formatAdData(fs);
+
+        // Cross-collection fallback: check events
+        const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+        if (fsEvt) return formatEventData(fsEvt);
+
+        // Cross-collection fallback: check posts
+        const fsPost = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+        if (fsPost) return formatBlogData(fsPost);
+
+        // Look in Mock Ads
+        const a = INITIAL_ADS.find(x => itemMatches(x, id, titleSlug));
+        if (!a) return null;
+        return {
+          ...a,
+          type: 'ad',
+          images: a.images || (a.image ? [a.image] : undefined),
+        };
+      }
+
+      if (type === 'blog' || type === 'post') {
+        // Look in Firestore posts
+        const fs = firestorePosts.find(p => itemMatches(p, id, titleSlug));
+        if (fs) return formatBlogData(fs);
+
+        // Cross-collection fallback: check events
+        const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
+        if (fsEvt) return formatEventData(fsEvt);
+
+        // Cross-collection fallback: check ads
+        const fsAd = firestoreAds.find(a => itemMatches(a, id, titleSlug));
+        if (fsAd) return formatAdData(fsAd);
+
+        // Look in Mock Blog Posts
+        const baseId = id ? id.replace(/-p\d+$/, '') : '';
+        const b = INITIAL_BLOG_POSTS.find(x => itemMatches(x, id, titleSlug) || idMatches(x.id, id) || (baseId && idMatches(x.id, baseId)));
+        if (!b) return null;
+        const resolvedCat = resolveBlogCategory(b);
+        return {
+          ...b,
+          type: 'blog',
+          images: b.images || (b.image ? [b.image] : undefined),
+          categoryName: resolvedCat.name,
+          categoryId: resolvedCat.id,
+        };
+      }
+
+      return null;
+    };
+
+    const matchedDoc = resolveMatchedDoc();
+    if (initialData) {
+      if (matchedDoc) {
+        const docImage = matchedDoc.image || (matchedDoc as any).imageUrl;
+        const docImages = matchedDoc.images || ((matchedDoc as any).imageUrls) || (docImage ? [docImage] : undefined);
+        return {
+          ...matchedDoc,
+          ...initialData,
+          image: initialData.image || docImage,
+          imageUrl: initialData.imageUrl || (matchedDoc as any).imageUrl || initialData.image || docImage,
+          images: (initialData.images && initialData.images.length > 0)
+            ? initialData.images
+            : docImages,
+        };
+      }
+      return initialData;
     }
 
-    const titleSlug = target.titleSlug;
-
-    if (type === 'deal') {
-      // Look in Firestore posts
-      const fs = firestorePosts.find(p => itemMatches(p, id, titleSlug));
-      if (fs) return formatDealData(fs);
-
-      // Cross-collection fallback
-      const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
-      if (fsEvt) return formatEventData(fsEvt);
-
-      // Look in Mock Deals
-      const allDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
-      const d = allDeals.find(x => itemMatches(x, id, titleSlug));
-      if (!d) return null;
-      return {
-        ...d,
-        type: 'deal',
-        oldPrice: d.oldPrice,
-        newPrice: d.newPrice,
-        expirationDate: d.expirationDate,
-        category: d.category || 'deal',
-        categoryName: d.categoryName || 'Ugodnosti',
-        images: d.images || (d.image ? [d.image] : undefined),
-      };
-    }
-
-    if (type === 'event') {
-      // Look in Firestore events
-      const fs = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
-      if (fs) return formatEventData(fs);
-
-      // Cross-collection fallback: check posts
-      const fsPost = firestorePosts.find(p => itemMatches(p, id, titleSlug));
-      if (fsPost) return formatBlogData(fsPost);
-
-      // Cross-collection fallback: check ads
-      const fsAd = firestoreAds.find(a => itemMatches(a, id, titleSlug));
-      if (fsAd) return formatAdData(fsAd);
-
-      // Look in Mock Events
-      const e = INITIAL_EVENTS.find(x => itemMatches(x, id, titleSlug));
-      if (!e) return null;
-      return {
-        ...e,
-        type: 'event',
-        images: e.images || (e.image ? [e.image] : undefined),
-      };
-    }
-
-    if (type === 'ad') {
-      // Look in Firestore ads
-      const fs = firestoreAds.find(a => itemMatches(a, id, titleSlug));
-      if (fs) return formatAdData(fs);
-
-      // Cross-collection fallback: check events
-      const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
-      if (fsEvt) return formatEventData(fsEvt);
-
-      // Cross-collection fallback: check posts
-      const fsPost = firestorePosts.find(p => itemMatches(p, id, titleSlug));
-      if (fsPost) return formatBlogData(fsPost);
-
-      // Look in Mock Ads
-      const a = INITIAL_ADS.find(x => itemMatches(x, id, titleSlug));
-      if (!a) return null;
-      return {
-        ...a,
-        type: 'ad',
-        images: a.images || (a.image ? [a.image] : undefined),
-      };
-    }
-
-    if (type === 'blog' || type === 'post') {
-      // Look in Firestore posts
-      const fs = firestorePosts.find(p => itemMatches(p, id, titleSlug));
-      if (fs) return formatBlogData(fs);
-
-      // Cross-collection fallback: check events
-      const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
-      if (fsEvt) return formatEventData(fsEvt);
-
-      // Cross-collection fallback: check ads
-      const fsAd = firestoreAds.find(a => itemMatches(a, id, titleSlug));
-      if (fsAd) return formatAdData(fsAd);
-
-      // Look in Mock Blog Posts
-      const baseId = id ? id.replace(/-p\d+$/, '') : '';
-      const b = INITIAL_BLOG_POSTS.find(x => itemMatches(x, id, titleSlug) || idMatches(x.id, id) || (baseId && idMatches(x.id, baseId)));
-      if (!b) return null;
-      const resolvedCat = resolveBlogCategory(b);
-      return {
-        ...b,
-        type: 'blog',
-        images: b.images || (b.image ? [b.image] : undefined),
-        categoryName: resolvedCat.name,
-        categoryId: resolvedCat.id,
-      };
-    }
-
-    return null;
+    return matchedDoc;
   }, [target, firestorePosts, firestoreEvents, firestoreAds, directItem]);
 
   useEffect(() => {
@@ -1756,14 +1777,28 @@ export function PostDetailPage({
         {/* Post Hero Photo / Pristine Featured Image (Zero elements on photo) */}
         {postImages.length > 0 && (
           <div className="relative flex flex-col bg-surface-container-low overflow-hidden">
-            {/* Pristine Clean Hero Image Box (NO overlay elements) */}
+            {/* Pristine Clean Hero Image Box (Full uncropped photo visible) */}
             <div 
-              className="w-full h-72 sm:h-96 md:h-[440px] bg-surface-container relative overflow-hidden select-none flex items-center justify-center cursor-zoom-in group"
+              className={`w-full relative overflow-hidden select-none flex items-center justify-center cursor-zoom-in group transition-all duration-300 ${
+                imageFitMode === 'contain'
+                  ? 'min-h-[220px] sm:min-h-[300px] max-h-[85vh] bg-surface-container-low dark:bg-black/40'
+                  : 'h-72 sm:h-96 md:h-[500px] bg-surface-container'
+              }`}
               onClick={() => setIsLightboxOpen(true)}
               title="Kliknite za celozaslonski ogled fotografije"
             >
+              {/* Subtle ambient blurred background glow when in contain mode so full photo is comfortably framed */}
+              {imageFitMode === 'contain' && postImages[activeImageIndex] && (
+                <div 
+                  className="absolute inset-0 bg-cover bg-center blur-2xl opacity-15 dark:opacity-20 scale-105 pointer-events-none"
+                  style={{ backgroundImage: `url(${postImages[activeImageIndex]})` }}
+                  aria-hidden="true"
+                />
+              )}
+
+              {/* Main Photo - Full uncropped photo visible */}
               <img
-                key={postImages[activeImageIndex] || activeImageIndex}
+                key={`${postImages[activeImageIndex] || activeImageIndex}-${imageFitMode}`}
                 src={postImages[activeImageIndex]}
                 alt={`${itemData.title} – fotografija ${activeImageIndex + 1}`}
                 onError={(e) => {
@@ -1774,8 +1809,82 @@ export function PostDetailPage({
                     (e.target as HTMLImageElement).style.display = 'none';
                   }
                 }}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.01]"
+                className={`transition-all duration-300 select-none ${
+                  imageFitMode === 'contain'
+                    ? 'relative z-10 w-full h-auto max-h-[75vh] sm:max-h-[85vh] object-contain mx-auto block drop-shadow-xs group-hover:scale-[1.008]'
+                    : 'w-full h-full object-cover group-hover:scale-[1.01]'
+                }`}
               />
+
+              {/* Direct Prev / Next arrows over image when multiple photos exist */}
+              {postImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePrevImage}
+                    className="absolute left-2 sm:left-4 z-20 p-2 sm:p-2.5 rounded-full bg-black/55 hover:bg-black/85 text-white backdrop-blur-xs border border-white/20 shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    title="Prejšnja fotografija"
+                    aria-label="Prejšnja fotografija"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextImage}
+                    className="absolute right-2 sm:right-4 z-20 p-2 sm:p-2.5 rounded-full bg-black/55 hover:bg-black/85 text-white backdrop-blur-xs border border-white/20 shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    title="Naslednja fotografija"
+                    aria-label="Naslednja fotografija"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </>
+              )}
+
+              {/* Photo Controls Bar (Fit mode toggle & Lightbox trigger) */}
+              <div 
+                className="absolute top-3 right-3 z-20 flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Fit Mode Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setImageFitMode((prev) => prev === 'contain' ? 'cover' : 'contain')}
+                  className="px-2.5 py-1.5 rounded-lg bg-black/60 hover:bg-black/85 text-white backdrop-blur-xs border border-white/20 text-xs font-semibold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                  title={imageFitMode === 'contain' ? 'Prikazana je 100% celotna fotografija (kliknite za zapolnitev okvirja)' : 'Fotografija je prilagojena okvirju (kliknite za celotno neobrezano fotografijo)'}
+                >
+                  {imageFitMode === 'contain' ? (
+                    <>
+                      <Minimize2 className="w-3.5 h-3.5 text-primary" />
+                      <span className="hidden sm:inline">100% Celotna fotografija</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Zapolni okvir (Obrezano)</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Lightbox Zoom Trigger */}
+                <button
+                  type="button"
+                  onClick={() => setIsLightboxOpen(true)}
+                  className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-black/60 hover:bg-black/85 text-white backdrop-blur-xs border border-white/20 text-xs font-semibold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                  title="Celozaslonski ogled fotografije (100% povečava)"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Celozaslonsko</span>
+                </button>
+              </div>
+
+              {/* Multi-photo indicator badge */}
+              {postImages.length > 1 && (
+                <div 
+                  className="absolute top-3 left-3 z-20 px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-xs border border-white/20 text-white text-xs font-semibold shadow-md pointer-events-none"
+                >
+                  {activeImageIndex + 1} / {postImages.length}
+                </div>
+              )}
             </div>
 
             {/* Thumbnail strip underneath the hero when multiple images exist */}
@@ -3221,6 +3330,16 @@ export function PostDetailPage({
               </h3>
             </div>
             <div className="flex items-center gap-2">
+              <a
+                href={postImages[activeImageIndex]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer border border-white/15"
+                title="Odpri izvirno fotografijo v polni ločljivosti v novem zavihku"
+                aria-label="Odpri v novem zavihku"
+              >
+                <ExternalLink className="w-5 h-5" />
+              </a>
               <button
                 type="button"
                 id="btn-post-lightbox-close"
@@ -3255,7 +3374,7 @@ export function PostDetailPage({
             <img
               src={postImages[activeImageIndex]}
               alt={`${itemData.title} – fotografija ${activeImageIndex + 1}`}
-              className="max-h-[72vh] sm:max-h-[78vh] max-w-full object-contain rounded-xl shadow-2xl"
+              className="max-h-[80vh] sm:max-h-[85vh] max-w-full w-auto h-auto object-contain rounded-xl shadow-2xl select-none"
             />
 
             {postImages.length > 1 && (

@@ -28,6 +28,7 @@ export interface BlogPostProps {
   description?: string;
   excerpt?: string;
   image?: string;
+  images?: string[];
   readTime?: string;
   photoCount?: string;
   likesCount?: string;
@@ -57,6 +58,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   description = "Pomlad ob smaragdni reki ponuja popolno tišino pred glavno turistično sezono. Odkrili smo manj znane slapove, neobljudene tolmunčke v Trenti ter domačo sirarno v vasi Čezsoča, kjer še vedno ohranjajo stoletno tradicijo izdelave bovškega sira.",
   excerpt,
   image = "https://lh3.googleusercontent.com/aida-public/AB6AXuDmfcqLkX6EpehopwShblWWWTErEk6fiZmrLuObihcFhQPTTdN1UP0HwAJWNxbpewO7AD8rNtHki7D2UQxR3ruAprxzai0oCSFiLO7Ucc2eM__0HctsIVOGVfYNHax9soqlpthUdhwDbTst0e68dCdSFOM0wasuTUnvpZCJ__StsF3T8Qey5cE-RGiZXa7sEzk59Ev8spqvVpe-6CJ-6XR19xlIiJd9yyxqk2aRczUvHRHR4HUWu0Zv",
+  images,
   readTime = "5 minut branja",
   photoCount = "8 fotografij",
   likesCount = "84 všečkov",
@@ -120,7 +122,11 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           subcategory,
           subcategoryName,
           author,
-          image,
+          authorId,
+          authorRole,
+          authorAvatar,
+          image: imgSrc || image || '',
+          images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
           date,
           location,
           description: finalDesc,

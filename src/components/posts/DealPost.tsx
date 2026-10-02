@@ -32,6 +32,7 @@ export interface DealPostProps {
   lovesCount?: number;
   dislikesCount?: number;
   image?: string;
+  images?: string[];
   categoryName?: string;
   category?: string;
   subcategory?: string;
@@ -64,6 +65,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   lovesCount = 0,
   dislikesCount = 0,
   image = "",
+  images,
   categoryName = "Ugodnosti",
   category = "ugodnosti",
   subcategory,
@@ -111,7 +113,9 @@ export const DealPost: React.FC<DealPostProps> = ({
           subcategoryName,
           author,
           authorRole,
-          image: imgSrc,
+          authorAvatar,
+          image: imgSrc || image || '',
+          images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
           discount,
           oldPrice,
           newPrice,

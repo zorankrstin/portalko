@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { resolveUserUploadedAvatar, getUserInitials, getAvatarRoleColors, isUserUploadedAvatar } from '../../utils/avatarUtils';
+import { resolveUserUploadedAvatar, getUserInitials, getAvatarRoleColors, isUserUploadedAvatar, KNOWN_ADMIN_IDS, KNOWN_ADMIN_NAMES } from '../../utils/avatarUtils';
+import { slugify } from '../../utils/urlUtils';
 import { Crown, Shield, CheckCircle, User as UserIcon } from 'lucide-react';
 
 export interface UserAvatarProps {
@@ -40,18 +41,38 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   onClick,
   title,
 }) => {
-  const { users } = useAuth();
+  const { users, currentUser } = useAuth();
   const [imgError, setImgError] = useState(false);
 
   // Strictly resolve genuine user-uploaded avatar, ignoring dummy images
   const resolvedAvatar = useMemo(() => {
-    // If src is explicitly provided and is a user-uploaded image
+    // 1. Direct valid uploaded image
     if (src && isUserUploadedAvatar(src)) {
       return src;
     }
-    // Otherwise check users context to find if user has an uploaded photo
+
+    // 2. Check currently active user if they are the author
+    if (currentUser?.avatar && isUserUploadedAvatar(currentUser.avatar)) {
+      if (userId && (currentUser.id === userId || (KNOWN_ADMIN_IDS.has(userId) && KNOWN_ADMIN_IDS.has(currentUser.id)))) {
+        return currentUser.avatar;
+      }
+      if (name) {
+        const trimmedName = name.trim().toLowerCase();
+        if (currentUser.name && currentUser.name.trim().toLowerCase() === trimmedName) {
+          return currentUser.avatar;
+        }
+        if (currentUser.name && slugify(currentUser.name) === slugify(name)) {
+          return currentUser.avatar;
+        }
+        if (KNOWN_ADMIN_NAMES.has(trimmedName) && (KNOWN_ADMIN_IDS.has(currentUser.id) || currentUser.email === 'zoran.krstin@gmail.com')) {
+          return currentUser.avatar;
+        }
+      }
+    }
+
+    // 3. Look up across all registered and persistent users
     return resolveUserUploadedAvatar(src, userId, name, users);
-  }, [src, userId, name, users]);
+  }, [src, userId, name, users, currentUser]);
 
   const initials = getUserInitials(name || 'U');
   const roleColors = getAvatarRoleColors(role, name);

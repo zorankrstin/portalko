@@ -4,12 +4,19 @@
  * and ensures user-uploaded profile photos are always prioritized and preserved.
  */
 
+import { slugify } from './urlUtils';
+
+export const KNOWN_ADMIN_IDS = new Set(['admin', 'u1', 'superadmin', 'AABsRoeGCgaddFMh9S2cZqN9CaG3']);
+export const KNOWN_ADMIN_NAMES = new Set(['superadmin', 'zoran krstin', 'uredništvo', 'administrator', 'admin', 'uredništvo portalko.net']);
+
 export interface AvatarUser {
   id?: string;
   name?: string;
   avatar?: string;
   role?: string;
   email?: string;
+  googleId?: string;
+  username?: string;
 }
 
 /**
@@ -110,26 +117,77 @@ export function resolveUserUploadedAvatar(
   authorName?: string | null,
   usersList?: AvatarUser[] | null
 ): string | undefined {
-  // 1. Direct explicit avatar if uploaded by user and not a dummy image
-  if (explicitAvatar && isUserUploadedAvatar(explicitAvatar)) {
-    return explicitAvatar;
-  }
+  const isTargetAdmin = Boolean(
+    (userId && KNOWN_ADMIN_IDS.has(userId)) ||
+    (authorName && KNOWN_ADMIN_NAMES.has(authorName.trim().toLowerCase()))
+  );
 
-  // 2. Look up in active users list by id or name
-  if (usersList && usersList.length > 0 && (userId || authorName)) {
+  const findInList = (list: AvatarUser[]): string | undefined => {
+    if (!list || list.length === 0) return undefined;
     const trimmedAuthorName = authorName ? authorName.trim().toLowerCase() : '';
-    const matched = usersList.find(u => {
-      if (userId && u.id && u.id === userId) return true;
-      if (trimmedAuthorName && u.name && u.name.trim().toLowerCase() === trimmedAuthorName) return true;
+    const authorSlug = authorName ? slugify(authorName) : '';
+
+    // Direct match: id, name, slug, email, googleId, username
+    const matched = list.find(u => {
+      if (userId) {
+        if (u.id === userId) return true;
+        if (u.googleId && u.googleId === userId) return true;
+        if (u.email && u.email.toLowerCase() === userId.toLowerCase()) return true;
+        const cleanUserId = userId.replace(/^(user|author|organizer|partner)-/, '');
+        if (u.id === cleanUserId) return true;
+      }
+      if (trimmedAuthorName && u.name) {
+        const uNameLower = u.name.trim().toLowerCase();
+        if (uNameLower === trimmedAuthorName) return true;
+        if (authorSlug && slugify(u.name) === authorSlug) return true;
+      }
+      if (trimmedAuthorName && u.username) {
+        const uClean = u.username.replace('@', '').trim().toLowerCase();
+        if (uClean === trimmedAuthorName || (authorSlug && slugify(uClean) === authorSlug)) return true;
+      }
+      if (isTargetAdmin) {
+        if (u.id && KNOWN_ADMIN_IDS.has(u.id)) return true;
+        if (u.email === 'zoran.krstin@gmail.com') return true;
+        if (u.name && KNOWN_ADMIN_NAMES.has(u.name.trim().toLowerCase())) return true;
+        if (u.role === 'superadmin') return true;
+      }
       return false;
     });
 
     if (matched?.avatar && isUserUploadedAvatar(matched.avatar)) {
       return matched.avatar;
     }
+    return undefined;
+  };
+
+  // 1. Look up in active users list provided from context
+  if (usersList && usersList.length > 0) {
+    const fromList = findInList(usersList);
+    if (fromList) return fromList;
   }
 
-  // 3. Known official organization photos/logos (Portalko, Spas teater)
+  // 2. Direct explicit avatar if uploaded by user and not a dummy image
+  if (explicitAvatar && isUserUploadedAvatar(explicitAvatar)) {
+    return explicitAvatar;
+  }
+
+  // 3. Fallback to localStorage portal_users
+  try {
+    if (typeof window !== 'undefined') {
+      const rawUsers = localStorage.getItem('portal_users');
+      if (rawUsers) {
+        const parsed = JSON.parse(rawUsers);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const fromLocal = findInList(parsed);
+          if (fromLocal) return fromLocal;
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore JSON parse errors in localStorage
+  }
+
+  // 4. Known official organization photos/logos (Portalko, Spas teater)
   if (authorName) {
     const lower = authorName.toLowerCase();
     if (lower.includes('portalko')) {

@@ -11,13 +11,14 @@ import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
 import { useEventFilter } from "../../contexts/EventFilterContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { isDummyAvatar } from "../../utils/avatarUtils";
+import { isDummyAvatar, isUserUploadedAvatar, resolveUserUploadedAvatar, KNOWN_ADMIN_IDS } from "../../utils/avatarUtils";
 import { UserAvatar } from "../common/UserAvatar";
 
 export interface EventPostProps {
   id?: string;
   title?: string;
   organizer?: string;
+  authorName?: string;
   authorId?: string;
   authorAvatar?: string;
   authorRole?: string;
@@ -38,6 +39,7 @@ export interface EventPostProps {
   ticketUrl?: string;
   description?: string;
   image?: string;
+  images?: string[];
   interestedCount?: string | number;
   likesCount?: number | string;
   lovesCount?: number | string;
@@ -54,6 +56,7 @@ export const EventPost: React.FC<EventPostProps> = ({
   id = "event",
   title = "Literarni večer z domačimi avtorji in akustični koncert Dua Sever",
   organizer = "Mestna knjižnica Kranj",
+  authorName,
   authorId,
   authorAvatar,
   authorRole = "Organizator",
@@ -74,6 +77,7 @@ export const EventPost: React.FC<EventPostProps> = ({
   ticketUrl,
   description = "Vabljeni v dvorano Mestne knjižnice Kranj na predstavitev novih pesniških zbirk gorenjskih avtorjev.",
   image,
+  images,
   interestedCount = 86,
   likesCount = 0,
   lovesCount = 0,
@@ -86,32 +90,37 @@ export const EventPost: React.FC<EventPostProps> = ({
   onLocationClick,
 }) => {
   const { filterByEventCategory, filterByEventLocation } = useEventFilter();
-  const { users } = useAuth();
+  const { users, currentUser } = useAuth();
+
+  const effectiveAuthorDisplayName = authorName || organizer;
 
   const effectiveAuthorAvatar = useMemo(() => {
-    if (authorAvatar && !authorAvatar.includes('dicebear.com') && !authorAvatar.includes('ui-avatars.com')) {
+    // 1. Direct explicit uploaded avatar
+    if (authorAvatar && isUserUploadedAvatar(authorAvatar)) {
       return authorAvatar;
     }
-    const orgLower = organizer.toLowerCase();
-    if (orgLower.includes('portalko')) {
-      return 'https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg';
+
+    // 2. Check current active user if author matches
+    if (currentUser?.avatar && isUserUploadedAvatar(currentUser.avatar)) {
+      if (authorId && (currentUser.id === authorId || (KNOWN_ADMIN_IDS.has(authorId) && KNOWN_ADMIN_IDS.has(currentUser.id)))) {
+        return currentUser.avatar;
+      }
+      if (effectiveAuthorDisplayName) {
+        const trimmed = effectiveAuthorDisplayName.trim().toLowerCase();
+        if (currentUser.name && (currentUser.name.trim().toLowerCase() === trimmed || slugify(currentUser.name) === slugify(trimmed))) {
+          return currentUser.avatar;
+        }
+      }
     }
-    if (orgLower.includes('špas') || orgLower.includes('spas')) {
-      return 'https://www.spasteater.si/og-default.jpg';
-    }
-    const user = users.find(u => 
-      (authorId && u.id === authorId) ||
-      (u.name && u.name.trim().toLowerCase() === organizer.trim().toLowerCase()) ||
-      (u.name && slugify(u.name) === slugify(organizer))
+
+    // 3. Resolve using comprehensive user lookup across persistent and active users
+    return resolveUserUploadedAvatar(
+      authorAvatar,
+      authorId,
+      effectiveAuthorDisplayName,
+      users
     );
-    if (user?.avatar && !user.avatar.includes('dicebear.com') && !user.avatar.includes('ui-avatars.com')) {
-      return user.avatar;
-    }
-    if (image && (image.startsWith('http') || image.startsWith('data:image'))) {
-      return image;
-    }
-    return (authorAvatar && !isDummyAvatar(authorAvatar)) ? authorAvatar : undefined;
-  }, [authorAvatar, organizer, authorId, users, image]);
+  }, [authorAvatar, authorId, effectiveAuthorDisplayName, users, currentUser]);
 
   const handleCategoryClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -168,7 +177,8 @@ export const EventPost: React.FC<EventPostProps> = ({
           authorId,
           authorAvatar: effectiveAuthorAvatar,
           authorRole,
-          image: imgSrc,
+          image: imgSrc || image || '',
+          images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
           location,
           date,
           time,
@@ -298,7 +308,7 @@ export const EventPost: React.FC<EventPostProps> = ({
               >
                 {categoryName}
               </button>
-              {organizer && (
+              {effectiveAuthorDisplayName && (
                 <>
                   <span className="text-[11px] text-outline">•</span>
                   <a
@@ -307,7 +317,7 @@ export const EventPost: React.FC<EventPostProps> = ({
                       if (onAuthorClick) {
                         e.preventDefault();
                         onAuthorClick({
-                          name: organizer,
+                          name: effectiveAuthorDisplayName,
                           id: authorId,
                           avatar: effectiveAuthorAvatar,
                           role: authorRole,
@@ -324,7 +334,7 @@ export const EventPost: React.FC<EventPostProps> = ({
                         });
                       }
                     }}
-                    data-author-name={organizer}
+                    data-author-name={effectiveAuthorDisplayName}
                     data-author-id={authorId}
                     data-author-avatar={effectiveAuthorAvatar || ''}
                     data-author-role={authorRole}
@@ -334,18 +344,18 @@ export const EventPost: React.FC<EventPostProps> = ({
                     data-post-image={image}
                     data-post-category={categoryName || category}
                     data-post-location={location}
-                    className="inline-flex items-center gap-1.5 font-label-caps text-[11px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
-                    title={`Ogled profila organizatorja: ${organizer}`}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-on-surface hover:text-primary hover:underline transition-colors group/author"
+                    title={`Ogled profila avtorja: ${effectiveAuthorDisplayName}`}
                   >
                     <UserAvatar
                       src={effectiveAuthorAvatar}
-                      name={organizer}
+                      name={effectiveAuthorDisplayName}
                       userId={authorId}
                       role={authorRole}
-                      size="xs"
-                      className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
+                      size="sm"
+                      className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 ring-1.5 ring-surface-container-high group-hover/author:ring-primary shadow-xs transition-all"
                     />
-                    <span>{organizer}</span>
+                    <span>{effectiveAuthorDisplayName}</span>
                   </a>
                 </>
               )}
