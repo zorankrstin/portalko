@@ -3,6 +3,7 @@ import { NotificationCenter } from './NotificationCenter';
 import { useBookmarks } from '../contexts/BookmarkContext';
 import { useAuth } from '../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
+import { UserAvatar } from './common/UserAvatar';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { parseSearchQuery, buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
@@ -285,10 +286,13 @@ export function Header({
                 aria-expanded={isUserMenuOpen}
                 title={`Profil: ${currentUser.name}`}
               >
-                <img 
-                  alt={currentUser.name} 
-                  className="w-9 h-9 rounded-full object-cover ring-2 ring-primary/20 shadow-xs" 
-                  src={currentUser.avatar} 
+                <UserAvatar
+                  src={currentUser.avatar}
+                  name={currentUser.name}
+                  userId={currentUser.id}
+                  role={currentUser.role}
+                  size="sm"
+                  className="w-9 h-9 ring-2 ring-primary/20 shadow-xs"
                 />
                 <div className="hidden md:flex flex-col text-left">
                   <span className="text-xs font-bold text-on-surface leading-tight truncate max-w-[120px]">

@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
 import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers, deleteUserFromFirestore } from '../services/firestoreService';
+import { sendNoreplyConfirmationEmail } from '../services/emailService';
+import { isDummyAvatar } from '../utils/avatarUtils';
 
 export type Role = 'superadmin' | 'admin' | 'verified' | 'registered' | 'guest';
 
@@ -66,6 +68,10 @@ export interface User {
   verificationRequested?: boolean;
   verificationRequestedAt?: string;
   verificationNote?: string;
+  emailVerified?: boolean;
+  verificationToken?: string;
+  verificationSentAt?: string;
+  verificationConfirmedAt?: string;
 }
 
 export const DEFAULT_USERS: User[] = [
@@ -75,7 +81,7 @@ export const DEFAULT_USERS: User[] = [
     email: 'zoran.krstin@gmail.com', 
     role: 'superadmin', 
     status: 'active', 
-    avatar: 'https://ui-avatars.com/api/?name=Zoran+Krstin&background=7C3AED&color=fff',
+    emailVerified: true,
     bio: 'Navdušenec nad tehnologijo, športom in dobro kavo. Redni obiskovalec dogodkov v Ljubljani in okolici. Vedno za dobro debato.',
     username: '@zorankrstin',
     socialLinks: [
@@ -94,7 +100,7 @@ export const DEFAULT_USERS: User[] = [
     email: 'maja.z@example.com', 
     role: 'verified', 
     status: 'active', 
-    avatar: 'https://ui-avatars.com/api/?name=Maja+Zupan&background=F59E0B&color=fff',
+    emailVerified: true,
     bio: 'Kulinarični blog in doživetja po Sloveniji.',
     username: '@maja_zupan',
     socialLinks: [
@@ -109,11 +115,42 @@ export const DEFAULT_USERS: User[] = [
     email: 'janez.h@example.com', 
     role: 'registered', 
     status: 'banned', 
-    avatar: 'https://ui-avatars.com/api/?name=Janez+Horvat&background=EF4444&color=fff',
+    emailVerified: true,
     bio: 'Član skupnosti.',
     username: '@janez_h',
     profileMenu: DEFAULT_PROFILE_MENU,
     password: 'geslo123'
+  },
+  {
+    id: 'u_1790075229756',
+    name: 'Uredništvo Portalko.net',
+    email: 'telemach987@proton.me',
+    role: 'admin',
+    status: 'active',
+    emailVerified: true,
+    avatar: 'https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg',
+    bio: 'Uradno uredništvo portala Portalko.net.',
+    username: '@urednistvo_portalko',
+    profileMenu: DEFAULT_PROFILE_MENU,
+    password: 'admin123',
+    socialLinks: [
+      { id: 's1', platform: 'website', url: 'https://portalko.net', label: 'Portalko.net' }
+    ]
+  },
+  {
+    id: 'u_1790672978765',
+    name: 'Špas teater',
+    email: 'info@spasteater.si',
+    role: 'verified',
+    status: 'active',
+    emailVerified: true,
+    avatar: 'https://www.spasteater.si/og-default.jpg',
+    bio: 'Slovensko profesionalno gledališče komedije iz Mengša.',
+    username: '@spas_teater',
+    profileMenu: DEFAULT_PROFILE_MENU,
+    socialLinks: [
+      { id: 's1', platform: 'website', url: 'https://spasteater.com', label: 'spasteater.com' }
+    ]
   },
 ];
 
@@ -136,6 +173,7 @@ export interface RegisterData {
   role?: Role;
   avatar?: string;
   password?: string;
+  autoVerify?: boolean;
 }
 
 export interface GoogleAuthData {
@@ -149,14 +187,16 @@ export interface GoogleAuthData {
 interface AuthContextType {
   users: User[];
   currentUser: User | null;
-  login: (idOrEmail: string, password?: string) => { success: boolean; error?: string; user?: User };
-  loginWithCredentials: (email: string, password: string) => { success: boolean; error?: string; user?: User };
+  login: (idOrEmail: string, password?: string) => { success: boolean; error?: string; user?: User; requiresVerification?: boolean };
+  loginWithCredentials: (email: string, password: string) => { success: boolean; error?: string; user?: User; requiresVerification?: boolean; unverifiedEmail?: string };
   loginById: (id: string) => { success: boolean; error?: string; user?: User };
   logout: () => void;
   updateUser: (id: string, data: Partial<User>) => void;
   deleteUser: (id: string) => void;
   changePassword: (userId: string, oldPass: string, newPass: string) => { success: boolean; error?: string };
-  register: (data: RegisterData) => { success: boolean; error?: string; user?: User };
+  register: (data: RegisterData) => Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string }>;
+  resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string; confirmationUrl?: string }>;
+  confirmEmailWithToken: (token: string, email?: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   loginOrRegisterWithGoogle: (data: GoogleAuthData) => { success: boolean; error?: string; user?: User; isNewUser: boolean };
   signInWithGoogleFirebase: () => Promise<{ success: boolean; error?: string; user?: User }>;
   requestVerification: (userId: string, note?: string) => { success: boolean; error?: string };
@@ -177,11 +217,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const parsed = JSON.parse(savedUsers);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Ensure default passwords if missing from older saved states and filter dummy users
+          // Ensure default passwords if missing from older saved states, filter dummy users,
+          // and strip any legacy dummy avatars so only user-uploaded images are used.
           initialUsers = parsed
             .filter((u: User) => !isDummyUser(u))
             .map((u: User) => ({
               ...u,
+              avatar: (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : undefined,
               password: u.password || (u.role === 'superadmin' ? 'admin123' : 'geslo123'),
             }));
         }
@@ -212,7 +254,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           prev.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
           firestoreUsers.filter(u => !isDummyUser(u)).forEach(u => {
             const existing = map.get(u.id);
-            map.set(u.id, existing ? { ...existing, ...u } : u);
+            // Prioritize genuine user-uploaded avatar over empty or dummy
+            const cleanUploadedAvatar = (u.avatar && !isDummyAvatar(u.avatar))
+              ? u.avatar
+              : ((existing?.avatar && !isDummyAvatar(existing.avatar)) ? existing.avatar : undefined);
+            map.set(u.id, existing ? { ...existing, ...u, avatar: cleanUploadedAvatar } : { ...u, avatar: cleanUploadedAvatar });
           });
           const merged = Array.from(map.values()).filter(u => !isDummyUser(u));
           localStorage.setItem('portal_users', JSON.stringify(merged));
@@ -226,10 +272,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const email = fbUser.email.toLowerCase();
         const profile = await fetchUserProfile(fbUser.uid);
         let activeProfile: User;
+        const existingLocalUser = initialUsers.find(u => u.email.toLowerCase() === email || u.id === fbUser.uid);
+        const resolvedUploadedAvatar = (profile?.avatar && !isDummyAvatar(profile.avatar))
+          ? profile.avatar
+          : (existingLocalUser?.avatar && !isDummyAvatar(existingLocalUser.avatar))
+            ? existingLocalUser.avatar
+            : (fbUser.photoURL && !isDummyAvatar(fbUser.photoURL))
+              ? fbUser.photoURL
+              : undefined;
+
         if (profile && profile.status === 'active' && !isDummyUser(profile)) {
-          activeProfile = profile;
-          setCurrentUser(profile);
-          localStorage.setItem('portal_current_user_id', profile.id);
+          activeProfile = { ...profile, avatar: resolvedUploadedAvatar };
+          setCurrentUser(activeProfile);
+          localStorage.setItem('portal_current_user_id', activeProfile.id);
         } else {
           const isSuper = email === 'zoran.krstin@gmail.com';
           const defaultRole: Role = isSuper ? 'superadmin' : 'registered';
@@ -239,7 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email,
             role: defaultRole,
             status: 'active',
-            avatar: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || email)}&background=4285F4&color=fff`,
+            avatar: resolvedUploadedAvatar,
             authProvider: 'google',
             googleId: fbUser.uid,
           };
@@ -297,6 +352,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const expectedPass = user.password || 'geslo123';
     if (user.password && user.password !== trimmedPass && trimmedPass !== 'admin123' && trimmedPass !== 'geslo123') {
       return { success: false, error: 'Napačno geslo. Prosimo, preverite vnos.' };
+    }
+
+    // Check if email requires confirmation
+    if (user.emailVerified === false) {
+      return {
+        success: false,
+        error: 'Vaš e-poštni naslov še ni potrjen. Za aktivacijo računa odprite e-pošto iz noreply@portalko.net in kliknite na potrditveno povezavo.',
+        requiresVerification: true,
+        unverifiedEmail: trimmedEmail,
+        user,
+      };
     }
 
     setCurrentUser(user);
@@ -384,7 +450,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true };
   };
 
-  const register = (data: RegisterData) => {
+  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string }> => {
     const trimmedName = data.name.trim();
     const trimmedEmail = data.email.trim().toLowerCase();
     const trimmedPassword = (data.password || '').trim();
@@ -399,21 +465,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Geslo mora imeti vsaj 6 znakov.' };
     }
 
-    if (users.some(u => u.email.toLowerCase() === trimmedEmail)) {
+    const existingUser = users.find(u => u.email.toLowerCase() === trimmedEmail);
+    if (existingUser) {
+      if (existingUser.emailVerified === false) {
+        return { 
+          success: false, 
+          error: 'Uporabnik s tem e-poštnim naslovom je že registriran, vendar še ni potrdil e-pošte. Preverite vaš e-poštni predal (tudi med vsiljeno pošto) ali ponovno pošljite potrditveno povezavo.',
+          requiresVerification: true,
+          user: existingUser,
+        };
+      }
       return { success: false, error: 'Uporabnik s tem e-poštnim naslovom že obstaja. Prijavite se z vašim geslom.' };
     }
 
     const role: Role = data.role || (trimmedEmail === 'zoran.krstin@gmail.com' ? 'superadmin' : 'registered');
-    const roleColors: Record<string, string> = {
-      superadmin: '7C3AED',
-      admin: 'DC2626',
-      verified: 'D97706',
-      registered: '0D8ABC',
-      guest: '6B7280',
-    };
+    const avatar = (data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : undefined;
 
-    const bgColor = roleColors[role] || '0D8ABC';
-    const avatar = data.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(trimmedName)}&background=${bgColor}&color=fff`;
+    const isAutoVerified = Boolean(data.autoVerify);
+    const verificationToken = isAutoVerified ? undefined : `vt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
 
     const newUser: User = {
       id: `u_${Date.now()}`,
@@ -423,18 +492,136 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status: 'active',
       avatar,
       password: trimmedPassword || 'geslo123',
+      emailVerified: isAutoVerified,
+      verificationToken,
+      verificationSentAt: isAutoVerified ? undefined : new Date().toISOString(),
     };
 
     const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);
     localStorage.setItem('portal_users', JSON.stringify(updatedUsers));
-
-    // Automatically log in as the newly created user
-    setCurrentUser(newUser);
-    localStorage.setItem('portal_current_user_id', newUser.id);
     syncUserProfile(newUser).catch(console.error);
 
-    return { success: true, user: newUser };
+    if (isAutoVerified) {
+      // Auto-verified user (e.g. from admin panel)
+      setCurrentUser(newUser);
+      localStorage.setItem('portal_current_user_id', newUser.id);
+      return { success: true, user: newUser, requiresVerification: false };
+    }
+
+    // Unverified user registration: generate confirmation link and send noreply verification mail
+    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://portalko.net';
+    const confirmationUrl = `${origin}/?verify-email=${verificationToken}&email=${encodeURIComponent(trimmedEmail)}`;
+
+    try {
+      await sendNoreplyConfirmationEmail({
+        name: trimmedName,
+        email: trimmedEmail,
+        token: verificationToken!,
+        confirmationUrl,
+      });
+    } catch (mailErr) {
+      console.warn('Could not dispatch confirmation email:', mailErr);
+    }
+
+    return { 
+      success: true, 
+      user: newUser, 
+      requiresVerification: true, 
+      confirmationUrl 
+    };
+  };
+
+  const resendVerificationEmail = async (email: string): Promise<{ success: boolean; error?: string; confirmationUrl?: string }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    const user = users.find(u => u.email.toLowerCase() === trimmedEmail);
+    if (!user) {
+      return { success: false, error: 'Uporabnik s tem e-poštnim naslovom ne obstaja.' };
+    }
+    if (user.emailVerified) {
+      return { success: false, error: 'Ta račun je že potrjen. Lahko se prijavite.' };
+    }
+
+    const token = user.verificationToken || `vt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://portalko.net';
+    const confirmationUrl = `${origin}/?verify-email=${token}&email=${encodeURIComponent(trimmedEmail)}`;
+
+    const updatedUser: User = {
+      ...user,
+      verificationToken: token,
+      verificationSentAt: new Date().toISOString(),
+    };
+
+    updateUser(user.id, updatedUser);
+
+    const emailRes = await sendNoreplyConfirmationEmail({
+      name: user.name,
+      email: trimmedEmail,
+      token,
+      confirmationUrl,
+    });
+
+    if (!emailRes.success) {
+      return { success: false, error: emailRes.error || 'Napaka pri ponovnem pošiljanju sporočila.', confirmationUrl };
+    }
+
+    return { success: true, confirmationUrl };
+  };
+
+  const confirmEmailWithToken = async (token: string, email?: string): Promise<{ success: boolean; error?: string; user?: User }> => {
+    const cleanToken = token.trim();
+    if (!cleanToken) {
+      return { success: false, error: 'Manjka potrditveni žeton.' };
+    }
+
+    // Try finding user by verificationToken
+    let user = users.find(u => u.verificationToken === cleanToken || (email && u.email.toLowerCase() === email.toLowerCase().trim() && u.verificationToken === cleanToken));
+
+    // Fallback: check localStorage
+    if (!user) {
+      const savedUsers = localStorage.getItem('portal_users');
+      if (savedUsers) {
+        try {
+          const parsed: User[] = JSON.parse(savedUsers);
+          user = parsed.find(u => u.verificationToken === cleanToken || (email && u.email.toLowerCase() === email.toLowerCase().trim() && u.verificationToken === cleanToken));
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    // Check if user with that email is already verified
+    if (!user && email) {
+      const already = users.find(u => u.email.toLowerCase() === email.toLowerCase().trim() && u.emailVerified);
+      if (already) {
+        setCurrentUser(already);
+        localStorage.setItem('portal_current_user_id', already.id);
+        return { success: true, user: already };
+      }
+    }
+
+    if (!user) {
+      return { success: false, error: 'Potrditvena povezava ni veljavna ali pa je že potekla.' };
+    }
+
+    const verifiedUser: User = {
+      ...user,
+      emailVerified: true,
+      verificationToken: undefined,
+      verificationConfirmedAt: new Date().toISOString(),
+    };
+
+    setUsers(prev => {
+      const updated = prev.map(u => u.id === verifiedUser.id ? verifiedUser : u);
+      localStorage.setItem('portal_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    setCurrentUser(verifiedUser);
+    localStorage.setItem('portal_current_user_id', verifiedUser.id);
+    syncUserProfile(verifiedUser).catch(console.error);
+
+    return { success: true, user: verifiedUser };
   };
 
   const loginOrRegisterWithGoogle = (data: GoogleAuthData) => {
@@ -450,9 +637,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Ta račun je bil začasno onemogočen.', isNewUser: false };
       }
 
+      const cleanUploadedAvatar = (existingUser.avatar && !isDummyAvatar(existingUser.avatar))
+        ? existingUser.avatar
+        : ((data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : undefined);
+
       const updatedUser: User = {
         ...existingUser,
-        avatar: existingUser.avatar || data.avatar,
+        avatar: cleanUploadedAvatar,
         authProvider: 'google',
         googleId: existingUser.googleId || data.googleId || `g_${Date.now()}`,
       };
@@ -469,13 +660,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Register new user via Google
     const displayName = data.name.trim() || trimmedEmail.split('@')[0];
+    const cleanAvatar = (data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : undefined;
     const newUser: User = {
       id: `u_g_${Date.now().toString(36)}`,
       name: displayName,
       email: trimmedEmail,
       role: data.role || (trimmedEmail === 'zoran.krstin@gmail.com' ? 'superadmin' : 'registered'),
       status: 'active',
-      avatar: data.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=4285F4&color=fff`,
+      avatar: cleanAvatar,
       authProvider: 'google',
       googleId: data.googleId || `g_${Date.now().toString(36)}`,
       password: 'google_oauth_user'
@@ -500,19 +692,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const email = fbUser.email.toLowerCase();
       const displayName = fbUser.displayName || email.split('@')[0];
-      const avatar = fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=4285F4&color=fff`;
 
       const isSuper = email === 'zoran.krstin@gmail.com';
       const defaultRole: Role = isSuper ? 'superadmin' : 'registered';
 
       const existingUser = users.find(u => u.email.toLowerCase() === email);
+      const cleanAvatar = (existingUser?.avatar && !isDummyAvatar(existingUser.avatar))
+        ? existingUser.avatar
+        : ((fbUser.photoURL && !isDummyAvatar(fbUser.photoURL)) ? fbUser.photoURL : undefined);
+
       const userToSave: User = {
         id: fbUser.uid,
         name: displayName,
         email,
         role: existingUser?.role || defaultRole,
         status: existingUser?.status || 'active',
-        avatar,
+        avatar: cleanAvatar,
         authProvider: 'google',
         googleId: fbUser.uid,
       };
@@ -570,6 +765,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       deleteUser,
       changePassword, 
       register,
+      resendVerificationEmail,
+      confirmEmailWithToken,
       loginOrRegisterWithGoogle,
       signInWithGoogleFirebase,
       requestVerification,

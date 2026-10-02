@@ -9,6 +9,8 @@ import { PromotionBadgeType, PostDetailTarget } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { UserAvatar } from "../common/UserAvatar";
+import { isUserUploadedAvatar } from "../../utils/avatarUtils";
 
 export interface AdPostProps {
   id?: string;
@@ -224,7 +226,7 @@ export const AdPost: React.FC<AdPostProps> = ({
                   href={authorUrl}
                   data-author-name={author}
                   data-author-id={authorId}
-                  data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`}
+                  data-author-avatar={(authorAvatar && isUserUploadedAvatar(authorAvatar)) ? authorAvatar : ''}
                   data-author-role={authorRole}
                   data-post-id={id}
                   data-post-type="ad"
@@ -236,17 +238,14 @@ export const AdPost: React.FC<AdPostProps> = ({
                   className="inline-flex items-center gap-1.5 font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
                   title={`Ogled profila prodajalca: ${author}`}
                 >
-                  {authorAvatar ? (
-                    <img 
-                      src={authorAvatar} 
-                      alt={author} 
-                      className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
-                    />
-                  ) : (
-                    <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] shrink-0">
-                      {authorInitials || author.slice(0, 2).toUpperCase()}
-                    </span>
-                  )}
+                  <UserAvatar
+                    src={authorAvatar}
+                    name={author}
+                    userId={authorId}
+                    role={authorRole}
+                    size="xs"
+                    className="w-5 h-5 ring-1 ring-surface-container/60 shrink-0"
+                  />
                   <span>{author}</span>
                 </a>
                 <span>•</span>

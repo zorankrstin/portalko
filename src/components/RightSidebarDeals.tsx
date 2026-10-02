@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  CheckCircle2, Calculator, ShieldCheck, 
-  BookOpen, ExternalLink, Bell, Percent, Sparkles 
+  CheckCircle2, 
+  BookOpen, ExternalLink, Bell, Percent 
 } from 'lucide-react';
 import { CATALOGUES_DATA } from '../data/mockDealsData';
 import { PostDetailTarget } from '../types';
@@ -16,12 +16,6 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
   const [emailInput, setEmailInput] = useState('');
   const [subscribed, setSubscribed] = useState(false);
   const [userDeals, setUserDeals] = useState<FirestorePost[]>([]);
-  const [calcCategories, setCalcCategories] = useState({
-    food: true,
-    tech: true,
-    sports: false,
-    tourism: true,
-  });
 
   useEffect(() => {
     const unsub = subscribeToPosts((allPosts) => {
@@ -51,15 +45,6 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
       setEmailInput('');
     }
   };
-
-  const estimatedMonthlySavings = useMemo(() => {
-    let total = 0;
-    if (calcCategories.food) total += 85;
-    if (calcCategories.tech) total += 45;
-    if (calcCategories.sports) total += 30;
-    if (calcCategories.tourism) total += 60;
-    return total;
-  }, [calcCategories]);
 
   return (
     <aside 
@@ -113,81 +98,7 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
         </div>
       </div>
 
-      {/* 1. PAMETNI KALKULATOR PRIHRANKOV */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Calculator className="w-4 h-4 text-secondary" />
-            <h3 className="font-headline-sm text-sm font-bold text-on-surface">Kalkulator prihrankov</h3>
-          </div>
-          <span className="font-label-caps text-[10px] px-2 py-0.5 rounded bg-surface-container text-outline uppercase font-semibold">
-            Mesečno
-          </span>
-        </div>
-        <p className="font-body-sm text-xs text-outline leading-tight">
-          Izračunajte ocenjeni prihranek z ugodnostmi in kuponi Portal.si:
-        </p>
-
-        <div className="space-y-1.5 text-xs pt-1">
-          <label className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low/70 cursor-pointer hover:bg-surface-container">
-            <span className="flex items-center gap-2 text-on-surface">
-              <input 
-                type="checkbox" 
-                checked={calcCategories.food}
-                onChange={(e) => setCalcCategories({ ...calcCategories, food: e.target.checked })}
-                className="rounded text-primary focus:ring-primary"
-              />
-              <span>Prehrana &amp; živila</span>
-            </span>
-            <span className="text-secondary font-bold font-mono">~85 €</span>
-          </label>
-          <label className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low/70 cursor-pointer hover:bg-surface-container">
-            <span className="flex items-center gap-2 text-on-surface">
-              <input 
-                type="checkbox" 
-                checked={calcCategories.tech}
-                onChange={(e) => setCalcCategories({ ...calcCategories, tech: e.target.checked })}
-                className="rounded text-primary focus:ring-primary"
-              />
-              <span>Tehnika &amp; računalništvo</span>
-            </span>
-            <span className="text-secondary font-bold font-mono">~45 €</span>
-          </label>
-          <label className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low/70 cursor-pointer hover:bg-surface-container">
-            <span className="flex items-center gap-2 text-on-surface">
-              <input 
-                type="checkbox" 
-                checked={calcCategories.tourism}
-                onChange={(e) => setCalcCategories({ ...calcCategories, tourism: e.target.checked })}
-                className="rounded text-primary focus:ring-primary"
-              />
-              <span>Turizem &amp; oddih</span>
-            </span>
-            <span className="text-secondary font-bold font-mono">~60 €</span>
-          </label>
-          <label className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low/70 cursor-pointer hover:bg-surface-container">
-            <span className="flex items-center gap-2 text-on-surface">
-              <input 
-                type="checkbox" 
-                checked={calcCategories.sports}
-                onChange={(e) => setCalcCategories({ ...calcCategories, sports: e.target.checked })}
-                className="rounded text-primary focus:ring-primary"
-              />
-              <span>Šport &amp; rekreacija</span>
-            </span>
-            <span className="text-secondary font-bold font-mono">~30 €</span>
-          </label>
-        </div>
-
-        <div className="p-3 rounded-xl bg-secondary-fixed/30 border border-secondary/20 flex items-center justify-between">
-          <span className="font-label-md text-xs font-bold text-on-surface">Ocenjen prihranek:</span>
-          <span className="font-headline-md text-lg font-black text-secondary font-mono">
-            {estimatedMonthlySavings} € / mesec
-          </span>
-        </div>
-      </div>
-
-      {/* 3. AKTUALNI KATALOGI IN LETAKI */}
+      {/* 2. AKTUALNI KATALOGI IN LETAKI */}
       <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-headline-sm text-sm font-bold text-on-surface flex items-center gap-2">
@@ -227,29 +138,7 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
         </div>
       </div>
 
-      {/* 4. PREVERJENE UGODNOSTI IN JAMSTVO */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-2.5">
-        <div className="flex items-center gap-2 pb-1 border-b border-surface-container-low">
-          <ShieldCheck className="w-4 h-4 text-secondary" />
-          <h4 className="font-headline-sm text-sm font-bold text-on-surface">Portal.si jamstvo</h4>
-        </div>
-        <ul className="space-y-2 text-xs text-on-surface-variant leading-relaxed">
-          <li className="flex items-start gap-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-secondary shrink-0 mt-0.5" />
-            <span>Vsak dan preverjamo veljavnost promocijskih kod in letakov.</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-secondary shrink-0 mt-0.5" />
-            <span>Uporabniki z glasovi potrjujejo delovanje v realnem času.</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-            <span>Ekskluzivni popusti le za obiskovalce portala.</span>
-          </li>
-        </ul>
-      </div>
-
-      {/* 5. NEWSLETTER / ALERTI */}
+      {/* 3. NEWSLETTER / ALERTI */}
       <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-primary/10 via-surface-container-lowest to-secondary/10 border border-primary/20 shadow-sm space-y-3">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-primary" />

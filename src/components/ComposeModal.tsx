@@ -42,6 +42,7 @@ import { LoginModal } from './LoginModal';
 import { useCategories } from '../hooks/useCategories';
 import { CategorySection, SLOVENIA_REGIONS, getAllSloveniaCities, getTertiaryCategories } from '../services/categoryService';
 import { compressImageFileToDataUrl } from '../utils/imageUtils';
+import { isDummyAvatar } from '../utils/avatarUtils';
 import { EventScheduleSlot } from '../types';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
@@ -457,7 +458,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
   const authorName = currentUser ? currentUser.name : 'Gost';
-  const authorAvatar = currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=7C3AED&color=fff`;
+  const authorAvatar = (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : '';
   const authorRole = currentUser?.role || 'guest';
   const authorId = currentUser?.id || 'guest_user';
 

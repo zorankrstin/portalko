@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, LogIn, UserPlus, Shield, Check, AlertCircle, UserCheck, User, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { X, LogIn, UserPlus, Shield, Check, AlertCircle, UserCheck, User, Eye, EyeOff, Sparkles, Mail, Send, RefreshCw, ExternalLink, ArrowLeft } from 'lucide-react';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { GoogleAuthButton } from './GoogleAuthButton';
 
@@ -11,19 +11,30 @@ interface LoginModalProps {
 }
 
 export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModalProps) {
-  const { loginWithCredentials, register } = useAuth();
+  const { loginWithCredentials, register, resendVerificationEmail, confirmEmailWithToken } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [unverifiedLoginEmail, setUnverifiedLoginEmail] = useState('');
 
   // Registration form state
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+
+  // Verification pending state
+  const [verificationPending, setVerificationPending] = useState<{
+    email: string;
+    name: string;
+    confirmationUrl?: string;
+  } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendFeedback, setResendFeedback] = useState('');
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -34,6 +45,9 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
       setMode(initialMode);
       setErrorMsg('');
       setSuccessMsg('');
+      setVerificationPending(null);
+      setUnverifiedLoginEmail('');
+      setResendFeedback('');
     }
   }, [isOpen, initialMode]);
 
@@ -54,10 +68,14 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setUnverifiedLoginEmail('');
 
     const res = loginWithCredentials(loginEmail, loginPassword);
     if (!res.success) {
       setErrorMsg(res.error || 'Neuspešna prijava. Preverite vnesene podatke.');
+      if (res.requiresVerification) {
+        setUnverifiedLoginEmail(loginEmail.trim());
+      }
       return;
     }
 
@@ -70,32 +88,97 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
     }, 600);
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setIsSubmitting(true);
 
-    const res = register({
-      name: regName,
-      email: regEmail,
-      password: regPassword,
-      role: 'registered',
-    });
+    try {
+      const res = await register({
+        name: regName,
+        email: regEmail,
+        password: regPassword,
+        role: 'registered',
+      });
 
-    if (!res.success) {
-      setErrorMsg(res.error || 'Prišlo je do napake pri registraciji.');
-      return;
+      if (!res.success) {
+        setErrorMsg(res.error || 'Prišlo je do napake pri registraciji.');
+        if (res.requiresVerification && res.user) {
+          setUnverifiedLoginEmail(res.user.email);
+        }
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (res.requiresVerification) {
+        setVerificationPending({
+          email: regEmail,
+          name: regName,
+          confirmationUrl: res.confirmationUrl,
+        });
+        setRegPassword('');
+      } else {
+        setSuccessMsg(`Račun za ${res.user?.name} uspešno ustvarjen! Prijavljeni ste.`);
+        setTimeout(() => {
+          onClose();
+          setRegName('');
+          setRegEmail('');
+          setRegPassword('');
+          setSuccessMsg('');
+        }, 800);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Prišlo je do napake pri registraciji.');
+    } finally {
+      setIsSubmitting(false);
     }
+  };
 
-    setSuccessMsg(`Račun za ${res.user?.name} uspešno ustvarjen! Prijavljeni ste.`);
-    setTimeout(() => {
-      onClose();
-      // Reset form
-      setRegName('');
-      setRegEmail('');
-      setRegPassword('');
-      setSuccessMsg('');
-    }, 800);
+  const handleResendVerification = async (targetEmail: string) => {
+    setIsResending(true);
+    setResendFeedback('');
+    setErrorMsg('');
+
+    try {
+      const res = await resendVerificationEmail(targetEmail);
+      if (res.success) {
+        setResendFeedback('Potrditveno sporočilo iz noreply@portalko.net je bilo ponovno poslano!');
+        if (res.confirmationUrl && verificationPending) {
+          setVerificationPending(prev => prev ? { ...prev, confirmationUrl: res.confirmationUrl } : prev);
+        }
+      } else {
+        setErrorMsg(res.error || 'Napaka pri ponovnem pošiljanju potrditvene e-pošte.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Napaka pri pošiljanju potrditvene e-pošte.');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const handleDirectConfirmSimulation = async (confirmationUrl?: string) => {
+    if (!confirmationUrl) return;
+    try {
+      const url = new URL(confirmationUrl);
+      const token = url.searchParams.get('verify-email');
+      const email = url.searchParams.get('email') || verificationPending?.email;
+      if (token) {
+        const res = await confirmEmailWithToken(token, email);
+        if (res.success) {
+          setSuccessMsg(`E-pošta uspešno potrjena! Dobrodošli, ${res.user?.name}!`);
+          setTimeout(() => {
+            onClose();
+            setVerificationPending(null);
+            setSuccessMsg('');
+          }, 800);
+        } else {
+          setErrorMsg(res.error || 'Potrditev ni uspela.');
+        }
+      }
+    } catch (e: any) {
+      setErrorMsg('Napaka pri odpiranju potrditvene povezave.');
+    }
   };
 
   return createPortal(
@@ -174,7 +257,97 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
             </div>
           )}
 
-          {mode === 'login' ? (
+          {verificationPending ? (
+            <div className="flex flex-col items-center text-center py-2 animate-in fade-in zoom-in-95 duration-200">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-4 shadow-sm relative">
+                <Mail className="w-8 h-8 text-primary" />
+                <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-primary text-on-primary flex items-center justify-center text-[10px] font-bold shadow-xs">
+                  ✓
+                </span>
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-3 border border-primary/20">
+                <Send className="w-3.5 h-3.5" />
+                <span>Noreply potrditveno sporočilo poslano</span>
+              </div>
+
+              <h3 className="font-headline-sm text-lg font-bold text-on-surface mb-2">
+                Preverite vaš e-poštni predal
+              </h3>
+
+              <p className="font-body-md text-sm text-on-surface-variant max-w-sm mb-4 leading-relaxed">
+                Na naslov <strong className="text-on-surface font-semibold">{verificationPending.email}</strong> smo poslali potrditveno sporočilo iz <strong className="text-primary font-semibold">noreply@portalko.net</strong>. Za dokončanje registracije in aktivacijo računa kliknite na potrditveno povezavo v sporočilu.
+              </p>
+
+              {/* Step by step instructions */}
+              <div className="w-full text-left bg-surface-container-low rounded-xl p-3.5 border border-surface-container mb-4 text-xs text-on-surface-variant space-y-2.5">
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
+                  <span>Odprite vaš e-poštni predal (preverite tudi mapo z vsiljeno pošto / <em>Spam</em>).</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
+                  <span>Poiščite sporočilo pošiljatelja <strong>noreply@portalko.net</strong> z zadevo <strong>»Potrdite svoj račun na Portalko.net«</strong>.</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
+                  <span>Kliknite na vijolični gumb <strong>»Potrdi moj račun«</strong> in vaš račun bo aktiviran.</span>
+                </div>
+              </div>
+
+              {resendFeedback && (
+                <div className="w-full mb-3 p-2.5 rounded-lg bg-secondary/15 border border-secondary/30 text-secondary text-xs flex items-center justify-center gap-1.5 animate-in fade-in">
+                  <Check className="w-3.5 h-3.5 shrink-0" />
+                  <span>{resendFeedback}</span>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="w-full flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  disabled={isResending}
+                  onClick={() => handleResendVerification(verificationPending.email)}
+                  className="w-full py-2.5 rounded-xl border border-surface-container hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                  <span>{isResending ? 'Pošiljanje novega sporočila...' : 'Ponovno pošlji potrditveno povezavo'}</span>
+                </button>
+
+                {verificationPending.confirmationUrl && (
+                  <div className="p-3 rounded-xl bg-primary/5 border border-primary/15 text-left mt-1">
+                    <p className="text-[11px] text-outline mb-1.5 font-medium flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-primary" />
+                      <span>Hitri test (neposredna potrditev v brskalniku):</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleDirectConfirmSimulation(verificationPending.confirmationUrl)}
+                      className="w-full py-2 px-3 rounded-lg bg-primary hover:bg-primary-container text-on-primary text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Potrdi račun zdaj (testna povezava)</span>
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerificationPending(null);
+                    setMode('login');
+                    setLoginEmail(verificationPending.email);
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                  }}
+                  className="mt-2 text-xs font-semibold text-primary hover:underline flex items-center justify-center gap-1"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Že potrjeno? Nadaljuj na prijavo</span>
+                </button>
+              </div>
+            </div>
+          ) : mode === 'login' ? (
             <div className="flex flex-col gap-4">
               {/* Google Sign-in Option */}
               <div className="flex flex-col gap-2">
@@ -196,6 +369,28 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                   <div className="h-px flex-1 bg-surface-container" />
                 </div>
               </div>
+
+              {/* Prompt to resend verification email if login failed due to unverified email */}
+              {unverifiedLoginEmail && (
+                <div className="p-3.5 rounded-xl bg-primary/10 border border-primary/20 text-xs flex flex-col gap-2">
+                  <div className="flex items-center gap-2 font-bold text-primary">
+                    <Mail className="w-4 h-4 shrink-0" />
+                    <span>Potrditveno sporočilo ni prispelo?</span>
+                  </div>
+                  <p className="text-on-surface-variant text-[11px]">
+                    Za aktivacijo računa <strong>{unverifiedLoginEmail}</strong> morate klikniti na povezavo v prejeti noreply pošti.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isResending}
+                    onClick={() => handleResendVerification(unverifiedLoginEmail)}
+                    className="self-start py-1.5 px-3 rounded-lg bg-primary text-on-primary text-xs font-bold hover:bg-primary-container transition-colors flex items-center gap-1.5"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                    <span>{isResending ? 'Pošiljanje...' : 'Ponovno pošlji potrditveno e-pošto'}</span>
+                  </button>
+                </div>
+              )}
 
               {/* Real Email & Password Login Form */}
               <form onSubmit={handleLoginSubmit} className="flex flex-col gap-3.5">
@@ -253,7 +448,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                   Še nimate računa?{' '}
                   <button
                     type="button"
-                    onClick={() => { setMode('register'); setErrorMsg(''); setSuccessMsg(''); }}
+                    onClick={() => { setMode('register'); setErrorMsg(''); setSuccessMsg(''); setVerificationPending(null); }}
                     className="text-primary font-bold hover:underline"
                   >
                     Registrirajte se tukaj
@@ -348,10 +543,20 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
 
               <button
                 type="submit"
-                className="w-full mt-2 py-3 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2"
+                disabled={isSubmitting}
+                className="w-full mt-2 py-3 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                <UserPlus className="w-4 h-4" />
-                <span>Ustvari račun in se prijavi</span>
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Pošiljanje potrditvenega sporočila...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4" />
+                    <span>Ustvari račun in pošlji potrditev</span>
+                  </>
+                )}
               </button>
 
               <div className="pt-2 text-center">
@@ -359,7 +564,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                   Že imate račun?{' '}
                   <button
                     type="button"
-                    onClick={() => { setMode('login'); setErrorMsg(''); setSuccessMsg(''); }}
+                    onClick={() => { setMode('login'); setErrorMsg(''); setSuccessMsg(''); setVerificationPending(null); }}
                     className="text-primary font-bold hover:underline"
                   >
                     Prijavite se

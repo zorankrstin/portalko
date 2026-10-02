@@ -39,6 +39,7 @@ import { PromotedBadge } from './common/PromotedBadge';
 import { setItemPromotionInFirestore, removeItemPromotionInFirestore } from '../services/firestoreService';
 import { PromotionConfig } from '../types';
 import { CategoryManager } from './admin/CategoryManager';
+import { UserAvatar } from './common/UserAvatar';
 import { 
   CategoryItem, 
   SubCategory, 
@@ -775,14 +776,15 @@ export function AdminDashboard() {
                     Prekliči
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       setAddUserError('');
                       setAddUserSuccess('');
-                      const res = register({
+                      const res = await register({
                         name: newUserName,
                         email: newUserEmail,
                         password: newUserPassword,
                         role: newUserRole,
+                        autoVerify: true,
                       });
                       if (!res.success) {
                         setAddUserError(res.error || 'Napaka pri ustvarjanju.');
@@ -846,7 +848,14 @@ export function AdminDashboard() {
                                 className="shrink-0 group block"
                                 title={`Odpri profil uporabnika ${user.name} v novem oknu`}
                               >
-                                <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover mt-0.5 ring-1 ring-surface-container group-hover:ring-primary transition-all" />
+                                <UserAvatar 
+                                  src={user.avatar} 
+                                  name={user.name} 
+                                  userId={user.id} 
+                                  role={user.role} 
+                                  size="sm" 
+                                  className="mt-0.5 ring-1 ring-surface-container group-hover:ring-primary transition-all" 
+                                />
                               </a>
                               <div className="flex flex-col min-w-0">
                                 <a 

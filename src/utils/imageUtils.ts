@@ -50,6 +50,44 @@ export function compressImageFileToDataUrl(file: File, maxDimension: number = 12
 }
 
 /**
+ * Checks whether an avatar string is a dummy/placeholder generator service
+ * (such as ui-avatars.com, dicebear.com, avatar.iran.liara.run, etc.)
+ */
+export function isDummyAvatar(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return true;
+  const trimmed = url.trim().toLowerCase();
+  if (!trimmed) return true;
+  return (
+    trimmed.includes('ui-avatars.com') ||
+    trimmed.includes('dicebear.com') ||
+    trimmed.includes('avatar.iran.liara.run') ||
+    trimmed.includes('gravatar.com/avatar/placeholder') ||
+    trimmed.includes('placeholder.com') ||
+    trimmed.includes('dummyimage.com') ||
+    trimmed.includes('via.placeholder') ||
+    trimmed.includes('/placeholder')
+  );
+}
+
+/**
+ * Returns true if an avatar URL is an authentic image uploaded or set by a user
+ * (e.g. Base64 Data URL, Google account photo, or user-uploaded URL),
+ * and NOT an artificial dummy placeholder service.
+ */
+export function isUserUploadedAvatar(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  if (isDummyAvatar(trimmed)) return false;
+  return (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  );
+}
+
+/**
  * Fallback image references (revoked hardcoded stock photos; defaults to empty, configured via Admin Dashboard)
  */
 export const DEFAULT_EVENT_IMAGE = '';

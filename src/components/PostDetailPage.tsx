@@ -35,7 +35,7 @@ import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
 import { ShareModal } from './common/ShareModal';
 import { scrollToPageTop, scrollToSidebarsTop } from '../utils/scrollUtils';
 import { parseEventDateInfo } from '../utils/dateUtils';
-import { getCleanHtml, formatViewsCount } from '../utils/textUtils';
+import { getCleanHtml, formatViewsCount, getPlainTextSnippet } from '../utils/textUtils';
 import { parseSocialEmbed } from '../utils/embedUtils';
 import { getActiveFallbackImage, handleImageFallbackError } from '../services/portalSettingsService';
 import { buildSearchQuery, SearchCategory } from '../utils/searchUtils';
@@ -43,6 +43,8 @@ import { updatePageSeo } from '../utils/seoUtils';
 import { buildPostUrl, slugify, isCurrentPathValidForPost } from '../utils/urlUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { DEFAULT_CATEGORIES } from '../services/categoryService';
+import { UserAvatar } from './common/UserAvatar';
+import { isDummyAvatar, resolveUserUploadedAvatar } from '../utils/avatarUtils';
 
 // Mapping of mock blog post IDs to their actual categories
 const MOCK_BLOG_CATEGORY_MAP: Record<string, { id: string; name: string }> = {
@@ -149,7 +151,7 @@ export function PostDetailPage({
   onAuthorClick,
   onTitleLoaded
 }: PostDetailPageProps) {
-  const { currentUser } = useAuth();
+  const { currentUser, users } = useAuth();
   const { addNotification } = useNotifications();
   const { filterByEventCategory, filterByEventLocation } = useEventFilter();
 
@@ -331,6 +333,8 @@ export function PostDetailPage({
         organizer: fs.authorName,
         authorName: fs.authorName,
         authorId: fs.authorId,
+        authorAvatar: fs.authorAvatar,
+        authorRole: fs.authorRole,
         status: fs.status,
         tags: fs.tags,
         category: fs.category || 'event',
@@ -971,7 +975,7 @@ export function PostDetailPage({
     setIsSubmittingComment(true);
 
     const authorName = currentUser?.name || 'Gost Portalko';
-    const authorAvatar = currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=7C3AED&color=fff`;
+    const authorAvatar = (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : '';
     const authorRole = currentUser?.role === 'superadmin' ? 'Superadmin' :
                        currentUser?.role === 'admin' ? 'Administrator' :
                        currentUser?.role === 'verified' ? 'Preverjen uporabnik' :
@@ -1669,8 +1673,12 @@ export function PostDetailPage({
 
   return (
     <div className="flex flex-col gap-space-md animate-in fade-in duration-200">
-      {/* In-page Category Search Bar (hidden for single blog posts) */}
-      {target.type !== 'blog' && target.type !== 'post' && (
+      {/* In-page Category Search Bar (hidden for single blog posts, news, event posts, and deal/akcije posts) */}
+      {target.type !== 'blog' && target.type !== 'post' && target.type !== 'event' && target.type !== 'news' && target.type !== 'deal' &&
+       itemData.category !== 'event' && itemData.category !== 'dogodki' && 
+       itemData.category !== 'deal' && itemData.category !== 'ugodnosti' && 
+       !feedCategoryName?.toLowerCase().includes('dogod') && 
+       !feedCategoryName?.toLowerCase().includes('ugodnost') && (
         <div className="bg-surface-container-lowest rounded-2xl p-3 sm:p-4 border border-surface-container/60 shadow-xs flex flex-col gap-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-on-surface flex items-center gap-1.5">
@@ -1702,8 +1710,7 @@ export function PostDetailPage({
                 placeholder={
                   target.type === 'ad' ? 'Išči med malimi oglasi (znamka, model, cena, kraj)...' :
                   target.type === 'deal' ? 'Išči med ugodnostmi in popusti...' :
-                  target.type === 'event' ? 'Išči med dogodki, koncerti in prireditvami...' :
-                  'Išči med blog članki, vodiči in zgodbami...'
+                  'Išči med novicami in vsebinami...'
                 }
                 className="w-full bg-transparent pl-2.5 pr-8 py-2.5 font-body-sm text-xs sm:text-sm text-on-surface placeholder:text-outline focus:outline-none"
               />
@@ -1746,16 +1753,19 @@ export function PostDetailPage({
 
       {/* Main Single Post Presentation Card */}
       <article className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/60 shadow-sm flex flex-col">
-        {/* Post Hero Photo / Carousel Banner */}
+        {/* Post Hero Photo / Pristine Featured Image (Zero elements on photo) */}
         {postImages.length > 0 && (
-          <div className="relative flex flex-col bg-surface-container overflow-hidden">
-            {/* Main Carousel Hero Image Box */}
-            <div className="w-full h-72 sm:h-96 md:h-[420px] bg-black/90 relative overflow-hidden group select-none flex items-center justify-center">
+          <div className="relative flex flex-col bg-surface-container-low overflow-hidden">
+            {/* Pristine Clean Hero Image Box (NO overlay elements) */}
+            <div 
+              className="w-full h-72 sm:h-96 md:h-[440px] bg-surface-container relative overflow-hidden select-none flex items-center justify-center cursor-zoom-in group"
+              onClick={() => setIsLightboxOpen(true)}
+              title="Kliknite za celozaslonski ogled fotografije"
+            >
               <img
                 key={postImages[activeImageIndex] || activeImageIndex}
                 src={postImages[activeImageIndex]}
                 alt={`${itemData.title} – fotografija ${activeImageIndex + 1}`}
-                onClick={() => setIsLightboxOpen(true)}
                 onError={(e) => {
                   const fallback = getActiveFallbackImage(false);
                   if (fallback && (e.target as HTMLImageElement).src !== fallback) {
@@ -1764,213 +1774,19 @@ export function PostDetailPage({
                     (e.target as HTMLImageElement).style.display = 'none';
                   }
                 }}
-                className="w-full h-full object-cover cursor-zoom-in group-hover:scale-102 transition-transform duration-500"
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.01]"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
-
-              {/* Badges on Hero (Top Left) */}
-              <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 pointer-events-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (target.type === 'event') {
-                      filterByEventCategory(
-                        itemData.category || '', 
-                        itemData.categoryName || feedCategoryName, 
-                        itemData.subcategory, 
-                        itemData.subcategoryName
-                      );
-                      onViewChange('events');
-                    }
-                  }}
-                  className={`px-3 py-1 rounded-lg bg-black/75 backdrop-blur-md text-white font-label-caps text-xs font-bold uppercase tracking-wider shadow-sm flex items-center gap-1.5 border border-white/10 ${
-                    target.type === 'event' ? 'hover:bg-black/90 hover:border-primary/50 cursor-pointer transition-colors' : ''
-                  }`}
-                  title={target.type === 'event' ? `Filtriraj dogodke po kategoriji: ${itemData.categoryName || feedCategoryName}` : undefined}
-                >
-                  {target.type === 'deal' && <Tag className="w-3.5 h-3.5 text-amber-400" />}
-                  {target.type === 'event' && <Calendar className="w-3.5 h-3.5 text-sky-400" />}
-                  {target.type === 'ad' && <Store className="w-3.5 h-3.5 text-emerald-400" />}
-                  {(target.type === 'blog' || target.type === 'post') && <BookOpen className="w-3.5 h-3.5 text-amber-300" />}
-                  <span>{itemData.categoryName || feedCategoryName}</span>
-                </button>
-
-                {target.type === 'deal' && (itemData.discount || itemData.price) && (
-                  <span className="px-3 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-sm font-black tracking-tight shadow-md">
-                    {itemData.discount || itemData.price}
-                  </span>
-                )}
-
-                {target.type === 'ad' && itemData.price && (
-                  <span className="px-3.5 py-1 rounded-lg bg-emerald-600 text-white font-headline-sm text-sm font-extrabold shadow-md">
-                    {itemData.price}
-                  </span>
-                )}
-
-                {(target.type === 'blog' || target.type === 'post') && itemData.readTime && (
-                  <span className="px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white font-label-md text-xs font-semibold shadow-sm flex items-center gap-1 border border-white/10">
-                    <Clock className="w-3 h-3 text-amber-300" />
-                    <span>{itemData.readTime}</span>
-                  </span>
-                )}
-              </div>
-
-              {/* Controls on Top Right: Event Date Block + Carousel Counter + Fullscreen Lightbox Button */}
-              <div className="absolute top-4 right-4 z-20 flex items-center gap-2 pointer-events-auto">
-                {target.type === 'event' && (
-                  <div className="bg-surface-container-lowest/95 backdrop-blur-md rounded-2xl p-2.5 text-center min-w-[58px] shadow-lg border border-black/10">
-                    <div className="text-xs font-black text-primary uppercase font-label-caps tracking-wider">
-                      {itemData.month || 'DOG'}
-                    </div>
-                    <div className="text-2xl font-black text-on-surface leading-none mt-1">
-                      {itemData.day || '★'}
-                    </div>
-                  </div>
-                )}
-
-                {postImages.length > 1 && (
-                  <span className="px-2.5 py-1.5 rounded-xl bg-black/70 backdrop-blur-md text-white font-label-caps text-xs font-bold shadow-md flex items-center gap-1.5 border border-white/15">
-                    <Images className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{activeImageIndex + 1} / {postImages.length}</span>
-                  </span>
-                )}
-
-                <button
-                  type="button"
-                  id="btn-post-hero-share"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsShareModalOpen(true);
-                  }}
-                  className="p-2 rounded-xl bg-black/70 hover:bg-black/90 backdrop-blur-md text-white shadow-md border border-white/15 transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1.5"
-                  title="Deli objavo"
-                  aria-label="Deli objavo"
-                >
-                  <Share2 className="w-4 h-4 text-white" />
-                  <span className="hidden sm:inline text-xs font-bold pr-0.5">Deli</span>
-                </button>
-
-                <button
-                  type="button"
-                  id="btn-post-carousel-expand"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsLightboxOpen(true);
-                  }}
-                  className="p-2 rounded-xl bg-black/70 hover:bg-black/90 backdrop-blur-md text-white shadow-md border border-white/15 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Celozaslonski ogled fotografije"
-                  aria-label="Celozaslonski ogled fotografije"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Carousel Previous & Next Arrows (when multiple images) */}
-              {postImages.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    id="btn-post-carousel-prev"
-                    onClick={handlePrevImage}
-                    className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center backdrop-blur-md shadow-lg border border-white/20 transition-all hover:scale-110 active:scale-95 cursor-pointer"
-                    aria-label="Prejšnja slika"
-                    title="Prejšnja slika"
-                  >
-                    <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </button>
-
-                  <button
-                    type="button"
-                    id="btn-post-carousel-next"
-                    onClick={handleNextImage}
-                    className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center backdrop-blur-md shadow-lg border border-white/20 transition-all hover:scale-110 active:scale-95 cursor-pointer"
-                    aria-label="Naslednja slika"
-                    title="Naslednja slika"
-                  >
-                    <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </button>
-                </>
-              )}
-
-              {/* Carousel Indicator Dots */}
-              {postImages.length > 1 && (
-                <div className="absolute bottom-20 sm:bottom-22 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15">
-                  {postImages.map((_, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={(e) => handleSelectImage(idx, e)}
-                      className={`h-2 rounded-full transition-all cursor-pointer ${
-                        idx === activeImageIndex 
-                          ? 'w-6 bg-primary shadow-xs' 
-                          : 'w-2 bg-white/50 hover:bg-white/90'
-                      }`}
-                      aria-label={`Slika ${idx + 1}`}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Bottom Title on Hero */}
-              <div className="absolute bottom-4 left-4 right-4 text-white z-10 pointer-events-auto">
-                <h1 className="font-headline-lg text-xl sm:text-2xl md:text-3xl font-black leading-tight drop-shadow-md">
-                  {itemData.title}
-                </h1>
-                <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-white/85 mt-2 drop-shadow">
-                  {/* Clickable author name in hero header */}
-                  <button
-                    type="button"
-                    id="btn-post-detail-hero-author"
-                    onClick={handleAuthorClick}
-                    className="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer group/author py-0.5"
-                    title={`Ogled profila avtorja: ${authorDisplayName}`}
-                  >
-                    <User className="w-3.5 h-3.5 text-primary group-hover/author:scale-110 transition-transform" />
-                    <span className="font-semibold underline decoration-white/40 group-hover/author:decoration-primary underline-offset-2">{authorDisplayName}</span>
-                  </button>
-                  <span>•</span>
-                  {(itemData.location || itemData.region) && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (target.type === 'event') {
-                            filterByEventLocation(itemData.location || itemData.region);
-                            onViewChange('events');
-                          }
-                        }}
-                        className={`flex items-center gap-1 text-left ${
-                          target.type === 'event' ? 'hover:text-primary hover:underline cursor-pointer transition-colors' : ''
-                        }`}
-                        title={target.type === 'event' ? `Filtriraj dogodke po lokaciji: ${itemData.location || itemData.region}` : undefined}
-                      >
-                        <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <span>{itemData.location || itemData.region}</span>
-                      </button>
-                      <span>•</span>
-                    </>
-                  )}
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-primary" />
-                    <span>{itemData.date || itemData.eventDate || 'Objavljeno danes'}</span>
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-2.5 py-0.5 rounded-full text-white font-semibold text-xs border border-white/10" title="Priljubljenost v živo: število ogledov objave">
-                    <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
-                    <span>{formattedViews}</span>
-                  </span>
-                </div>
-              </div>
             </div>
 
             {/* Thumbnail strip underneath the hero when multiple images exist */}
             {postImages.length > 1 && (
-              <div className="px-4 py-2.5 bg-surface-container-low border-b border-surface-container/70 flex items-center gap-2 overflow-x-auto scrollbar-thin">
+              <div className="px-4 py-2.5 bg-surface-container-low border-b border-surface-container/70 flex items-center justify-between gap-3 overflow-x-auto scrollbar-thin">
                 <div className="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium shrink-0 mr-1.5">
                   <Images className="w-3.5 h-3.5 text-primary" />
-                  <span className="hidden sm:inline">Galerija ({postImages.length}):</span>
+                  <span className="hidden sm:inline">Galerija ({activeImageIndex + 1}/{postImages.length}):</span>
+                  <span className="sm:hidden">{activeImageIndex + 1}/{postImages.length}</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-1 overflow-x-auto no-scrollbar">
                   {postImages.map((imgUrl, idx) => (
                     <button
                       key={idx}
@@ -1994,6 +1810,27 @@ export function PostDetailPage({
                       )}
                     </button>
                   ))}
+                </div>
+                {/* Prev / Next controls in the gallery bar under the photo */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handlePrevImage}
+                    className="p-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors cursor-pointer"
+                    title="Prejšnja slika"
+                    aria-label="Prejšnja slika"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextImage}
+                    className="p-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors cursor-pointer"
+                    title="Naslednja slika"
+                    aria-label="Naslednja slika"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )}
@@ -2081,72 +1918,159 @@ export function PostDetailPage({
 
         {/* Post Content Body */}
         <div className="p-4 sm:p-6 md:p-8 flex flex-col gap-6">
-          {/* Non-image fallback title */}
-          {postImages.length === 0 && (
-            <div className="border-b border-surface-container-low pb-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="px-2.5 py-0.5 rounded-md bg-primary/10 text-primary font-label-caps text-xs font-bold uppercase">
-                  {itemData.categoryName || feedCategoryName}
+          {/* Post Header: Category Badges, Post Title, and Meta Row (ALWAYS rendered prominently above description text) */}
+          <div className="flex flex-col gap-3 pb-5 border-b border-surface-container-low">
+            {/* Top row category & status badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (target.type === 'event') {
+                    filterByEventCategory(
+                      itemData.category || '', 
+                      itemData.categoryName || feedCategoryName, 
+                      itemData.subcategory, 
+                      itemData.subcategoryName
+                    );
+                    onViewChange('events');
+                  } else if (target.type === 'deal') {
+                    onViewChange('deals');
+                  } else if (target.type === 'ad') {
+                    onViewChange('ads');
+                  } else {
+                    onViewChange('blog');
+                  }
+                }}
+                className="px-3 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-label-caps text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border border-primary/20 cursor-pointer"
+                title={`Kategorija: ${itemData.categoryName || feedCategoryName}`}
+              >
+                {target.type === 'deal' && <Tag className="w-3.5 h-3.5 text-primary" />}
+                {target.type === 'event' && <Calendar className="w-3.5 h-3.5 text-primary" />}
+                {target.type === 'ad' && <Store className="w-3.5 h-3.5 text-primary" />}
+                {(target.type === 'blog' || target.type === 'post') && <BookOpen className="w-3.5 h-3.5 text-primary" />}
+                <span>{itemData.categoryName || feedCategoryName}</span>
+              </button>
+
+              {target.type === 'deal' && (itemData.discount || itemData.price) && (
+                <span className="px-3 py-1 rounded-lg bg-secondary/15 text-secondary font-headline-sm text-xs font-bold border border-secondary/25">
+                  {itemData.discount || itemData.price}
                 </span>
-                {target.type !== 'event' && itemData.price && (
-                  <span className="px-2.5 py-0.5 rounded-md bg-secondary/10 text-secondary font-bold text-xs">
-                    {itemData.price}
-                  </span>
-                )}
-              </div>
-              <h1 className="font-headline-lg text-2xl sm:text-3xl font-black text-on-surface">
-                {itemData.title}
-              </h1>
-              <div className="flex items-center gap-2 text-xs text-outline mt-2">
-                <button
-                  type="button"
-                  id="btn-post-detail-fallback-author"
-                  onClick={handleAuthorClick}
-                  className="flex items-center gap-1 text-on-surface font-semibold hover:text-primary hover:underline transition-colors cursor-pointer"
-                  title={`Ogled profila avtorja: ${authorDisplayName}`}
-                >
-                  <User className="w-3.5 h-3.5 text-primary" />
-                  <span>{authorDisplayName}</span>
-                </button>
-                <span>•</span>
-                <span>{itemData.date || itemData.eventDate || 'Objavljeno danes'}</span>
-                <span>•</span>
-                <span className="inline-flex items-center gap-1.5 bg-surface-container-high px-2.5 py-0.5 rounded-full text-xs font-semibold text-on-surface" title="Priljubljenost v živo: število ogledov objave">
-                  <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
-                  <span>{formattedViews}</span>
+              )}
+
+              {target.type === 'ad' && itemData.price && (
+                <span className="px-3.5 py-1 rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 font-headline-sm text-xs font-bold border border-emerald-600/20">
+                  {itemData.price}
                 </span>
-              </div>
+              )}
+
+              {target.type === 'event' && (itemData.month || itemData.day) && (
+                <span className="px-3 py-1 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300 font-headline-sm text-xs font-bold border border-sky-500/20 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                  <span>{itemData.day ? `${itemData.day}. ${itemData.month || ''}` : itemData.month}</span>
+                </span>
+              )}
+
+              {(target.type === 'blog' || target.type === 'post') && itemData.readTime && (
+                <span className="px-2.5 py-1 rounded-lg bg-surface-container-high text-on-surface-variant font-label-md text-xs font-semibold flex items-center gap-1 border border-surface-container">
+                  <Clock className="w-3 h-3 text-outline" />
+                  <span>{itemData.readTime}</span>
+                </span>
+              )}
             </div>
-          )}
+
+            {/* Post Title: Prominent, high-contrast, clean H1 above description */}
+            <h1 className="font-headline-lg text-2xl sm:text-3xl md:text-4xl font-black text-on-surface leading-tight tracking-tight">
+              {itemData.title}
+            </h1>
+
+            {/* Post Metadata Row */}
+            <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-on-surface-variant pt-0.5">
+              <button
+                type="button"
+                id="btn-post-detail-author-link"
+                onClick={handleAuthorClick}
+                className="flex items-center gap-1.5 font-bold text-on-surface hover:text-primary transition-colors cursor-pointer group/author py-0.5"
+                title={`Ogled profila avtorja: ${authorDisplayName}`}
+              >
+                <User className="w-3.5 h-3.5 text-primary group-hover/author:scale-110 transition-transform" />
+                <span className="underline decoration-surface-container-highest group-hover/author:decoration-primary underline-offset-2">{authorDisplayName}</span>
+              </button>
+              <span>•</span>
+              {(itemData.location || itemData.region) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (target.type === 'event') {
+                        filterByEventLocation(itemData.location || itemData.region);
+                        onViewChange('events');
+                      }
+                    }}
+                    className={`flex items-center gap-1 text-left ${
+                      target.type === 'event' ? 'hover:text-primary hover:underline cursor-pointer transition-colors' : ''
+                    }`}
+                    title={target.type === 'event' ? `Filtriraj dogodke po lokaciji: ${itemData.location || itemData.region}` : undefined}
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span>{itemData.location || itemData.region}</span>
+                  </button>
+                  <span>•</span>
+                </>
+              )}
+              <span className="flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-primary" />
+                <span>{itemData.date || itemData.eventDate || 'Objavljeno danes'}</span>
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1.5 bg-surface-container-high px-2.5 py-0.5 rounded-full text-on-surface font-semibold text-xs border border-surface-container" title="Število ogledov objave">
+                <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
+                <span>{formattedViews}</span>
+              </span>
+            </div>
+          </div>
 
           {/* Author / Seller / Partner Block */}
           <div className="p-4 rounded-2xl bg-surface-container-low/70 border border-surface-container flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              {itemData.partnerAvatar || itemData.authorAvatar ? (
-                <button
-                  type="button"
-                  id="btn-post-detail-author-avatar"
-                  onClick={handleAuthorClick}
-                  className="cursor-pointer group/avatar shrink-0 focus:outline-none"
-                  title={`Ogled profila avtorja: ${authorDisplayName}`}
-                >
-                  <img
-                    src={itemData.partnerAvatar || itemData.authorAvatar}
-                    alt={authorDisplayName}
-                    className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/20 group-hover/avatar:ring-primary shadow-xs transition-all"
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  id="btn-post-detail-author-initials"
-                  onClick={handleAuthorClick}
-                  className="w-12 h-12 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold text-base shadow-xs hover:bg-primary/25 transition-colors cursor-pointer shrink-0 focus:outline-none"
-                  title={`Ogled profila avtorja: ${authorDisplayName}`}
-                >
-                  {itemData.authorInitials || (authorDisplayName || 'U')[0]}
-                </button>
-              )}
+              {(() => {
+                const resolvedPhoto = resolveUserUploadedAvatar(
+                  itemData.partnerAvatar || itemData.authorAvatar,
+                  itemData.authorId,
+                  authorDisplayName,
+                  users
+                );
+                if (resolvedPhoto) {
+                  return (
+                    <button
+                      type="button"
+                      id="btn-post-detail-author-avatar"
+                      onClick={handleAuthorClick}
+                      className="cursor-pointer group/avatar shrink-0 focus:outline-none"
+                      title={`Ogled profila avtorja: ${authorDisplayName}`}
+                    >
+                      <UserAvatar
+                        src={resolvedPhoto}
+                        name={authorDisplayName}
+                        userId={itemData.authorId}
+                        role={itemData.authorRole || itemData.partnerRole}
+                        size="lg"
+                        className="w-12 h-12 ring-2 ring-primary/20 group-hover/avatar:ring-primary shadow-xs transition-all"
+                      />
+                    </button>
+                  );
+                }
+                return (
+                  <button
+                    type="button"
+                    id="btn-post-detail-author-initials"
+                    onClick={handleAuthorClick}
+                    className="w-12 h-12 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold text-base shadow-xs hover:bg-primary/25 transition-colors cursor-pointer shrink-0 focus:outline-none"
+                    title={`Ogled profila avtorja: ${authorDisplayName}`}
+                  >
+                    {itemData.authorInitials || (authorDisplayName || 'U')[0]}
+                  </button>
+                );
+              })()}
               <div>
                 <div className="font-headline-sm text-base font-bold text-on-surface flex items-center gap-1.5">
                   <button
@@ -2661,10 +2585,12 @@ export function PostDetailPage({
 
               return (
                 <div key={comment.id} className="py-3.5 first:pt-0 last:pb-0 flex items-start gap-3">
-                  <img
-                    src={comment.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author)}`}
-                    alt={comment.author}
-                    className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-black/5"
+                  <UserAvatar
+                    src={comment.authorAvatar}
+                    name={comment.author}
+                    role={comment.authorRole}
+                    size="sm"
+                    className="w-9 h-9 shrink-0 ring-1 ring-black/5"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
@@ -2833,15 +2759,12 @@ export function PostDetailPage({
 
                     <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5 text-on-surface-variant truncate max-w-[65%]">
-                        {article.authorAvatar ? (
-                          <img 
-                            src={article.authorAvatar} 
-                            alt={article.author || 'Avtor'} 
-                            className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-black/5" 
-                          />
-                        ) : (
-                          <User className="w-3.5 h-3.5 text-outline shrink-0" />
-                        )}
+                        <UserAvatar
+                          src={article.authorAvatar}
+                          name={article.author}
+                          size="xs"
+                          className="w-4 h-4 shrink-0 ring-1 ring-black/5 text-[9px]"
+                        />
                         <span className="truncate text-[11px] font-medium">{article.author || 'Portalko avtor'}</span>
                       </div>
                       <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
@@ -3150,7 +3073,7 @@ export function PostDetailPage({
                   onAuthorClick({
                     id: authorId,
                     name: authorDisplayName,
-                    avatar: authorAvatar,
+                    avatar: (authorAvatar && !isDummyAvatar(authorAvatar)) ? authorAvatar : undefined,
                     role: authorRole,
                     fromPostTarget: target
                   });
@@ -3243,11 +3166,11 @@ export function PostDetailPage({
                   {/* Content */}
                   <div className="p-3.5 flex-1 flex flex-col gap-1.5">
                     <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
-                      {post.title}
+                      {getPlainTextSnippet(post.title)}
                     </h4>
                     {post.description && (
                       <p className="text-[11px] text-on-surface-variant line-clamp-2 leading-relaxed">
-                        {post.description}
+                        {getPlainTextSnippet(post.description)}
                       </p>
                     )}
 

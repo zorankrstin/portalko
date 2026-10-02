@@ -9,6 +9,8 @@ import { PromotionBadgeType, PostDetailTarget } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { UserAvatar } from "../common/UserAvatar";
+import { isUserUploadedAvatar } from "../../utils/avatarUtils";
 
 export interface DealPostProps {
   id?: string;
@@ -126,7 +128,7 @@ export const DealPost: React.FC<DealPostProps> = ({
     }
   };
 
-  const avatarSrc = authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`;
+  const avatarSrc = (authorAvatar && isUserUploadedAvatar(authorAvatar)) ? authorAvatar : undefined;
 
   const handleCopy = () => {
     if (hasValidCode) {
@@ -249,14 +251,12 @@ export const DealPost: React.FC<DealPostProps> = ({
                 className="shrink-0 group/avatar focus:outline-none"
                 title={`Ogled profila partnerja: ${author}`}
               >
-                <img 
-                  src={avatarSrc} 
-                  alt={author}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shrink-0 shadow-xs transition-all"
-                  loading="lazy"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(author)}`;
-                  }}
+                <UserAvatar
+                  src={avatarSrc}
+                  name={author}
+                  userId={authorId}
+                  role={authorRole || 'partner'}
+                  className="w-7 h-7 sm:w-8 sm:h-8 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shadow-xs transition-all"
                 />
               </a>
               <div className="flex items-center gap-2 flex-wrap min-w-0">

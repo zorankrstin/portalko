@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, Crown, Shield, UserCheck, CheckCircle2, 
   MapPin, Calendar, Tag, Store, BookOpen, Share2, 
-  Clock, ExternalLink, Sparkles, MessageSquare, AlertCircle
+  Clock, ExternalLink, Sparkles, MessageSquare, AlertCircle,
+  Eye, ThumbsUp, Users
 } from 'lucide-react';
 import { AuthorProfileTarget, PostDetailTarget, ViewMode } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,6 +22,9 @@ import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../../data/mock
 import { INITIAL_DEALS, HERO_BENTO_DEALS } from '../../data/mockDealsData';
 import { updatePageSeo } from '../../utils/seoUtils';
 import { slugify } from '../../utils/urlUtils';
+import { getPlainTextSnippet } from '../../utils/textUtils';
+import { UserAvatar } from '../common/UserAvatar';
+import { isDummyAvatar } from '../../utils/avatarUtils';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
@@ -40,6 +44,10 @@ export interface AuthorItemCardData {
   location?: string;
   date?: string;
   readTime?: string;
+  likesCount?: number;
+  lovesCount?: number;
+  viewsCount?: number;
+  interestedCount?: number | string;
 }
 
 export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onViewChange }: PublicAuthorProfileProps) {
@@ -67,74 +75,110 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     if (!targetAuthor) return null;
     const authorNameLower = (targetAuthor.name || '').trim().toLowerCase();
     const authorSlug = slugify(targetAuthor.name);
+    const cleanAuthorSlug = authorSlug.replace(/-/g, '');
     return users.find(u => 
       (targetAuthor.id && u.id === targetAuthor.id) ||
       (u.name && u.name.trim().toLowerCase() === authorNameLower) ||
       (u.name && slugify(u.name) === authorSlug) ||
-      (u.username && slugify(u.username.replace('@', '')) === authorSlug)
+      (u.name && slugify(u.name).replace(/-/g, '') === cleanAuthorSlug) ||
+      (u.username && slugify(u.username.replace('@', '')) === authorSlug) ||
+      (authorNameLower.includes('portalko') && u.name.toLowerCase().includes('portalko'))
     ) || null;
   }, [users, targetAuthor]);
 
+  // Helper to determine if an avatar URL is just a generic letters/dicebear fallback
+  const isGenericAvatar = (url?: string | null) => {
+    if (!url) return true;
+    return url.includes('dicebear.com') || url.includes('ui-avatars.com');
+  };
+
+  // Common matcher for this author across names, slugs, ids and usernames
+  const targetNameRaw = targetAuthor.name ? targetAuthor.name.trim() : '';
+  const targetNameLower = targetNameRaw.toLowerCase();
+  const targetSlug = slugify(targetNameRaw);
+  const cleanTargetSlug = targetSlug.replace(/-/g, '');
+  const effectiveTargetId = targetAuthor.id || matchedUser?.id;
+
+  const isMatchingAuthor = (itemAuthorName?: string | null, itemAuthorId?: string | null) => {
+    if (effectiveTargetId && itemAuthorId && itemAuthorId === effectiveTargetId) return true;
+    if (matchedUser?.id && itemAuthorId && itemAuthorId === matchedUser.id) return true;
+    if (!itemAuthorName && !itemAuthorId) return false;
+
+    if (itemAuthorName) {
+      const itemLower = itemAuthorName.trim().toLowerCase();
+      const itemSlug = slugify(itemAuthorName);
+      if (targetNameLower && itemLower === targetNameLower) return true;
+      if (targetSlug && itemSlug === targetSlug) return true;
+      if (targetNameLower && itemLower.replace(/[-_.]/g, ' ') === targetNameLower.replace(/[-_.]/g, ' ')) return true;
+      if (itemSlug.replace(/-/g, '') === cleanTargetSlug) return true;
+      if (matchedUser?.name && (itemLower === matchedUser.name.toLowerCase().trim() || itemSlug === slugify(matchedUser.name))) return true;
+      if (targetNameLower.includes('portalko') && itemLower.includes('portalko')) return true;
+      if ((targetNameLower.includes('špas') || targetNameLower.includes('spas')) && (itemLower.includes('špas') || itemLower.includes('spas'))) return true;
+    }
+
+    if (itemAuthorId && targetSlug) {
+      if (slugify(itemAuthorId) === targetSlug) return true;
+      const cleanAuthorId = itemAuthorId.replace(/^(author|partner|user|organizer)-/, '');
+      if (slugify(cleanAuthorId) === targetSlug || slugify(cleanAuthorId).replace(/-/g, '') === cleanTargetSlug) return true;
+    }
+
+    return false;
+  };
+
   // Find real author metadata (avatar, proper capitalized name, role) from matching posts
   const realAuthorMetadata = useMemo(() => {
-    const targetNameRaw = targetAuthor.name ? targetAuthor.name.trim() : '';
-    const targetNameLower = targetNameRaw.toLowerCase();
-    const targetSlug = slugify(targetNameRaw);
-    const targetId = targetAuthor.id;
+    // Check events
+    for (const e of firestoreEvents) {
+      const evAuthorName = e.authorName || (e as any).organizer;
+      const evAuthorId = e.authorId || (e as any).organizerId;
+      if (isMatchingAuthor(evAuthorName, evAuthorId)) {
+        const authorUser = users.find(u => (e.authorId && u.id === e.authorId) || (u.name && isMatchingAuthor(u.name, u.id)));
+        const avatar = (!isDummyAvatar(e.authorAvatar)) 
+          ? e.authorAvatar 
+          : (!isDummyAvatar(authorUser?.avatar))
+            ? authorUser?.avatar
+            : (evAuthorName?.toLowerCase().includes('portalko')
+              ? 'https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg'
+              : ((evAuthorName?.toLowerCase().includes('špas') || evAuthorName?.toLowerCase().includes('spas'))
+                ? 'https://www.spasteater.si/og-default.jpg'
+                : undefined));
 
-    const matches = (name?: string | null, id?: string | null) => {
-      if (targetId && id && id === targetId) return true;
-      if (!name && !id) return false;
-      if (name) {
-        const nLower = name.trim().toLowerCase();
-        if (targetNameLower && nLower === targetNameLower) return true;
-        if (targetSlug && slugify(name) === targetSlug) return true;
-        if (targetNameLower && nLower.replace(/[-_]/g, ' ') === targetNameLower.replace(/[-_]/g, ' ')) return true;
+        return {
+          name: evAuthorName,
+          avatar,
+          role: e.authorRole || authorUser?.role || 'Organizator',
+          id: evAuthorId,
+        };
       }
-      if (id && targetSlug) {
-        if (slugify(id) === targetSlug) return true;
-        const cleanId = id.replace(/^(author|partner|user|organizer)-/, '');
-        if (slugify(cleanId) === targetSlug) return true;
-      }
-      return false;
-    };
+    }
 
     // Check posts
     for (const p of firestorePosts) {
-      if (matches(p.authorName, p.authorId)) {
+      if (isMatchingAuthor(p.authorName, p.authorId)) {
+        const authorUser = users.find(u => u.id === p.authorId || (u.name && isMatchingAuthor(u.name, u.id)));
         return {
           name: p.authorName,
-          avatar: p.authorAvatar,
-          role: p.authorRole,
+          avatar: p.authorAvatar || authorUser?.avatar,
+          role: p.authorRole || authorUser?.role,
           id: p.authorId,
         };
       }
     }
     // Check ads
     for (const a of firestoreAds) {
-      if (matches(a.authorName, a.authorId)) {
+      if (isMatchingAuthor(a.authorName, a.authorId)) {
+        const authorUser = users.find(u => u.id === a.authorId || (u.name && isMatchingAuthor(u.name, u.id)));
         return {
           name: a.authorName,
-          avatar: a.authorAvatar,
-          role: a.authorRole,
+          avatar: a.authorAvatar || authorUser?.avatar,
+          role: a.authorRole || authorUser?.role,
           id: a.authorId,
-        };
-      }
-    }
-    // Check events
-    for (const e of firestoreEvents) {
-      if (matches(e.authorName, e.authorId)) {
-        return {
-          name: e.authorName,
-          avatar: e.authorAvatar,
-          role: e.authorRole,
-          id: e.authorId,
         };
       }
     }
     // Check mock deals
     for (const d of [...HERO_BENTO_DEALS, ...INITIAL_DEALS]) {
-      if (matches(d.partner, d.partnerId)) {
+      if (isMatchingAuthor(d.partner, d.partnerId)) {
         return {
           name: d.partner,
           avatar: d.partnerAvatar,
@@ -145,7 +189,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     }
     // Check mock blogs
     for (const b of INITIAL_BLOG_POSTS) {
-      if (matches(b.author, b.authorId)) {
+      if (isMatchingAuthor(b.author, b.authorId)) {
         return {
           name: b.author,
           avatar: b.authorAvatar,
@@ -156,7 +200,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     }
     // Check mock ads
     for (const ad of INITIAL_ADS) {
-      if (matches(ad.author, ad.authorId)) {
+      if (isMatchingAuthor(ad.author, ad.authorId)) {
         return {
           name: ad.author,
           avatar: ad.authorAvatar,
@@ -167,7 +211,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     }
     // Check mock events
     for (const ev of INITIAL_EVENTS) {
-      if (matches(ev.organizer, ev.organizerId)) {
+      if (isMatchingAuthor(ev.organizer, ev.organizerId)) {
         return {
           name: ev.organizer,
           avatar: ev.authorAvatar,
@@ -178,7 +222,167 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     }
 
     return null;
-  }, [firestorePosts, firestoreAds, firestoreEvents, targetAuthor]);
+  }, [firestorePosts, firestoreAds, firestoreEvents, targetAuthor, matchedUser, users]);
+
+  // Aggregate author's items
+  const authorItems = useMemo<AuthorItemCardData[]>(() => {
+    const itemsMap = new Map<string, AuthorItemCardData>();
+
+    // 1. Firestore Posts / Deals
+    firestorePosts.forEach(p => {
+      if (isMatchingAuthor(p.authorName, p.authorId)) {
+        const itemType = (p.category === 'deal' || p.category === 'ugodnosti' || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost') ? 'deal' : 'post';
+        itemsMap.set(`${itemType}-${p.id}`, {
+          id: p.id,
+          type: itemType,
+          title: p.title,
+          description: p.content,
+          category: p.categoryName || p.category,
+          imageUrl: p.imageUrl,
+          price: p.price,
+          location: p.location,
+          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : undefined,
+          likesCount: p.likesCount || 0,
+          lovesCount: (p as any).lovesCount || 0,
+          viewsCount: p.viewsCount || 0,
+        });
+      }
+    });
+
+    // 2. Firestore Ads
+    firestoreAds.forEach(a => {
+      if (isMatchingAuthor(a.authorName, a.authorId)) {
+        itemsMap.set(`ad-${a.id}`, {
+          id: a.id,
+          type: 'ad',
+          title: a.title,
+          description: a.description,
+          category: a.categoryName || a.category,
+          imageUrl: a.imageUrl,
+          price: a.price,
+          location: a.location,
+          date: a.createdAt ? new Date(a.createdAt).toLocaleDateString('sl-SI') : undefined,
+          likesCount: a.likesCount || 0,
+          lovesCount: (a as any).lovesCount || 0,
+          viewsCount: a.viewsCount || 0,
+        });
+      }
+    });
+
+    // 3. Firestore Events
+    firestoreEvents.forEach(e => {
+      const evAuthorName = e.authorName || (e as any).organizer;
+      const evAuthorId = e.authorId || (e as any).organizerId;
+      if (isMatchingAuthor(evAuthorName, evAuthorId)) {
+        itemsMap.set(`event-${e.id}`, {
+          id: e.id,
+          type: 'event',
+          title: e.title,
+          description: e.description,
+          category: e.categoryName || e.category,
+          imageUrl: e.imageUrl,
+          price: e.price,
+          location: e.location,
+          date: e.eventDate || (e.createdAt ? new Date(e.createdAt).toLocaleDateString('sl-SI') : undefined),
+          likesCount: e.likesCount || 0,
+          lovesCount: (e as any).lovesCount || 0,
+          viewsCount: e.viewsCount || 0,
+          interestedCount: e.interestedCount,
+        });
+      }
+    });
+
+    // 4. Mock Blogs
+    INITIAL_BLOG_POSTS.forEach(b => {
+      if (isMatchingAuthor(b.author, b.authorId)) {
+        itemsMap.set(`post-${b.id}`, {
+          id: b.id,
+          type: 'post',
+          title: b.title,
+          description: b.description || '',
+          category: b.tags?.[0] || 'Zgodba',
+          imageUrl: b.image,
+          location: b.location,
+          date: b.date,
+          readTime: b.readTime,
+          likesCount: parseInt(b.likesCount) || 0,
+          viewsCount: parseInt(b.viewsCount) || 0,
+        });
+      }
+    });
+
+    // 5. Mock Ads
+    INITIAL_ADS.forEach(ad => {
+      if (isMatchingAuthor(ad.author, ad.authorId)) {
+        itemsMap.set(`ad-${ad.id}`, {
+          id: ad.id,
+          type: 'ad',
+          title: ad.title,
+          description: ad.description,
+          category: ad.category,
+          imageUrl: ad.image,
+          price: ad.price,
+          location: ad.location,
+          date: ad.date,
+          viewsCount: ad.views || 0,
+        });
+      }
+    });
+
+    // 6. Mock Events
+    INITIAL_EVENTS.forEach(ev => {
+      if (isMatchingAuthor(ev.organizer, ev.organizerId)) {
+        itemsMap.set(`event-${ev.id}`, {
+          id: ev.id,
+          type: 'event',
+          title: ev.title,
+          description: ev.description,
+          category: ev.category,
+          imageUrl: ev.image,
+          price: ev.price,
+          location: ev.location,
+          date: ev.date,
+          interestedCount: ev.interestedCount,
+        });
+      }
+    });
+
+    // 7. Mock Deals
+    [...HERO_BENTO_DEALS, ...INITIAL_DEALS].forEach(d => {
+      if (isMatchingAuthor(d.partner, d.partnerId)) {
+        itemsMap.set(`deal-${d.id}`, {
+          id: d.id,
+          type: 'deal',
+          title: d.title,
+          description: d.description,
+          category: d.categoryName || d.category,
+          imageUrl: d.image,
+          price: d.discount || d.newPrice,
+          location: d.region,
+          date: d.date,
+          viewsCount: (d as any).views || 0,
+          likesCount: d.votes || 0,
+        });
+      }
+    });
+
+    // 8. If navigated from a specific post target and it's not yet in map, add it
+    if (targetAuthor.fromPostTarget && !itemsMap.has(`${targetAuthor.fromPostTarget.type}-${targetAuthor.fromPostTarget.id}`)) {
+      const t = targetAuthor.fromPostTarget;
+      itemsMap.set(`${t.type}-${t.id}`, {
+        id: t.id,
+        type: t.type === 'ad' ? 'ad' : t.type === 'event' ? 'event' : t.type === 'deal' ? 'deal' : 'post',
+        title: t.initialData?.title || 'Objava avtorja',
+        description: t.initialData?.description || t.initialData?.content || '',
+        category: t.initialData?.category,
+        imageUrl: t.initialData?.image || t.initialData?.imageUrl,
+        price: t.initialData?.price || t.initialData?.discount,
+        location: t.initialData?.location || t.initialData?.region,
+      });
+    }
+
+    return Array.from(itemsMap.values());
+  }, [firestorePosts, firestoreAds, firestoreEvents, targetAuthor, matchedUser]);
 
   // Consolidated author profile details
   const authorProfile = useMemo(() => {
@@ -189,10 +393,26 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
         : rawName.charAt(0).toUpperCase() + rawName.slice(1)
     );
 
-    const avatar = targetAuthor.avatar || 
-                   matchedUser?.avatar || 
-                   realAuthorMetadata?.avatar || 
-                   `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`;
+    // Pick best real avatar, strictly prioritizing user-uploaded profile photos over dummy images
+    let avatar = (matchedUser?.avatar && !isDummyAvatar(matchedUser.avatar)) ? matchedUser.avatar : undefined;
+    if (!avatar && realAuthorMetadata?.avatar && !isDummyAvatar(realAuthorMetadata.avatar)) {
+      avatar = realAuthorMetadata.avatar;
+    }
+    if (!avatar && targetAuthor.avatar && !isDummyAvatar(targetAuthor.avatar)) {
+      avatar = targetAuthor.avatar;
+    }
+    if (!avatar) {
+      const lowerName = name.toLowerCase();
+      const targetLower = (targetAuthor.name || '').toLowerCase();
+      if (lowerName.includes('portalko') || targetLower.includes('portalko')) {
+        avatar = 'https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg';
+      } else if (lowerName.includes('špas') || lowerName.includes('spas') || targetLower.includes('špas') || targetLower.includes('spas')) {
+        avatar = 'https://www.spasteater.si/og-default.jpg';
+      }
+    }
+    if (!avatar || isDummyAvatar(avatar)) {
+      avatar = undefined;
+    }
 
     const role = matchedUser?.role || (
       targetAuthor.role?.toLowerCase().includes('superadmin') ? 'superadmin' :
@@ -220,7 +440,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
       bio,
       socialLinks,
     };
-  }, [matchedUser, targetAuthor, realAuthorMetadata]);
+  }, [matchedUser, targetAuthor, realAuthorMetadata, authorItems]);
 
   // Update dynamic SEO & Person Schema.org for author profile
   useEffect(() => {
@@ -249,178 +469,17 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     });
   }, [authorProfile]);
 
-  // Aggregate author's items
-  const authorItems = useMemo<AuthorItemCardData[]>(() => {
-    const targetNameRaw = targetAuthor.name ? targetAuthor.name.trim() : '';
-    const targetNameLower = targetNameRaw.toLowerCase();
-    const targetSlug = slugify(targetNameRaw);
-    const targetId = targetAuthor.id;
-
-    const isMatchingAuthor = (itemAuthorName?: string | null, itemAuthorId?: string | null) => {
-      if (targetId && itemAuthorId && itemAuthorId === targetId) return true;
-      if (!itemAuthorName && !itemAuthorId) return false;
-
-      if (itemAuthorName) {
-        const itemLower = itemAuthorName.trim().toLowerCase();
-        if (targetNameLower && itemLower === targetNameLower) return true;
-        if (targetSlug && slugify(itemAuthorName) === targetSlug) return true;
-        if (targetNameLower && itemLower.replace(/[-_]/g, ' ') === targetNameLower.replace(/[-_]/g, ' ')) return true;
-      }
-
-      if (itemAuthorId && targetSlug) {
-        if (slugify(itemAuthorId) === targetSlug) return true;
-        const cleanAuthorId = itemAuthorId.replace(/^(author|partner|user|organizer)-/, '');
-        if (slugify(cleanAuthorId) === targetSlug) return true;
-      }
-
-      return false;
-    };
-
-    const itemsMap = new Map<string, AuthorItemCardData>();
-
-    // 1. Firestore Posts / Deals
-    firestorePosts.forEach(p => {
-      if (isMatchingAuthor(p.authorName, p.authorId)) {
-        const itemType = (p.category === 'deal' || p.category === 'ugodnosti' || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost') ? 'deal' : 'post';
-        itemsMap.set(`${itemType}-${p.id}`, {
-          id: p.id,
-          type: itemType,
-          title: p.title,
-          description: p.content,
-          category: p.categoryName || p.category,
-          imageUrl: p.imageUrl,
-          price: p.price,
-          location: p.location,
-          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : undefined,
-        });
-      }
-    });
-
-    // 2. Firestore Ads
-    firestoreAds.forEach(a => {
-      if (isMatchingAuthor(a.authorName, a.authorId)) {
-        itemsMap.set(`ad-${a.id}`, {
-          id: a.id,
-          type: 'ad',
-          title: a.title,
-          description: a.description,
-          category: a.categoryName || a.category,
-          imageUrl: a.imageUrl,
-          price: a.price,
-          location: a.location,
-          date: a.createdAt ? new Date(a.createdAt).toLocaleDateString('sl-SI') : undefined,
-        });
-      }
-    });
-
-    // 3. Firestore Events
-    firestoreEvents.forEach(e => {
-      if (isMatchingAuthor(e.authorName, e.authorId)) {
-        itemsMap.set(`event-${e.id}`, {
-          id: e.id,
-          type: 'event',
-          title: e.title,
-          description: e.description,
-          category: e.categoryName || e.category,
-          imageUrl: e.imageUrl,
-          price: e.price,
-          location: e.location,
-          date: e.eventDate || (e.createdAt ? new Date(e.createdAt).toLocaleDateString('sl-SI') : undefined),
-        });
-      }
-    });
-
-    // 4. Mock Blogs
-    INITIAL_BLOG_POSTS.forEach(b => {
-      if (isMatchingAuthor(b.author, b.authorId)) {
-        itemsMap.set(`post-${b.id}`, {
-          id: b.id,
-          type: 'post',
-          title: b.title,
-          description: b.description || '',
-          category: b.tags?.[0] || 'Zgodba',
-          imageUrl: b.image,
-          location: b.location,
-          date: b.date,
-          readTime: b.readTime,
-        });
-      }
-    });
-
-    // 5. Mock Ads
-    INITIAL_ADS.forEach(ad => {
-      if (isMatchingAuthor(ad.author, ad.authorId)) {
-        itemsMap.set(`ad-${ad.id}`, {
-          id: ad.id,
-          type: 'ad',
-          title: ad.title,
-          description: ad.description,
-          category: ad.category,
-          imageUrl: ad.image,
-          price: ad.price,
-          location: ad.location,
-          date: ad.date,
-        });
-      }
-    });
-
-    // 6. Mock Events
-    INITIAL_EVENTS.forEach(ev => {
-      if (isMatchingAuthor(ev.organizer, ev.organizerId)) {
-        itemsMap.set(`event-${ev.id}`, {
-          id: ev.id,
-          type: 'event',
-          title: ev.title,
-          description: ev.description,
-          category: ev.category,
-          imageUrl: ev.image,
-          price: ev.price,
-          location: ev.location,
-          date: ev.date,
-        });
-      }
-    });
-
-    // 7. Mock Deals
-    [...HERO_BENTO_DEALS, ...INITIAL_DEALS].forEach(d => {
-      if (isMatchingAuthor(d.partner, d.partnerId)) {
-        itemsMap.set(`deal-${d.id}`, {
-          id: d.id,
-          type: 'deal',
-          title: d.title,
-          description: d.description,
-          category: d.categoryName || d.category,
-          imageUrl: d.image,
-          price: d.discount || d.newPrice,
-          location: d.region,
-          date: d.date,
-        });
-      }
-    });
-
-    // 8. If navigated from a specific post target and it's not yet in map, add it
-    if (targetAuthor.fromPostTarget && !itemsMap.has(`${targetAuthor.fromPostTarget.type}-${targetAuthor.fromPostTarget.id}`)) {
-      const t = targetAuthor.fromPostTarget;
-      itemsMap.set(`${t.type}-${t.id}`, {
-        id: t.id,
-        type: t.type === 'ad' ? 'ad' : t.type === 'event' ? 'event' : t.type === 'deal' ? 'deal' : 'post',
-        title: t.initialData?.title || 'Objava avtorja',
-        description: t.initialData?.description || t.initialData?.content || '',
-        category: t.initialData?.category,
-        imageUrl: t.initialData?.image || t.initialData?.imageUrl,
-        price: t.initialData?.price || t.initialData?.discount,
-        location: t.initialData?.location || t.initialData?.region,
-      });
-    }
-
-    return Array.from(itemsMap.values());
-  }, [firestorePosts, firestoreAds, firestoreEvents, targetAuthor]);
-
-  // Categorized counts
+  // Categorized counts & engagement totals
   const postsCount = authorItems.filter(i => i.type === 'post').length;
   const adsCount = authorItems.filter(i => i.type === 'ad').length;
   const eventsCount = authorItems.filter(i => i.type === 'event').length;
   const dealsCount = authorItems.filter(i => i.type === 'deal').length;
+  const totalViews = useMemo(() => {
+    return authorItems.reduce((acc, item) => acc + (item.viewsCount || 0), 0);
+  }, [authorItems]);
+  const totalLikes = useMemo(() => {
+    return authorItems.reduce((acc, item) => acc + (item.likesCount || 0) + (item.lovesCount || 0), 0);
+  }, [authorItems]);
 
   const filteredItems = useMemo(() => {
     if (activeTypeFilter === 'all') return authorItems;
@@ -451,29 +510,16 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
         <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-start justify-between relative z-10">
           <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-center flex-1 min-w-0">
             <div className="relative shrink-0">
-            <img 
-              alt={authorProfile.name} 
-              className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover shadow-md ring-4 ring-surface-container-lowest border border-surface-container/50" 
-              src={authorProfile.avatar} 
-            />
-            {authorProfile.role === 'superadmin' ? (
-              <span className="absolute bottom-1 right-1 bg-purple-600 text-white rounded-full p-1.5 shadow-md" title="Superadmin">
-                <Crown className="w-4 h-4" />
-              </span>
-            ) : authorProfile.role === 'admin' ? (
-              <span className="absolute bottom-1 right-1 bg-error text-white rounded-full p-1.5 shadow-md" title="Administrator">
-                <Shield className="w-4 h-4" />
-              </span>
-            ) : authorProfile.role === 'verified' ? (
-              <span className="absolute bottom-1 right-1 bg-secondary text-on-secondary rounded-full p-1.5 shadow-md" title="Preverjen član">
-                <UserCheck className="w-4 h-4" />
-              </span>
-            ) : (
-              <span className="absolute bottom-1 right-1 bg-primary text-white rounded-full p-1.5 shadow-md" title="Član skupnosti">
-                <CheckCircle2 className="w-4 h-4" />
-              </span>
-            )}
-          </div>
+              <UserAvatar
+                src={authorProfile.avatar}
+                name={authorProfile.name}
+                userId={effectiveTargetId}
+                role={authorProfile.role}
+                size="2xl"
+                showRoleBadge={true}
+                className="w-24 h-24 sm:w-28 sm:h-28 shadow-md ring-4 ring-surface-container-lowest border border-surface-container/50 bg-surface-container-low"
+              />
+            </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex flex-col gap-1.5">
@@ -535,16 +581,20 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
             <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Vseh objav</span>
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
-            <span className="font-headline-sm text-xl font-black text-emerald-600 dark:text-emerald-400">{adsCount}</span>
-            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Malih oglasov</span>
+            <span className="font-headline-sm text-xl font-black text-sky-600 dark:text-sky-400">
+              {eventsCount > 0 ? eventsCount : adsCount > 0 ? adsCount : (postsCount + dealsCount)}
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">
+              {eventsCount > 0 ? 'Dogodkov' : adsCount > 0 ? 'Malih oglasov' : 'Člankov'}
+            </span>
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
-            <span className="font-headline-sm text-xl font-black text-sky-600 dark:text-sky-400">{eventsCount}</span>
-            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Dogodkov</span>
+            <span className="font-headline-sm text-xl font-black text-emerald-600 dark:text-emerald-400">{totalViews}</span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Ogledov objav</span>
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
-            <span className="font-headline-sm text-xl font-black text-amber-600 dark:text-amber-400">{dealsCount + postsCount}</span>
-            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Člankov & Popustov</span>
+            <span className="font-headline-sm text-xl font-black text-amber-600 dark:text-amber-400">{totalLikes}</span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Všečkov skupaj</span>
           </div>
         </div>
       </div>
@@ -695,11 +745,11 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                     </div>
 
                     <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-1">
-                      {item.title}
+                      {getPlainTextSnippet(item.title)}
                     </h3>
 
                     <p className="text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
-                      {item.description}
+                      {getPlainTextSnippet(item.description)}
                     </p>
 
                     <div className="flex flex-wrap items-center gap-3 text-[11px] text-outline mt-2.5">
@@ -719,6 +769,24 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                         <span className="flex items-center gap-1">
                           <BookOpen className="w-3 h-3 text-primary" />
                           <span>{item.readTime}</span>
+                        </span>
+                      )}
+                      {typeof item.viewsCount === 'number' && (
+                        <span className="flex items-center gap-1 text-on-surface-variant font-medium" title="Število ogledov objave">
+                          <Eye className="w-3 h-3 text-secondary" />
+                          <span>{item.viewsCount} {item.viewsCount === 1 ? 'ogled' : item.viewsCount === 2 ? 'ogleda' : 'ogledov'}</span>
+                        </span>
+                      )}
+                      {typeof item.likesCount === 'number' && (
+                        <span className="flex items-center gap-1 text-on-surface-variant font-medium" title="Število všečkov objave">
+                          <ThumbsUp className="w-3 h-3 text-primary" />
+                          <span>{item.likesCount + (item.lovesCount || 0)}</span>
+                        </span>
+                      )}
+                      {item.type === 'event' && item.interestedCount !== undefined && item.interestedCount !== null && (
+                        <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-medium" title="Zainteresirani obiskovalci">
+                          <Users className="w-3 h-3" />
+                          <span>{item.interestedCount} zainteresiranih</span>
                         </span>
                       )}
                     </div>

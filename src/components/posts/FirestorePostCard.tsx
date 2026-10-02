@@ -12,6 +12,8 @@ import { EventPost } from "./EventPost";
 import { EditPostModal, EditablePostItem } from "./EditPostModal";
 import { PromotedBadge } from "../common/PromotedBadge";
 import { UserDisplayName } from "../common/UserDisplayName";
+import { UserAvatar } from "../common/UserAvatar";
+import { resolveUserUploadedAvatar } from "../../utils/avatarUtils";
 import { isItemActivelyPromoted } from "../../services/promotionService";
 import { parseEventDateInfo } from "../../utils/dateUtils";
 import { getPlainTextSnippet } from "../../utils/textUtils";
@@ -25,9 +27,13 @@ export interface FirestorePostCardProps {
 }
 
 export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNavigatePost }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, users } = useAuth();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const effectiveAuthorAvatar = React.useMemo(() => {
+    return resolveUserUploadedAvatar(post.authorAvatar, post.authorId, post.authorName, users);
+  }, [post.authorAvatar, post.authorId, post.authorName, users]);
 
   const resolveInitialImage = () => {
     if (post.imageUrl && post.imageUrl.trim()) return post.imageUrl.trim();
@@ -374,7 +380,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             href={authorUrl}
             data-author-name={post.authorName}
             data-author-id={post.authorId}
-            data-author-avatar={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`}
+            data-author-avatar={effectiveAuthorAvatar || ''}
             data-author-role={post.authorRole}
             data-post-id={post.id}
             data-post-type={post.category === 'deal' || post.category === 'ugodnosti' ? 'deal' : post.category === 'event' ? 'event' : 'blog'}
@@ -386,10 +392,13 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             className="group/author shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${post.authorName}`}
           >
-            <img 
-              alt={`Avatar ${post.authorName}`} 
-              className="w-10 h-10 rounded-full object-cover ring-1 ring-black/5 group-hover/author:ring-2 group-hover/author:ring-primary transition-all" 
-              src={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`} 
+            <UserAvatar
+              src={effectiveAuthorAvatar}
+              name={post.authorName}
+              userId={post.authorId}
+              role={post.authorRole}
+              size="md"
+              className="w-10 h-10 ring-1 ring-black/5 group-hover/author:ring-2 group-hover/author:ring-primary transition-all"
             />
           </a>
           <div>
@@ -398,7 +407,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
                 href={authorUrl}
                 data-author-name={post.authorName}
                 data-author-id={post.authorId}
-                data-author-avatar={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7C3AED&color=fff`}
+                data-author-avatar={effectiveAuthorAvatar || ''}
                 data-author-role={post.authorRole}
                 data-post-id={post.id}
                 data-post-type={post.category === 'deal' || post.category === 'ugodnosti' ? 'deal' : post.category === 'event' ? 'event' : 'blog'}

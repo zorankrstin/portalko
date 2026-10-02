@@ -9,6 +9,7 @@ import { PromotionBadgeType } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { UserAvatar } from "../common/UserAvatar";
 import type { PostDetailTarget } from "../../types";
 
 export interface BlogPostProps {
@@ -167,7 +168,14 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             className="group/avatar shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${author}`}
           >
-            <img className="w-11 h-11 rounded-full object-cover ring-1 ring-black/5 group-hover/avatar:ring-2 group-hover/avatar:ring-primary transition-all" src={authorAvatar} alt={author} />
+            <UserAvatar
+              src={authorAvatar}
+              name={author}
+              userId={authorId}
+              role={authorRole}
+              size="md"
+              className="w-11 h-11 ring-1 ring-black/5 group-hover/avatar:ring-2 group-hover/avatar:ring-primary transition-all"
+            />
           </a>
           <div>
             <div className="flex items-center gap-2">

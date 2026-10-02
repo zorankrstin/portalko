@@ -16,6 +16,8 @@ import { subscribeToPosts, subscribeToAds, subscribeToEvents, FirestorePost, Fir
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { parseEventDateInfo } from '../utils/dateUtils';
+import { slugify } from '../utils/urlUtils';
+import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 
 type FeedItemKind = 
   | { type: 'firestore'; data: FirestorePost }
@@ -31,10 +33,11 @@ interface MainFeedProps {
   searchQuery?: string;
   onViewChange?: (view: ViewMode) => void;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
 }
 
-export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: MainFeedProps) {
-  const { currentUser } = useAuth();
+export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAuthorClick }: MainFeedProps) {
+  const { currentUser, users } = useAuth();
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeType, setComposeType] = useState<'post' | 'ad' | 'deal' | 'event'>('post');
   const [page, setPage] = useState(1);
@@ -414,15 +417,24 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: Mai
                   : (ev.isPromoted && (!ev.promotedUntil || new Date(ev.promotedUntil).getTime() > Date.now()))
               );
               const dateInfo = parseEventDateInfo(ev.eventDate || ev.date, ev.eventTime);
+              const eventAuthorName = ev.authorName || (ev as any).organizer || 'Organizator';
+              const authorUser = users.find(u => 
+                (ev.authorId && u.id === ev.authorId) ||
+                (u.name && u.name.trim().toLowerCase() === eventAuthorName.trim().toLowerCase()) ||
+                (u.name && slugify(u.name) === slugify(eventAuthorName))
+              );
+              const resolvedAvatar = resolveUserUploadedAvatar(ev.authorAvatar, ev.authorId, eventAuthorName, users);
+
               return (
                 <EventPost
                   key={`f-ev-${ev.id}-${idx}`}
                   id={ev.id}
                   title={ev.title}
-                  organizer={ev.authorName}
+                  organizer={eventAuthorName}
                   authorId={ev.authorId}
-                  authorAvatar={ev.authorAvatar}
-                  authorRole={ev.authorRole}
+                  authorAvatar={resolvedAvatar}
+                  authorRole={ev.authorRole || authorUser?.role}
+                  onAuthorClick={onAuthorClick}
                   categoryName={ev.categoryName || ev.category || 'Dogodek'}
                   category="dogodki"
                   location={ev.location || ev.region || 'Slovenija'}
@@ -534,15 +546,24 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost }: Mai
             }
             if (item.type === 'event') {
               const ev = item.data;
+              const evAuthorName = ev.organizer || ev.authorName || 'Organizator';
+              const authorUser = users.find(u => 
+                (ev.authorId && u.id === ev.authorId) ||
+                (u.name && u.name.trim().toLowerCase() === evAuthorName.trim().toLowerCase()) ||
+                (u.name && slugify(u.name) === slugify(evAuthorName))
+              );
+              const resolvedAvatar = resolveUserUploadedAvatar(ev.authorAvatar, ev.authorId || ev.organizerId, evAuthorName, users);
+
               return (
                 <EventPost
                   key={`event-post-${ev.id}-${idx}`}
                   id={ev.id}
                   title={ev.title}
-                  organizer={ev.organizer}
+                  organizer={evAuthorName}
                   authorId={ev.authorId || ev.organizerId}
-                  authorAvatar={ev.authorAvatar}
-                  authorRole={ev.authorRole}
+                  authorAvatar={resolvedAvatar}
+                  authorRole={ev.authorRole || authorUser?.role}
+                  onAuthorClick={onAuthorClick}
                   categoryName={ev.categoryName}
                   category="dogodki"
                   location={ev.location}

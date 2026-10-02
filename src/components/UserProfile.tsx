@@ -31,12 +31,15 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { AuthorProfileTarget, PostDetailTarget, ViewMode } from '../types';
+import { getPlainTextSnippet } from '../utils/textUtils';
 import { PublicAuthorProfile } from './profile/PublicAuthorProfile';
 import { SavedPostsTab } from './SavedPostsTab';
 import { BlogPost } from './posts/BlogPost';
 import { AdPost } from './posts/AdPost';
 import { EventPost } from './posts/EventPost';
 import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
+import { compressImageFileToDataUrl } from '../utils/imageUtils';
+import { isUserUploadedAvatar, getUserInitials, getAvatarRoleColors } from '../utils/avatarUtils';
 import { ComposeModal } from './ComposeModal';
 import { 
   subscribeToPosts, 
@@ -432,43 +435,96 @@ export function UserProfile({
     }, 1500);
   };
 
+  const [avatarUploadLoading, setAvatarUploadLoading] = useState(false);
+  const [avatarUploadSuccess, setAvatarUploadSuccess] = useState('');
+  const [avatarImgFailed, setAvatarImgFailed] = useState(false);
+
+  const hasUploadedAvatar = Boolean(
+    currentUser.avatar && 
+    isUserUploadedAvatar(currentUser.avatar) && 
+    !avatarImgFailed
+  );
+
+  const roleColors = getAvatarRoleColors(currentUser.role, currentUser.name);
+
   return (
     <div className="flex flex-col gap-space-md">
       {/* Profile Header */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 relative overflow-hidden flex flex-col sm:flex-row gap-6 items-start sm:items-center">
         <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
         
-        <div className="relative shrink-0">
-          <img 
-            alt={currentUser.name} 
-            className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover shadow-md ring-4 ring-surface-container-lowest" 
-            src={currentUser.avatar} 
-          />
-          <input 
-            type="file" 
-            id={`avatar-upload-${currentUser.id}`} 
-            className="hidden" 
-            accept="image/*"
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  const newAvatarUrl = reader.result as string;
-                  updateUser(currentUser.id, { avatar: newAvatarUrl });
-                  e.target.value = ''; // Reset input
-                };
-                reader.readAsDataURL(file);
-              }
-            }}
-          />
-          <label 
-            htmlFor={`avatar-upload-${currentUser.id}`}
-            className="absolute bottom-1 right-1 p-2 bg-surface-container-highest hover:bg-surface-container text-on-surface rounded-full shadow-sm transition-colors border border-surface-container/50 cursor-pointer"
-          >
-            <Camera className="w-[1em] h-[1em] text-sm" />
-          </label>
+        <div className="relative shrink-0 flex flex-col items-center">
+          <div className="relative">
+            {hasUploadedAvatar ? (
+              <img 
+                alt={currentUser.name} 
+                className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover shadow-md ring-4 ring-surface-container-lowest" 
+                src={currentUser.avatar} 
+                onError={() => setAvatarImgFailed(true)}
+              />
+            ) : (
+              <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full flex items-center justify-center font-bold text-3xl sm:text-4xl shadow-md ring-4 ring-surface-container-lowest ${roleColors.bg} ${roleColors.text}`}>
+                {getUserInitials(currentUser.name)}
+              </div>
+            )}
+
+            <input 
+              type="file" 
+              id={`avatar-upload-${currentUser.id}`} 
+              className="hidden" 
+              accept="image/*"
+              disabled={avatarUploadLoading}
+              onClick={(e) => e.stopPropagation()}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  try {
+                    setAvatarUploadLoading(true);
+                    setAvatarImgFailed(false);
+                    const newAvatarUrl = await compressImageFileToDataUrl(file, 400);
+                    updateUser(currentUser.id, { avatar: newAvatarUrl });
+                    setAvatarUploadSuccess('Fotografija profila je posodobljena!');
+                    setTimeout(() => setAvatarUploadSuccess(''), 3000);
+                  } catch (err) {
+                    console.error('Napaka pri obdelavi slike:', err);
+                  } finally {
+                    setAvatarUploadLoading(false);
+                    e.target.value = '';
+                  }
+                }
+              }}
+            />
+            <label 
+              htmlFor={`avatar-upload-${currentUser.id}`}
+              className="absolute bottom-1 right-1 p-2.5 bg-primary hover:bg-primary-hover text-white rounded-full shadow-md transition-all cursor-pointer ring-2 ring-surface-container-lowest"
+              title="Naložite svojo fotografijo profila"
+            >
+              <Camera className="w-4 h-4" />
+            </label>
+          </div>
+
+          {/* Remove custom photo option if one is uploaded */}
+          {hasUploadedAvatar && (
+            <button
+              type="button"
+              onClick={() => {
+                updateUser(currentUser.id, { avatar: '' });
+                setAvatarUploadSuccess('Fotografija odstranjena.');
+                setTimeout(() => setAvatarUploadSuccess(''), 2500);
+              }}
+              className="mt-2 text-[11px] text-outline hover:text-error transition-colors flex items-center gap-1 cursor-pointer"
+              title="Odstrani naloženo fotografijo profila"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>Odstrani sliko</span>
+            </button>
+          )}
+
+          {avatarUploadSuccess && (
+            <span className="mt-1 text-[11px] text-secondary font-medium animate-in fade-in">
+              {avatarUploadSuccess}
+            </span>
+          )}
         </div>
 
         <div className="flex-1 min-w-0 z-10">
@@ -729,10 +785,10 @@ export function UserProfile({
                         </div>
 
                         <h3 className="font-bold text-on-surface text-sm sm:text-base line-clamp-1">
-                          {item.title}
+                          {getPlainTextSnippet(item.title)}
                         </h3>
                         <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">
-                          {item.content}
+                          {getPlainTextSnippet(item.content)}
                         </p>
 
                         {item.tags && Array.isArray(item.tags) && item.tags.length > 0 && (

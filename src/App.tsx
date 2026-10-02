@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Check, AlertCircle, X } from 'lucide-react';
 import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
@@ -32,7 +33,7 @@ import { parseUrlPath, buildPostUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } f
 export { VIEW_HASH_MAP };
 
 export default function App() {
-  const { currentUser } = useAuth();
+  const { currentUser, confirmEmailWithToken } = useAuth();
   const role = currentUser?.role || 'guest';
   const [currentView, setCurrentView] = useState<ViewMode>('main');
   const [selectedPostTarget, setSelectedPostTarget] = useState<PostDetailTarget | null>(null);
@@ -46,6 +47,42 @@ export default function App() {
   }>({});
   const [isRlsModalOpen, setIsRlsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [verificationBanner, setVerificationBanner] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  // Check for email verification parameter on load (?verify-email=... or ?confirm-token=...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('verify-email') || urlParams.get('confirm-token');
+    const emailParam = urlParams.get('email');
+
+    if (token) {
+      confirmEmailWithToken(token, emailParam || undefined).then((res) => {
+        if (res.success) {
+          setVerificationBanner({
+            type: 'success',
+            message: `🎉 Vaš e-poštni naslov je bil uspešno potrjen! Vaš račun (${res.user?.name}) je zdaj aktiviran in prijavljeni ste.`,
+          });
+        } else {
+          setVerificationBanner({
+            type: 'error',
+            message: res.error || 'Povezava za potrditev e-pošte ni veljavna ali pa je že potekla.',
+          });
+        }
+
+        // Clean up verification query params from the browser URL without full refresh
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('verify-email');
+        newUrl.searchParams.delete('confirm-token');
+        newUrl.searchParams.delete('email');
+        const cleanPath = newUrl.pathname + (newUrl.searchParams.toString() ? `?${newUrl.searchParams.toString()}` : '') + newUrl.hash;
+        window.history.replaceState(null, '', cleanPath);
+      });
+    }
+  }, [confirmEmailWithToken]);
 
   // Disable browser automatic scroll restoration to ensure reliable top-scroll and init analytics tracker
   useEffect(() => {
@@ -492,6 +529,34 @@ export default function App() {
         onSearchSubmit={handleSearchSubmit}
         activeView={activeNavView}
       />
+
+      {verificationBanner && (
+        <div className="max-w-7xl w-full mx-auto px-4 lg:px-margin-desktop pt-3">
+          <div className={`p-4 rounded-2xl flex items-center justify-between gap-3 shadow-md border animate-in fade-in duration-200 ${
+            verificationBanner.type === 'success'
+              ? 'bg-secondary/15 border-secondary/30 text-on-surface'
+              : 'bg-error/15 border-error/30 text-error'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                verificationBanner.type === 'success' ? 'bg-secondary/20 text-secondary' : 'bg-error/20 text-error'
+              }`}>
+                {verificationBanner.type === 'success' ? <Check className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+              </div>
+              <p className="font-body-md text-sm font-medium">
+                {verificationBanner.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setVerificationBanner(null)}
+              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-on-surface-variant transition-colors"
+              title="Zapri"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
       
       <div className="max-w-7xl w-full mx-auto px-4 lg:px-margin-desktop py-space-md" id="main-content-container">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
@@ -540,6 +605,7 @@ export default function App() {
                 searchQuery={searchQuery} 
                 onViewChange={handleViewChange} 
                 onNavigatePost={handleNavigatePost}
+                onAuthorClick={handleAuthorClick}
               />
             )}
             {currentView === 'news' && (
@@ -564,6 +630,7 @@ export default function App() {
                 onViewChange={handleViewChange} 
                 searchQuery={searchQuery} 
                 onNavigatePost={handleNavigatePost} 
+                onAuthorClick={handleAuthorClick}
               />
             )}
             {currentView === 'deals' && (

@@ -15,6 +15,10 @@ import { PromotedBadge } from './common/PromotedBadge';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { AdsCategoryLocationFilter } from './ads/AdsCategoryLocationFilter';
 import { slugify } from '../utils/urlUtils';
+import { getPlainTextSnippet } from '../utils/textUtils';
+import { UserAvatar } from './common/UserAvatar';
+import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
+import { useAuth } from '../contexts/AuthContext';
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -23,6 +27,7 @@ interface MaliOglasiFeedProps {
 }
 
 export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost }: MaliOglasiFeedProps) {
+  const { users } = useAuth();
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [firestoreAds, setFirestoreAds] = useState<FirestoreAd[]>([]);
@@ -118,7 +123,7 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
   // Filter Firestore ads
   const filteredFirestore = useMemo(() => {
     return firestoreAds.filter(ad => {
-      const textToMatch = `${ad.title} ${ad.description} ${ad.category} ${ad.categoryName || ''} ${ad.subcategory || ''} ${ad.subcategoryName || ''} ${ad.location || ''} ${ad.region || ''}`;
+      const textToMatch = `${getPlainTextSnippet(ad.title)} ${getPlainTextSnippet(ad.description)} ${ad.category} ${ad.categoryName || ''} ${ad.subcategory || ''} ${ad.subcategoryName || ''} ${ad.location || ''} ${ad.region || ''}`;
       const matchesSearch = matchesSearchAndCategory(textToMatch, 'ads', searchQuery);
       
       const aCatLower = (ad.category || '').toLowerCase().trim();
@@ -374,6 +379,8 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
             const ad = item.data;
             const isPromoted = checkAdPromoted(item);
             const badgeType = ad.promotionBadgeType || ad.promotion?.badgeType || 'PROMO';
+            const cleanTitle = getPlainTextSnippet(ad.title);
+            const cleanDescription = getPlainTextSnippet(ad.description);
 
               return (
                 <article key={`fs-ad-${ad.id}-${idx}`} className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row ${
@@ -389,7 +396,7 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                       className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
                       title="Odpri samostojno stran tega oglasa"
                     >
-                      <img alt={ad.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={ad.imageUrl} />
+                      <img alt={cleanTitle} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={ad.imageUrl} />
                       <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
                         {isPromoted && (
                           <PromotedBadge type={badgeType} size="sm" />
@@ -420,15 +427,15 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                             initialDislikesCount={(ad as any).dislikesCount || 0}
                             variant="minimal"
                             showCount={true}
-                            itemTitle={ad.title}
+                            itemTitle={cleanTitle}
                           />
                           <BookmarkButton 
                             id={ad.id}
                             data={{
                               id: ad.id,
                               type: 'ad',
-                              title: ad.title,
-                              description: ad.description,
+                              title: cleanTitle,
+                              description: cleanDescription,
                               category: ad.categoryName || ad.category,
                               location: ad.location || ad.region,
                               price: ad.price,
@@ -437,15 +444,15 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                             }}
                           />
                           <ShareMenu 
-                            title={ad.title}
-                            description={ad.description}
+                            title={cleanTitle}
+                            description={cleanDescription}
                             type="ad"
                             id={ad.id}
                           />
                           <ReportButton 
                             targetId={ad.id} 
                             targetType="ad" 
-                            targetTitle={ad.title} 
+                            targetTitle={cleanTitle} 
                             targetAuthor={ad.authorName} 
                           />
                         </div>
@@ -458,11 +465,11 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                             window.location.hash = `ad-${ad.id}`;
                           }}
                         >
-                          {ad.title}
+                          {cleanTitle}
                         </a>
                       </h2>
                       <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
-                        {ad.description}
+                        {cleanDescription}
                       </p>
                     </div>
 
@@ -473,31 +480,37 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                         </span>
                         <span className="text-[10px] text-outline flex items-center gap-1">
                           <span>Objavil:</span>
-                          <a
-                            href={`/avtor/${slugify(ad.authorName || 'Uporabnik')}`}
-                            data-author-name={ad.authorName || 'Uporabnik'}
-                            data-author-id={ad.authorId}
-                            data-author-avatar={ad.authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(ad.authorName || 'Uporabnik')}`}
-                            data-author-role={ad.authorRole || 'uporabnik'}
-                            data-post-id={ad.id}
-                            data-post-type="ad"
-                            data-post-title={ad.title}
-                            data-post-image={ad.imageUrl}
-                            data-post-category={ad.categoryName || ad.category}
-                            data-post-price={ad.price}
-                            data-post-location={ad.location || ad.region}
-                            className="font-semibold text-on-surface hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
-                            title={`Ogled profila: ${ad.authorName || 'Uporabnik'}`}
-                          >
-                            {ad.authorAvatar && (
-                              <img 
-                                src={ad.authorAvatar} 
-                                alt={ad.authorName || 'Uporabnik'} 
-                                className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
-                              />
-                            )}
-                            <span>{ad.authorName || 'Uporabnik'}</span>
-                          </a>
+                          {(() => {
+                            const authorAvatar = resolveUserUploadedAvatar(ad.authorAvatar, ad.authorId, ad.authorName, users);
+                            return (
+                              <a
+                                href={`/avtor/${slugify(ad.authorName || 'Uporabnik')}`}
+                                data-author-name={ad.authorName || 'Uporabnik'}
+                                data-author-id={ad.authorId}
+                                data-author-avatar={authorAvatar || ''}
+                                data-author-role={ad.authorRole || 'uporabnik'}
+                                data-post-id={ad.id}
+                                data-post-type="ad"
+                                data-post-title={ad.title}
+                                data-post-image={ad.imageUrl}
+                                data-post-category={ad.categoryName || ad.category}
+                                data-post-price={ad.price}
+                                data-post-location={ad.location || ad.region}
+                                className="font-semibold text-on-surface hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
+                                title={`Ogled profila: ${ad.authorName || 'Uporabnik'}`}
+                              >
+                                <UserAvatar
+                                  src={authorAvatar}
+                                  name={ad.authorName || 'Uporabnik'}
+                                  userId={ad.authorId}
+                                  role={ad.authorRole}
+                                  size="xs"
+                                  className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
+                                />
+                                <span>{ad.authorName || 'Uporabnik'}</span>
+                              </a>
+                            );
+                          })()}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">

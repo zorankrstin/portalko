@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Shield, Crown, UserCheck, Check, AlertCircle, Plus, Info, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth, Role, User } from '../contexts/AuthContext';
+import { UserAvatar } from './common/UserAvatar';
+import { isDummyAvatar } from '../utils/avatarUtils';
 
 interface GoogleAuthButtonProps {
   mode: 'login' | 'register';
@@ -10,7 +12,7 @@ interface GoogleAuthButtonProps {
 }
 
 export function GoogleAuthButton({ mode, selectedRole = 'registered', onSuccess, onError }: GoogleAuthButtonProps) {
-  const { loginOrRegisterWithGoogle, signInWithGoogleFirebase } = useAuth();
+  const { loginOrRegisterWithGoogle, signInWithGoogleFirebase, users } = useAuth();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customEmail, setCustomEmail] = useState('');
@@ -113,7 +115,7 @@ export function GoogleAuthButton({ mode, selectedRole = 'registered', onSuccess,
     handleSelectAccount(
       customEmail.trim(), 
       name, 
-      `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=4285F4&color=fff`
+      undefined
     );
   };
 
@@ -181,30 +183,38 @@ export function GoogleAuthButton({ mode, selectedRole = 'registered', onSuccess,
             {/* Account List */}
             <div className="p-4 flex flex-col gap-2 max-h-72 overflow-y-auto no-scrollbar">
               {/* Primary User Account: Zoran Krstin */}
-              <button
-                type="button"
-                onClick={() => handleSelectAccount(
-                  'zoran.krstin@gmail.com', 
-                  'Zoran Krstin', 
-                  'https://ui-avatars.com/api/?name=Zoran+Krstin&background=7C3AED&color=fff'
-                )}
-                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-surface-container-low border border-surface-container-low hover:border-primary/40 text-left transition-all group"
-              >
-                <img
-                  src="https://ui-avatars.com/api/?name=Zoran+Krstin&background=7C3AED&color=fff"
-                  alt="Zoran Krstin"
-                  className="w-10 h-10 rounded-full ring-1 ring-surface-container"
-                />
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors flex items-center gap-1.5">
-                    Zoran Krstin
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold">
-                      Google
-                    </span>
-                  </span>
-                  <span className="text-xs text-outline truncate">zoran.krstin@gmail.com</span>
-                </div>
-              </button>
+              {(() => {
+                const zoranUser = users.find(u => u.email.toLowerCase() === 'zoran.krstin@gmail.com');
+                const zoranAvatar = (zoranUser?.avatar && !isDummyAvatar(zoranUser.avatar)) ? zoranUser.avatar : undefined;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAccount(
+                      'zoran.krstin@gmail.com', 
+                      'Zoran Krstin', 
+                      zoranAvatar
+                    )}
+                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-surface-container-low border border-surface-container-low hover:border-primary/40 text-left transition-all group"
+                  >
+                    <UserAvatar
+                      src={zoranAvatar}
+                      name="Zoran Krstin"
+                      role="superadmin"
+                      size="md"
+                      className="w-10 h-10 ring-1 ring-surface-container"
+                    />
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors flex items-center gap-1.5">
+                        Zoran Krstin
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold">
+                          Google
+                        </span>
+                      </span>
+                      <span className="text-xs text-outline truncate">zoran.krstin@gmail.com</span>
+                    </div>
+                  </button>
+                );
+              })()}
 
               {/* Custom Google Account Option */}
               {!useCustomAccount ? (

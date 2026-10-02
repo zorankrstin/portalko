@@ -18,14 +18,19 @@ import { useEventFilter } from '../contexts/EventFilterContext';
 import { extractEventDateStrings } from '../utils/eventFilterUtils';
 import { EventCalendarWidget } from './common/EventCalendarWidget';
 import { EventsCategoryLocationFilter } from './events/EventsCategoryLocationFilter';
+import { useAuth } from '../contexts/AuthContext';
+import { slugify } from '../utils/urlUtils';
+import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 
 interface DogodkiFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
 }
 
-export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: DogodkiFeedProps) {
+export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, onAuthorClick }: DogodkiFeedProps) {
+  const { users } = useAuth();
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
@@ -428,15 +433,29 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost }: 
             const badgeType = event.promotionBadgeType || event.promotion?.badgeType || 'PROMO';
             const dateInfo = parseEventDateInfo(event.eventDate || event.date, event.eventTime);
 
+            const eventAuthorName = event.authorName || (event as any).organizer || 'Organizator';
+            const authorUser = users.find(u => 
+              (event.authorId && u.id === event.authorId) ||
+              (u.name && u.name.trim().toLowerCase() === eventAuthorName.trim().toLowerCase()) ||
+              (u.name && slugify(u.name) === slugify(eventAuthorName))
+            );
+            const resolvedAvatar = resolveUserUploadedAvatar(
+              event.authorAvatar,
+              event.authorId,
+              eventAuthorName,
+              users
+            );
+
             return (
               <EventPost
                 key={`fe-${event.id}-${idx}`}
                 id={event.id}
                 title={event.title}
-                organizer={event.authorName}
+                organizer={eventAuthorName}
                 authorId={event.authorId}
-                authorAvatar={event.authorAvatar}
-                authorRole={event.authorRole}
+                authorAvatar={resolvedAvatar}
+                authorRole={event.authorRole || authorUser?.role}
+                onAuthorClick={onAuthorClick}
                 category={event.category}
                 categoryName={event.categoryName || event.category || 'Dogodek'}
                 subcategory={event.subcategory}

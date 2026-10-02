@@ -28,6 +28,8 @@ import {
 import { ReportButton } from '../ReportButton';
 import { LoginModal } from '../LoginModal';
 import { AuthorProfileTarget, PostDetailType, ViewMode } from '../../types';
+import { UserAvatar } from './UserAvatar';
+import { isDummyAvatar } from '../../utils/avatarUtils';
 import { formatSlovenianDate, formatRelativeTime } from '../../utils/dateUtils';
 import { scrollToPageTop } from '../../utils/scrollUtils';
 
@@ -152,7 +154,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     setFeedbackMsg(null);
 
     const authorName = currentUser?.name || customGuestName.trim() || 'Gost Portalko';
-    const authorAvatar = currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=7C3AED&color=fff`;
+    const authorAvatar = (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : '';
     const authorRole = currentUser?.role === 'superadmin' ? 'Superadmin' :
                        currentUser?.role === 'admin' ? 'Administrator' :
                        currentUser?.role === 'verified' ? 'Preverjen uporabnik' :
@@ -429,10 +431,13 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             {currentUser ? (
               <div className="flex items-center gap-2 text-xs text-on-surface">
-                <img 
-                  src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=7C3AED&color=fff`} 
-                  alt={currentUser.name} 
-                  className="w-5 h-5 rounded-full object-cover ring-1 ring-primary/20"
+                <UserAvatar
+                  src={currentUser.avatar}
+                  name={currentUser.name}
+                  userId={currentUser.id}
+                  role={currentUser.role}
+                  size="xs"
+                  className="w-5 h-5 ring-1 ring-primary/20"
                 />
                 <span className="font-semibold text-primary">{currentUser.name}</span>
                 {currentUser.role && currentUser.role !== 'registered' && (
@@ -555,13 +560,13 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                   className="shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
                   title={`Profil uporabnika: ${comment.authorName}`}
                 >
-                  <img
-                    src={comment.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.authorName)}&background=7C3AED&color=fff`}
-                    alt={comment.authorName}
-                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover shrink-0 ring-1 ring-black/5 shadow-2xs"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.authorName)}&background=7C3AED&color=fff`;
-                    }}
+                  <UserAvatar
+                    src={comment.authorAvatar}
+                    name={comment.authorName}
+                    userId={comment.authorId}
+                    role={comment.authorRole}
+                    size="sm"
+                    className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 ring-1 ring-black/5 shadow-2xs"
                   />
                 </button>
 

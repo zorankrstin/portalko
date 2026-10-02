@@ -10,6 +10,9 @@ import { getPlainTextSnippet } from "../../utils/textUtils";
 import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
 import { useEventFilter } from "../../contexts/EventFilterContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { isDummyAvatar } from "../../utils/avatarUtils";
+import { UserAvatar } from "../common/UserAvatar";
 
 export interface EventPostProps {
   id?: string;
@@ -42,6 +45,7 @@ export interface EventPostProps {
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
   onCategoryClick?: (category?: string, categoryName?: string, subcategory?: string, subcategoryName?: string) => void;
   onLocationClick?: (location?: string, region?: string) => void;
 }
@@ -77,10 +81,37 @@ export const EventPost: React.FC<EventPostProps> = ({
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
+  onAuthorClick,
   onCategoryClick,
   onLocationClick,
 }) => {
   const { filterByEventCategory, filterByEventLocation } = useEventFilter();
+  const { users } = useAuth();
+
+  const effectiveAuthorAvatar = useMemo(() => {
+    if (authorAvatar && !authorAvatar.includes('dicebear.com') && !authorAvatar.includes('ui-avatars.com')) {
+      return authorAvatar;
+    }
+    const orgLower = organizer.toLowerCase();
+    if (orgLower.includes('portalko')) {
+      return 'https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg';
+    }
+    if (orgLower.includes('špas') || orgLower.includes('spas')) {
+      return 'https://www.spasteater.si/og-default.jpg';
+    }
+    const user = users.find(u => 
+      (authorId && u.id === authorId) ||
+      (u.name && u.name.trim().toLowerCase() === organizer.trim().toLowerCase()) ||
+      (u.name && slugify(u.name) === slugify(organizer))
+    );
+    if (user?.avatar && !user.avatar.includes('dicebear.com') && !user.avatar.includes('ui-avatars.com')) {
+      return user.avatar;
+    }
+    if (image && (image.startsWith('http') || image.startsWith('data:image'))) {
+      return image;
+    }
+    return (authorAvatar && !isDummyAvatar(authorAvatar)) ? authorAvatar : undefined;
+  }, [authorAvatar, organizer, authorId, users, image]);
 
   const handleCategoryClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -134,6 +165,9 @@ export const EventPost: React.FC<EventPostProps> = ({
           subcategory,
           subcategoryName,
           author: organizer,
+          authorId,
+          authorAvatar: effectiveAuthorAvatar,
+          authorRole,
           image: imgSrc,
           location,
           date,
@@ -269,9 +303,30 @@ export const EventPost: React.FC<EventPostProps> = ({
                   <span className="text-[11px] text-outline">•</span>
                   <a
                     href={authorUrl}
+                    onClick={(e) => {
+                      if (onAuthorClick) {
+                        e.preventDefault();
+                        onAuthorClick({
+                          name: organizer,
+                          id: authorId,
+                          avatar: effectiveAuthorAvatar,
+                          role: authorRole,
+                          fromPostTarget: {
+                            type: 'event',
+                            id,
+                            initialData: {
+                              title,
+                              image: imgSrc,
+                              category: categoryName || category,
+                              location,
+                            }
+                          }
+                        });
+                      }
+                    }}
                     data-author-name={organizer}
                     data-author-id={authorId}
-                    data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(organizer)}`}
+                    data-author-avatar={effectiveAuthorAvatar || ''}
                     data-author-role={authorRole}
                     data-post-id={id}
                     data-post-type="event"
@@ -282,13 +337,14 @@ export const EventPost: React.FC<EventPostProps> = ({
                     className="inline-flex items-center gap-1.5 font-label-caps text-[11px] font-semibold text-on-surface hover:text-primary hover:underline transition-colors"
                     title={`Ogled profila organizatorja: ${organizer}`}
                   >
-                    {authorAvatar && (
-                      <img 
-                        src={authorAvatar} 
-                        alt={organizer} 
-                        className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
-                      />
-                    )}
+                    <UserAvatar
+                      src={effectiveAuthorAvatar}
+                      name={organizer}
+                      userId={authorId}
+                      role={authorRole}
+                      size="xs"
+                      className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
+                    />
                     <span>{organizer}</span>
                   </a>
                 </>
@@ -382,9 +438,30 @@ export const EventPost: React.FC<EventPostProps> = ({
                 <span>•</span>
                 <a
                   href={authorUrl}
+                  onClick={(e) => {
+                    if (onAuthorClick) {
+                      e.preventDefault();
+                      onAuthorClick({
+                        name: organizer,
+                        id: authorId,
+                        avatar: effectiveAuthorAvatar,
+                        role: authorRole,
+                        fromPostTarget: {
+                          type: 'event',
+                          id,
+                          initialData: {
+                            title,
+                            image: imgSrc,
+                            category: categoryName || category,
+                            location,
+                          }
+                        }
+                      });
+                    }
+                  }}
                   data-author-name={organizer}
                   data-author-id={authorId}
-                  data-author-avatar={authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(organizer)}`}
+                  data-author-avatar={effectiveAuthorAvatar}
                   data-author-role={authorRole}
                   data-post-id={id}
                   data-post-type="event"
@@ -395,13 +472,14 @@ export const EventPost: React.FC<EventPostProps> = ({
                   className="hover:text-primary hover:underline font-medium text-on-surface transition-colors inline-flex items-center gap-1"
                   title={`Ogled profila organizatorja: ${organizer}`}
                 >
-                  {authorAvatar && (
-                    <img 
-                      src={authorAvatar} 
-                      alt={organizer} 
-                      className="w-4 h-4 rounded-full object-cover shrink-0 ring-1 ring-surface-container/60" 
-                    />
-                  )}
+                  <UserAvatar
+                    src={effectiveAuthorAvatar}
+                    name={organizer}
+                    userId={authorId}
+                    role={authorRole}
+                    size="xs"
+                    className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
+                  />
                   <span>{organizer}</span>
                 </a>
               </>

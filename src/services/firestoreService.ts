@@ -22,6 +22,7 @@ import { INITIAL_DEALS, HERO_BENTO_DEALS } from '../data/mockDealsData';
 import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFeedData';
 import { PromotionConfig, PromotionTargetSection, PromotionBadgeType, EventScheduleSlot } from '../types';
 import { slugify } from '../utils/urlUtils';
+import { isDummyAvatar } from '../utils/avatarUtils';
 
 /**
  * Sanitizes an object before calling Firestore updateDoc:
@@ -231,6 +232,9 @@ export async function syncUserProfile(user: User): Promise<void> {
         email: user.email,
         role: user.role,
         status: user.status,
+        emailVerified: user.emailVerified !== undefined ? user.emailVerified : false,
+        verificationToken: user.verificationToken || null,
+        verificationSentAt: user.verificationSentAt || null,
         avatar: user.avatar || '',
         bio: user.bio || '',
         username: user.username || '',
@@ -240,7 +244,7 @@ export async function syncUserProfile(user: User): Promise<void> {
         updatedAt: new Date().toISOString(),
       });
     } else {
-      await updateDoc(userRef, {
+      const updatePayload: Record<string, any> = {
         name: user.name,
         email: user.email,
         avatar: user.avatar || '',
@@ -249,7 +253,13 @@ export async function syncUserProfile(user: User): Promise<void> {
         socialLinks: user.socialLinks !== undefined ? user.socialLinks : (existing.data().socialLinks || []),
         profileMenu: user.profileMenu !== undefined ? user.profileMenu : (existing.data().profileMenu || []),
         updatedAt: new Date().toISOString(),
-      });
+      };
+      if (user.status !== undefined) updatePayload.status = user.status;
+      if (user.role !== undefined) updatePayload.role = user.role;
+      if (user.emailVerified !== undefined) updatePayload.emailVerified = user.emailVerified;
+      if (user.verificationToken !== undefined) updatePayload.verificationToken = user.verificationToken;
+      if (user.verificationSentAt !== undefined) updatePayload.verificationSentAt = user.verificationSentAt;
+      await updateDoc(userRef, updatePayload);
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -281,6 +291,9 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         verificationRequested: data.verificationRequested,
         verificationRequestedAt: data.verificationRequestedAt,
         verificationNote: data.verificationNote,
+        emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+        verificationToken: data.verificationToken || undefined,
+        verificationSentAt: data.verificationSentAt || undefined,
       };
     }
     return null;
@@ -331,6 +344,9 @@ export async function fetchUsersList(): Promise<User[]> {
         verificationRequested: data.verificationRequested,
         verificationRequestedAt: data.verificationRequestedAt,
         verificationNote: data.verificationNote,
+        emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+        verificationToken: data.verificationToken || undefined,
+        verificationSentAt: data.verificationSentAt || undefined,
       });
     }
     return users;
@@ -371,6 +387,9 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           verificationRequested: data.verificationRequested,
           verificationRequestedAt: data.verificationRequestedAt,
           verificationNote: data.verificationNote,
+          emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+          verificationToken: data.verificationToken || undefined,
+          verificationSentAt: data.verificationSentAt || undefined,
         });
       });
       onUsers(users);
@@ -399,7 +418,7 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
         email: data.email || base.email || `${userId}@portalko.net`,
         role: data.role || base.role || 'registered',
         status: data.status || base.status || 'active',
-        avatar: data.avatar !== undefined ? data.avatar : (base.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || base.name || userId)}&background=7C3AED&color=fff`),
+        avatar: (data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : ((base.avatar && !isDummyAvatar(base.avatar)) ? base.avatar : ''),
         bio: data.bio !== undefined ? data.bio : (base.bio || ''),
         username: data.username !== undefined ? data.username : (base.username || `@${userId}`),
         socialLinks: data.socialLinks !== undefined ? data.socialLinks : (base.socialLinks || []),
@@ -412,10 +431,14 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
       };
       await setDoc(userRef, cleanDataForFirestore(fullDoc));
     } else {
-      await updateDoc(userRef, sanitizeUpdateData({
+      const updatePayload: Record<string, any> = {
         ...data,
         updatedAt: new Date().toISOString(),
-      }));
+      };
+      if (data.avatar !== undefined) {
+        updatePayload.avatar = (data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : '';
+      }
+      await updateDoc(userRef, sanitizeUpdateData(updatePayload));
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -929,7 +952,7 @@ export function subscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void 
         if (mockAd && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
           item.authorName = mockAd.author;
           item.authorRole = 'Uporabnik';
-          item.authorAvatar = (mockAd as any).authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockAd.author)}`;
+          item.authorAvatar = ((mockAd as any).authorAvatar && !isDummyAvatar((mockAd as any).authorAvatar)) ? (mockAd as any).authorAvatar : undefined;
           item.authorId = `author-${mockAd.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
         }
         return item;
@@ -981,7 +1004,9 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
         : (data.authorId && !isAuthorAdmin ? data.authorId : `author-${originalAuthorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
 
       const originalAuthorRole = (mockAd as any)?.authorRole || (data.authorRole && !isAuthorAdmin ? data.authorRole : 'Uporabnik');
-      const originalAuthorAvatar = (mockAd as any)?.authorAvatar || (data.authorAvatar && !isAuthorAdmin ? data.authorAvatar : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(originalAuthorName)}`);
+      const originalAuthorAvatar = ((mockAd as any)?.authorAvatar && !isDummyAvatar((mockAd as any).authorAvatar))
+        ? (mockAd as any).authorAvatar
+        : (data.authorAvatar && !isDummyAvatar(data.authorAvatar) ? data.authorAvatar : undefined);
       const finalCategory = data.category && data.category !== 'splosno' ? data.category : (mockAd?.category || data.category || 'ostalo');
 
       const payload = cleanDataForFirestore({
@@ -1026,7 +1051,7 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
       if (mockAd && currentAuthorIsAdmin) {
         safeData.authorName = mockAd.author;
         safeData.authorRole = 'Uporabnik';
-        safeData.authorAvatar = (mockAd as any).authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockAd.author)}`;
+        safeData.authorAvatar = ((mockAd as any).authorAvatar && !isDummyAvatar((mockAd as any).authorAvatar)) ? (mockAd as any).authorAvatar : undefined;
         safeData.authorId = `author-${mockAd.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
 
@@ -1065,7 +1090,7 @@ export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void):
         if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
           item.authorName = mockEvent.organizer;
           item.authorRole = 'Organizator';
-          item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+          item.authorAvatar = ((mockEvent as any).organizerAvatar && !isDummyAvatar((mockEvent as any).organizerAvatar)) ? (mockEvent as any).organizerAvatar : undefined;
           item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
         }
         return item;
@@ -1102,7 +1127,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
         if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
           item.authorName = mockEvent.organizer;
           item.authorRole = 'Organizator';
-          item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+          item.authorAvatar = ((mockEvent as any).organizerAvatar && !isDummyAvatar((mockEvent as any).organizerAvatar)) ? (mockEvent as any).organizerAvatar : undefined;
           item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
         }
         return item;
@@ -1134,7 +1159,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
       if (mockEvent && (isUserAdminIdentity(item.authorId, item.authorName, item.authorRole) || !item.authorName)) {
         item.authorName = mockEvent.organizer;
         item.authorRole = 'Organizator';
-        item.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+        item.authorAvatar = ((mockEvent as any).organizerAvatar && !isDummyAvatar((mockEvent as any).organizerAvatar)) ? (mockEvent as any).organizerAvatar : undefined;
         item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
       return item;
@@ -1343,7 +1368,9 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
         : (data.authorId && !isAuthorAdmin ? data.authorId : `organizer-${originalAuthorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
 
       const originalAuthorRole = 'Organizator';
-      const originalAuthorAvatar = (mockEvent as any)?.organizerAvatar || (data.authorAvatar && !isAuthorAdmin ? data.authorAvatar : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(originalAuthorName)}`);
+      const originalAuthorAvatar = ((mockEvent as any)?.organizerAvatar && !isDummyAvatar((mockEvent as any).organizerAvatar))
+        ? (mockEvent as any).organizerAvatar
+        : (data.authorAvatar && !isDummyAvatar(data.authorAvatar) ? data.authorAvatar : undefined);
       const finalCategory = data.category && data.category !== 'splosno' ? data.category : (mockEvent?.category || data.category || 'dogodki');
 
       const payload = cleanDataForFirestore({
@@ -1389,7 +1416,7 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
       if (mockEvent && currentAuthorIsAdmin) {
         safeData.authorName = mockEvent.organizer;
         safeData.authorRole = 'Organizator';
-        safeData.authorAvatar = (mockEvent as any).organizerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mockEvent.organizer)}`;
+        safeData.authorAvatar = ((mockEvent as any).organizerAvatar && !isDummyAvatar((mockEvent as any).organizerAvatar)) ? (mockEvent as any).organizerAvatar : undefined;
         safeData.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
 

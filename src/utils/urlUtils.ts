@@ -20,6 +20,8 @@ export function slugify(text?: string | null): string {
     .replace(/ö/g, 'o')
     .replace(/ü/g, 'u')
     .replace(/ß/g, 'ss')
+    // Replace dots with hyphens (e.g. portalko.net -> portalko-net)
+    .replace(/\./g, '-')
     // Remove non-alphanumeric chars (keep spaces and hyphens)
     .replace(/[^\w\s-]/g, '')
     // Replace whitespace or underscores with single hyphen

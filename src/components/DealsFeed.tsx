@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { RichTextEditor, RichTextEditorRef } from './RichTextEditor';
 import { compressImageFileToDataUrl } from '../utils/imageUtils';
+import { UserAvatar } from './common/UserAvatar';
+import { isDummyAvatar } from '../utils/avatarUtils';
 import { 
   DealItem, 
   HERO_BENTO_DEALS, 
@@ -44,6 +46,7 @@ import { subscribeToPosts, createPostInFirestore } from '../services/firestoreSe
 import { PostDetailTarget } from '../types';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { slugify } from '../utils/urlUtils';
+import { getPlainTextSnippet } from '../utils/textUtils';
 import { useCategories } from '../hooks/useCategories';
 import { SLOVENIA_REGIONS } from '../services/categoryService';
 import { PromotedBadge } from './common/PromotedBadge';
@@ -130,7 +133,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           partnerRole: p.authorRole || 'Uporabniški predlog',
           partnerInitial: (p.authorName || 'Č')[0].toUpperCase(),
           partnerLogoBg: 'bg-primary text-on-primary',
-          partnerAvatar: p.authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.authorName || 'clan')}`,
+          partnerAvatar: (p.authorAvatar && !isDummyAvatar(p.authorAvatar)) ? p.authorAvatar : undefined,
           category: (p.category === 'deal' ? 'tehnika' : (p.category || 'tehnika')) as any,
           categoryName: (p.categoryName && p.categoryName !== 'Ugodnosti' && p.categoryName !== 'Ugodnost') ? p.categoryName : (p.subcategoryName || ''),
           subcategory: p.subcategory || '',
@@ -268,7 +271,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   // Filter deals
   const filteredDeals = useMemo(() => {
     return combinedDeals.filter(deal => {
-      const textToMatch = `${deal.title} ${deal.partner} ${deal.description} ${deal.categoryName} ${(deal as any).subcategoryName || ''} ${deal.region} ${deal.code || ''}`;
+      const textToMatch = `${getPlainTextSnippet(deal.title)} ${deal.partner} ${getPlainTextSnippet(deal.description)} ${deal.categoryName} ${(deal as any).subcategoryName || ''} ${deal.region} ${deal.code || ''}`;
       
       // 1. App-level searchQuery filter (category + terms)
       if (searchQuery && !matchesSearchAndCategory(textToMatch, 'deals', searchQuery)) {
@@ -516,7 +519,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       partnerRole: 'Uporabniški predlog',
       partnerInitial: modalForm.store.substring(0, 2).toUpperCase(),
       partnerLogoBg: 'bg-primary text-on-primary',
-      partnerAvatar: currentUser?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(modalForm.store)}`,
+      partnerAvatar: (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : undefined,
       category: modalForm.category,
       categoryName: modalForm.category === 'tehnika' ? 'Tehnika & Elektronika' :
                     modalForm.category === 'prehrana' ? 'Prehrana & Trgovine' :
@@ -717,6 +720,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             const hasVoted = votedSet.has(deal.id);
             const isCopied = copiedCodeId === deal.id;
             const dealImg = deal.image || CATEGORY_IMAGE_FALLBACKS[deal.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
+            const cleanTitle = getPlainTextSnippet(deal.title);
+            const cleanDescription = getPlainTextSnippet(deal.description);
             const isPromoted = Boolean(
               (deal as any).promotion 
                 ? isItemActivelyPromoted((deal as any).promotion, 'ugodnosti', selectedCategory, selectedSubcategory)
@@ -743,7 +748,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                 >
                   <img 
                     src={dealImg} 
-                    alt={deal.title}
+                    alt={cleanTitle}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                     loading="lazy"
                   />
@@ -759,11 +764,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           href={`/avtor/${slugify(deal.partner)}`}
                           data-author-name={deal.partner}
                           data-author-id={deal.partnerId || (deal as any).authorId}
-                          data-author-avatar={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`}
+                          data-author-avatar={deal.partnerAvatar || ''}
                           data-author-role={deal.partnerRole || 'partner'}
                           data-post-id={deal.id}
                           data-post-type="deal"
-                          data-post-title={deal.title}
+                          data-post-title={cleanTitle}
                           data-post-image={dealImg}
                           data-post-category={deal.categoryName || deal.category}
                           data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
@@ -771,14 +776,13 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           className="shrink-0 group/avatar focus:outline-none"
                           title={`Ogled profila partnerja: ${deal.partner}`}
                         >
-                          <img 
-                            src={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`} 
-                            alt={deal.partner}
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-black/10 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shrink-0 shadow-xs transition-all"
-                            loading="lazy"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`;
-                            }}
+                          <UserAvatar
+                            src={deal.partnerAvatar}
+                            name={deal.partner}
+                            userId={deal.partnerId || (deal as any).authorId}
+                            role={deal.partnerRole}
+                            size="sm"
+                            className="w-7 h-7 sm:w-8 sm:h-8 ring-1 ring-black/10 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shrink-0 shadow-xs transition-all"
                           />
                         </a>
                         <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -786,11 +790,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             href={`/avtor/${slugify(deal.partner)}`}
                             data-author-name={deal.partner}
                             data-author-id={deal.partnerId || (deal as any).authorId}
-                            data-author-avatar={deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`}
+                            data-author-avatar={deal.partnerAvatar || ''}
                             data-author-role={deal.partnerRole || 'partner'}
                             data-post-id={deal.id}
                             data-post-type="deal"
-                            data-post-title={deal.title}
+                            data-post-title={cleanTitle}
                             data-post-image={dealImg}
                             data-post-category={deal.categoryName || deal.category}
                             data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
@@ -809,7 +813,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           data={{
                             type: 'deal',
                             category: 'deals',
-                            title: deal.title,
+                            title: cleanTitle,
                             price: deal.newPrice || deal.discount,
                             discount: deal.discount,
                             oldPrice: deal.oldPrice,
@@ -817,9 +821,9 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             expirationDate: deal.expirationDate,
                             author: deal.partner,
                             authorRole: deal.partnerRole,
-                            authorAvatar: deal.partnerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(deal.partner)}`,
+                            authorAvatar: deal.partnerAvatar || '',
                             date: deal.date,
-                            description: deal.description,
+                            description: cleanDescription,
                             image: dealImg,
                             code: deal.code,
                             link: deal.link,
@@ -829,11 +833,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             verifiedText: deal.verifiedText,
                           }}
                         />
-                        <ShareMenu id={deal.id} type="deal" title={deal.title} description={deal.description} />
+                        <ShareMenu id={deal.id} type="deal" title={cleanTitle} description={cleanDescription} />
                         <ReportButton 
                           targetId={deal.id} 
                           targetType="deal" 
-                          targetTitle={deal.title} 
+                          targetTitle={cleanTitle} 
                           targetAuthor={deal.partner} 
                           targetUrl={deal.link} 
                         />
@@ -850,7 +854,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                       className="block group/title cursor-pointer"
                     >
                       <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover/title:text-primary transition-colors leading-snug">
-                        {deal.title}
+                        {cleanTitle}
                       </h3>
                     </a>
 
@@ -878,7 +882,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
                     {/* Description */}
                     <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
-                      {deal.description}
+                      {cleanDescription}
                     </p>
                   </div>
 
@@ -944,8 +948,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                         <ShareMenu 
                           id={deal.id} 
                           type="deal" 
-                          title={deal.title} 
-                          description={deal.description} 
+                          title={cleanTitle} 
+                          description={cleanDescription} 
                           showLabel={true} 
                           buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
                         />
