@@ -13,3 +13,8 @@
   # scanning enabled while allowing this restricted client-side value.
   SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY"
   SECRETS_SCAN_OMIT_PATHS = "firebase-applet-config.json,src/lib/firebase.ts"
+  
+   [[redirects]]
+     from = "/api/*"
+     to = "/.netlify/functions/:splat"
+     status = 200
