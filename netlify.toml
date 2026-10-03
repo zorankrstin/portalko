@@ -2,12 +2,12 @@
   publish = "dist"
   command = "npm run build"
 
-# SPA Fallback: Rewrite all paths to index.html for React client-side routing
 [[redirects]]
   from = "/api/*"
      to = "/.netlify/functions/:splat"
      status = 200
 
+# SPA Fallback: Rewrite all paths to index.html for React client-side routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
