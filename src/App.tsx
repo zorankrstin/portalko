@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Check, AlertCircle, X } from 'lucide-react';
 import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
@@ -33,7 +33,7 @@ import { parseUrlPath, buildPostUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } f
 export { VIEW_HASH_MAP };
 
 export default function App() {
-  const { currentUser, confirmEmailWithToken } = useAuth();
+  const { currentUser, confirmEmailWithToken, users } = useAuth();
   const role = currentUser?.role || 'guest';
   const [currentView, setCurrentView] = useState<ViewMode>('main');
   const [selectedPostTarget, setSelectedPostTarget] = useState<PostDetailTarget | null>(null);
@@ -51,6 +51,11 @@ export default function App() {
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  const usersRef = useRef(users);
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
 
   // Check for email verification parameter on load (?verify-email=... or ?confirm-token=...)
   useEffect(() => {
@@ -240,6 +245,11 @@ export default function App() {
 
       const anchor = target.closest('a');
       if (anchor) {
+        // Skip intercept if user held modifier key (Ctrl, Cmd, Shift, Alt, middle-click)
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) {
+          return;
+        }
+
         const href = anchor.getAttribute('href') || '';
         
         // Skip external or special protocol links
@@ -276,15 +286,48 @@ export default function App() {
         const authorMatch = hashPart.match(/^#author-(.+)$/);
         if (authorMatch || parsed.author) {
           e.preventDefault();
-          const decodedName = authorMatch 
-            ? decodeURIComponent(authorMatch[1]).replace(/_/g, ' ') 
-            : parsed.author!.name;
+          const decodedSlugOrName = authorMatch 
+            ? decodeURIComponent(authorMatch[1]).replace(/_/g, ' ').trim() 
+            : (parsed.author ? parsed.author.name.trim() : '');
+
+          const explicitDataName = anchor.getAttribute('data-author-name') || target.getAttribute('data-author-name') || '';
+          const dataId = anchor.getAttribute('data-author-id') || target.getAttribute('data-author-id') || undefined;
           const imgElem = target instanceof HTMLImageElement ? target : anchor.querySelector('img');
-          const dataName = anchor.getAttribute('data-author-name') || target.getAttribute('data-author-name') || imgElem?.alt || anchor.textContent?.trim() || decodedName;
-          const dataId = anchor.getAttribute('data-author-id') || target.getAttribute('data-author-id');
           const dataAvatar = anchor.getAttribute('data-author-avatar') || target.getAttribute('data-author-avatar') || imgElem?.getAttribute('src') || undefined;
           const dataRole = anchor.getAttribute('data-author-role') || target.getAttribute('data-author-role') || undefined;
-          
+
+          // Lookup canonical author from known users in auth context
+          const currentUsers = usersRef.current || [];
+          const matchedUser = currentUsers.find(u => 
+            (dataId && u.id === dataId) ||
+            (explicitDataName && (u.name.trim().toLowerCase() === explicitDataName.trim().toLowerCase() || slugify(u.name) === slugify(explicitDataName))) ||
+            (decodedSlugOrName && (u.id === decodedSlugOrName || slugify(u.name) === slugify(decodedSlugOrName) || u.name.trim().toLowerCase() === decodedSlugOrName.toLowerCase()))
+          );
+
+          let finalAuthorName = '';
+          if (matchedUser) {
+            finalAuthorName = matchedUser.name;
+          } else if (explicitDataName && explicitDataName.trim().toLowerCase() !== 'profil' && explicitDataName.trim().toLowerCase() !== 'profile' && explicitDataName.trim().toLowerCase() !== 'ogled profila') {
+            finalAuthorName = explicitDataName.trim();
+          } else if (decodedSlugOrName && decodedSlugOrName.toLowerCase() !== 'profil' && decodedSlugOrName.toLowerCase() !== 'profile') {
+            finalAuthorName = decodedSlugOrName;
+          } else {
+            const rawText = anchor.textContent?.trim() || '';
+            if (rawText && rawText.toLowerCase() !== 'profil' && rawText.toLowerCase() !== 'profile' && rawText.toLowerCase() !== 'ogled profila' && rawText.toLowerCase() !== 'ogled') {
+              finalAuthorName = rawText;
+            } else if (explicitDataName && explicitDataName.trim().toLowerCase() !== 'profil' && explicitDataName.trim().toLowerCase() !== 'profile') {
+              finalAuthorName = explicitDataName.trim();
+            } else if (decodedSlugOrName && decodedSlugOrName.toLowerCase() !== 'profil' && decodedSlugOrName.toLowerCase() !== 'profile') {
+              finalAuthorName = decodedSlugOrName;
+            }
+          }
+
+          if (!finalAuthorName || finalAuthorName.toLowerCase() === 'profil' || finalAuthorName.toLowerCase() === 'profile') {
+            // Never navigate to /avtor/profil; cleanly open user's profile view
+            handleViewChange('profile');
+            return;
+          }
+
           // Capture originating post target if clicked within a post card
           let fromPostTarget: PostDetailTarget | undefined;
           const postCardElem = target.closest('article, [data-post-id]');
@@ -305,10 +348,10 @@ export default function App() {
           }
 
           handleAuthorClick({ 
-            name: dataName,
-            id: dataId || undefined,
-            avatar: dataAvatar,
-            role: dataRole,
+            name: finalAuthorName,
+            id: matchedUser?.id || dataId || undefined,
+            avatar: matchedUser?.avatar || dataAvatar,
+            role: matchedUser?.role || dataRole,
             fromPostTarget,
           });
           return;
@@ -370,12 +413,16 @@ export default function App() {
   };
 
   const handleAuthorClick = (author: AuthorProfileTarget) => {
+    if (!author || !author.name || author.name.trim().toLowerCase() === 'profil' || author.name.trim().toLowerCase() === 'profile') {
+      handleViewChange('profile');
+      return;
+    }
     setSelectedAuthorProfile(author);
     if (currentView !== 'profile') {
       setPreviousView(currentView);
     }
     setCurrentView('profile');
-    const authorSlug = slugify(author.name);
+    const authorSlug = slugify(author.name) || author.id || 'uporabnik';
     const cleanUrl = `/avtor/${authorSlug}`;
     if (window.location.pathname !== cleanUrl || window.location.hash) {
       window.history.pushState({ author: author.name }, '', cleanUrl);
@@ -658,7 +705,11 @@ export default function App() {
               />
             )}
             {currentView === 'admin' && (
-              <AdminDashboard />
+              <AdminDashboard 
+                onAuthorClick={handleAuthorClick}
+                onViewChange={handleViewChange}
+                onNavigatePost={handleNavigatePost}
+              />
             )}
             {currentView === 'saved' && (
               <SavedView searchQuery={searchQuery} />

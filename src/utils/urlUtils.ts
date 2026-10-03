@@ -308,6 +308,13 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
 
   // Check Author / Profile routes: /avtor/:name or /profil/:name
   if (segments.length === 2 && (segments[0] === 'avtor' || segments[0] === 'profil' || segments[0] === 'profile')) {
+    const seg1Lower = segments[1].toLowerCase().trim();
+    if (seg1Lower === 'profil' || seg1Lower === 'profile') {
+      return {
+        view: 'profile',
+        isPostDetail: false,
+      };
+    }
     const authorName = segments[1].replace(/[-_]/g, ' ');
     return {
       view: 'profile',

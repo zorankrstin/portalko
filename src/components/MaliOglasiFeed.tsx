@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ShareMenu } from "./ShareMenu";
 import { BookmarkButton } from "./BookmarkButton";
 import { ReportButton } from "./ReportButton";
-import { LikeButton } from "./LikeButton";
 import { Search, ChevronDown, PlusCircle, Star, Phone, MapPin, Building2, Car, Sparkles, ShoppingBag, Tag, Layers, Globe, Filter, X } from 'lucide-react';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { subscribeToAds, FirestoreAd } from '../services/firestoreService';
@@ -419,16 +418,6 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                           <MapPin className="w-3 h-3 text-primary" /> {ad.location || ad.region || 'Slovenija'}
                         </span>
                         <div className="flex items-center gap-1">
-                          <LikeButton
-                            id={ad.id}
-                            targetType="ad"
-                            initialLikesCount={ad.likesCount || 0}
-                            initialLovesCount={(ad as any).lovesCount || 0}
-                            initialDislikesCount={(ad as any).dislikesCount || 0}
-                            variant="minimal"
-                            showCount={true}
-                            itemTitle={cleanTitle}
-                          />
                           <BookmarkButton 
                             id={ad.id}
                             data={{

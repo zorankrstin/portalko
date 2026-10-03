@@ -11,7 +11,6 @@ import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from 
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
 import { ReportButton } from './ReportButton';
-import { LikeButton } from './LikeButton';
 import { useLikes } from '../contexts/LikeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -2262,18 +2261,6 @@ export function PostDetailPage({
                 <Eye className="w-4 h-4 text-secondary shrink-0" />
                 <span className="font-bold">{formattedViews}</span>
               </div>
-
-              <LikeButton
-                id={itemData.id || target.id}
-                targetType={target.type}
-                initialLikesCount={itemData.likesCount || 0}
-                initialLovesCount={itemData.lovesCount || 0}
-                initialDislikesCount={itemData.dislikesCount || 0}
-                variant="pill"
-                showCount={true}
-                showLabel={true}
-                itemTitle={itemData.title}
-              />
             </div>
           </div>
 

@@ -2,7 +2,6 @@ import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
-import { LikeButton } from "../LikeButton";
 import { BookOpen, MoreHorizontal, Camera, Heart, MessageCircle, Eye, ArrowRight } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType } from "../../types";
@@ -283,17 +282,6 @@ export const BlogPost: React.FC<BlogPostProps> = ({
       
       <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-surface-container-low">
         <div className="flex items-center gap-4 text-on-surface-variant font-label-md text-xs">
-          <LikeButton
-            id={id}
-            targetType="blog"
-            initialLikesCount={likesCount}
-            initialLovesCount={lovesCount}
-            initialDislikesCount={dislikesCount}
-            variant="card-action"
-            showCount={true}
-            showLabel={true}
-            itemTitle={title}
-          />
           <button 
             onClick={handleOpenDetail}
             className="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer"

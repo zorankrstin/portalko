@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
-import { LikeButton } from "../LikeButton";
 import { MapPin, Star, Ticket, Clock, ExternalLink, Calendar } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget, EventScheduleSlot } from "../../types";
@@ -361,16 +360,6 @@ export const EventPost: React.FC<EventPostProps> = ({
               )}
             </div>
             <div className="flex items-center gap-1">
-              <LikeButton 
-                id={id}
-                targetType="event"
-                initialLikesCount={likesCount}
-                initialLovesCount={lovesCount}
-                initialDislikesCount={dislikesCount}
-                variant="minimal"
-                showCount={true}
-                itemTitle={title}
-              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}
@@ -518,17 +507,6 @@ export const EventPost: React.FC<EventPostProps> = ({
               url={`${window.location.origin}${postUrl}`}
               showLabel={true} 
               buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
-            />
-            <LikeButton 
-              id={id}
-              targetType="event"
-              initialLikesCount={likesCount}
-              initialLovesCount={lovesCount}
-              initialDislikesCount={dislikesCount}
-              variant="pill"
-              showCount={true}
-              showLabel={true}
-              itemTitle={title}
             />
           </div>
         </div>

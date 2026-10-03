@@ -2,7 +2,6 @@ import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
-import { LikeButton } from "../LikeButton";
 import { MapPin, Phone } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget } from "../../types";
@@ -189,16 +188,6 @@ export const AdPost: React.FC<AdPostProps> = ({
           <div className="flex items-start justify-between gap-2">
             <span className="font-headline-lg text-xl font-bold text-primary">{price}</span>
             <div className="flex items-center gap-1">
-              <LikeButton 
-                id={id}
-                targetType="ad"
-                initialLikesCount={likesCount}
-                initialLovesCount={lovesCount}
-                initialDislikesCount={dislikesCount}
-                variant="minimal"
-                showCount={true}
-                itemTitle={title}
-              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}

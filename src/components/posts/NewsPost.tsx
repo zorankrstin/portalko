@@ -1,7 +1,6 @@
 import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
-import { LikeButton } from "../LikeButton";
 import { ExternalLink } from 'lucide-react';
 
 export interface NewsPostProps {
@@ -59,16 +58,6 @@ export const NewsPost: React.FC<NewsPostProps> = ({
             <span>Beri na viru</span>
             <ExternalLink className="w-[1em] h-[1em] text-xs" />
           </a>
-          <LikeButton 
-            id={id} 
-            targetType="news" 
-            initialLikesCount={likesCount} 
-            initialLovesCount={lovesCount}
-            initialDislikesCount={dislikesCount}
-            variant="minimal" 
-            showCount={true} 
-            itemTitle={title} 
-          />
           <BookmarkButton id={id} data={bookmarkData} />
           <ShareMenu id={id} url={link} type="news" title={title} description={summary} />
         </div>

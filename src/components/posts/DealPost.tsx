@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
-import { LikeButton } from "../LikeButton";
 import { Copy, Check, ArrowRight, Sparkles, CheckCircle2, Clock, MapPin, ThumbsUp } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget } from "../../types";
@@ -286,16 +285,6 @@ export const DealPost: React.FC<DealPostProps> = ({
             </div>
             
             <div className="flex items-center gap-1 shrink-0">
-              <LikeButton 
-                id={id} 
-                targetType="deal" 
-                initialLikesCount={votesCount} 
-                initialLovesCount={lovesCount}
-                initialDislikesCount={dislikesCount}
-                variant="minimal" 
-                showCount={true} 
-                itemTitle={cleanTitle} 
-              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}

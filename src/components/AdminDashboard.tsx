@@ -54,8 +54,15 @@ import {
   deleteSubcategory 
 } from '../services/categoryService';
 import { buildPostUrl, slugify } from '../utils/urlUtils';
+import { AuthorProfileTarget, PostDetailTarget, ViewMode } from '../types';
 
 export type { RssFeedConfig };
+
+export interface AdminDashboardProps {
+  onAuthorClick?: (author: AuthorProfileTarget) => void;
+  onViewChange?: (view: ViewMode) => void;
+  onNavigatePost?: (target: PostDetailTarget) => void;
+}
 
 interface AdminPost {
   id: string;
@@ -73,7 +80,7 @@ const MOCK_POSTS: AdminPost[] = [
   { id: 'p4', title: '-20% popust na pnevmatike', author: 'Vulkanizerstvo', type: 'deal', status: 'published', date: '09. Sep 2026' },
 ];
 
-export function AdminDashboard() {
+export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: AdminDashboardProps = {}) {
   const { users, currentUser, updateUser, deleteUser, register } = useAuth();
   const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'rss' | 'reports' | 'settings'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
@@ -211,6 +218,52 @@ export function AdminDashboard() {
   const pendingVerifications = useMemo(() => {
     return users.filter(u => u.verificationRequested);
   }, [users]);
+
+  // Memoized user search & filtering across name, email, role, and verification
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+      // Role filter
+      if (userFilterRole === 'verification' && !user.verificationRequested) return false;
+      if (userFilterRole !== 'all' && userFilterRole !== 'verification' && user.role !== userFilterRole) return false;
+
+      // Search query filter
+      const q = userSearchQuery.trim().toLowerCase();
+      if (!q) return true;
+
+      const name = (user.name || '').toLowerCase();
+      const email = (user.email || '').toLowerCase();
+      const role = (user.role || '').toLowerCase();
+      const id = (user.id || '').toLowerCase();
+      const note = (user.verificationNote || '').toLowerCase();
+
+      // Support multi-term matching (e.g. "Janez Novak" or parts of email)
+      const terms = q.split(/\s+/).filter(Boolean);
+      return terms.every(term => 
+        name.includes(term) || email.includes(term) || role.includes(term) || id.includes(term) || note.includes(term)
+      );
+    });
+  }, [users, userFilterRole, userSearchQuery]);
+
+  const handleOpenAuthorProfile = (
+    e: React.MouseEvent, 
+    target: { name: string; id?: string; avatar?: string; role?: string }
+  ) => {
+    // If opening in new tab/window via Ctrl, Cmd, Shift, or middle click, allow native link navigation
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+      return;
+    }
+    e.preventDefault();
+    if (onAuthorClick) {
+      onAuthorClick({
+        name: target.name,
+        id: target.id,
+        avatar: target.avatar,
+        role: target.role,
+      });
+    } else if (onViewChange) {
+      onViewChange('profile');
+    }
+  };
 
   const handleApproveVerification = (userId: string, userName: string) => {
     updateUser(userId, {
@@ -627,56 +680,169 @@ export function AdminDashboard() {
         {/* Tab Content: Users */}
         {activeTab === 'users' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Top Header & Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="font-headline-sm text-base font-bold text-on-surface">Upravljanje uporabnikov</h3>
-                <p className="text-xs text-outline">Skupaj registriranih uporabnikov: {users.length}</p>
+                <h3 className="font-headline-sm text-lg font-bold text-on-surface flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  Upravljanje uporabnikov
+                </h3>
+                <p className="text-xs text-outline mt-0.5">
+                  Hitro iskanje in filtriranje uporabnikov po imenu ali e-pošti ter urejanje pravic in verifikacije.
+                </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                <select
-                  value={userFilterRole}
-                  onChange={(e) => setUserFilterRole(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-transparent focus:border-primary focus:outline-none text-xs font-semibold text-on-surface cursor-pointer"
-                >
-                  <option value="all">Vsi uporabniki ({users.length})</option>
-                  <option value="verification">⭐ Čakajo na verifikacijo ({pendingVerifications.length})</option>
-                  <option value="registered">Registrirani ({users.filter(u => u.role === 'registered').length})</option>
-                  <option value="verified">Preverjeni ({users.filter(u => u.role === 'verified').length})</option>
-                  <option value="admin">Administratorji ({users.filter(u => u.role === 'admin').length})</option>
-                  <option value="superadmin">Superadmini ({users.filter(u => u.role === 'superadmin').length})</option>
-                </select>
 
-                <div className="relative flex-1 sm:w-56">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
+              {currentUser?.role === 'superadmin' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddUserOpen(true);
+                    setAddUserError('');
+                    setAddUserSuccess('');
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 self-start sm:self-auto cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Dodaj uporabnika</span>
+                </button>
+              )}
+            </div>
+
+            {/* Dedicated Search Bar & Filters Panel */}
+            <div className="bg-surface-container-low/70 border border-surface-container rounded-2xl p-3 sm:p-4 flex flex-col gap-3 shadow-2xs">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                {/* Prominent Search Bar */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
                   <input 
                     type="text" 
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
-                    placeholder="Išči po imenu, e-pošti..." 
-                    className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-surface-container-low border border-transparent focus:border-primary focus:outline-none text-sm font-body-sm" 
+                    placeholder="Išči uporabnike po imenu, priimku ali e-poštnem naslovu..." 
+                    className="w-full pl-10 pr-9 py-2 rounded-xl bg-surface-container-lowest border border-surface-container hover:border-primary/40 focus:border-primary focus:outline-none text-sm text-on-surface placeholder:text-outline/70 transition-colors shadow-2xs font-body-sm" 
                   />
                   {userSearchQuery && (
                     <button 
+                      type="button"
                       onClick={() => setUserSearchQuery('')} 
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-outline hover:text-on-surface"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+                      title="Počisti iskanje"
+                      aria-label="Počisti iskanje"
                     >
-                      ✕
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
-                {currentUser?.role === 'superadmin' && (
+
+                {/* Role Filter Selector */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="relative">
+                    <Filter className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
+                    <select
+                      value={userFilterRole}
+                      onChange={(e) => setUserFilterRole(e.target.value)}
+                      className="pl-8 pr-8 py-2 rounded-xl bg-surface-container-lowest border border-surface-container hover:border-primary/40 focus:border-primary focus:outline-none text-xs font-semibold text-on-surface cursor-pointer shadow-2xs transition-colors"
+                    >
+                      <option value="all">Vse vloge ({users.length})</option>
+                      <option value="verification">⭐ Čakajo na verifikacijo ({pendingVerifications.length})</option>
+                      <option value="registered">Registrirani ({users.filter(u => u.role === 'registered').length})</option>
+                      <option value="verified">Preverjeni ({users.filter(u => u.role === 'verified').length})</option>
+                      <option value="admin">Administratorji ({users.filter(u => u.role === 'admin').length})</option>
+                      <option value="superadmin">Superadmini ({users.filter(u => u.role === 'superadmin').length})</option>
+                    </select>
+                  </div>
+
+                  {(userSearchQuery || userFilterRole !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserSearchQuery('');
+                        setUserFilterRole('all');
+                      }}
+                      className="px-2.5 py-2 rounded-xl bg-surface-container-lowest hover:bg-surface-container-high text-xs font-semibold text-outline hover:text-on-surface transition-colors border border-surface-container shadow-2xs cursor-pointer shrink-0"
+                      title="Ponastavi filtre in iskanje"
+                    >
+                      Ponastavi
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status Info & Active Filter Badges */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-surface-container/60 text-xs">
+                <div className="flex items-center gap-1.5 text-on-surface-variant flex-wrap">
+                  <span className="font-semibold text-on-surface">{filteredUsers.length}</span>
+                  <span>{filteredUsers.length === 1 ? 'uporabnik' : filteredUsers.length === 2 ? 'uporabnika' : (filteredUsers.length === 3 || filteredUsers.length === 4) ? 'uporabniki' : 'uporabnikov'}</span>
+                  {(userSearchQuery || userFilterRole !== 'all') && (
+                    <span className="text-outline">
+                      (od skupaj {users.length})
+                    </span>
+                  )}
+                  {userSearchQuery && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium text-[11px]">
+                      »{userSearchQuery}«
+                      <button 
+                        type="button"
+                        onClick={() => setUserSearchQuery('')} 
+                        className="hover:opacity-80 cursor-pointer"
+                        title="Odstrani iskalni filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                {/* Quick Role Shortcut Buttons */}
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
                   <button
-                    onClick={() => {
-                      setIsAddUserOpen(true);
-                      setAddUserError('');
-                      setAddUserSuccess('');
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm shrink-0"
+                    type="button"
+                    onClick={() => setUserFilterRole('all')}
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                      userFilterRole === 'all'
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-lowest hover:bg-surface-container text-outline hover:text-on-surface'
+                    }`}
                   >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Dodaj uporabnika</span>
+                    Vsi ({users.length})
                   </button>
-                )}
+                  {pendingVerifications.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setUserFilterRole('verification')}
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
+                        userFilterRole === 'verification'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25'
+                      }`}
+                    >
+                      <span>Verifikacija</span>
+                      <span className="px-1 py-0.2 rounded-full bg-amber-700/20 text-[10px]">{pendingVerifications.length}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setUserFilterRole('verified')}
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                      userFilterRole === 'verified'
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-lowest hover:bg-surface-container text-outline hover:text-on-surface'
+                    }`}
+                  >
+                    Preverjeni ({users.filter(u => u.role === 'verified').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserFilterRole('registered')}
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                      userFilterRole === 'registered'
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-lowest hover:bg-surface-container text-outline hover:text-on-surface'
+                    }`}
+                  >
+                    Registrirani ({users.filter(u => u.role === 'registered').length})
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -819,23 +985,36 @@ export function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
-                  {users
-                    .filter(user => {
-                      if (userFilterRole === 'verification' && !user.verificationRequested) return false;
-                      if (userFilterRole !== 'all' && userFilterRole !== 'verification' && user.role !== userFilterRole) return false;
-                      if (!userSearchQuery) return true;
-                      const q = userSearchQuery.toLowerCase();
-                      return (
-                        user.name.toLowerCase().includes(q) ||
-                        user.email.toLowerCase().includes(q) ||
-                        user.role.toLowerCase().includes(q) ||
-                        (user.verificationNote && user.verificationNote.toLowerCase().includes(q))
-                      );
-                    })
-                    .map(user => {
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-outline">
+                        <Users className="w-8 h-8 mx-auto mb-2 text-outline/50" />
+                        <p className="font-semibold text-sm text-on-surface">Ni najdenih uporabnikov</p>
+                        <p className="text-xs text-outline mt-1">
+                          {userSearchQuery 
+                            ? `Za iskalni niz »${userSearchQuery}« ni zadetkov.` 
+                            : 'Ni uporabnikov za izbrani filter vloge.'}
+                        </p>
+                        {(userSearchQuery || userFilterRole !== 'all') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserSearchQuery('');
+                              setUserFilterRole('all');
+                            }}
+                            className="mt-3 px-3.5 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-primary transition-colors cursor-pointer"
+                          >
+                            Počisti filtre in iskanje
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map(user => {
                       const isSuperadmin = currentUser?.role === 'superadmin';
                       const canManageVerification = isSuperadmin || currentUser?.role === 'admin';
-                      const profileUrl = `/avtor/${slugify(user.name) || user.id}`;
+                      const authorSlug = slugify(user.name) || user.id || 'uporabnik';
+                      const profileUrl = `/avtor/${authorSlug}`;
 
                       return (
                         <tr key={user.id} className={`hover:bg-surface-container-lowest transition-colors ${user.verificationRequested ? 'bg-amber-500/5' : ''}`}>
@@ -843,10 +1022,15 @@ export function AdminDashboard() {
                             <div className="flex items-start gap-2.5">
                               <a 
                                 href={profileUrl}
+                                onClick={(e) => handleOpenAuthorProfile(e, user)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="shrink-0 group block"
-                                title={`Odpri profil uporabnika ${user.name} v novem oknu`}
+                                data-author-name={user.name}
+                                data-author-id={user.id}
+                                data-author-avatar={user.avatar || ''}
+                                data-author-role={user.role || ''}
+                                className="shrink-0 group block cursor-pointer"
+                                title={`Odpri profil uporabnika ${user.name}`}
                               >
                                 <UserAvatar 
                                   src={user.avatar} 
@@ -860,10 +1044,15 @@ export function AdminDashboard() {
                               <div className="flex flex-col min-w-0">
                                 <a 
                                   href={profileUrl}
+                                  onClick={(e) => handleOpenAuthorProfile(e, user)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="font-bold text-sm text-on-surface hover:text-primary transition-colors flex items-center gap-1 group w-max"
-                                  title={`Odpri profil uporabnika ${user.name} v novem oknu`}
+                                  data-author-name={user.name}
+                                  data-author-id={user.id}
+                                  data-author-avatar={user.avatar || ''}
+                                  data-author-role={user.role || ''}
+                                  className="font-bold text-sm text-on-surface hover:text-primary transition-colors flex items-center gap-1 group w-max cursor-pointer"
+                                  title={`Odpri profil uporabnika ${user.name}`}
                                 >
                                   <span>{user.name}</span>
                                   {user.role === 'superadmin' && <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
@@ -950,10 +1139,15 @@ export function AdminDashboard() {
                               <div className="flex items-center gap-1.5 flex-wrap justify-end">
                                 <a
                                   href={profileUrl}
+                                  onClick={(e) => handleOpenAuthorProfile(e, user)}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  data-author-name={user.name}
+                                  data-author-id={user.id}
+                                  data-author-avatar={user.avatar || ''}
+                                  data-author-role={user.role || ''}
                                   className="px-2 py-1 rounded-lg text-xs font-semibold bg-surface-container-low hover:bg-surface-container text-on-surface hover:text-primary transition-colors flex items-center gap-1 cursor-pointer border border-surface-container"
-                                  title={`Odpri profil uporabnika ${user.name} v novem oknu`}
+                                  title={`Odpri profil uporabnika ${user.name}`}
                                 >
                                   <ExternalLink className="w-3.5 h-3.5 text-primary" />
                                   <span className="hidden sm:inline">Profil</span>
@@ -991,7 +1185,7 @@ export function AdminDashboard() {
                           </td>
                         </tr>
                       );
-                    })}
+                    }))}
                 </tbody>
               </table>
             </div>
@@ -1167,10 +1361,13 @@ export function AdminDashboard() {
                               {post.authorName ? (
                                 <a
                                   href={authorUrl}
+                                  onClick={(e) => handleOpenAuthorProfile(e, { name: post.authorName, role: post.authorRole })}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="font-medium text-xs text-on-surface hover:text-primary transition-colors inline-flex items-center gap-1 group w-max"
-                                  title={`Odpri profil avtorja ${post.authorName} v novem oknu`}
+                                  data-author-name={post.authorName}
+                                  data-author-role={post.authorRole || ''}
+                                  className="font-medium text-xs text-on-surface hover:text-primary transition-colors inline-flex items-center gap-1 group w-max cursor-pointer"
+                                  title={`Odpri profil avtorja ${post.authorName}`}
                                 >
                                   <span>{post.authorName}</span>
                                   <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />

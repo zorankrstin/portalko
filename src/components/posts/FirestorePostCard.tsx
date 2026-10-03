@@ -5,7 +5,6 @@ import { ReportButton } from "../ReportButton";
 import { Heart, MessageCircle, Sparkles, Edit3, Check, Ban, ArrowRight, Trash2, Loader2 } from 'lucide-react';
 import { FirestorePost, deletePostInFirestore, deleteAdInFirestore, deleteEventInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
-import { LikeButton } from "../LikeButton";
 import { AdPost } from "./AdPost";
 import { DealPost } from "./DealPost";
 import { EventPost } from "./EventPost";
@@ -518,18 +517,6 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low pt-3 mt-1">
         <div className="flex items-center gap-4">
-          <LikeButton
-            id={post.id}
-            targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
-            initialLikesCount={post.likesCount || 0}
-            initialLovesCount={(post as any).lovesCount || 0}
-            initialDislikesCount={(post as any).dislikesCount || 0}
-            variant="card-action"
-            showCount={true}
-            showLabel={true}
-            itemTitle={post.title}
-          />
-          
           <a 
             href={postUrl}
             onClick={handleOpenDetail}
