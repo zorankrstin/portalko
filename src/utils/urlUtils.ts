@@ -301,6 +301,9 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
   // Check 1-segment routes
   if (segments.length === 1) {
     const seg0 = segments[0].toLowerCase();
+    if (['potrdi-racun', 'potrditev-racuna', 'verify-email', 'confirm-email'].includes(seg0)) {
+      return { view: 'main', isPostDetail: false };
+    }
     if (SLUG_TO_VIEW[seg0]) {
       return { view: SLUG_TO_VIEW[seg0], isPostDetail: false };
     }
@@ -362,6 +365,10 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
   if (segments.length === 2) {
     const seg0 = segments[0].toLowerCase();
     const seg1 = segments[1];
+
+    if (['potrdi-racun', 'potrditev-racuna', 'verify-email', 'confirm-email'].includes(seg0)) {
+      return { view: 'main', isPostDetail: false };
+    }
 
     if (SLUG_TO_VIEW[seg0]) {
       const type = getTypeFromSection(seg0);

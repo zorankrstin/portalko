@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
-import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers, deleteUserFromFirestore } from '../services/firestoreService';
+import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers, deleteUserFromFirestore, findUserForVerification, verifyUserEmailInFirestore } from '../services/firestoreService';
 import { sendNoreplyConfirmationEmail } from '../services/emailService';
 import { isDummyAvatar } from '../utils/avatarUtils';
 
@@ -590,6 +590,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // If user was already verified previously, immediately log in and return success
+    if (user && user.emailVerified) {
+      setCurrentUser(user);
+      localStorage.setItem('portal_current_user_id', user.id);
+      return { success: true, user };
+    }
+
     // Check if user with that email is already verified
     if (!user && email) {
       const already = users.find(u => u.email.toLowerCase() === email.toLowerCase().trim() && u.emailVerified);
@@ -597,6 +604,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setCurrentUser(already);
         localStorage.setItem('portal_current_user_id', already.id);
         return { success: true, user: already };
+      }
+    }
+
+    // Fallback: check Firestore directly (critical for cross-device/incognito verification)
+    if (!user) {
+      try {
+        const firestoreUser = await findUserForVerification(cleanToken, email);
+        if (firestoreUser) {
+          user = firestoreUser;
+          // If already verified in Firestore
+          if (firestoreUser.emailVerified) {
+            setCurrentUser(firestoreUser);
+            localStorage.setItem('portal_current_user_id', firestoreUser.id);
+            return { success: true, user: firestoreUser };
+          }
+        }
+      } catch (fsErr) {
+        console.warn('Could not query Firestore for verification token:', fsErr);
       }
     }
 
@@ -612,7 +637,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     setUsers(prev => {
-      const updated = prev.map(u => u.id === verifiedUser.id ? verifiedUser : u);
+      const exists = prev.some(u => u.id === verifiedUser.id);
+      const updated = exists 
+        ? prev.map(u => u.id === verifiedUser.id ? verifiedUser : u)
+        : [...prev, verifiedUser];
       localStorage.setItem('portal_users', JSON.stringify(updated));
       return updated;
     });
@@ -620,6 +648,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentUser(verifiedUser);
     localStorage.setItem('portal_current_user_id', verifiedUser.id);
     syncUserProfile(verifiedUser).catch(console.error);
+    verifyUserEmailInFirestore(verifiedUser.id).catch(console.error);
 
     return { success: true, user: verifiedUser };
   };

@@ -1,16 +1,29 @@
 [build]
   publish = "dist"
   command = "npm run build"
+  functions = "netlify/functions"
 
-[build.environment]
-  # Firebase browser keys are public identifiers. Keep all other secret
-  # scanning enabled while allowing this restricted client-side value.
-  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY"
-  SECRETS_SCAN_OMIT_PATHS = "firebase-applet-config.json,src/lib/firebase.ts"
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/auth/send-verification-email"
+  to = "/.netlify/functions/send-verification-email"
+  status = 200
+
+[[redirects]]
+  from = "/api/send-verification-email"
+  to = "/.netlify/functions/send-verification-email"
+  status = 200
+
+[[redirects]]
+  from = "/.netlify/functions/api/send-verification-email"
+  to = "/.netlify/functions/send-verification-email"
+  status = 200
 
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  to = "/.netlify/functions/api/:splat"
   status = 200
 
 # SPA Fallback: Rewrite all paths to index.html for React client-side routing
@@ -18,3 +31,10 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+[build.environment]
+  # Firebase browser keys are public identifiers. Keep all other secret
+  # scanning enabled while allowing this restricted client-side value.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY"
+  SECRETS_SCAN_OMIT_PATHS = "firebase-applet-config.json,src/lib/firebase.ts"
+  

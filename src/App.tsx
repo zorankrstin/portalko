@@ -57,12 +57,45 @@ export default function App() {
     usersRef.current = users;
   }, [users]);
 
-  // Check for email verification parameter on load (?verify-email=... or ?confirm-token=...)
+  // Check for email verification parameter on load (?verify-email=..., ?token=..., /verify-email/:token, etc.)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('verify-email') || urlParams.get('confirm-token');
-    const emailParam = urlParams.get('email');
+    let token = urlParams.get('verify-email') || urlParams.get('confirm-token') || urlParams.get('token') || urlParams.get('verificationToken') || urlParams.get('verify');
+    let emailParam = urlParams.get('email');
+
+    // Handle spa_route fallback parameter from static host 404.html
+    const spaRoute = urlParams.get('spa_route');
+    if (spaRoute) {
+      try {
+        const decodedSpa = decodeURIComponent(spaRoute);
+        const spaUrl = new URL(decodedSpa, window.location.origin);
+        if (!token) {
+          token = spaUrl.searchParams.get('verify-email') || spaUrl.searchParams.get('confirm-token') || spaUrl.searchParams.get('token') || spaUrl.searchParams.get('verificationToken') || spaUrl.searchParams.get('verify');
+        }
+        if (!emailParam) {
+          emailParam = spaUrl.searchParams.get('email');
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Handle clean path-based tokens e.g. /verify-email/:token or /potrdi-racun/:token
+    if (!token) {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      if (['verify-email', 'potrdi-racun', 'potrditev-racuna', 'confirm-email'].includes(parts[0]?.toLowerCase()) && parts[1]) {
+        token = decodeURIComponent(parts[1]);
+      }
+    }
+
+    // Handle hash-based tokens e.g. #verify-email=... or #token=...
+    if (!token && window.location.hash) {
+      const hashClean = window.location.hash.replace(/^#\/?/, '');
+      const hashParams = new URLSearchParams(hashClean.includes('?') ? hashClean.split('?')[1] : hashClean);
+      token = hashParams.get('verify-email') || hashParams.get('confirm-token') || hashParams.get('token');
+      if (!emailParam) emailParam = hashParams.get('email');
+    }
 
     if (token) {
       confirmEmailWithToken(token, emailParam || undefined).then((res) => {
@@ -82,9 +115,13 @@ export default function App() {
         const newUrl = new URL(window.location.href);
         newUrl.searchParams.delete('verify-email');
         newUrl.searchParams.delete('confirm-token');
+        newUrl.searchParams.delete('token');
+        newUrl.searchParams.delete('verificationToken');
+        newUrl.searchParams.delete('verify');
         newUrl.searchParams.delete('email');
-        const cleanPath = newUrl.pathname + (newUrl.searchParams.toString() ? `?${newUrl.searchParams.toString()}` : '') + newUrl.hash;
-        window.history.replaceState(null, '', cleanPath);
+        newUrl.searchParams.delete('spa_route');
+        const cleanPath = newUrl.pathname.replace(/\/+(verify-email|potrdi-racun|potrditev-racuna|confirm-email)(\/.*)?$/i, '/') + (newUrl.searchParams.toString() ? `?${newUrl.searchParams.toString()}` : '') + newUrl.hash;
+        window.history.replaceState(null, '', cleanPath || '/');
       });
     }
   }, [confirmEmailWithToken]);

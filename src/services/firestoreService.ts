@@ -217,10 +217,6 @@ export interface FirestoreEvent {
 // ---------------- USER OPERATIONS ----------------
 
 export async function syncUserProfile(user: User): Promise<void> {
-  // Only sync to Firestore when authenticated in Firebase Auth
-  if (!auth.currentUser) {
-    return;
-  }
   const path = `users/${user.id}`;
   try {
     const userRef = doc(db, 'users', user.id);
@@ -262,15 +258,11 @@ export async function syncUserProfile(user: User): Promise<void> {
       await updateDoc(userRef, updatePayload);
     }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
+    console.warn(`[Firestore syncUserProfile] Could not sync user ${user.id} to Firestore:`, error);
   }
 }
 
 export async function fetchUserProfile(userId: string): Promise<User | null> {
-  // Reading users collection requires authentication
-  if (!auth.currentUser) {
-    return null;
-  }
   const path = `users/${userId}`;
   try {
     const userRef = doc(db, 'users', userId);
@@ -303,6 +295,92 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
   }
 }
 
+/**
+ * Searches Firestore for a user matching a verification token or email.
+ * Critical for verifying accounts across different browsers, devices, or incognito sessions.
+ */
+export async function findUserForVerification(token: string, email?: string): Promise<User | null> {
+  const cleanToken = token.trim();
+  const path = 'users';
+
+  try {
+    // 1. First query by verificationToken
+    if (cleanToken) {
+      const qToken = query(collection(db, path), where('verificationToken', '==', cleanToken), limit(1));
+      const snap = await getDocs(qToken);
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        const data = d.data();
+        return {
+          id: data.id || d.id,
+          name: data.name || '',
+          email: data.email || '',
+          role: (data.role || 'registered') as Role,
+          status: (data.status || 'active') as 'active' | 'banned',
+          avatar: data.avatar,
+          bio: data.bio,
+          username: data.username,
+          password: data.password,
+          socialLinks: data.socialLinks,
+          profileMenu: data.profileMenu,
+          emailVerified: data.emailVerified,
+          verificationToken: data.verificationToken,
+          verificationSentAt: data.verificationSentAt,
+        };
+      }
+    }
+
+    // 2. Query by email if provided
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      const qEmail = query(collection(db, path), where('email', '==', cleanEmail), limit(1));
+      const snapEmail = await getDocs(qEmail);
+      if (!snapEmail.empty) {
+        const d = snapEmail.docs[0];
+        const data = d.data();
+        return {
+          id: data.id || d.id,
+          name: data.name || '',
+          email: data.email || '',
+          role: (data.role || 'registered') as Role,
+          status: (data.status || 'active') as 'active' | 'banned',
+          avatar: data.avatar,
+          bio: data.bio,
+          username: data.username,
+          password: data.password,
+          socialLinks: data.socialLinks,
+          profileMenu: data.profileMenu,
+          emailVerified: data.emailVerified,
+          verificationToken: data.verificationToken,
+          verificationSentAt: data.verificationSentAt,
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.warn(`[Firestore findUserForVerification] Query failed for token/email:`, error);
+    return null;
+  }
+}
+
+/**
+ * Marks user's email as verified in Firestore
+ */
+export async function verifyUserEmailInFirestore(userId: string): Promise<void> {
+  const path = `users/${userId}`;
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      emailVerified: true,
+      verificationToken: null,
+      verificationConfirmedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn(`[Firestore verifyUserEmailInFirestore] Failed to update user ${userId}:`, error);
+  }
+}
+
 export async function deleteUserFromFirestore(userId: string): Promise<void> {
   const path = `users/${userId}`;
   try {
@@ -314,9 +392,6 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
 }
 
 export async function fetchUsersList(): Promise<User[]> {
-  if (!auth.currentUser) {
-    return [];
-  }
   const path = 'users';
   try {
     const q = query(collection(db, path), limit(100));
@@ -357,9 +432,6 @@ export async function fetchUsersList(): Promise<User[]> {
 }
 
 export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
-  if (!auth.currentUser) {
-    return () => {};
-  }
   const path = 'users';
   try {
     const q = query(collection(db, path), limit(100));
@@ -382,6 +454,7 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           avatar: data.avatar,
           bio: data.bio,
           username: data.username,
+          password: data.password,
           socialLinks: data.socialLinks,
           profileMenu: data.profileMenu,
           verificationRequested: data.verificationRequested,
@@ -394,18 +467,15 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
       });
       onUsers(users);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      handleFirestoreError(error, OperationType.LIST, path);
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.GET, path);
+    handleFirestoreError(error, OperationType.LIST, path);
     return () => {};
   }
 }
 
 export async function updateUserInFirestore(userId: string, data: Partial<User>, fallbackUser?: User): Promise<void> {
-  if (!auth.currentUser) {
-    return;
-  }
   const path = `users/${userId}`;
   try {
     const userRef = doc(db, 'users', userId);

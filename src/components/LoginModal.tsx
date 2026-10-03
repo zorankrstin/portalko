@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, LogIn, UserPlus, Shield, Check, AlertCircle, UserCheck, User, Eye, EyeOff, Sparkles, Mail, Send, RefreshCw, ExternalLink, ArrowLeft } from 'lucide-react';
+import { X, LogIn, UserPlus, Shield, Check, AlertCircle, UserCheck, User, Eye, EyeOff, Sparkles, Mail, Send, RefreshCw, ExternalLink, ArrowLeft, Copy } from 'lucide-react';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { GoogleAuthButton } from './GoogleAuthButton';
 
@@ -35,6 +35,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendFeedback, setResendFeedback] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -315,19 +316,39 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                 </button>
 
                 {verificationPending.confirmationUrl && (
-                  <div className="p-3 rounded-xl bg-primary/5 border border-primary/15 text-left mt-1">
-                    <p className="text-[11px] text-outline mb-1.5 font-medium flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5 text-primary" />
-                      <span>Hitri test (neposredna potrditev v brskalniku):</span>
+                  <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-left mt-1 space-y-2">
+                    <p className="text-xs font-semibold text-on-surface flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-primary shrink-0" />
+                      <span>Neposredna aktivacija računa:</span>
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => handleDirectConfirmSimulation(verificationPending.confirmationUrl)}
-                      className="w-full py-2 px-3 rounded-lg bg-primary hover:bg-primary-container text-on-primary text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Potrdi račun zdaj (testna povezava)</span>
-                    </button>
+                    <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                      Če e-poštno sporočilo zamuja ali je bilo zadržano s strani ponudnika pošte, lahko vaš račun takoj aktivirate s klikom na spodnji gumb:
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleDirectConfirmSimulation(verificationPending.confirmationUrl)}
+                        className="flex-1 py-2.5 px-3 rounded-lg bg-primary hover:bg-primary-container text-on-primary text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Aktiviraj račun zdaj</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (verificationPending.confirmationUrl) {
+                            navigator.clipboard.writeText(verificationPending.confirmationUrl);
+                            setCopiedLink(true);
+                            setTimeout(() => setCopiedLink(false), 2500);
+                          }
+                        }}
+                        className="py-2.5 px-3 rounded-lg border border-surface-container hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Kopiraj povezavo za potrditev"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-outline" />
+                        <span>{copiedLink ? 'Kopirano!' : 'Kopiraj povezavo'}</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 

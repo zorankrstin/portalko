@@ -215,6 +215,17 @@ async function startServer() {
 
   app.use(express.json());
 
+  // CORS middleware for /api routes
+  app.use("/api", (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // Sitemap endpoint (dynamic and real-time with Firestore entries)
   app.get("/sitemap.xml", async (req, res) => {
     res.setHeader("Content-Type", "application/xml; charset=utf-8");
@@ -380,8 +391,8 @@ async function startServer() {
     }
   });
 
-  // Noreply Email Verification Dispatch Endpoint
-  app.post("/api/auth/send-verification-email", async (req, res) => {
+  // Noreply Email Verification Dispatch Endpoint (supports both routes)
+  app.post(["/api/auth/send-verification-email", "/api/send-verification-email"], async (req, res) => {
     try {
       const { name, email, token, confirmationUrl } = req.body;
       if (!email || !token || !confirmationUrl) {
@@ -442,20 +453,140 @@ async function startServer() {
 </body>
 </html>`;
 
-      const plainText = `Pozdravljeni, ${safeName}!\n\nHvala za registracijo na Portalko.net.\nZa dokončanje registracije in potrditev vašega računa kliknite na povezavo:\n${confirmationUrl}\n\nPovezava je veljavna 24 ur.\nTo sporočilo je bilo samodejno poslano iz naslova noreply@portalko.net.`;
+      const plainText = `Pozdravljeni, ${safeName}!\n\nHvala za registracijo na Portalko.net.\nZa dokončanje registracije in potrditev vašega računa kliknite na povezavo:\n${confirmationUrl}\n\nPovezava je veljavna 24 ur.\nTo sporočilo je bilo samodejno poslano iz naslova ${process.env.NOREPLY_EMAIL || "noreply@portalko.net"}.`;
 
-      // Check if SMTP is configured
+      // 1. Check if Resend API key is configured (preferred for modern cloud delivery)
+      if (process.env.RESEND_API_KEY) {
+        try {
+          const resendResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: noreplyFrom,
+              to: [email],
+              subject: "Potrdite svoj račun na Portalko.net",
+              html: emailHtml,
+              text: plainText,
+            }),
+          });
+
+          if (resendResponse.ok) {
+            const resendData = await resendResponse.json();
+            console.log(`[NOREPLY EMAIL RESEND SENT] Confirmation sent to ${email}, id: ${resendData.id}`);
+            return res.json({
+              success: true,
+              sent: true,
+              provider: "resend",
+              messageId: resendData.id,
+              confirmationUrl,
+              message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno poslano.",
+            });
+          } else {
+            const errBody = await resendResponse.text();
+            console.warn("[NOREPLY EMAIL RESEND ERROR]:", errBody);
+          }
+        } catch (resendErr: any) {
+          console.warn("[NOREPLY EMAIL RESEND EXCEPTION]:", resendErr.message);
+        }
+      }
+
+      // 2. Check if Brevo API is configured (Free 300 emails/day, EU GDPR compliant, REST API HTTPS port 443)
+      const brevoKey = process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY;
+      if (brevoKey) {
+        try {
+          const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: {
+              "api-key": brevoKey,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({
+              sender: { name: process.env.NOREPLY_NAME || "Portalko.net", email: process.env.NOREPLY_EMAIL || "noreply@portalko.net" },
+              to: [{ email, name: safeName }],
+              subject: "Potrdite svoj račun na Portalko.net",
+              htmlContent: emailHtml,
+              textContent: plainText,
+            }),
+          });
+
+          if (brevoResponse.ok) {
+            const brevoData = await brevoResponse.json().catch(() => ({}));
+            console.log(`[NOREPLY EMAIL BREVO SENT] Confirmation sent to ${email}`);
+            return res.json({
+              success: true,
+              sent: true,
+              provider: "brevo",
+              messageId: brevoData.messageId,
+              confirmationUrl,
+              message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno poslano.",
+            });
+          } else {
+            const errText = await brevoResponse.text();
+            console.warn("[NOREPLY EMAIL BREVO ERROR]:", errText);
+          }
+        } catch (brevoErr: any) {
+          console.warn("[NOREPLY EMAIL BREVO EXCEPTION]:", brevoErr.message);
+        }
+      }
+
+      // 3. Check if SendGrid API is configured
+      if (process.env.SENDGRID_API_KEY) {
+        try {
+          const sgResponse = await fetch("https://api.sendgrid.com/v3/mail/send", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${process.env.SENDGRID_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              personalizations: [{ to: [{ email }] }],
+              from: { email: process.env.NOREPLY_EMAIL || "noreply@portalko.net", name: process.env.NOREPLY_NAME || "Portalko.net" },
+              subject: "Potrdite svoj račun na Portalko.net",
+              content: [
+                { type: "text/plain", value: plainText },
+                { type: "text/html", value: emailHtml },
+              ],
+            }),
+          });
+
+          if (sgResponse.ok) {
+            console.log(`[NOREPLY EMAIL SENDGRID SENT] Confirmation sent to ${email}`);
+            return res.json({
+              success: true,
+              sent: true,
+              provider: "sendgrid",
+              confirmationUrl,
+              message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno poslano.",
+            });
+          }
+        } catch (sgErr: any) {
+          console.warn("[NOREPLY EMAIL SENDGRID EXCEPTION]:", sgErr.message);
+        }
+      }
+
+      // 4. Check if SMTP is configured
       if (process.env.SMTP_HOST) {
         try {
           const { default: nodemailer } = await import("nodemailer");
+          const port = Number(process.env.SMTP_PORT || 587);
           const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST,
-            port: Number(process.env.SMTP_PORT || 587),
-            secure: Number(process.env.SMTP_PORT || 587) === 465,
+            port,
+            secure: port === 465,
             auth: process.env.SMTP_USER ? {
               user: process.env.SMTP_USER,
               pass: process.env.SMTP_PASS,
             } : undefined,
+            tls: {
+              rejectUnauthorized: false,
+            },
+            connectionTimeout: 8000,
+            greetingTimeout: 8000,
+            socketTimeout: 10000,
           });
 
           const info = await transporter.sendMail({
@@ -470,23 +601,28 @@ async function startServer() {
           return res.json({
             success: true,
             sent: true,
+            provider: "smtp",
             messageId: info.messageId,
             confirmationUrl,
+            message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno poslano.",
           });
         } catch (mailErr: any) {
           console.warn("[NOREPLY EMAIL SMTP ERROR, FALLING BACK TO SIMULATION]:", mailErr.message);
+          if (mailErr.message?.includes("Country") || mailErr.message?.includes("IntCode") || mailErr.message?.includes("550")) {
+            console.warn("[SMTP COUNTRY FILTER] Hitrost.net cPanel country protection blocked outbound connection from cloud host. Disable country filter in cPanel or use Resend/Brevo API.");
+          }
         }
       }
 
       // If SMTP is not configured or in dev/preview environment
-      console.log(`[NOREPLY EMAIL SIMULATED] From: ${noreplyFrom} To: ${email} Confirmation link: ${confirmationUrl}`);
+      console.log(`[NOREPLY EMAIL READY] From: ${noreplyFrom} To: ${email} Confirmation link: ${confirmationUrl}`);
       return res.json({
         success: true,
-        sent: true,
+        sent: false,
         simulated: true,
         messageId: `sim_${Date.now()}`,
         confirmationUrl,
-        message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno pripravljeno.",
+        message: "Potrditveno sporočilo je pripravljeno. Za samodejno dostavo v poštni predal konfigurirajte SMTP_HOST ali BREVO_API_KEY / RESEND_API_KEY.",
       });
     } catch (err: any) {
       console.error("Napaka pri pošiljanju potrditvene e-pošte:", err);
