@@ -1,4 +1,32 @@
 import { SLOVENIA_REGIONS } from '../services/categoryService';
+import { parseEventDateInfo, EventDateInfo } from './dateUtils';
+
+export interface EventDateResolutionInput {
+  eventDate?: string | null;
+  date?: string | null;
+  eventDates?: string[] | null;
+  eventSchedule?: {
+    date?: string;
+    time?: string;
+    times?: string[];
+    location?: string;
+    label?: string;
+  }[] | null;
+  eventTime?: string | null;
+  location?: string | null;
+}
+
+export interface ResolvedEventDisplayDate {
+  dateYmd: string;
+  dateInfo: EventDateInfo;
+  eventTime?: string;
+  location?: string;
+  venueLabel?: string;
+  isUpcoming: boolean;
+  isToday: boolean;
+  upcomingDatesCount: number;
+  totalDatesCount: number;
+}
 
 /**
  * Returns today's date formatted as YYYY-MM-DD in local time.
@@ -276,6 +304,131 @@ export function getEventNextUpcomingDate(
   }
 
   return null;
+}
+
+/**
+  * Resolves the primary display date for an event.
+  * If an event has multiple dates or repetition slots, this selects the next earliest upcoming date (>= today).
+  * If all dates are in the past, it falls back to the most recent date or original eventDate.
+  * Also extracts matching schedule slot time, venue label, and specific slot location if available.
+  */
+export function resolveEventDisplayDate(
+  event?: EventDateResolutionInput | null,
+  todayYmd: string = getTodayYmd()
+): ResolvedEventDisplayDate {
+  const fallbackInfo: EventDateInfo = { day: '★', month: 'DOG', fullDate: 'Datum po dogovoru' };
+  if (!event) {
+    return {
+      dateYmd: todayYmd,
+      dateInfo: fallbackInfo,
+      eventTime: undefined,
+      location: undefined,
+      venueLabel: undefined,
+      isUpcoming: false,
+      isToday: false,
+      upcomingDatesCount: 0,
+      totalDatesCount: 0,
+    };
+  }
+
+  const allDates = extractEventDateStrings(event).sort();
+  const totalDatesCount = allDates.length;
+
+  let currentMinutes = -1;
+  try {
+    const now = new Date();
+    const timeFormatter = new Intl.DateTimeFormat('sl-SI', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/Ljubljana',
+    });
+    const parts = timeFormatter.format(now).split(':').map(n => parseInt(n, 10));
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      currentMinutes = parts[0] * 60 + parts[1];
+    }
+  } catch {
+    const now = new Date();
+    currentMinutes = now.getHours() * 60 + now.getMinutes();
+  }
+
+  // Filter for upcoming dates (accounting for time-elapsed today if multiple dates exist)
+  const upcomingDates = allDates.filter(d => {
+    if (d > todayYmd) return true;
+    if (d === todayYmd) {
+      // Check if today's slot time already elapsed
+      const todaySlot = Array.isArray(event.eventSchedule)
+        ? event.eventSchedule.find(s => s && normalizeDateToYmd(s.date || '') === todayYmd)
+        : null;
+      const timeToCheck = (todaySlot?.times && todaySlot.times[0]) || todaySlot?.time || event.eventTime;
+      if (timeToCheck && timeToCheck.includes(':')) {
+        const parts = timeToCheck.split(':').map(n => parseInt(n, 10));
+        if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+          const eventMins = parts[0] * 60 + parts[1];
+          if (currentMinutes !== -1 && currentMinutes > eventMins + 180) {
+            // Over by more than 3 hours
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+    return false;
+  });
+
+  const isUpcoming = upcomingDates.length > 0;
+  let chosenDateYmd = '';
+
+  if (isUpcoming) {
+    chosenDateYmd = upcomingDates[0];
+  } else if (allDates.length > 0) {
+    // All dates are in the past: choose the most recent / latest date
+    chosenDateYmd = allDates[allDates.length - 1];
+  } else if (event.eventDate) {
+    chosenDateYmd = normalizeDateToYmd(event.eventDate) || event.eventDate;
+  } else if (event.date) {
+    chosenDateYmd = normalizeDateToYmd(event.date) || event.date;
+  } else {
+    chosenDateYmd = todayYmd;
+  }
+
+  // Match slot from eventSchedule for chosenDateYmd
+  const matchingSlot = Array.isArray(event.eventSchedule)
+    ? event.eventSchedule.find(s => s && normalizeDateToYmd(s.date || '') === chosenDateYmd)
+    : null;
+
+  let effectiveTime = event.eventTime?.trim() || undefined;
+  let effectiveLocation = event.location?.trim() || undefined;
+  let venueLabel = undefined;
+
+  if (matchingSlot) {
+    if (matchingSlot.times && matchingSlot.times.length > 0) {
+      effectiveTime = matchingSlot.times.map(t => t.trim()).filter(Boolean).join(', ');
+    } else if (matchingSlot.time && matchingSlot.time.trim()) {
+      effectiveTime = matchingSlot.time.trim();
+    }
+    if (matchingSlot.location && matchingSlot.location.trim()) {
+      effectiveLocation = matchingSlot.location.trim();
+    }
+    if (matchingSlot.label && matchingSlot.label.trim()) {
+      venueLabel = matchingSlot.label.trim();
+    }
+  }
+
+  // Parse date info for chosenDateYmd
+  const dateInfo = parseEventDateInfo(chosenDateYmd, effectiveTime);
+
+  return {
+    dateYmd: chosenDateYmd,
+    dateInfo,
+    eventTime: effectiveTime,
+    location: effectiveLocation,
+    venueLabel,
+    isUpcoming,
+    isToday: chosenDateYmd === todayYmd,
+    upcomingDatesCount: upcomingDates.length,
+    totalDatesCount,
+  };
 }
 
 /**

@@ -13,7 +13,7 @@ import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categorySe
 import { PromotedBadge } from './common/PromotedBadge';
 import { EventPost } from './posts/EventPost';
 import { isItemActivelyPromoted } from '../services/promotionService';
-import { parseEventDateInfo } from '../utils/dateUtils';
+import { parseEventDateInfo, resolveEventDisplayDate } from '../utils/dateUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { extractEventDateStrings } from '../utils/eventFilterUtils';
 import { EventCalendarWidget } from './common/EventCalendarWidget';
@@ -30,7 +30,7 @@ interface DogodkiFeedProps {
 }
 
 export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, onAuthorClick }: DogodkiFeedProps) {
-  const { users } = useAuth();
+  const { users, currentUser } = useAuth();
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
@@ -431,7 +431,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
             const event = item.data;
             const isPromoted = checkEventPromoted(item);
             const badgeType = event.promotionBadgeType || event.promotion?.badgeType || 'PROMO';
-            const dateInfo = parseEventDateInfo(event.eventDate || event.date, event.eventTime);
+            const resolvedDate = resolveEventDisplayDate(event);
 
             const eventAuthorName = event.authorName || (event as any).organizer || 'Organizator';
             const authorUser = users.find(u => 
@@ -443,7 +443,8 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
               event.authorAvatar,
               event.authorId,
               eventAuthorName,
-              users
+              users,
+              currentUser
             );
 
             return (
@@ -452,6 +453,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
                 id={event.id}
                 title={event.title}
                 organizer={eventAuthorName}
+                authorName={eventAuthorName}
                 authorId={event.authorId}
                 authorAvatar={resolvedAvatar}
                 authorRole={event.authorRole || authorUser?.role}
@@ -460,14 +462,14 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
                 categoryName={event.categoryName || event.category || 'Dogodek'}
                 subcategory={event.subcategory}
                 subcategoryName={event.subcategoryName}
-                location={event.location || event.region || 'Slovenija'}
+                location={resolvedDate.location || event.location || event.region || 'Slovenija'}
                 region={event.region}
-                date={dateInfo.fullDate}
-                eventTime={event.eventTime}
+                date={resolvedDate.dateInfo.fullDate}
+                eventTime={resolvedDate.eventTime || event.eventTime}
                 eventDates={event.eventDates}
                 eventSchedule={event.eventSchedule}
-                month={dateInfo.month}
-                day={dateInfo.day}
+                month={resolvedDate.dateInfo.month}
+                day={resolvedDate.dateInfo.day}
                 price={event.price || 'Vstop prost'}
                 ticketUrl={event.ticketUrl}
                 description={event.description}

@@ -11,7 +11,7 @@ interface LoginModalProps {
 }
 
 export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModalProps) {
-  const { loginWithCredentials, register, resendVerificationEmail, confirmEmailWithToken } = useAuth();
+  const { loginWithCredentials, register, resendVerificationEmail, confirmEmailWithToken, users } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
 
   // Login form state
@@ -31,6 +31,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
     email: string;
     name: string;
     confirmationUrl?: string;
+    emailSent?: boolean;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -117,6 +118,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
           email: regEmail,
           name: regName,
           confirmationUrl: res.confirmationUrl,
+          emailSent: res.emailSent,
         });
         setRegPassword('');
       } else {
@@ -245,9 +247,43 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
         {/* Content area - Scrollable with accessible sizing */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 min-h-0 overscroll-contain">
           {errorMsg && (
-            <div className="mb-4 p-3 rounded-xl bg-error/10 border border-error/20 text-error text-xs flex items-center gap-2 animate-in fade-in duration-200">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="mb-4 p-3.5 rounded-xl bg-error/10 border border-error/20 text-error text-xs flex flex-col gap-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-error" />
+                <span className="font-medium leading-relaxed">{errorMsg}</span>
+              </div>
+              {unverifiedLoginEmail && (
+                <div className="mt-1 pt-2.5 border-t border-error/20 flex flex-wrap gap-2 items-center">
+                  <button
+                    type="button"
+                    onClick={() => handleResendVerification(unverifiedLoginEmail)}
+                    disabled={isResending}
+                    className="px-3 py-1.5 rounded-lg bg-error/15 hover:bg-error/25 text-error font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                    <span>Ponovno pošlji potrditveno e-pošto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const targetUser = users.find(u => u.email.toLowerCase() === unverifiedLoginEmail.toLowerCase());
+                      if (targetUser && targetUser.verificationToken) {
+                        const confirmRes = await confirmEmailWithToken(targetUser.verificationToken, targetUser.email);
+                        if (confirmRes.success) {
+                          setSuccessMsg(`Račun uspešno potrjen! Dobrodošli, ${confirmRes.user?.name}!`);
+                          setErrorMsg('');
+                          setUnverifiedLoginEmail('');
+                          setTimeout(() => { onClose(); setSuccessMsg(''); }, 800);
+                        }
+                      }
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs hover:bg-primary-hover"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Aktiviraj račun in se prijavi</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

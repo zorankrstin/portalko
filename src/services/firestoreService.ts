@@ -510,8 +510,83 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
       }
       await updateDoc(userRef, sanitizeUpdateData(updatePayload));
     }
+
+    if (data.avatar !== undefined) {
+      syncUserAvatarToAuthorContent(userId, data.avatar, fallbackUser?.name || data.name).catch(() => {});
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+/**
+ * Propagates updated user avatar across the user's events, posts and ads in Firestore
+ */
+export async function syncUserAvatarToAuthorContent(userId: string, newAvatar: string, authorName?: string): Promise<void> {
+  if (!userId && !authorName) return;
+  const cleanAvatar = (newAvatar && !isDummyAvatar(newAvatar)) ? newAvatar : '';
+  const authorSlug = authorName ? slugify(authorName) : '';
+
+  try {
+    // 1. Update events
+    const eventsSnap = await getDocs(collection(db, 'events'));
+    const eventPromises: Promise<any>[] = [];
+    eventsSnap.forEach((d) => {
+      const ev = d.data();
+      const matchesUser = (userId && ev.authorId === userId) ||
+        (authorName && ev.authorName && ev.authorName.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
+        (authorSlug && ev.authorName && slugify(ev.authorName) === authorSlug);
+      if (matchesUser && ev.authorAvatar !== cleanAvatar) {
+        eventPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
+      }
+    });
+    await Promise.all(eventPromises);
+
+    // 2. Update posts
+    const postsSnap = await getDocs(collection(db, 'posts'));
+    const postPromises: Promise<any>[] = [];
+    postsSnap.forEach((d) => {
+      const p = d.data();
+      const matchesUser = (userId && p.authorId === userId) ||
+        (authorName && p.authorName && p.authorName.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
+        (authorSlug && p.authorName && slugify(p.authorName) === authorSlug);
+      if (matchesUser && p.authorAvatar !== cleanAvatar) {
+        postPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
+      }
+    });
+    await Promise.all(postPromises);
+
+    // 3. Update ads
+    const adsSnap = await getDocs(collection(db, 'ads'));
+    const adPromises: Promise<any>[] = [];
+    adsSnap.forEach((d) => {
+      const a = d.data();
+      const matchesUser = (userId && a.authorId === userId) ||
+        (authorName && a.authorName && a.authorName.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
+        (authorSlug && a.authorName && slugify(a.authorName) === authorSlug);
+      if (matchesUser && a.authorAvatar !== cleanAvatar) {
+        adPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
+      }
+    });
+    await Promise.all(adPromises);
+
+    // 4. Update matching users (e.g. duplicate accounts for same organization)
+    if (cleanAvatar) {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const userPromises: Promise<any>[] = [];
+      usersSnap.forEach((d) => {
+        const u = d.data();
+        const matchesUser = (userId && d.id === userId) ||
+          (authorName && u.name && u.name.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
+          (authorSlug && u.name && slugify(u.name) === authorSlug);
+        if (matchesUser && u.avatar !== cleanAvatar) {
+          userPromises.push(updateDoc(d.ref, { avatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
+        }
+      });
+      await Promise.all(userPromises);
+    }
+  } catch (err) {
+    console.warn('[syncUserAvatarToAuthorContent] Failed to propagate avatar:', err);
   }
 }
 

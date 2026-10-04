@@ -14,7 +14,7 @@ import { UserDisplayName } from "../common/UserDisplayName";
 import { UserAvatar } from "../common/UserAvatar";
 import { resolveUserUploadedAvatar } from "../../utils/avatarUtils";
 import { isItemActivelyPromoted } from "../../services/promotionService";
-import { parseEventDateInfo } from "../../utils/dateUtils";
+import { parseEventDateInfo, resolveEventDisplayDate } from "../../utils/dateUtils";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
@@ -120,6 +120,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     location: post.location,
     eventDate: post.eventDate,
     eventTime: post.eventTime,
+    eventDates: post.eventDates,
+    eventSchedule: post.eventSchedule,
     ticketUrl: post.ticketUrl,
     rejectionReason: post.rejectionReason,
   };
@@ -245,7 +247,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
   }
 
   if (post.category === 'event') {
-    const dateInfo = parseEventDateInfo(post.eventDate, post.eventTime);
+    const resolvedDate = resolveEventDisplayDate(post);
     return (
       <div className="relative group/card">
         {renderAdminCardActions()}
@@ -261,13 +263,13 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           authorRole={post.authorRole}
           categoryName={post.categoryName || "Dogodek"}
           category="dogodki"
-          location={post.location || "Slovenija"}
-          date={dateInfo.fullDate}
-          eventTime={post.eventTime}
+          location={resolvedDate.location || post.location || "Slovenija"}
+          date={resolvedDate.dateInfo.fullDate}
+          eventTime={resolvedDate.eventTime || post.eventTime}
           eventDates={post.eventDates}
           eventSchedule={post.eventSchedule}
-          month={dateInfo.month}
-          day={dateInfo.day}
+          month={resolvedDate.dateInfo.month}
+          day={resolvedDate.dateInfo.day}
           price={post.price || "Vstop prost"}
           ticketUrl={post.ticketUrl}
           description={post.content}

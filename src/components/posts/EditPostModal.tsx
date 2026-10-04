@@ -21,6 +21,7 @@ import { RichTextEditor } from '../RichTextEditor';
 import { compressImageFileToDataUrl } from '../../utils/imageUtils';
 import { useCategories } from '../../hooks/useCategories';
 import { CategorySection, getTertiaryCategories } from '../../services/categoryService';
+import { getTodayYmd } from '../../utils/eventFilterUtils';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -435,9 +436,12 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           })
           .sort((a, b) => a.date.localeCompare(b.date));
 
+        const todayYmd = getTodayYmd();
+        const upcomingSlot = cleanSchedules.find(s => s.date >= todayYmd) || cleanSchedules[0];
+
         const primaryDate = cleanSchedules.length > 0 
-          ? cleanSchedules[0].date 
-          : (eventDate.trim() || new Date().toISOString().split('T')[0]);
+          ? (upcomingSlot ? upcomingSlot.date : cleanSchedules[0].date) 
+          : (eventDate.trim() || todayYmd);
 
         const allDates = cleanSchedules.length > 0 
           ? Array.from(new Set(cleanSchedules.map(s => s.date)))
@@ -445,11 +449,11 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
         const allTimes = cleanSchedules.flatMap(s => s.times || []);
         const primaryTime = cleanSchedules.length > 0 
-          ? (cleanSchedules[0].time || (cleanSchedules[0].times ? cleanSchedules[0].times.join(', ') : '')) 
+          ? ((upcomingSlot && upcomingSlot.time) || (upcomingSlot && upcomingSlot.times ? upcomingSlot.times.join(', ') : '') || cleanSchedules[0].time || (cleanSchedules[0].times ? cleanSchedules[0].times.join(', ') : '')) 
           : eventTime.trim();
 
-        const firstSlotLocation = cleanSchedules.find(s => s.location)?.location;
-        const effectiveLocation = location.trim() || firstSlotLocation || 'Slovenija';
+        const slotLocation = upcomingSlot?.location || cleanSchedules.find(s => s.location)?.location;
+        const effectiveLocation = location.trim() || slotLocation || 'Slovenija';
 
         await updateEventInFirestore(item.id, {
           title: title.trim(),

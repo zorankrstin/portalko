@@ -15,7 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, subscribeToAds, subscribeToEvents, FirestorePost, FirestoreAd, FirestoreEvent } from '../services/firestoreService';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 import { isItemActivelyPromoted } from '../services/promotionService';
-import { parseEventDateInfo } from '../utils/dateUtils';
+import { parseEventDateInfo, resolveEventDisplayDate } from '../utils/dateUtils';
 import { slugify } from '../utils/urlUtils';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 
@@ -416,14 +416,14 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   ? isItemActivelyPromoted(ev.promotion, 'dogodki')
                   : (ev.isPromoted && (!ev.promotedUntil || new Date(ev.promotedUntil).getTime() > Date.now()))
               );
-              const dateInfo = parseEventDateInfo(ev.eventDate || ev.date, ev.eventTime);
+              const resolvedDate = resolveEventDisplayDate(ev);
               const eventAuthorName = ev.authorName || (ev as any).organizer || 'Organizator';
               const authorUser = users.find(u => 
                 (ev.authorId && u.id === ev.authorId) ||
                 (u.name && u.name.trim().toLowerCase() === eventAuthorName.trim().toLowerCase()) ||
                 (u.name && slugify(u.name) === slugify(eventAuthorName))
               );
-              const resolvedAvatar = resolveUserUploadedAvatar(ev.authorAvatar, ev.authorId, eventAuthorName, users);
+              const resolvedAvatar = resolveUserUploadedAvatar(ev.authorAvatar, ev.authorId, eventAuthorName, users, currentUser);
 
               return (
                 <EventPost
@@ -437,11 +437,13 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   onAuthorClick={onAuthorClick}
                   categoryName={ev.categoryName || ev.category || 'Dogodek'}
                   category="dogodki"
-                  location={ev.location || ev.region || 'Slovenija'}
-                  date={dateInfo.fullDate}
-                  eventTime={ev.eventTime}
-                  month={dateInfo.month}
-                  day={dateInfo.day}
+                  location={resolvedDate.location || ev.location || ev.region || 'Slovenija'}
+                  date={resolvedDate.dateInfo.fullDate}
+                  eventTime={resolvedDate.eventTime || ev.eventTime}
+                  eventDates={ev.eventDates}
+                  eventSchedule={ev.eventSchedule}
+                  month={resolvedDate.dateInfo.month}
+                  day={resolvedDate.dateInfo.day}
                   price={ev.price || 'Vstop prost'}
                   ticketUrl={ev.ticketUrl}
                   description={ev.description}

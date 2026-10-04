@@ -229,3 +229,10 @@ export function parseEventDateInfo(dateStr?: string | null, timeStr?: string | n
 
   return formatWithTime({ day: '★', month: 'DOG', fullDate: trimmed });
 }
+
+export {
+  resolveEventDisplayDate,
+  type EventDateResolutionInput,
+  type ResolvedEventDisplayDate
+} from './eventFilterUtils';
+

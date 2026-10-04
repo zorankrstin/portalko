@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { resolveUserUploadedAvatar, getUserInitials, getAvatarRoleColors, isUserUploadedAvatar, KNOWN_ADMIN_IDS, KNOWN_ADMIN_NAMES } from '../../utils/avatarUtils';
 import { slugify } from '../../utils/urlUtils';
@@ -46,33 +46,12 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
 
   // Strictly resolve genuine user-uploaded avatar, ignoring dummy images
   const resolvedAvatar = useMemo(() => {
-    // 1. Direct valid uploaded image
-    if (src && isUserUploadedAvatar(src)) {
-      return src;
-    }
-
-    // 2. Check currently active user if they are the author
-    if (currentUser?.avatar && isUserUploadedAvatar(currentUser.avatar)) {
-      if (userId && (currentUser.id === userId || (KNOWN_ADMIN_IDS.has(userId) && KNOWN_ADMIN_IDS.has(currentUser.id)))) {
-        return currentUser.avatar;
-      }
-      if (name) {
-        const trimmedName = name.trim().toLowerCase();
-        if (currentUser.name && currentUser.name.trim().toLowerCase() === trimmedName) {
-          return currentUser.avatar;
-        }
-        if (currentUser.name && slugify(currentUser.name) === slugify(name)) {
-          return currentUser.avatar;
-        }
-        if (KNOWN_ADMIN_NAMES.has(trimmedName) && (KNOWN_ADMIN_IDS.has(currentUser.id) || currentUser.email === 'zoran.krstin@gmail.com')) {
-          return currentUser.avatar;
-        }
-      }
-    }
-
-    // 3. Look up across all registered and persistent users
-    return resolveUserUploadedAvatar(src, userId, name, users);
+    return resolveUserUploadedAvatar(src, userId, name, users, currentUser);
   }, [src, userId, name, users, currentUser]);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [resolvedAvatar, src]);
 
   const initials = getUserInitials(name || 'U');
   const roleColors = getAvatarRoleColors(role, name);

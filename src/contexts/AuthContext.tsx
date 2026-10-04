@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth, googleProvider } from '../lib/firebase';
-import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged, createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers, deleteUserFromFirestore, findUserForVerification, verifyUserEmailInFirestore } from '../services/firestoreService';
 import { sendNoreplyConfirmationEmail } from '../services/emailService';
 import { isDummyAvatar } from '../utils/avatarUtils';
+import { slugify } from '../utils/urlUtils';
 
 export type Role = 'superadmin' | 'admin' | 'verified' | 'registered' | 'guest';
 
@@ -144,7 +145,7 @@ export const DEFAULT_USERS: User[] = [
     role: 'verified',
     status: 'active',
     emailVerified: true,
-    avatar: 'https://www.spasteater.si/og-default.jpg',
+    avatar: undefined,
     bio: 'Slovensko profesionalno gledališče komedije iz Mengša.',
     username: '@spas_teater',
     profileMenu: DEFAULT_PROFILE_MENU,
@@ -194,7 +195,7 @@ interface AuthContextType {
   updateUser: (id: string, data: Partial<User>) => void;
   deleteUser: (id: string) => void;
   changePassword: (userId: string, oldPass: string, newPass: string) => { success: boolean; error?: string };
-  register: (data: RegisterData) => Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string }>;
+  register: (data: RegisterData) => Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean }>;
   resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string; confirmationUrl?: string }>;
   confirmEmailWithToken: (token: string, email?: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   loginOrRegisterWithGoogle: (data: GoogleAuthData) => { success: boolean; error?: string; user?: User; isNewUser: boolean };
@@ -406,10 +407,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const targetUser = users.find(u => u.id === id) || DEFAULT_USERS.find(u => u.id === id);
     updateUserInFirestore(id, data, targetUser).catch(console.error);
     setUsers(prev => {
-      const newUsers = prev.map(u => u.id === id ? { ...u, ...data } : u);
+      const authorSlug = targetUser?.name ? slugify(targetUser.name) : '';
+      const newUsers = prev.map(u => {
+        if (u.id === id) return { ...u, ...data };
+        // If avatar is updated, keep any matching duplicate account for same organization synchronized
+        if (data.avatar !== undefined && targetUser?.name && u.name && (u.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase() || slugify(u.name) === authorSlug)) {
+          return { ...u, avatar: data.avatar };
+        }
+        return u;
+      });
       localStorage.setItem('portal_users', JSON.stringify(newUsers));
-      if (currentUser?.id === id) {
-        const updated = newUsers.find(u => u.id === id);
+      if (currentUser?.id === id || (data.avatar !== undefined && targetUser?.name && currentUser?.name && slugify(currentUser.name) === authorSlug)) {
+        const updated = newUsers.find(u => u.id === (currentUser?.id || id));
         if (updated) {
           if (updated.status === 'banned') {
             logout();
@@ -450,7 +459,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true };
   };
 
-  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string }> => {
+  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean }> => {
     const trimmedName = data.name.trim();
     const trimmedEmail = data.email.trim().toLowerCase();
     const trimmedPassword = (data.password || '').trim();
@@ -506,20 +515,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Auto-verified user (e.g. from admin panel)
       setCurrentUser(newUser);
       localStorage.setItem('portal_current_user_id', newUser.id);
-      return { success: true, user: newUser, requiresVerification: false };
+      return { success: true, user: newUser, requiresVerification: false, emailSent: true };
     }
 
     // Unverified user registration: generate confirmation link and send noreply verification mail
     const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://portalko.net';
     const confirmationUrl = `${origin}/?verify-email=${verificationToken}&email=${encodeURIComponent(trimmedEmail)}`;
 
+    // 1. Attempt native Firebase Auth user creation and email verification dispatch
     try {
-      await sendNoreplyConfirmationEmail({
+      const fbCred = await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPassword || 'geslo123');
+      if (fbCred?.user) {
+        await sendEmailVerification(fbCred.user, {
+          url: confirmationUrl,
+          handleCodeInApp: true,
+        }).catch((err) => console.log('Firebase sendEmailVerification note:', err?.message));
+      }
+    } catch (fbAuthErr: any) {
+      console.log('Firebase Auth registration note:', fbAuthErr?.message);
+    }
+
+    // 2. Dispatch via noreply mail service (Brevo/Resend/SMTP)
+    let emailSent = false;
+    try {
+      const mailRes = await sendNoreplyConfirmationEmail({
         name: trimmedName,
         email: trimmedEmail,
         token: verificationToken!,
         confirmationUrl,
       });
+      emailSent = Boolean(mailRes.sent);
     } catch (mailErr) {
       console.warn('Could not dispatch confirmation email:', mailErr);
     }
@@ -528,7 +553,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       success: true, 
       user: newUser, 
       requiresVerification: true, 
-      confirmationUrl 
+      confirmationUrl,
+      emailSent,
     };
   };
 

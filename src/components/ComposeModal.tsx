@@ -43,6 +43,7 @@ import { useCategories } from '../hooks/useCategories';
 import { CategorySection, SLOVENIA_REGIONS, getAllSloveniaCities, getTertiaryCategories } from '../services/categoryService';
 import { compressImageFileToDataUrl } from '../utils/imageUtils';
 import { isDummyAvatar } from '../utils/avatarUtils';
+import { getTodayYmd } from '../utils/eventFilterUtils';
 import { EventScheduleSlot } from '../types';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
@@ -579,9 +580,12 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           })
           .sort((a, b) => a.date.localeCompare(b.date));
 
+        const todayYmd = getTodayYmd();
+        const upcomingSlot = cleanSchedules.find(s => s.date >= todayYmd) || cleanSchedules[0];
+
         const primaryDate = cleanSchedules.length > 0 
-          ? cleanSchedules[0].date 
-          : (eventDate || new Date().toISOString().split('T')[0]);
+          ? (upcomingSlot ? upcomingSlot.date : cleanSchedules[0].date) 
+          : (eventDate || todayYmd);
 
         const allDates = cleanSchedules.length > 0 
           ? Array.from(new Set(cleanSchedules.map(s => s.date)))
@@ -591,13 +595,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         
         let primaryTime = '';
         if (cleanSchedules.length > 0) {
-          primaryTime = cleanSchedules[0].time || (cleanSchedules[0].times ? cleanSchedules[0].times.join(', ') : '');
+          primaryTime = (upcomingSlot && upcomingSlot.time) || (upcomingSlot && upcomingSlot.times ? upcomingSlot.times.join(', ') : '') || cleanSchedules[0].time || (cleanSchedules[0].times ? cleanSchedules[0].times.join(', ') : '');
         } else {
           primaryTime = eventTime.trim();
         }
 
-        const firstSlotLocation = cleanSchedules.find(s => s.location)?.location;
-        const effectiveLocation = finalLocation || firstSlotLocation || 'Slovenija';
+        const slotLocation = upcomingSlot?.location || cleanSchedules.find(s => s.location)?.location;
+        const effectiveLocation = finalLocation || slotLocation || 'Slovenija';
 
         await createEventInFirestore({
           title: title.trim(),

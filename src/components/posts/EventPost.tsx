@@ -12,6 +12,7 @@ import { useEventFilter } from "../../contexts/EventFilterContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { isDummyAvatar, isUserUploadedAvatar, resolveUserUploadedAvatar, KNOWN_ADMIN_IDS } from "../../utils/avatarUtils";
 import { UserAvatar } from "../common/UserAvatar";
+import { resolveEventDisplayDate } from "../../utils/dateUtils";
 
 export interface EventPostProps {
   id?: string;
@@ -94,30 +95,12 @@ export const EventPost: React.FC<EventPostProps> = ({
   const effectiveAuthorDisplayName = authorName || organizer;
 
   const effectiveAuthorAvatar = useMemo(() => {
-    // 1. Direct explicit uploaded avatar
-    if (authorAvatar && isUserUploadedAvatar(authorAvatar)) {
-      return authorAvatar;
-    }
-
-    // 2. Check current active user if author matches
-    if (currentUser?.avatar && isUserUploadedAvatar(currentUser.avatar)) {
-      if (authorId && (currentUser.id === authorId || (KNOWN_ADMIN_IDS.has(authorId) && KNOWN_ADMIN_IDS.has(currentUser.id)))) {
-        return currentUser.avatar;
-      }
-      if (effectiveAuthorDisplayName) {
-        const trimmed = effectiveAuthorDisplayName.trim().toLowerCase();
-        if (currentUser.name && (currentUser.name.trim().toLowerCase() === trimmed || slugify(currentUser.name) === slugify(trimmed))) {
-          return currentUser.avatar;
-        }
-      }
-    }
-
-    // 3. Resolve using comprehensive user lookup across persistent and active users
     return resolveUserUploadedAvatar(
       authorAvatar,
       authorId,
       effectiveAuthorDisplayName,
-      users
+      users,
+      currentUser
     );
   }, [authorAvatar, authorId, effectiveAuthorDisplayName, users, currentUser]);
 
@@ -157,6 +140,34 @@ export const EventPost: React.FC<EventPostProps> = ({
 
   const authorUrl = `/avtor/${slugify(organizer)}`;
 
+  const effectiveTime = eventTime || time;
+
+  const distinctScheduleLocations = useMemo(() => {
+    if (!eventSchedule || !Array.isArray(eventSchedule)) return [];
+    const locs = eventSchedule.map(s => s.location?.trim()).filter(Boolean) as string[];
+    return Array.from(new Set(locs));
+  }, [eventSchedule]);
+  const hasMultipleLocations = distinctScheduleLocations.length > 1;
+
+  // Dynamically resolve next earliest upcoming date if multiple dates or schedule exist
+  const resolvedDate = useMemo(() => {
+    return resolveEventDisplayDate({
+      eventDate: (eventDates && eventDates[0]) || date,
+      date,
+      eventDates,
+      eventSchedule,
+      eventTime: effectiveTime,
+      location,
+    });
+  }, [date, eventDates, eventSchedule, effectiveTime, location]);
+
+  const displayDate = resolvedDate.dateInfo.fullDate || date;
+  const displayMonth = resolvedDate.dateInfo.month || month || 'DOG';
+  const displayDay = resolvedDate.dateInfo.day || day || '★';
+  const displayTime = resolvedDate.eventTime || effectiveTime;
+  const displayLocation = (hasMultipleLocations ? location : (resolvedDate.location || location)) || 'Slovenija';
+  const showDistinctTime = displayTime && !displayDate?.includes(displayTime);
+
   const handleOpenDetail = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (onNavigatePost) {
@@ -178,10 +189,11 @@ export const EventPost: React.FC<EventPostProps> = ({
           authorRole,
           image: imgSrc || image || '',
           images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
-          location,
-          date,
-          time,
-          eventTime,
+          location: displayLocation,
+          date: displayDate,
+          time: displayTime,
+          eventTime: displayTime,
+          eventDate: resolvedDate.dateYmd,
           eventDates,
           eventSchedule,
           price,
@@ -236,24 +248,14 @@ export const EventPost: React.FC<EventPostProps> = ({
     title,
     organizer,
     categoryName,
-    location,
-    date,
-    month,
-    day,
+    location: displayLocation,
+    date: displayDate,
+    month: displayMonth,
+    day: displayDay,
     price: displayPrice,
     description: cleanDescription,
     image: hasVisibleImage ? imgSrc : undefined,
   };
-
-  const effectiveTime = eventTime || time;
-  const showDistinctTime = effectiveTime && !date?.includes(effectiveTime);
-
-  const distinctScheduleLocations = useMemo(() => {
-    if (!eventSchedule || !Array.isArray(eventSchedule)) return [];
-    const locs = eventSchedule.map(s => s.location?.trim()).filter(Boolean) as string[];
-    return Array.from(new Set(locs));
-  }, [eventSchedule]);
-  const hasMultipleLocations = distinctScheduleLocations.length > 1;
 
   return (
     <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border hover:shadow-md transition-shadow flex flex-col sm:flex-row ${
@@ -277,8 +279,8 @@ export const EventPost: React.FC<EventPostProps> = ({
               <PromotedBadge type={promotionBadgeType} size="sm" />
             )}
             <div className="bg-surface-container-lowest/90 backdrop-blur-md rounded-xl p-1.5 text-center min-w-[44px] shadow-sm border border-black/5">
-              <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{month || 'DOG'}</div>
-              <div className="text-base font-black text-on-surface leading-none mt-0.5">{day || '★'}</div>
+              <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{displayMonth}</div>
+              <div className="text-base font-black text-on-surface leading-none mt-0.5">{displayDay}</div>
             </div>
           </div>
         </a>
@@ -289,8 +291,8 @@ export const EventPost: React.FC<EventPostProps> = ({
           {!hasVisibleImage && (
             <div className="flex items-center gap-3 mb-2.5">
               <div className="bg-primary/10 rounded-xl px-2.5 py-1 text-center min-w-[46px] border border-primary/20 shrink-0">
-                <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{month || 'DOG'}</div>
-                <div className="text-base font-black text-primary leading-none mt-0.5">{day || '★'}</div>
+                <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{displayMonth}</div>
+                <div className="text-base font-black text-primary leading-none mt-0.5">{displayDay}</div>
               </div>
               {isPromoted && (
                 <PromotedBadge type={promotionBadgeType} size="sm" />
@@ -409,13 +411,13 @@ export const EventPost: React.FC<EventPostProps> = ({
                 <span>{location}</span>
               </button>
             )}
-            {date && (
+            {displayDate && (
               <>
                 <span>•</span>
                 <span className="font-medium text-on-surface flex items-center gap-1.5">
-                  <span>{date}</span>
+                  <span>{displayDate}</span>
                   {eventDates && eventDates.length > 1 && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0" title={`Ta dogodek ima ${eventDates.length} razpisanih terminov/ponovitev`}>
                       <Calendar className="w-3 h-3" />
                       <span>+{eventDates.length - 1} ponovitev</span>
                     </span>
@@ -428,7 +430,7 @@ export const EventPost: React.FC<EventPostProps> = ({
                 <span>•</span>
                 <span className="font-semibold text-on-surface flex items-center gap-1">
                   <Clock className="w-3 h-3 text-primary" />
-                  {effectiveTime}
+                  {displayTime}
                 </span>
               </>
             )}

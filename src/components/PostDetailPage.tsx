@@ -33,7 +33,7 @@ import {
 import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
 import { ShareModal } from './common/ShareModal';
 import { scrollToPageTop, scrollToSidebarsTop } from '../utils/scrollUtils';
-import { parseEventDateInfo } from '../utils/dateUtils';
+import { parseEventDateInfo, resolveEventDisplayDate } from '../utils/dateUtils';
 import { getCleanHtml, formatViewsCount, getPlainTextSnippet } from '../utils/textUtils';
 import { parseSocialEmbed } from '../utils/embedUtils';
 import { getActiveFallbackImage, handleImageFallbackError } from '../services/portalSettingsService';
@@ -311,22 +311,22 @@ export function PostDetailPage({
 
     // Helper to format event object
     const formatEventData = (fs: FirestoreEvent) => {
-      const dateInfo = parseEventDateInfo(fs.eventDate || fs.date, fs.eventTime);
+      const resolvedDate = resolveEventDisplayDate(fs);
       return {
         id: fs.id,
         type: 'event' as const,
         title: fs.title,
         description: fs.description,
-        location: fs.location,
-        date: dateInfo.fullDate,
-        eventDate: fs.eventDate,
-        eventTime: fs.eventTime,
+        location: resolvedDate.location || fs.location,
+        date: resolvedDate.dateInfo.fullDate,
+        eventDate: resolvedDate.dateYmd || fs.eventDate,
+        eventTime: resolvedDate.eventTime || fs.eventTime,
         eventDates: fs.eventDates,
         eventTimes: fs.eventTimes,
         eventSchedule: fs.eventSchedule,
         ticketUrl: fs.ticketUrl,
-        month: dateInfo.month,
-        day: dateInfo.day,
+        month: resolvedDate.dateInfo.month,
+        day: resolvedDate.dateInfo.day,
         price: fs.price || 'Vstop prost',
         organizer: fs.authorName,
         authorName: fs.authorName,
@@ -633,24 +633,32 @@ export function PostDetailPage({
     };
 
     const matchedDoc = resolveMatchedDoc();
-    if (initialData) {
-      if (matchedDoc) {
-        const docImage = matchedDoc.image || (matchedDoc as any).imageUrl;
-        const docImages = matchedDoc.images || ((matchedDoc as any).imageUrls) || (docImage ? [docImage] : undefined);
-        return {
-          ...matchedDoc,
-          ...initialData,
-          image: initialData.image || docImage,
-          imageUrl: initialData.imageUrl || (matchedDoc as any).imageUrl || initialData.image || docImage,
-          images: (initialData.images && initialData.images.length > 0)
-            ? initialData.images
-            : docImages,
-        };
-      }
-      return initialData;
+    const resolvedItem = initialData ? (
+      matchedDoc ? {
+        ...matchedDoc,
+        ...initialData,
+        image: initialData.image || matchedDoc.image || (matchedDoc as any).imageUrl,
+        imageUrl: initialData.imageUrl || (matchedDoc as any).imageUrl || initialData.image || matchedDoc.image,
+        images: (initialData.images && initialData.images.length > 0)
+          ? initialData.images
+          : (matchedDoc.images || ((matchedDoc as any).imageUrls) || (matchedDoc.image ? [matchedDoc.image] : undefined)),
+      } : initialData
+    ) : matchedDoc;
+
+    if (resolvedItem && (resolvedItem.type === 'event' || target.type === 'event')) {
+      const resolvedDate = resolveEventDisplayDate(resolvedItem);
+      return {
+        ...resolvedItem,
+        date: resolvedDate.dateInfo.fullDate || resolvedItem.date,
+        eventDate: resolvedDate.dateYmd || resolvedItem.eventDate,
+        eventTime: resolvedDate.eventTime || resolvedItem.eventTime,
+        location: resolvedItem.location || resolvedDate.location,
+        month: resolvedDate.dateInfo.month || resolvedItem.month,
+        day: resolvedDate.dateInfo.day || resolvedItem.day,
+      };
     }
 
-    return matchedDoc;
+    return resolvedItem;
   }, [target, firestorePosts, firestoreEvents, firestoreAds, directItem]);
 
   useEffect(() => {
@@ -1207,15 +1215,15 @@ export function PostDetailPage({
     firestoreEvents.forEach(e => {
       if (e.id && !seenIds.has(e.id) && e.status !== 'rejected') {
         seenIds.add(e.id);
-        const dateInfo = parseEventDateInfo(e.eventDate || e.date, e.eventTime);
+        const resolvedDate = resolveEventDisplayDate(e);
         allEvents.push({
           id: e.id,
           title: e.title,
-          location: e.location || 'Slovenija',
-          city: e.location || 'Slovenija',
-          month: dateInfo.month,
-          day: dateInfo.day,
-          time: e.eventTime || '19:00',
+          location: resolvedDate.location || e.location || 'Slovenija',
+          city: resolvedDate.location || e.location || 'Slovenija',
+          month: resolvedDate.dateInfo.month,
+          day: resolvedDate.dateInfo.day,
+          time: resolvedDate.eventTime || e.eventTime || '19:00',
           image: e.imageUrl || (e.imageUrls && e.imageUrls[0]) || getActiveFallbackImage(true, 'event') || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&auto=format&fit=crop&q=80',
           category: e.category || 'dogodki',
           categoryName: e.categoryName || e.category || 'Dogodek'
@@ -1408,7 +1416,7 @@ export function PostDetailPage({
       if (seenIds.has(e.id) || e.status === 'rejected') return;
       if (matchesAuthor(e.authorId, e.authorName)) {
         seenIds.add(e.id);
-        const dateInfo = parseEventDateInfo(e.eventDate || e.date, e.eventTime);
+        const resolvedDate = resolveEventDisplayDate(e);
         results.push({
           id: e.id,
           type: 'event',
@@ -1419,12 +1427,12 @@ export function PostDetailPage({
           authorRole: e.authorRole || 'Organizator',
           image: e.imageUrl || (e.imageUrls && e.imageUrls[0]) || getActiveFallbackImage(true, 'event') || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&auto=format&fit=crop&q=80',
           categoryName: e.categoryName || e.category || 'Dogodek',
-          location: e.location || 'Slovenija',
+          location: resolvedDate.location || e.location || 'Slovenija',
           price: e.price || 'Vstop prost',
-          date: dateInfo.fullDate,
-          eventDay: dateInfo.day,
-          eventMonth: dateInfo.month,
-          eventTime: e.eventTime || '19:00',
+          date: resolvedDate.dateInfo.fullDate,
+          eventDay: resolvedDate.dateInfo.day,
+          eventMonth: resolvedDate.dateInfo.month,
+          eventTime: resolvedDate.eventTime || e.eventTime || '19:00',
         });
       }
     });
@@ -1654,6 +1662,8 @@ export function PostDetailPage({
     location: itemData.location || itemData.region,
     eventDate: itemData.eventDate || itemData.date,
     eventTime: itemData.eventTime,
+    eventDates: itemData.eventDates,
+    eventSchedule: itemData.eventSchedule,
     ticketUrl: itemData.ticketUrl,
     tags: itemData.tags,
     authorName: itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor',
@@ -2145,37 +2155,25 @@ export function PostDetailPage({
                   itemData.partnerAvatar || itemData.authorAvatar,
                   itemData.authorId,
                   authorDisplayName,
-                  users
+                  users,
+                  currentUser
                 );
-                if (resolvedPhoto) {
-                  return (
-                    <button
-                      type="button"
-                      id="btn-post-detail-author-avatar"
-                      onClick={handleAuthorClick}
-                      className="cursor-pointer group/avatar shrink-0 focus:outline-none"
-                      title={`Ogled profila avtorja: ${authorDisplayName}`}
-                    >
-                      <UserAvatar
-                        src={resolvedPhoto}
-                        name={authorDisplayName}
-                        userId={itemData.authorId}
-                        role={itemData.authorRole || itemData.partnerRole}
-                        size="lg"
-                        className="w-12 h-12 ring-2 ring-primary/20 group-hover/avatar:ring-primary shadow-xs transition-all"
-                      />
-                    </button>
-                  );
-                }
                 return (
                   <button
                     type="button"
-                    id="btn-post-detail-author-initials"
+                    id="btn-post-detail-author-avatar"
                     onClick={handleAuthorClick}
-                    className="w-12 h-12 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold text-base shadow-xs hover:bg-primary/25 transition-colors cursor-pointer shrink-0 focus:outline-none"
+                    className="cursor-pointer group/avatar shrink-0 focus:outline-none"
                     title={`Ogled profila avtorja: ${authorDisplayName}`}
                   >
-                    {itemData.authorInitials || (authorDisplayName || 'U')[0]}
+                    <UserAvatar
+                      src={resolvedPhoto}
+                      name={authorDisplayName}
+                      userId={itemData.authorId}
+                      role={itemData.authorRole || itemData.partnerRole}
+                      size="lg"
+                      className="w-12 h-12 ring-2 ring-primary/20 group-hover/avatar:ring-primary shadow-xs transition-all"
+                    />
                   </button>
                 );
               })()}
@@ -2472,27 +2470,49 @@ export function PostDetailPage({
                         : (slot.time ? slot.time.split(',').map((t: string) => t.trim()).filter(Boolean) : []);
                       const slotLocation = slot.location?.trim() || itemData.location;
 
+                      const slotDateYmd = slot.date ? (slot.date.match(/^\d{4}-\d{2}-\d{2}/) ? slot.date.match(/^\d{4}-\d{2}-\d{2}/)![0] : slot.date) : '';
+                      const isNextSlot = Boolean(slotDateYmd && itemData.eventDate && (slotDateYmd === itemData.eventDate || itemData.eventDate.startsWith(slotDateYmd)));
+                      const isPastSlot = Boolean(slotDateYmd && itemData.eventDate && slotDateYmd < itemData.eventDate);
+
                       return (
-                        <div key={idx} className="p-3.5 rounded-xl bg-surface-container-lowest border border-surface-container flex flex-col gap-2.5 shadow-xs">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
+                        <div key={idx} className={`p-3.5 rounded-xl border flex flex-col gap-2.5 shadow-xs transition-colors ${
+                          isNextSlot 
+                            ? 'bg-surface-container-lowest border-primary/40 ring-1 ring-primary/20' 
+                            : 'bg-surface-container-lowest border-surface-container'
+                        }`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               {dateObj && (
-                                <div className="bg-primary/10 rounded-xl px-2.5 py-1 text-center min-w-[42px] border border-primary/20 shrink-0">
-                                  <div className="text-[9px] font-bold text-primary uppercase">{dateObj.month}</div>
-                                  <div className="text-sm font-black text-primary leading-none">{dateObj.day}</div>
+                                <div className={`rounded-xl px-2.5 py-1 text-center min-w-[42px] border shrink-0 ${
+                                  isNextSlot 
+                                    ? 'bg-primary text-on-primary border-primary font-bold shadow-xs' 
+                                    : 'bg-primary/10 text-primary border-primary/20'
+                                }`}>
+                                  <div className={`text-[9px] uppercase ${isNextSlot ? 'text-on-primary/90' : 'text-primary'}`}>{dateObj.month}</div>
+                                  <div className={`text-sm font-black leading-none ${isNextSlot ? 'text-on-primary' : 'text-primary'}`}>{dateObj.day}</div>
                                 </div>
                               )}
-                              <div>
-                                <div className="text-xs font-bold text-on-surface">
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-on-surface truncate">
                                   {dateObj ? dateObj.fullDate : (slot.date || `Termin ${idx + 1}`)}
                                 </div>
                                 {slot.label && (
-                                  <span className="text-[11px] font-semibold text-secondary">
+                                  <span className="text-[11px] font-semibold text-secondary block truncate">
                                     {slot.label}
                                   </span>
                                 )}
                               </div>
                             </div>
+                            {isNextSlot && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/15 text-primary border border-primary/25 shrink-0 whitespace-nowrap">
+                                Naslednji termin
+                              </span>
+                            )}
+                            {isPastSlot && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] text-outline bg-surface-container shrink-0 whitespace-nowrap">
+                                Preteklo
+                              </span>
+                            )}
                           </div>
 
                           {/* Specific location for this date/show */}

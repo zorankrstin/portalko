@@ -24,7 +24,8 @@ import { updatePageSeo } from '../../utils/seoUtils';
 import { slugify } from '../../utils/urlUtils';
 import { getPlainTextSnippet } from '../../utils/textUtils';
 import { UserAvatar } from '../common/UserAvatar';
-import { isDummyAvatar } from '../../utils/avatarUtils';
+import { isDummyAvatar, isUserUploadedAvatar, isCustomUploadedAvatar, resolveUserUploadedAvatar } from '../../utils/avatarUtils';
+import { resolveEventDisplayDate } from '../../utils/dateUtils';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
@@ -51,7 +52,7 @@ export interface AuthorItemCardData {
 }
 
 export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onViewChange }: PublicAuthorProfileProps) {
-  const { users } = useAuth();
+  const { users, currentUser } = useAuth();
   const [activeTypeFilter, setActiveTypeFilter] = useState<'all' | 'post' | 'ad' | 'event' | 'deal'>('all');
 
   // Real-time Firestore items
@@ -76,15 +77,53 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     const authorNameLower = (targetAuthor.name || '').trim().toLowerCase();
     const authorSlug = slugify(targetAuthor.name);
     const cleanAuthorSlug = authorSlug.replace(/-/g, '');
-    return users.find(u => 
+
+    // 1. If active currentUser matches target author, use currentUser (contains the freshest uploaded avatar)
+    if (currentUser) {
+      if (targetAuthor.id && currentUser.id === targetAuthor.id) return currentUser;
+      if (currentUser.name) {
+        const cLower = currentUser.name.trim().toLowerCase();
+        if (cLower === authorNameLower || slugify(currentUser.name) === authorSlug || slugify(currentUser.name).replace(/-/g, '') === cleanAuthorSlug) {
+          return currentUser;
+        }
+      }
+      if (currentUser.username) {
+        const cUserClean = currentUser.username.replace('@', '').trim().toLowerCase();
+        if (cUserClean === authorNameLower || slugify(cUserClean) === authorSlug) {
+          return currentUser;
+        }
+      }
+    }
+
+    // 2. Collect all matching user records and prioritize user with custom uploaded avatar
+    const matches = users.filter(u => 
       (targetAuthor.id && u.id === targetAuthor.id) ||
       (u.name && u.name.trim().toLowerCase() === authorNameLower) ||
       (u.name && slugify(u.name) === authorSlug) ||
       (u.name && slugify(u.name).replace(/-/g, '') === cleanAuthorSlug) ||
       (u.username && slugify(u.username.replace('@', '')) === authorSlug) ||
       (authorNameLower.includes('portalko') && u.name.toLowerCase().includes('portalko'))
-    ) || null;
-  }, [users, targetAuthor]);
+    );
+
+    if (matches.length > 0) {
+      matches.sort((a, b) => {
+        // If active logged-in currentUser is among matches, prioritize their account first
+        if (currentUser) {
+          if (a.id === currentUser.id && b.id !== currentUser.id) return -1;
+          if (b.id === currentUser.id && a.id !== currentUser.id) return 1;
+        }
+        const aScore = isCustomUploadedAvatar(a.avatar) ? 3 : (a.avatar && isUserUploadedAvatar(a.avatar) ? 2 : (a.avatar ? 1 : 0));
+        const bScore = isCustomUploadedAvatar(b.avatar) ? 3 : (b.avatar && isUserUploadedAvatar(b.avatar) ? 2 : (b.avatar ? 1 : 0));
+        if (bScore !== aScore) return bScore - aScore;
+        const aLen = a.avatar ? a.avatar.length : 0;
+        const bLen = b.avatar ? b.avatar.length : 0;
+        return bLen - aLen;
+      });
+      return matches[0];
+    }
+
+    return null;
+  }, [users, currentUser, targetAuthor]);
 
   // Helper to determine if an avatar URL is just a generic letters/dicebear fallback
   const isGenericAvatar = (url?: string | null) => {
@@ -133,15 +172,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
       const evAuthorId = e.authorId || (e as any).organizerId;
       if (isMatchingAuthor(evAuthorName, evAuthorId)) {
         const authorUser = users.find(u => (e.authorId && u.id === e.authorId) || (u.name && isMatchingAuthor(u.name, u.id)));
-        const avatar = (!isDummyAvatar(e.authorAvatar)) 
-          ? e.authorAvatar 
-          : (!isDummyAvatar(authorUser?.avatar))
-            ? authorUser?.avatar
-            : (evAuthorName?.toLowerCase().includes('portalko')
-              ? 'https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg'
-              : ((evAuthorName?.toLowerCase().includes('špas') || evAuthorName?.toLowerCase().includes('spas'))
-                ? 'https://www.spasteater.si/og-default.jpg'
-                : undefined));
+        const avatar = resolveUserUploadedAvatar(e.authorAvatar, e.authorId, evAuthorName, users, currentUser);
 
         return {
           name: evAuthorName,
@@ -156,9 +187,10 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     for (const p of firestorePosts) {
       if (isMatchingAuthor(p.authorName, p.authorId)) {
         const authorUser = users.find(u => u.id === p.authorId || (u.name && isMatchingAuthor(u.name, u.id)));
+        const avatar = resolveUserUploadedAvatar(p.authorAvatar, p.authorId, p.authorName, users, currentUser);
         return {
           name: p.authorName,
-          avatar: p.authorAvatar || authorUser?.avatar,
+          avatar,
           role: p.authorRole || authorUser?.role,
           id: p.authorId,
         };
@@ -168,9 +200,10 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     for (const a of firestoreAds) {
       if (isMatchingAuthor(a.authorName, a.authorId)) {
         const authorUser = users.find(u => u.id === a.authorId || (u.name && isMatchingAuthor(u.name, u.id)));
+        const avatar = resolveUserUploadedAvatar(a.authorAvatar, a.authorId, a.authorName, users, currentUser);
         return {
           name: a.authorName,
-          avatar: a.authorAvatar || authorUser?.avatar,
+          avatar,
           role: a.authorRole || authorUser?.role,
           id: a.authorId,
         };
@@ -222,7 +255,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     }
 
     return null;
-  }, [firestorePosts, firestoreAds, firestoreEvents, targetAuthor, matchedUser, users]);
+  }, [firestorePosts, firestoreAds, firestoreEvents, targetAuthor, matchedUser, users, currentUser]);
 
   // Aggregate author's items
   const authorItems = useMemo<AuthorItemCardData[]>(() => {
@@ -274,6 +307,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
       const evAuthorName = e.authorName || (e as any).organizer;
       const evAuthorId = e.authorId || (e as any).organizerId;
       if (isMatchingAuthor(evAuthorName, evAuthorId)) {
+        const resolvedDate = resolveEventDisplayDate(e);
         itemsMap.set(`event-${e.id}`, {
           id: e.id,
           type: 'event',
@@ -282,8 +316,8 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           category: e.categoryName || e.category,
           imageUrl: e.imageUrl,
           price: e.price,
-          location: e.location,
-          date: e.eventDate || (e.createdAt ? new Date(e.createdAt).toLocaleDateString('sl-SI') : undefined),
+          location: resolvedDate.location || e.location,
+          date: resolvedDate.dateInfo.fullDate || e.eventDate || (e.createdAt ? new Date(e.createdAt).toLocaleDateString('sl-SI') : undefined),
           likesCount: e.likesCount || 0,
           lovesCount: (e as any).lovesCount || 0,
           viewsCount: e.viewsCount || 0,
@@ -394,25 +428,13 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     );
 
     // Pick best real avatar, strictly prioritizing user-uploaded profile photos over dummy images
-    let avatar = (matchedUser?.avatar && !isDummyAvatar(matchedUser.avatar)) ? matchedUser.avatar : undefined;
-    if (!avatar && realAuthorMetadata?.avatar && !isDummyAvatar(realAuthorMetadata.avatar)) {
-      avatar = realAuthorMetadata.avatar;
-    }
-    if (!avatar && targetAuthor.avatar && !isDummyAvatar(targetAuthor.avatar)) {
-      avatar = targetAuthor.avatar;
-    }
-    if (!avatar) {
-      const lowerName = name.toLowerCase();
-      const targetLower = (targetAuthor.name || '').toLowerCase();
-      if (lowerName.includes('portalko') || targetLower.includes('portalko')) {
-        avatar = 'https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg';
-      } else if (lowerName.includes('špas') || lowerName.includes('spas') || targetLower.includes('špas') || targetLower.includes('spas')) {
-        avatar = 'https://www.spasteater.si/og-default.jpg';
-      }
-    }
-    if (!avatar || isDummyAvatar(avatar)) {
-      avatar = undefined;
-    }
+    const avatar = resolveUserUploadedAvatar(
+      targetAuthor.avatar || realAuthorMetadata?.avatar || matchedUser?.avatar,
+      effectiveTargetId,
+      name,
+      users,
+      currentUser
+    );
 
     const role = matchedUser?.role || (
       targetAuthor.role?.toLowerCase().includes('superadmin') ? 'superadmin' :
