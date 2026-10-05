@@ -547,7 +547,6 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                 userId={effectiveTargetId}
                 role={authorProfile.role}
                 size="2xl"
-                showRoleBadge={true}
                 className="w-24 h-24 sm:w-28 sm:h-28 shadow-md ring-4 ring-surface-container-lowest border border-surface-container/50 bg-surface-container-low"
               />
             </div>
@@ -561,9 +560,6 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                     <VerifiedBadge size="md" title="Preverjen račun (Verified)" />
                   )}
                 </h1>
-                <span className="text-xs uppercase font-extrabold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                  {authorProfile.roleTitle}
-                </span>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-outline font-medium">

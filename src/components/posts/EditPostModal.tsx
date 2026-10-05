@@ -561,9 +561,6 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-primary/10 text-primary">
-              <Sparkles className="w-5 h-5" />
-            </span>
             <div>
               <h2 className="font-headline-sm text-lg font-bold text-on-surface flex items-center gap-2">
                 <span>Urejanje objave</span>
@@ -603,7 +600,6 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           {/* Original author indicator */}
           <div className="px-3.5 py-2 rounded-xl bg-surface-container-low border border-surface-container/70 flex items-center justify-between text-[11px]">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-on-surface">Izvirni avtor:</span>
               <span className="font-bold text-primary">{item.authorName || 'Uporabnik'}</span>
               {item.authorRole && (
                 <span className="text-[10px] text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
