@@ -23,6 +23,8 @@ export interface DealsCategoryLocationFilterProps {
   onSelectTertiaryCategory: (tertiary: string) => void;
   selectedRegion: string;
   onSelectRegion: (region: string) => void;
+  selectedType?: string;
+  onSelectType?: (type: string) => void;
   sortOption: string;
   onSelectSortOption: (sort: string) => void;
   totalResultsCount: number;
@@ -41,6 +43,8 @@ export function DealsCategoryLocationFilter({
   onSelectTertiaryCategory,
   selectedRegion,
   onSelectRegion,
+  selectedType = 'all',
+  onSelectType,
   sortOption,
   onSelectSortOption,
   totalResultsCount,
@@ -147,8 +151,12 @@ export function DealsCategoryLocationFilter({
     selectedSubcategory !== 'all' || 
     selectedTertiaryCategory !== 'all' ||
     selectedRegion !== 'all' || 
-    sortOption !== 'newest' && sortOption !== 'featured' ||
+    selectedType !== 'all' ||
+    (sortOption !== 'newest' && sortOption !== 'featured') ||
     Boolean(searchQuery);
+
+  // Location filter is not applicable for all deal types (e.g. online discount codes)
+  const isLocationApplicable = selectedType !== 'code';
 
   // Get active location display name
   const activeLocationName = useMemo(() => {
@@ -230,6 +238,36 @@ export function DealsCategoryLocationFilter({
             );
           })}
         </div>
+
+        {/* Vrste ponudb / Deal Types selector */}
+        {onSelectType && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-surface-container-low/70">
+            <span className="text-[10px] font-bold text-outline uppercase tracking-wider mr-0.5">Vrsta ponudbe:</span>
+            {[
+              { id: 'all', label: 'Vse ugodnosti' },
+              { id: 'code', label: '🌐 Kode za popust (splet)' },
+              { id: 'flyer', label: '🏬 Letaki & poslovalnice' },
+              { id: 'coupon', label: '🎟️ Kuponi & bone' },
+              { id: 'bogo', label: '🎁 1+1 Gratis' },
+            ].map(type => {
+              const isSelected = selectedType === type.id;
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  onClick={() => onSelectType(type.id)}
+                  className={`px-2.5 py-1 rounded-lg font-label-md text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 ${
+                    isSelected
+                      ? 'bg-secondary text-on-secondary font-bold shadow-2xs'
+                      : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <span>{type.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 2. Secondary & Tertiary Filters as Compact True Dropdowns Grid */}
@@ -280,31 +318,46 @@ export function DealsCategoryLocationFilter({
           </div>
 
           {/* Dropdown 3: Lokacija & Regija */}
-          <div className="relative flex items-center bg-surface-container-low/90 rounded-xl border border-surface-container focus-within:border-secondary focus-within:bg-surface-container-lowest transition-all">
-            <MapPin className="w-3.5 h-3.5 text-secondary ml-2.5 shrink-0 pointer-events-none" />
-            <select
-              value={selectedRegion}
-              onChange={(e) => onSelectRegion(e.target.value)}
-              className="w-full appearance-none bg-transparent pl-2 pr-7 py-2 font-body-sm text-xs text-on-surface focus:outline-none cursor-pointer truncate font-medium"
-              title="Izberi regijo ali kraj"
-            >
-              <option value="all">📍 Vsa Slovenija / Splet</option>
-              <optgroup label="Slovenske statistične regije">
-                {SLOVENIA_REGIONS.map(reg => (
-                  <option key={reg.id} value={reg.id}>
-                    {reg.name} regija ({reg.shortName})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Mesta in kraji">
-                {popularTownsList.map(town => (
-                  <option key={`city-${town}`} value={`city-${town}`}>
-                    {town}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2.5 pointer-events-none" />
+          <div className={`relative flex items-center rounded-xl border transition-all ${
+            !isLocationApplicable 
+              ? 'bg-surface-container-high/40 border-dashed border-outline/30 opacity-75' 
+              : 'bg-surface-container-low/90 border-surface-container focus-within:border-secondary focus-within:bg-surface-container-lowest'
+          }`}>
+            <MapPin className={`w-3.5 h-3.5 ml-2.5 shrink-0 pointer-events-none ${!isLocationApplicable ? 'text-outline' : 'text-secondary'}`} />
+            {isLocationApplicable ? (
+              <select
+                value={selectedRegion}
+                onChange={(e) => onSelectRegion(e.target.value)}
+                className="w-full appearance-none bg-transparent pl-2 pr-7 py-2 font-body-sm text-xs text-on-surface focus:outline-none cursor-pointer truncate font-medium"
+                title="Izberi regijo ali kraj (za lokalne poslovalnice)"
+              >
+                <option value="all">📍 Vsa Slovenija / Splet (vse lokacije)</option>
+                <optgroup label="Slovenske statistične regije">
+                  {SLOVENIA_REGIONS.map(reg => (
+                    <option key={reg.id} value={reg.id}>
+                      {reg.name} regija ({reg.shortName})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Mesta in kraji">
+                  {popularTownsList.map(town => (
+                    <option key={`city-${town}`} value={`city-${town}`}>
+                      {town}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            ) : (
+              <div 
+                className="w-full pl-2 pr-2 py-2 font-body-sm text-xs text-outline italic truncate flex items-center select-none"
+                title="Lokacijski filter ni na voljo za spletne kode za popust, saj veljajo kjerkoli na spletu za vso Slovenijo."
+              >
+                <span className="truncate">🌐 Brez lokacije (spletna koda)</span>
+              </div>
+            )}
+            {isLocationApplicable && (
+              <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2.5 pointer-events-none" />
+            )}
           </div>
 
           {/* Dropdown 4: Razvrščanje */}
@@ -324,6 +377,19 @@ export function DealsCategoryLocationFilter({
             <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2.5 pointer-events-none" />
           </div>
         </div>
+
+        {/* Informative notice when location filter is not applicable or active */}
+        {!isLocationApplicable ? (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container/60 text-xs text-outline font-medium mt-2 border border-surface-container">
+            <span className="text-secondary font-bold shrink-0">ℹ️ Opomba:</span>
+            <span>Lokacijski filter ni na voljo za spletne kode za popust, saj so unovčljive kjerkoli na spletu za celotno Slovenijo.</span>
+          </div>
+        ) : selectedRegion !== 'all' ? (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container/60 text-[11px] text-outline font-medium mt-2 border border-surface-container">
+            <span className="text-secondary font-bold shrink-0">📍 Lokalni filter:</span>
+            <span>Prikaz poslovalnic v izbrani regiji/mestu. Spletne kode in ugodnosti brez lokacijskih omejitev ostajajo na voljo.</span>
+          </div>
+        ) : null}
 
         {/* Active Filters Inline Summary */}
         {hasActiveFilters && (
@@ -373,6 +439,25 @@ export function DealsCategoryLocationFilter({
                   onClick={() => onSelectTertiaryCategory('all')} 
                   className="hover:text-amber-200 cursor-pointer"
                   title="Odstrani filter trgovine / znamke"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {selectedType !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-secondary/15 text-secondary text-[11px] font-semibold">
+                <span>
+                  {selectedType === 'code' ? 'Kode za popust' :
+                   selectedType === 'flyer' ? 'Letaki & poslovalnice' :
+                   selectedType === 'coupon' ? 'Kuponi' :
+                   selectedType === 'bogo' ? '1+1 Gratis' : selectedType}
+                </span>
+                <button 
+                  type="button" 
+                  onClick={() => onSelectType && onSelectType('all')} 
+                  className="hover:text-error cursor-pointer"
+                  title="Odstrani filter vrste ponudbe"
                 >
                   <X className="w-3 h-3" />
                 </button>

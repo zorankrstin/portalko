@@ -13,6 +13,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { isDummyAvatar, isUserUploadedAvatar, resolveUserUploadedAvatar, KNOWN_ADMIN_IDS } from "../../utils/avatarUtils";
 import { UserAvatar } from "../common/UserAvatar";
 import { resolveEventDisplayDate } from "../../utils/dateUtils";
+import { VerifiedBadge } from "../common/VerifiedBadge";
+import { isUserVerified } from "../../utils/userVerificationUtils";
 
 export interface EventPostProps {
   id?: string;
@@ -89,7 +91,7 @@ export const EventPost: React.FC<EventPostProps> = ({
   onCategoryClick,
   onLocationClick,
 }) => {
-  const { filterByEventCategory, filterByEventLocation } = useEventFilter();
+  const { filterByEventLocation } = useEventFilter();
   const { users, currentUser } = useAuth();
 
   const effectiveAuthorDisplayName = authorName || organizer;
@@ -103,16 +105,6 @@ export const EventPost: React.FC<EventPostProps> = ({
       currentUser
     );
   }, [authorAvatar, authorId, effectiveAuthorDisplayName, users, currentUser]);
-
-  const handleCategoryClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onCategoryClick) {
-      onCategoryClick(category, categoryName, subcategory, subcategoryName);
-    } else {
-      filterByEventCategory(category, categoryName, subcategory, subcategoryName);
-    }
-  };
 
   const handleLocationClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -257,6 +249,13 @@ export const EventPost: React.FC<EventPostProps> = ({
     image: hasVisibleImage ? imgSrc : undefined,
   };
 
+  const isAuthorVerified = isUserVerified({
+    role: authorRole,
+    userId: authorId,
+    name: effectiveAuthorDisplayName,
+    users,
+  });
+
   return (
     <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border hover:shadow-md transition-shadow flex flex-col sm:flex-row ${
       isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
@@ -301,64 +300,56 @@ export const EventPost: React.FC<EventPostProps> = ({
           )}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={handleCategoryClick}
-                className="font-label-caps text-[11px] text-primary hover:text-primary/80 hover:underline font-semibold uppercase tracking-wider cursor-pointer transition-colors text-left"
-                title={`Filtriraj dogodke po kategoriji: ${categoryName}`}
-              >
-                {categoryName}
-              </button>
               {effectiveAuthorDisplayName && (
-                <>
-                  <span className="text-[11px] text-outline">•</span>
-                  <a
-                    href={authorUrl}
-                    onClick={(e) => {
-                      if (onAuthorClick) {
-                        e.preventDefault();
-                        onAuthorClick({
-                          name: effectiveAuthorDisplayName,
-                          id: authorId,
-                          avatar: effectiveAuthorAvatar,
-                          role: authorRole,
-                          fromPostTarget: {
-                            type: 'event',
-                            id,
-                            initialData: {
-                              title,
-                              image: imgSrc,
-                              category: categoryName || category,
-                              location,
-                            }
+                <a
+                  href={authorUrl}
+                  onClick={(e) => {
+                    if (onAuthorClick) {
+                      e.preventDefault();
+                      onAuthorClick({
+                        name: effectiveAuthorDisplayName,
+                        id: authorId,
+                        avatar: effectiveAuthorAvatar,
+                        role: authorRole,
+                        fromPostTarget: {
+                          type: 'event',
+                          id,
+                          initialData: {
+                            title,
+                            image: imgSrc,
+                            category: categoryName || category,
+                            location,
                           }
-                        });
-                      }
-                    }}
-                    data-author-name={effectiveAuthorDisplayName}
-                    data-author-id={authorId}
-                    data-author-avatar={effectiveAuthorAvatar || ''}
-                    data-author-role={authorRole}
-                    data-post-id={id}
-                    data-post-type="event"
-                    data-post-title={title}
-                    data-post-image={image}
-                    data-post-category={categoryName || category}
-                    data-post-location={location}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-on-surface hover:text-primary hover:underline transition-colors group/author"
-                    title={`Ogled profila avtorja: ${effectiveAuthorDisplayName}`}
-                  >
-                    <UserAvatar
-                      src={effectiveAuthorAvatar}
-                      name={effectiveAuthorDisplayName}
-                      userId={authorId}
-                      role={authorRole}
-                      size="sm"
-                      className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 ring-1.5 ring-surface-container-high group-hover/author:ring-primary shadow-xs transition-all"
-                    />
-                    <span>{effectiveAuthorDisplayName}</span>
-                  </a>
-                </>
+                        }
+                      });
+                    }
+                  }}
+                  data-author-name={effectiveAuthorDisplayName}
+                  data-author-id={authorId}
+                  data-author-avatar={effectiveAuthorAvatar || ''}
+                  data-author-role={authorRole}
+                  data-post-id={id}
+                  data-post-type="event"
+                  data-post-title={title}
+                  data-post-image={image}
+                  data-post-category={categoryName || category}
+                  data-post-location={location}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-on-surface hover:text-primary hover:underline transition-colors group/author"
+                  title={`Ogled profila avtorja: ${effectiveAuthorDisplayName}`}
+                >
+                  <UserAvatar
+                    src={effectiveAuthorAvatar}
+                    name={effectiveAuthorDisplayName}
+                    userId={authorId}
+                    role={authorRole}
+                    size="sm"
+                    className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 ring-1.5 ring-surface-container-high group-hover/author:ring-primary shadow-xs transition-all"
+                  />
+                  <span>{effectiveAuthorDisplayName}</span>
+                  {isAuthorVerified && (
+                    <VerifiedBadge size="xs" />
+                  )}
+                </a>
               )}
             </div>
             <div className="flex items-center gap-1">
@@ -432,57 +423,6 @@ export const EventPost: React.FC<EventPostProps> = ({
                   <Clock className="w-3 h-3 text-primary" />
                   {displayTime}
                 </span>
-              </>
-            )}
-            {organizer && (
-              <>
-                <span>•</span>
-                <a
-                  href={authorUrl}
-                  onClick={(e) => {
-                    if (onAuthorClick) {
-                      e.preventDefault();
-                      onAuthorClick({
-                        name: organizer,
-                        id: authorId,
-                        avatar: effectiveAuthorAvatar,
-                        role: authorRole,
-                        fromPostTarget: {
-                          type: 'event',
-                          id,
-                          initialData: {
-                            title,
-                            image: imgSrc,
-                            category: categoryName || category,
-                            location,
-                          }
-                        }
-                      });
-                    }
-                  }}
-                  data-author-name={organizer}
-                  data-author-id={authorId}
-                  data-author-avatar={effectiveAuthorAvatar}
-                  data-author-role={authorRole}
-                  data-post-id={id}
-                  data-post-type="event"
-                  data-post-title={title}
-                  data-post-image={image}
-                  data-post-category={categoryName || category}
-                  data-post-location={location}
-                  className="hover:text-primary hover:underline font-medium text-on-surface transition-colors inline-flex items-center gap-1"
-                  title={`Ogled profila organizatorja: ${organizer}`}
-                >
-                  <UserAvatar
-                    src={effectiveAuthorAvatar}
-                    name={organizer}
-                    userId={authorId}
-                    role={authorRole}
-                    size="xs"
-                    className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
-                  />
-                  <span>{organizer}</span>
-                </a>
               </>
             )}
           </div>

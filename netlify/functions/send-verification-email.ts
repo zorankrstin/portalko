@@ -271,9 +271,9 @@ export const handler: Handler = async (event: HandlerEvent) => {
           }),
         };
       } catch (smtpErr: any) {
-        console.warn("[SMTP ERROR]:", smtpErr.message);
+        console.log("[SMTP NOTICE]:", smtpErr.message);
         if (smtpErr.message?.includes("Country") || smtpErr.message?.includes("IntCode") || smtpErr.message?.includes("550")) {
-          console.warn("[SMTP COUNTRY FILTER] Hitrost.net cPanel country protection blocked outbound connection from cloud host. Disable country filter in cPanel or use Resend/Brevo API.");
+          console.log("[SMTP COUNTRY FILTER NOTICE] Hitrost.net cPanel country protection blocked outbound connection from cloud host. Disable country filter in cPanel or use Resend/Brevo API.");
         }
       }
     }
@@ -287,9 +287,10 @@ export const handler: Handler = async (event: HandlerEvent) => {
         success: true,
         sent: false,
         simulated: true,
+        smtpBlocked: true,
         messageId: `sim_${Date.now()}`,
         confirmationUrl,
-        message: "Potrditvena povezava je pripravljena. Za samodejno pošiljanje prek noreply@portalko.net nastavite SMTP_HOST ali RESEND_API_KEY v okoljskih spremenljivkah.",
+        message: "Potrditvena povezava je pripravljena. Za samodejno pošiljanje prek noreply@portalko.net nastavite BREVO_API_KEY ali RESEND_API_KEY v okoljskih spremenljivkah.",
       }),
     };
   } catch (err: any) {

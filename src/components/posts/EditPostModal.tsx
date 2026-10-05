@@ -517,7 +517,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           discount: isDeal ? (discount.trim() || undefined) : undefined,
           promoCode: isDeal ? (promoCode.trim() || undefined) : undefined,
           dealLink: isDeal ? (dealLink.trim() || undefined) : undefined,
-          location: location.trim() || item.location || '',
+          location: isDeal ? location.trim() : (location.trim() || item.location || ''),
           imageUrl: imageUrl.trim() || item.imageUrl || '',
           tags: parsedTags,
           status: targetStatus as any,
@@ -1234,12 +1234,25 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
           {/* Location */}
           <div className="flex flex-col gap-1.5">
-            <label className="font-label-caps uppercase font-semibold text-outline">Lokacija (opcijsko)</label>
+            <div className="flex items-center justify-between">
+              <label className="font-label-caps uppercase font-semibold text-outline">
+                {isDeal ? 'Lokacija (neobvezno – za spletne ugodnosti pustite prazno)' : 'Lokacija (opcijsko)'}
+              </label>
+              {isDeal && location.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setLocation('')}
+                  className="text-[10px] text-primary hover:underline cursor-pointer"
+                >
+                  Počisti lokacijo (spletna ugodnost)
+                </button>
+              )}
+            </div>
             <input
               type="text"
               value={location}
               onChange={e => setLocation(e.target.value)}
-              placeholder="Npr. Ljubljana, Maribor, Celje..."
+              placeholder={isDeal ? "Pustite prazno za spletne ugodnosti ali vnesite kraj (npr. Ljubljana)" : "Npr. Ljubljana, Maribor, Celje..."}
               className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
             />
           </div>

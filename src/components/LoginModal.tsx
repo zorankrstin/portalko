@@ -32,6 +32,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
     name: string;
     confirmationUrl?: string;
     emailSent?: boolean;
+    smtpBlocked?: boolean;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -119,6 +120,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
           name: regName,
           confirmationUrl: res.confirmationUrl,
           emailSent: res.emailSent,
+          smtpBlocked: res.smtpBlocked,
         });
         setRegPassword('');
       } else {
@@ -303,34 +305,53 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                 </span>
               </div>
 
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-3 border border-primary/20">
-                <Send className="w-3.5 h-3.5" />
-                <span>Noreply potrditveno sporočilo poslano</span>
-              </div>
+              {verificationPending.emailSent ? (
+                <>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-3 border border-primary/20">
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Noreply potrditveno sporočilo poslano</span>
+                  </div>
 
-              <h3 className="font-headline-sm text-lg font-bold text-on-surface mb-2">
-                Preverite vaš e-poštni predal
-              </h3>
+                  <h3 className="font-headline-sm text-lg font-bold text-on-surface mb-2">
+                    Preverite vaš e-poštni predal
+                  </h3>
 
-              <p className="font-body-md text-sm text-on-surface-variant max-w-sm mb-4 leading-relaxed">
-                Na naslov <strong className="text-on-surface font-semibold">{verificationPending.email}</strong> smo poslali potrditveno sporočilo iz <strong className="text-primary font-semibold">noreply@portalko.net</strong>. Za dokončanje registracije in aktivacijo računa kliknite na potrditveno povezavo v sporočilu.
-              </p>
+                  <p className="font-body-md text-sm text-on-surface-variant max-w-sm mb-4 leading-relaxed">
+                    Na naslov <strong className="text-on-surface font-semibold">{verificationPending.email}</strong> smo poslali potrditveno sporočilo iz <strong className="text-primary font-semibold">noreply@portalko.net</strong>. Za dokončanje registracije kliknite na potrditveno povezavo v sporočilu.
+                  </p>
 
-              {/* Step by step instructions */}
-              <div className="w-full text-left bg-surface-container-low rounded-xl p-3.5 border border-surface-container mb-4 text-xs text-on-surface-variant space-y-2.5">
-                <div className="flex items-start gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
-                  <span>Odprite vaš e-poštni predal (preverite tudi mapo z vsiljeno pošto / <em>Spam</em>).</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
-                  <span>Poiščite sporočilo pošiljatelja <strong>noreply@portalko.net</strong> z zadevo <strong>»Potrdite svoj račun na Portalko.net«</strong>.</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
-                  <span>Kliknite na vijolični gumb <strong>»Potrdi moj račun«</strong> in vaš račun bo aktiviran.</span>
-                </div>
-              </div>
+                  {/* Step by step instructions */}
+                  <div className="w-full text-left bg-surface-container-low rounded-xl p-3.5 border border-surface-container mb-4 text-xs text-on-surface-variant space-y-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
+                      <span>Odprite vaš e-poštni predal (preverite tudi mapo z vsiljeno pošto / <em>Spam</em>).</span>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
+                      <span>Poiščite sporočilo pošiljatelja <strong>noreply@portalko.net</strong> z zadevo <strong>»Potrdite svoj račun na Portalko.net«</strong>.</span>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
+                      <span>Kliknite na vijolični gumb <strong>»Potrdi moj račun«</strong> in vaš račun bo aktiviran.</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/15 text-primary text-xs font-semibold mb-3 border border-primary/25">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Aktivacija računa pripravljena</span>
+                  </div>
+
+                  <h3 className="font-headline-sm text-lg font-bold text-on-surface mb-2">
+                    Dokončajte registracijo računa
+                  </h3>
+
+                  <p className="font-body-md text-sm text-on-surface-variant max-w-sm mb-4 leading-relaxed">
+                    Uporabniški račun za <strong className="text-on-surface font-semibold">{verificationPending.email}</strong> je uspešno ustvarjen. Svoj račun lahko takoj aktivirate s klikom na spodnji gumb:
+                  </p>
+                </>
+              )}
 
               {resendFeedback && (
                 <div className="w-full mb-3 p-2.5 rounded-lg bg-secondary/15 border border-secondary/30 text-secondary text-xs flex items-center justify-center gap-1.5 animate-in fade-in">
@@ -341,33 +362,20 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
 
               {/* Action buttons */}
               <div className="w-full flex flex-col gap-2.5">
-                <button
-                  type="button"
-                  disabled={isResending}
-                  onClick={() => handleResendVerification(verificationPending.email)}
-                  className="w-full py-2.5 rounded-xl border border-surface-container hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                  <span>{isResending ? 'Pošiljanje novega sporočila...' : 'Ponovno pošlji potrditveno povezavo'}</span>
-                </button>
-
                 {verificationPending.confirmationUrl && (
-                  <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-left mt-1 space-y-2">
+                  <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-left space-y-2.5">
                     <p className="text-xs font-semibold text-on-surface flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4 text-primary shrink-0" />
-                      <span>Neposredna aktivacija računa:</span>
+                      <span>{verificationPending.emailSent ? 'Hitra neposredna aktivacija:' : 'Aktivirajte vaš račun zdaj:'}</span>
                     </p>
-                    <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                      Če e-poštno sporočilo zamuja ali je bilo zadržano s strani ponudnika pošte, lahko vaš račun takoj aktivirate s klikom na spodnji gumb:
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                    <div className="flex flex-col sm:flex-row gap-2 pt-0.5">
                       <button
                         type="button"
                         onClick={() => handleDirectConfirmSimulation(verificationPending.confirmationUrl)}
-                        className="flex-1 py-2.5 px-3 rounded-lg bg-primary hover:bg-primary-container text-on-primary text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                        className="flex-1 py-2.5 px-3 rounded-lg bg-primary hover:bg-primary-hover text-on-primary text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                       >
                         <Check className="w-3.5 h-3.5" />
-                        <span>Aktiviraj račun zdaj</span>
+                        <span>Aktiviraj račun in se prijavi</span>
                       </button>
                       <button
                         type="button"
@@ -387,6 +395,16 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                     </div>
                   </div>
                 )}
+
+                <button
+                  type="button"
+                  disabled={isResending}
+                  onClick={() => handleResendVerification(verificationPending.email)}
+                  className="w-full py-2.5 rounded-xl border border-surface-container hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                  <span>{isResending ? 'Pošiljanje novega sporočila...' : 'Ponovno pošlji potrditveno povezavo'}</span>
+                </button>
 
                 <button
                   type="button"

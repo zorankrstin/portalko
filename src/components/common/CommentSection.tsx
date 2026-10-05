@@ -32,6 +32,8 @@ import { UserAvatar } from './UserAvatar';
 import { isDummyAvatar } from '../../utils/avatarUtils';
 import { formatSlovenianDate, formatRelativeTime } from '../../utils/dateUtils';
 import { scrollToPageTop } from '../../utils/scrollUtils';
+import { VerifiedBadge } from './VerifiedBadge';
+import { isUserVerified } from '../../utils/userVerificationUtils';
 
 export interface CommentSectionProps {
   targetId: string;
@@ -56,7 +58,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   onViewChange,
   className = '',
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, users } = useAuth();
   const [comments, setComments] = useState<FirestoreComment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newCommentText, setNewCommentText] = useState('');
@@ -440,6 +442,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                   className="w-5 h-5 ring-1 ring-primary/20"
                 />
                 <span className="font-semibold text-primary">{currentUser.name}</span>
+                {isUserVerified(currentUser) && (
+                  <VerifiedBadge size="xs" />
+                )}
                 {currentUser.role && currentUser.role !== 'registered' && (
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-primary/10 text-primary font-bold">
                     {currentUser.role === 'superadmin' ? 'Superadmin' : currentUser.role === 'admin' ? 'Admin' : 'Preverjen'}
@@ -574,27 +579,40 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (onAuthorClick) {
-                            onAuthorClick({
-                              id: comment.authorId,
-                              name: comment.authorName,
-                              avatar: comment.authorAvatar,
-                              role: comment.authorRole,
-                              fromPostTarget: { type: targetType, id: targetId }
-                            });
-                          } else if (onViewChange) {
-                            onViewChange('profile');
-                          }
-                          scrollToPageTop();
-                        }}
-                        className="font-bold text-xs sm:text-sm text-on-surface hover:text-primary hover:underline text-left cursor-pointer transition-colors"
-                        title={`Ogled profila: ${comment.authorName}`}
-                      >
-                        {comment.authorName}
-                      </button>
+                      {(() => {
+                        const isCommentAuthorVerified = isUserVerified({
+                          role: comment.authorRole,
+                          userId: comment.authorId,
+                          name: comment.authorName,
+                          users,
+                        });
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onAuthorClick) {
+                                onAuthorClick({
+                                  id: comment.authorId,
+                                  name: comment.authorName,
+                                  avatar: comment.authorAvatar,
+                                  role: comment.authorRole,
+                                  fromPostTarget: { type: targetType, id: targetId }
+                                });
+                              } else if (onViewChange) {
+                                onViewChange('profile');
+                              }
+                              scrollToPageTop();
+                            }}
+                            className="font-bold text-xs sm:text-sm text-on-surface hover:text-primary hover:underline text-left cursor-pointer transition-colors inline-flex items-center gap-1"
+                            title={`Ogled profila: ${comment.authorName}`}
+                          >
+                            <span>{comment.authorName}</span>
+                            {isCommentAuthorVerified && (
+                              <VerifiedBadge size="xs" />
+                            )}
+                          </button>
+                        );
+                      })()}
 
                       {comment.authorRole && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${

@@ -18,6 +18,8 @@ import { getPlainTextSnippet } from '../utils/textUtils';
 import { UserAvatar } from './common/UserAvatar';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { useAuth } from '../contexts/AuthContext';
+import { VerifiedBadge } from './common/VerifiedBadge';
+import { isUserVerified } from '../utils/userVerificationUtils';
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -471,6 +473,12 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                           <span>Objavil:</span>
                           {(() => {
                             const authorAvatar = resolveUserUploadedAvatar(ad.authorAvatar, ad.authorId, ad.authorName, users);
+                            const isAuthorVerified = isUserVerified({
+                              role: ad.authorRole,
+                              userId: ad.authorId,
+                              name: ad.authorName,
+                              users,
+                            });
                             return (
                               <a
                                 href={`/avtor/${slugify(ad.authorName || 'Uporabnik')}`}
@@ -497,6 +505,9 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                                   className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
                                 />
                                 <span>{ad.authorName || 'Uporabnik'}</span>
+                                {isAuthorVerified && (
+                                  <VerifiedBadge size="xs" />
+                                )}
                               </a>
                             );
                           })()}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { VerifiedBadge } from './common/VerifiedBadge';
 import { 
   Camera, 
   Edit2, 
@@ -541,9 +542,7 @@ export function UserProfile({
                     <Shield className="w-3.5 h-3.5" />
                   </span>
                 ) : currentUser.role === 'verified' ? (
-                  <span className="bg-secondary text-on-secondary rounded-full p-1 shadow-sm" title="Preverjen">
-                    <UserCheck className="w-3.5 h-3.5" />
-                  </span>
+                  <VerifiedBadge size="md" title="Preverjen račun (Verified)" />
                 ) : null}
               </h1>
               <span className="text-xs font-medium text-outline">
@@ -893,9 +892,9 @@ export function UserProfile({
                     )
                   )}
                   {currentUser.role === 'verified' && (
-                    <span className="text-xs text-secondary flex items-center gap-1 font-bold ml-1">
-                      <UserCheck className="w-3.5 h-3.5" />
-                      Preverjen račun
+                    <span className="text-xs text-[#1D9BF0] flex items-center gap-1.5 font-bold ml-1">
+                      <VerifiedBadge size="xs" />
+                      Preverjen račun (Verified)
                     </span>
                   )}
                 </div>

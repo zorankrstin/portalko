@@ -10,6 +10,9 @@ import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
 import { UserAvatar } from "../common/UserAvatar";
 import { isUserUploadedAvatar } from "../../utils/avatarUtils";
+import { VerifiedBadge } from "../common/VerifiedBadge";
+import { isUserVerified } from "../../utils/userVerificationUtils";
+import { useAuth } from "../../contexts/AuthContext";
 
 export interface DealPostProps {
   id?: string;
@@ -184,6 +187,7 @@ export const DealPost: React.FC<DealPostProps> = ({
     effectiveDate = `Od ${formatSlDate(startDate)}`;
   }
 
+  const { users } = useAuth();
   const bookmarkData = {
     type: 'deal',
     category: 'deals',
@@ -207,6 +211,13 @@ export const DealPost: React.FC<DealPostProps> = ({
     region,
     verifiedText,
   };
+
+  const isAuthorVerified = isUserVerified({
+    role: authorRole,
+    userId: authorId,
+    name: author,
+    users,
+  });
 
   return (
     <article 
@@ -276,10 +287,13 @@ export const DealPost: React.FC<DealPostProps> = ({
                   data-post-category={categoryName || category}
                   data-post-price={newPrice || discount || oldPrice}
                   data-post-location={region}
-                  className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
+                  className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors inline-flex items-center gap-1"
                   title={`Ogled profila partnerja: ${author}`}
                 >
-                  {author}
+                  <span>{author}</span>
+                  {isAuthorVerified && (
+                    <VerifiedBadge size="xs" />
+                  )}
                 </a>
               </div>
             </div>

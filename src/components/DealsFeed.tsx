@@ -48,7 +48,7 @@ import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { slugify } from '../utils/urlUtils';
 import { getPlainTextSnippet } from '../utils/textUtils';
 import { useCategories } from '../hooks/useCategories';
-import { SLOVENIA_REGIONS } from '../services/categoryService';
+import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categoryService';
 import { PromotedBadge } from './common/PromotedBadge';
 import { UserDisplayName } from './common/UserDisplayName';
 import { isItemActivelyPromoted } from '../services/promotionService';
@@ -101,6 +101,9 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     title: '',
     description: '',
     category: 'tehnika' as 'tehnika' | 'prehrana' | 'turizem' | 'sport' | 'dom' | 'avto',
+    locationType: 'online' as 'online' | 'physical',
+    region: 'all',
+    location: '',
     code: '',
     discount: '-20%',
     oldPrice: '',
@@ -139,6 +142,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           subcategory: p.subcategory || '',
           subcategoryName: p.subcategoryName || '',
           region: p.region || p.location || 'Vsa Slovenija',
+          location: p.location || undefined,
           discount: p.discount || p.price || 'Ugodnost',
           oldPrice: p.oldPrice,
           newPrice: p.newPrice,
@@ -348,18 +352,32 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       }
 
       // 6. Region & Location filter
+      // Note: The location filter is not applicable for all deal types!
+      // Online discount codes ('code') and web-wide deals are available across all of Slovenia.
       if (selectedRegion !== 'all') {
         const target = selectedRegion.toLowerCase().trim();
         const dealReg = (deal.region || '').toLowerCase().trim();
-        if (!dealReg.includes('vsa slo') && !dealReg.includes('splet')) {
+        const dealLoc = ((deal as any).location || '').toLowerCase().trim();
+        const isOnlineDeal = deal.dealType === 'code' || 
+                             dealReg.includes('splet') || 
+                             dealReg.includes('vsa slo') || 
+                             (!dealLoc && (!deal.region || deal.region === 'Vsa Slovenija / Splet' || deal.region === 'Vsa Slovenija'));
+
+        // If the deal is an online discount code or nationwide web deal,
+        // the location filter is not applicable to it, so it remains accessible.
+        // Physical deals with a specified region/town are matched against the location filter:
+        if (!isOnlineDeal) {
           if (target.startsWith('city-')) {
             const cleanCity = target.replace('city-', '').trim().toLowerCase();
-            if (!dealReg.includes(cleanCity)) return false;
+            const matchesCity = dealReg.includes(cleanCity) || dealLoc.includes(cleanCity);
+            if (!matchesCity) return false;
           } else {
             const regObj = SLOVENIA_REGIONS.find(r => r.id === selectedRegion);
-            let matches = dealReg.includes(target);
+            let matches = dealReg.includes(target) || dealLoc.includes(target);
             if (!matches && regObj) {
-              matches = dealReg.includes(regObj.id) || dealReg.includes(regObj.name.toLowerCase()) || regObj.cities.some(c => dealReg.includes(c.toLowerCase()));
+              matches = dealReg.includes(regObj.id) || 
+                        dealReg.includes(regObj.name.toLowerCase()) || 
+                        regObj.cities.some(c => dealReg.includes(c.toLowerCase()) || dealLoc.includes(c.toLowerCase()));
             }
             if (!matches) return false;
           }
@@ -370,6 +388,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       if (selectedType !== 'all') {
         if (selectedType === 'code' && deal.dealType !== 'code') return false;
         if (selectedType === 'flyer' && deal.dealType !== 'flyer' && deal.dealType !== 'sale') return false;
+        if (selectedType === 'sale' && deal.dealType !== 'sale' && deal.dealType !== 'flyer') return false;
         if (selectedType === 'coupon' && deal.dealType !== 'coupon') return false;
         if (selectedType === 'bogo' && deal.dealType !== 'bogo') return false;
       }
@@ -512,6 +531,18 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     const primaryImg = modalForm.images[0] || modalForm.image || fallbackImg;
     const allImages = modalForm.images.length > 0 ? modalForm.images : (modalForm.image ? [modalForm.image] : [fallbackImg]);
 
+    // Optional location & region resolution
+    const chosenRegObj = SLOVENIA_REGIONS.find(r => r.id === modalForm.region);
+    const regionBaseName = modalForm.locationType === 'online' || modalForm.region === 'all'
+      ? 'Vsa Slovenija / Splet'
+      : (chosenRegObj ? `${chosenRegObj.name} regija` : modalForm.region);
+    const locationName = modalForm.locationType === 'physical' && modalForm.location.trim()
+      ? modalForm.location.trim()
+      : undefined;
+    const finalRegion = locationName
+      ? `${locationName}${regionBaseName !== 'Vsa Slovenija / Splet' ? ` (${regionBaseName})` : ''}`
+      : regionBaseName;
+
     const newDeal: DealItem = {
       id: `user-deal-${Date.now()}`,
       title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
@@ -526,7 +557,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     modalForm.category === 'turizem' ? 'Turizem & Doživetja' :
                     modalForm.category === 'sport' ? 'Moda & Šport' :
                     modalForm.category === 'dom' ? 'Dom & Vrt' : 'Avto & Mobilnost',
-      region: 'Vsa Slovenija / Splet',
+      region: finalRegion,
+      location: locationName,
       discount: modalForm.discount || '-20%',
       oldPrice: modalForm.oldPrice || undefined,
       newPrice: modalForm.newPrice || undefined,
@@ -575,6 +607,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           discount: modalForm.discount || undefined,
           promoCode: modalForm.code ? modalForm.code.toUpperCase() : undefined,
           dealLink: modalForm.link || undefined,
+          region: finalRegion,
+          location: locationName,
           embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
           tags: modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).length > 0 
             ? modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean) 
@@ -599,6 +633,9 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         title: '',
         description: '',
         category: 'tehnika',
+        locationType: 'online',
+        region: 'all',
+        location: '',
         code: '',
         discount: '-20%',
         oldPrice: '',
@@ -667,6 +704,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         selectedRegion={selectedRegion}
         onSelectRegion={(reg) => {
           setSelectedRegion(reg);
+          setPage(1);
+        }}
+        selectedType={selectedType}
+        onSelectType={(type) => {
+          setSelectedType(type);
           setPage(1);
         }}
         sortOption={sortOption}
@@ -902,9 +944,9 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           <span>{deal.date}</span>
                         </span>
                         <span>•</span>
-                        <span className="flex items-center gap-1 truncate max-w-[140px]">
+                        <span className="flex items-center gap-1 truncate max-w-[180px]" title={deal.location ? `${deal.location} (${deal.region})` : deal.region}>
                           <MapPin className="w-3 h-3 text-outline shrink-0" />
-                          <span>{deal.region}</span>
+                          <span>{deal.location || deal.region}</span>
                         </span>
                       </div>
 
@@ -1203,6 +1245,117 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                       className="w-full bg-surface-container-low px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
                     />
                   </div>
+                </div>
+
+                {/* Lokacija ugodnosti (neobvezno) */}
+                <div className="flex flex-col gap-2.5 p-3 rounded-xl bg-surface-container-low/70 border border-surface-container">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-secondary" />
+                      <span className="font-label-md text-on-surface font-semibold text-xs">
+                        Lokacija ugodnosti (neobvezno)
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-outline px-1.5 py-0.5 rounded bg-surface-container font-medium">
+                      Neobvezno
+                    </span>
+                  </div>
+
+                  {/* Toggle: Spletna ugodnost vs Fizična poslovalnica */}
+                  <div className="inline-flex rounded-lg p-0.5 bg-surface-container text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalForm(prev => ({ ...prev, locationType: 'online', region: 'all', location: '' }));
+                      }}
+                      className={`flex-1 px-2.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        modalForm.locationType === 'online'
+                          ? 'bg-secondary text-on-secondary shadow-xs font-bold'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      <span>🌐 Spletna ugodnost / Koda (brez lokacije)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalForm(prev => ({ ...prev, locationType: 'physical' }));
+                      }}
+                      className={`flex-1 px-2.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        modalForm.locationType === 'physical'
+                          ? 'bg-secondary text-on-secondary shadow-xs font-bold'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      <span>📍 Fizična trgovina / Poslovalnica</span>
+                    </button>
+                  </div>
+
+                  {modalForm.locationType === 'online' ? (
+                    <p className="text-[11px] text-outline italic">
+                      🌐 Ugodnost velja za spletne nakupe ali celotno Slovenijo. Lokacija je neobvezna in ni potrebna.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block font-label-md text-on-surface-variant font-semibold mb-1">
+                            Regija (neobvezno)
+                          </label>
+                          <select
+                            value={modalForm.region}
+                            onChange={(e) => setModalForm(prev => ({ ...prev, region: e.target.value }))}
+                            className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
+                          >
+                            <option value="all">📍 Vsa Slovenija (vse poslovalnice)</option>
+                            {SLOVENIA_REGIONS.map(reg => (
+                              <option key={reg.id} value={reg.id}>
+                                {reg.name} ({reg.shortName})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block font-label-md text-on-surface-variant font-semibold mb-1">
+                            Kraj / Poslovalnica (neobvezno)
+                          </label>
+                          <input
+                            type="text"
+                            list="deal-cities-datalist"
+                            value={modalForm.location}
+                            onChange={(e) => setModalForm(prev => ({ ...prev, location: e.target.value }))}
+                            placeholder="npr. Ljubljana BTC, Maribor Europark ali prazno..."
+                            className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
+                          />
+                          <datalist id="deal-cities-datalist">
+                            {POPULAR_SLOVENIA_TOWNS.map(town => (
+                              <option key={town} value={town} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </div>
+
+                      {/* Quick City suggestion chips */}
+                      <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                        <span className="text-[10px] text-outline font-medium">Predlagana mesta:</span>
+                        {['Ljubljana', 'Maribor', 'Celje', 'Kranj', 'Koper', 'Novo mesto'].map(city => (
+                          <button
+                            key={city}
+                            type="button"
+                            onClick={() => setModalForm(prev => ({ ...prev, location: city }))}
+                            className={`text-[10px] px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                              modalForm.location.trim().toLowerCase() === city.toLowerCase()
+                                ? 'bg-secondary text-on-secondary font-bold shadow-xs'
+                                : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
+                            }`}
+                          >
+                            {city}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Fotografije ugodnosti (ena ali več) */}

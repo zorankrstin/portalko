@@ -44,6 +44,8 @@ import { useEventFilter } from '../contexts/EventFilterContext';
 import { DEFAULT_CATEGORIES } from '../services/categoryService';
 import { UserAvatar } from './common/UserAvatar';
 import { isDummyAvatar, resolveUserUploadedAvatar } from '../utils/avatarUtils';
+import { VerifiedBadge } from './common/VerifiedBadge';
+import { isUserVerified } from '../utils/userVerificationUtils';
 
 // Mapping of mock blog post IDs to their actual categories
 const MOCK_BLOG_CATEGORY_MAP: Record<string, { id: string; name: string }> = {
@@ -1677,6 +1679,13 @@ export function PostDetailPage({
   const authorRole = itemData.partnerRole || itemData.authorRole;
   const authorId = itemData.authorId;
 
+  const isAuthorVerified = isUserVerified({
+    role: authorRole,
+    userId: authorId,
+    name: authorDisplayName,
+    users,
+  });
+
   const rawItemViews = typeof itemData.viewsCount === 'number' 
     ? itemData.viewsCount 
     : (parseInt(String(itemData.viewsCount || '0').replace(/\D/g, ''), 10) || 0);
@@ -2112,6 +2121,9 @@ export function PostDetailPage({
               >
                 <User className="w-3.5 h-3.5 text-primary group-hover/author:scale-110 transition-transform" />
                 <span className="underline decoration-surface-container-highest group-hover/author:decoration-primary underline-offset-2">{authorDisplayName}</span>
+                {isAuthorVerified && (
+                  <VerifiedBadge size="xs" />
+                )}
               </button>
               <span>•</span>
               {(itemData.location || itemData.region) && (
@@ -2187,10 +2199,10 @@ export function PostDetailPage({
                     title={`Ogled profila avtorja: ${authorDisplayName}`}
                   >
                     <span>{authorDisplayName}</span>
+                    {isAuthorVerified && (
+                      <VerifiedBadge size="sm" title="Preverjen partner (Verified)" />
+                    )}
                   </button>
-                  <span title="Preverjen status" className="inline-flex items-center">
-                    <CheckCircle2 className="w-4 h-4 text-secondary" />
-                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-outline mt-0.5">
                   <span>{authorRole || itemData.partnerRole || 'Preverjen član skupnosti'}</span>
@@ -2711,25 +2723,37 @@ export function PostDetailPage({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (onAuthorClick) {
-                              onAuthorClick({
-                                name: comment.author,
-                                avatar: comment.authorAvatar,
-                                role: comment.authorRole,
-                                fromPostTarget: target
-                              });
-                            } else {
-                              onViewChange('profile');
-                            }
-                          }}
-                          className="font-bold text-xs sm:text-sm text-on-surface hover:text-primary hover:underline text-left cursor-pointer transition-colors"
-                          title={`Ogled profila avtorja: ${comment.author}`}
-                        >
-                          {comment.author}
-                        </button>
+                        {(() => {
+                          const isCommentAuthorVerified = isUserVerified({
+                            role: comment.authorRole,
+                            name: comment.author,
+                            users,
+                          });
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onAuthorClick) {
+                                  onAuthorClick({
+                                    name: comment.author,
+                                    avatar: comment.authorAvatar,
+                                    role: comment.authorRole,
+                                    fromPostTarget: target
+                                  });
+                                } else {
+                                  onViewChange('profile');
+                                }
+                              }}
+                              className="font-bold text-xs sm:text-sm text-on-surface hover:text-primary hover:underline text-left cursor-pointer transition-colors inline-flex items-center gap-1"
+                              title={`Ogled profila avtorja: ${comment.author}`}
+                            >
+                              <span>{comment.author}</span>
+                              {isCommentAuthorVerified && (
+                                <VerifiedBadge size="xs" />
+                              )}
+                            </button>
+                          );
+                        })()}
                         {comment.authorRole && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-outline font-semibold">
                             {comment.authorRole}
@@ -3173,8 +3197,11 @@ export function PostDetailPage({
               <div>
                 <h3 className="font-headline-md text-base sm:text-lg font-bold text-on-surface flex flex-wrap items-center gap-2">
                   <span>Od istega avtorja</span>
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                    {authorDisplayName}
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 inline-flex items-center gap-1">
+                    <span>{authorDisplayName}</span>
+                    {isAuthorVerified && (
+                      <VerifiedBadge size="xs" />
+                    )}
                   </span>
                 </h3>
                 <p className="text-xs text-on-surface-variant">

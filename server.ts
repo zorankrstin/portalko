@@ -607,9 +607,9 @@ async function startServer() {
             message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno poslano.",
           });
         } catch (mailErr: any) {
-          console.warn("[NOREPLY EMAIL SMTP ERROR, FALLING BACK TO SIMULATION]:", mailErr.message);
+          console.log("[NOREPLY EMAIL SMTP NOTICE - SMTP unavailable, falling back to simulated dispatch]:", mailErr.message);
           if (mailErr.message?.includes("Country") || mailErr.message?.includes("IntCode") || mailErr.message?.includes("550")) {
-            console.warn("[SMTP COUNTRY FILTER] Hitrost.net cPanel country protection blocked outbound connection from cloud host. Disable country filter in cPanel or use Resend/Brevo API.");
+            console.log("[SMTP COUNTRY FILTER NOTICE] Hitrost.net cPanel country protection blocked outbound connection from cloud host. Disable country filter in cPanel or use Resend/Brevo API.");
           }
         }
       }
@@ -620,9 +620,10 @@ async function startServer() {
         success: true,
         sent: false,
         simulated: true,
+        smtpBlocked: true,
         messageId: `sim_${Date.now()}`,
         confirmationUrl,
-        message: "Potrditveno sporočilo je pripravljeno. Za samodejno dostavo v poštni predal konfigurirajte SMTP_HOST ali BREVO_API_KEY / RESEND_API_KEY.",
+        message: "Potrditveno sporočilo je pripravljeno. Za samodejno dostavo v poštni predal konfigurirajte BREVO_API_KEY ali RESEND_API_KEY.",
       });
     } catch (err: any) {
       console.error("Napaka pri pošiljanju potrditvene e-pošte:", err);

@@ -12,6 +12,7 @@ export interface DealItem {
   category: 'tehnika' | 'prehrana' | 'turizem' | 'sport' | 'dom' | 'avto';
   categoryName: string;
   region: string;
+  location?: string;
   discount: string;
   oldPrice?: string;
   newPrice?: string;

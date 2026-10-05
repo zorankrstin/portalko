@@ -421,7 +421,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
                 className="font-label-md text-label-md font-bold text-on-surface hover:text-primary hover:underline transition-colors"
                 title={`Ogled profila avtorja: ${post.authorName}`}
               >
-                <UserDisplayName name={post.authorName} role={post.authorRole} />
+                <UserDisplayName name={post.authorName} role={post.authorRole} userId={post.authorId} users={users} />
               </a>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
                 {roleLabels[post.authorRole] || 'Član'}

@@ -9,6 +9,9 @@ import { getPlainTextSnippet } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
 import { UserAvatar } from "../common/UserAvatar";
+import { VerifiedBadge } from "../common/VerifiedBadge";
+import { isUserVerified } from "../../utils/userVerificationUtils";
+import { useAuth } from "../../contexts/AuthContext";
 import type { PostDetailTarget } from "../../types";
 
 export interface BlogPostProps {
@@ -70,7 +73,15 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   promotionBadgeType = 'PROMO',
   onNavigatePost,
 }) => {
+  const { users } = useAuth();
   const finalDesc = excerpt || description;
+
+  const isAuthorVerified = isUserVerified({
+    role: authorRole,
+    userId: authorId,
+    name: author,
+    users,
+  });
 
   const postUrl = buildPostUrl({
     type: 'blog',
@@ -196,10 +207,13 @@ export const BlogPost: React.FC<BlogPostProps> = ({
                 data-post-image={image}
                 data-post-category={categoryName || category}
                 data-post-location={location}
-                className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors"
+                className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors flex items-center gap-1"
                 title={`Ogled profila avtorja: ${author}`}
               >
-                {author}
+                <span>{author}</span>
+                {isAuthorVerified && (
+                  <VerifiedBadge size="xs" />
+                )}
               </a>
               <span className="font-label-caps text-label-caps bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded-md">{authorRole}</span>
             </div>

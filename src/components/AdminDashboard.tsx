@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ReportsManager } from './admin/ReportsManager';
 import { PortalSettingsManager } from './admin/PortalSettingsManager';
+import { VerifiedBadge } from './common/VerifiedBadge';
 import { subscribeToReports } from '../services/reportService';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { 
@@ -1056,7 +1057,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                 >
                                   <span>{user.name}</span>
                                   {user.role === 'superadmin' && <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
-                                  {user.role === 'verified' && <CheckCircle className="w-3.5 h-3.5 text-secondary shrink-0" />}
+                                  {user.role === 'verified' && <VerifiedBadge size="xs" />}
                                   <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
                                 </a>
                                 <span className="text-xs text-outline truncate">{user.email}</span>

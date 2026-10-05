@@ -496,6 +496,16 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     // Never auto-fallback to a specific city (e.g. cities[0])! Use entered location, or region name, or Slovenija
     const finalLocation = location.trim() || (chosenRegionObj && chosenRegionObj.id !== 'all' ? chosenRegionObj.name : 'Slovenija');
 
+    // For deals/akcije, location is strictly optional (can be an online deal/coupon code or webshop promo)
+    const isDeal = postType === 'deal';
+    const isDealWithoutLocation = isDeal && (selectedRegion === 'none' || (!location.trim() && selectedRegion === 'all'));
+    const dealRegion = selectedRegion === 'none'
+      ? 'Splet'
+      : (chosenRegionObj?.name || (selectedRegion === 'all' ? 'Vsa Slovenija' : selectedRegion));
+    const dealLocation = isDealWithoutLocation
+      ? undefined
+      : (location.trim() || (chosenRegionObj && chosenRegionObj.id !== 'all' ? chosenRegionObj.name : undefined));
+
     const primaryImg = images[0] || imageUrl || undefined;
     const allImgs = images.length > 0 ? images : (imageUrl ? [imageUrl] : undefined);
 
@@ -518,8 +528,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           subcategoryName: subcategoryName || undefined,
           make: selectedTertiaryCategory.trim() || undefined,
           thirdLevelCategory: selectedTertiaryCategory.trim() || undefined,
-          region: regionName,
-          location: finalLocation,
+          region: isDeal ? dealRegion : regionName,
+          location: isDeal ? dealLocation : finalLocation,
           authorId,
           authorName,
           authorRole,
@@ -902,86 +912,162 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             </div>
 
             {/* LOCALIZATION & REGION ROW */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-surface-container/60">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-primary" />
-                  <span>Regija (Slovenija)</span>
-                </label>
-                <select
-                  value={selectedRegion}
-                  onChange={e => {
-                    setSelectedRegion(e.target.value);
-                    // Do NOT auto-insert location to prevent misleading or wrongly posted cities!
-                  }}
-                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer"
-                >
-                  <option value="all">Vsa Slovenija</option>
-                  {SLOVENIA_REGIONS.map(reg => (
-                    <option key={reg.id} value={reg.id}>
-                      {reg.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-primary" />
-                  <span>
-                    {postType === 'event' 
-                      ? 'Točen kraj / prizorišče (neobvezno)' 
-                      : postType === 'ad'
-                        ? 'Točen kraj / Mesto (neobvezno)'
-                        : 'Točen kraj (neobvezno)'}
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  list="slovenia-city-datalist"
-                  value={location}
-                  onChange={e => setLocation(e.target.value)}
-                  placeholder={
-                    postType === 'event'
-                      ? 'npr. Cankarjev dom, Arena Stožice, Celjski grad...'
-                      : 'npr. Ljubljana, Maribor, Celje, Kranj...'
-                  }
-                  className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs text-on-surface border border-surface-container focus:outline-none focus:border-primary"
-                />
-                <datalist id="slovenia-city-datalist">
-                  {allSloveniaCities.map(city => (
-                    <option key={city} value={city} />
-                  ))}
-                </datalist>
-
-                {/* Quick suggestion chips for Mali oglasi and other non-event posts */}
-                {postType !== 'event' && (
-                  <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                    <span className="text-[10px] text-outline font-medium">Predlagana mesta:</span>
-                    {suggestedCities.slice(0, 8).map(city => (
-                      <button
-                        key={city}
-                        type="button"
-                        onClick={() => setLocation(city)}
-                        className={`text-[10px] px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
-                          location.trim().toLowerCase() === city.toLowerCase()
-                            ? 'bg-primary text-on-primary font-bold shadow-xs'
-                            : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
-                        }`}
-                      >
-                        {city}
-                      </button>
-                    ))}
+            <div className="flex flex-col gap-2.5 pt-1 border-t border-surface-container/60">
+              {postType === 'deal' && (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-surface-container-low/70 border border-surface-container">
+                  <div className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-secondary" />
+                    <span className="text-xs font-bold text-on-surface">Vrsta lokacije ugodnosti:</span>
                   </div>
-                )}
+                  <div className="inline-flex rounded-lg p-0.5 bg-surface-container text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRegion('none');
+                        setLocation('');
+                      }}
+                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                        selectedRegion === 'none'
+                          ? 'bg-secondary text-on-secondary shadow-xs font-bold'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      🌐 Spletna ugodnost / Koda (brez lokacije)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedRegion === 'none') setSelectedRegion('all');
+                      }}
+                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                        selectedRegion !== 'none'
+                          ? 'bg-secondary text-on-secondary shadow-xs font-bold'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      📍 Fizična trgovina / Lokacija
+                    </button>
+                  </div>
+                </div>
+              )}
 
-                <span className="text-[10px] text-outline">
-                  {location.trim() ? (
-                    `Vpisano mesto / kraj: ${location.trim()}`
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-primary" />
+                      <span>Regija (Slovenija)</span>
+                    </span>
+                    {postType === 'deal' && (
+                      <span className="text-[10px] text-outline font-normal">neobvezno</span>
+                    )}
+                  </label>
+                  <select
+                    value={selectedRegion}
+                    onChange={e => {
+                      setSelectedRegion(e.target.value);
+                    }}
+                    className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs font-semibold text-on-surface border border-surface-container focus:outline-none focus:border-primary cursor-pointer"
+                  >
+                    {postType === 'deal' && (
+                      <option value="none">🌐 Spletna ugodnost / Brez fizične lokacije</option>
+                    )}
+                    <option value="all">
+                      {postType === 'deal' ? '📍 Vsa Slovenija (fizične poslovalnice)' : 'Vsa Slovenija'}
+                    </option>
+                    {SLOVENIA_REGIONS.map(reg => (
+                      <option key={reg.id} value={reg.id}>
+                        {reg.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-primary" />
+                      <span>
+                        {postType === 'event' 
+                          ? 'Točen kraj / prizorišče' 
+                          : postType === 'ad'
+                            ? 'Točen kraj / Mesto'
+                            : postType === 'deal'
+                              ? 'Kraj / Poslovalnica'
+                              : 'Točen kraj'}
+                      </span>
+                    </span>
+                    <span className="text-[10px] text-outline font-normal">neobvezno</span>
+                  </label>
+
+                  {postType === 'deal' && selectedRegion === 'none' ? (
+                    <div className="px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container/60 text-xs text-outline italic flex items-center justify-between">
+                      <span>🌐 Spletna akcija (lokacija ni potrebna)</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRegion('all')}
+                        className="text-[10px] text-primary font-bold not-italic hover:underline cursor-pointer"
+                      >
+                        Dodaj kraj
+                      </button>
+                    </div>
                   ) : (
-                    `Če pustite prazno, se prikaže izbrana regija (${selectedRegion === 'all' ? 'Vsa Slovenija' : (SLOVENIA_REGIONS.find(r => r.id === selectedRegion)?.name || selectedRegion)})`
+                    <>
+                      <input
+                        type="text"
+                        list="slovenia-city-datalist"
+                        value={location}
+                        onChange={e => setLocation(e.target.value)}
+                        placeholder={
+                          postType === 'event'
+                            ? 'npr. Cankarjev dom, Arena Stožice, Celjski grad...'
+                            : postType === 'deal'
+                              ? 'npr. Ljubljana BTC, Maribor Europark ali pustite prazno...'
+                              : 'npr. Ljubljana, Maribor, Celje, Kranj...'
+                        }
+                        className="bg-surface-container-lowest px-3 py-2 rounded-lg text-xs text-on-surface border border-surface-container focus:outline-none focus:border-primary"
+                      />
+                      <datalist id="slovenia-city-datalist">
+                        {allSloveniaCities.map(city => (
+                          <option key={city} value={city} />
+                        ))}
+                      </datalist>
+
+                      {/* Quick suggestion chips for non-event posts */}
+                      {postType !== 'event' && (
+                        <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                          <span className="text-[10px] text-outline font-medium">Predlagana mesta:</span>
+                          {suggestedCities.slice(0, 8).map(city => (
+                            <button
+                              key={city}
+                              type="button"
+                              onClick={() => setLocation(city)}
+                              className={`text-[10px] px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                                location.trim().toLowerCase() === city.toLowerCase()
+                                  ? 'bg-primary text-on-primary font-bold shadow-xs'
+                                  : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
+                              }`}
+                            >
+                              {city}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
-                </span>
+
+                  <span className="text-[10px] text-outline">
+                    {postType === 'deal' && selectedRegion === 'none' ? (
+                      'Spletna ugodnost je dostopna vsem in ni omejena z lokacijskimi filtri.'
+                    ) : location.trim() ? (
+                      `Vpisano mesto / kraj: ${location.trim()}`
+                    ) : postType === 'deal' ? (
+                      'Lokacija je neobvezna. Če jo pustite prazno, velja za vso Slovenijo / splet.'
+                    ) : (
+                      `Če pustite prazno, se prikaže izbrana regija (${selectedRegion === 'all' ? 'Vsa Slovenija' : (SLOVENIA_REGIONS.find(r => r.id === selectedRegion)?.name || selectedRegion)})`
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

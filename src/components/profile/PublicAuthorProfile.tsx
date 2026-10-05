@@ -26,6 +26,8 @@ import { getPlainTextSnippet } from '../../utils/textUtils';
 import { UserAvatar } from '../common/UserAvatar';
 import { isDummyAvatar, isUserUploadedAvatar, isCustomUploadedAvatar, resolveUserUploadedAvatar } from '../../utils/avatarUtils';
 import { resolveEventDisplayDate } from '../../utils/dateUtils';
+import { VerifiedBadge } from '../common/VerifiedBadge';
+import { isUserVerified } from '../../utils/userVerificationUtils';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
@@ -492,6 +494,13 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
   }, [authorProfile]);
 
   // Categorized counts & engagement totals
+  const isAuthorVerified = isUserVerified({
+    role: authorProfile.role,
+    name: authorProfile.name,
+    userId: effectiveTargetId,
+    users,
+  });
+
   const postsCount = authorItems.filter(i => i.type === 'post').length;
   const adsCount = authorItems.filter(i => i.type === 'ad').length;
   const eventsCount = authorItems.filter(i => i.type === 'event').length;
@@ -546,8 +555,11 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           <div className="flex-1 min-w-0">
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="font-headline-lg text-2xl sm:text-3xl font-black text-on-surface">
-                  {authorProfile.name}
+                <h1 className="font-headline-lg text-2xl sm:text-3xl font-black text-on-surface flex items-center gap-2">
+                  <span>{authorProfile.name}</span>
+                  {isAuthorVerified && (
+                    <VerifiedBadge size="md" title="Preverjen račun (Verified)" />
+                  )}
                 </h1>
                 <span className="text-xs uppercase font-extrabold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                   {authorProfile.roleTitle}

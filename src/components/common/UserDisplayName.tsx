@@ -1,19 +1,39 @@
 import React from 'react';
-import { CheckCircle } from 'lucide-react';
+import { VerifiedBadge } from './VerifiedBadge';
+import { isUserVerified } from '../../utils/userVerificationUtils';
 
-interface UserDisplayNameProps {
+export interface UserDisplayNameProps {
   name: string;
   role?: string;
+  userId?: string;
+  users?: any[];
+  isVerified?: boolean;
   className?: string;
+  nameClassName?: string;
+  badgeSize?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  showBadge?: boolean;
 }
 
-export const UserDisplayName: React.FC<UserDisplayNameProps> = ({ name, role, className = '' }) => {
-  const isVerified = role === 'verified';
+export const UserDisplayName: React.FC<UserDisplayNameProps> = ({ 
+  name, 
+  role, 
+  userId,
+  users,
+  isVerified: explicitIsVerified,
+  className = '',
+  nameClassName = '',
+  badgeSize = 'xs',
+  showBadge = true
+}) => {
+  const verified = explicitIsVerified !== undefined 
+    ? explicitIsVerified 
+    : isUserVerified({ role, userId, name, users });
+
   return (
-    <span className={`flex items-center gap-1 ${className}`}>
-      {name}
-      {isVerified && (
-        <CheckCircle className="w-3.5 h-3.5 text-blue-500 fill-blue-500 text-white" />
+    <span className={`inline-flex items-center gap-1 min-w-0 ${className}`}>
+      <span className={nameClassName}>{name}</span>
+      {showBadge && verified && (
+        <VerifiedBadge size={badgeSize} />
       )}
     </span>
   );

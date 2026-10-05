@@ -10,6 +10,9 @@ import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
 import { UserAvatar } from "../common/UserAvatar";
 import { isUserUploadedAvatar } from "../../utils/avatarUtils";
+import { VerifiedBadge } from "../common/VerifiedBadge";
+import { isUserVerified } from "../../utils/userVerificationUtils";
+import { useAuth } from "../../contexts/AuthContext";
 
 export interface AdPostProps {
   id?: string;
@@ -132,9 +135,17 @@ export const AdPost: React.FC<AdPostProps> = ({
     setHasError(true);
   };
 
+  const { users } = useAuth();
   const hasVisibleImage = !!imgSrc && !hasError;
   const displayCategory = categoryName || category || 'Oglas';
   const cleanDescription = getPlainTextSnippet(description);
+
+  const isAuthorVerified = isUserVerified({
+    role: authorRole,
+    userId: authorId,
+    name: author,
+    users,
+  });
 
   const bookmarkData = {
     type: 'ad',
@@ -241,6 +252,9 @@ export const AdPost: React.FC<AdPostProps> = ({
                     className="w-5 h-5 ring-1 ring-surface-container/60 shrink-0"
                   />
                   <span>{author}</span>
+                  {isAuthorVerified && (
+                    <VerifiedBadge size="xs" />
+                  )}
                 </a>
                 <span>•</span>
               </>

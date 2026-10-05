@@ -12,6 +12,7 @@ export interface SendVerificationEmailParams {
 export interface SendVerificationEmailResult {
   success: boolean;
   sent?: boolean;
+  smtpBlocked?: boolean;
   messageId?: string;
   previewUrl?: string;
   warning?: string;
@@ -203,11 +204,15 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
 
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
+          const isSent = Boolean(data.sent);
+          const isBlocked = Boolean(data.smtpBlocked || (!isSent && data.simulated));
           return {
             success: true,
-            sent: data.sent ?? true,
+            sent: isSent,
+            smtpBlocked: isBlocked,
             messageId: data.messageId,
             previewUrl: data.confirmationUrl || params.confirmationUrl,
+            warning: data.message,
           };
         }
       } catch (endpointErr) {
@@ -217,18 +222,20 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
 
     // If all endpoints returned non-200 or 404 (e.g. static host without serverless functions active):
     // Fall back to direct confirmation mode so user is never blocked or presented with a 404 error
-    console.warn('E-mail API endpoints returned non-200; falling back to direct confirmation mode.');
+    console.log('E-mail API endpoints returned non-200; falling back to direct confirmation mode.');
     return {
       success: true,
       sent: false,
+      smtpBlocked: true,
       messageId: `direct_${Date.now()}`,
       previewUrl: params.confirmationUrl,
     };
   } catch (err: any) {
-    console.warn('Opozorilo pri klicu API za pošiljanje potrditvene e-pošte (uporabljena neposredna potrditev):', err);
+    console.log('Opozorilo pri klicu API za pošiljanje potrditvene e-pošte (uporabljena neposredna potrditev):', err);
     return {
       success: true,
       sent: false,
+      smtpBlocked: true,
       messageId: `offline_${Date.now()}`,
       previewUrl: params.confirmationUrl,
     };

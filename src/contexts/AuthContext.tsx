@@ -195,7 +195,7 @@ interface AuthContextType {
   updateUser: (id: string, data: Partial<User>) => void;
   deleteUser: (id: string) => void;
   changePassword: (userId: string, oldPass: string, newPass: string) => { success: boolean; error?: string };
-  register: (data: RegisterData) => Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean }>;
+  register: (data: RegisterData) => Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean; smtpBlocked?: boolean }>;
   resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string; confirmationUrl?: string }>;
   confirmEmailWithToken: (token: string, email?: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   loginOrRegisterWithGoogle: (data: GoogleAuthData) => { success: boolean; error?: string; user?: User; isNewUser: boolean };
@@ -459,7 +459,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true };
   };
 
-  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean }> => {
+  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean; smtpBlocked?: boolean }> => {
     const trimmedName = data.name.trim();
     const trimmedEmail = data.email.trim().toLowerCase();
     const trimmedPassword = (data.password || '').trim();
@@ -537,6 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 2. Dispatch via noreply mail service (Brevo/Resend/SMTP)
     let emailSent = false;
+    let smtpBlocked = false;
     try {
       const mailRes = await sendNoreplyConfirmationEmail({
         name: trimmedName,
@@ -545,8 +546,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         confirmationUrl,
       });
       emailSent = Boolean(mailRes.sent);
+      smtpBlocked = Boolean(mailRes.smtpBlocked);
     } catch (mailErr) {
-      console.warn('Could not dispatch confirmation email:', mailErr);
+      console.log('Could not dispatch confirmation email:', mailErr);
     }
 
     return { 
@@ -555,6 +557,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requiresVerification: true, 
       confirmationUrl,
       emailSent,
+      smtpBlocked,
     };
   };
 
