@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
+import { LikeButton } from "../LikeButton";
 import { Copy, Check, ArrowRight, Sparkles, CheckCircle2, Clock, MapPin, ThumbsUp } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget } from "../../types";
@@ -299,11 +300,32 @@ export const DealPost: React.FC<DealPostProps> = ({
             </div>
             
             <div className="flex items-center gap-1 shrink-0">
+              <LikeButton
+                id={id}
+                targetType="deal"
+                initialLikesCount={votesCount || 0}
+                variant="minimal"
+                iconType="thumbs-up"
+                itemTitle={cleanTitle}
+                className="p-1.5 rounded-xl hover:bg-surface-container text-outline hover:text-primary transition-colors inline-flex items-center gap-1 cursor-pointer"
+              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}
               />
-              <ShareMenu id={id} type="deal" title={cleanTitle} description={description} url={`${window.location.origin}${postUrl}`} />
+              <ShareMenu 
+                id={id} 
+                type="deal" 
+                title={cleanTitle} 
+                description={description} 
+                url={`${window.location.origin}${postUrl}`}
+                imageUrl={image}
+                category={categoryName || category}
+                author={author}
+                discount={discount}
+                price={newPrice || oldPrice || discount}
+                location={region}
+              />
               <ReportButton 
                 targetId={id} 
                 targetType="deal" 
@@ -378,26 +400,49 @@ export const DealPost: React.FC<DealPostProps> = ({
               )}
             </div>
 
-            {/* Upvote button */}
-            <button
-              onClick={handleVote}
-              disabled={hasVoted}
-              className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
-                hasVoted 
-                  ? 'bg-secondary/10 text-secondary' 
-                  : 'bg-surface-container-low hover:bg-surface-container text-on-surface'
-              }`}
-              title="Glasuj za to ugodnost"
-            >
-              <ThumbsUp className={`w-3.5 h-3.5 ${hasVoted ? 'fill-current' : ''}`} />
-              <span>{votes}</span>
-            </button>
+            {/* Upvote / Like button */}
+            <LikeButton
+              id={id}
+              targetType="deal"
+              initialLikesCount={votesCount || 0}
+              variant="pill"
+              iconType="thumbs-up"
+              itemTitle={cleanTitle}
+              className="px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
+            />
           </div>
 
           {/* Promo Code or Direct Link CTA */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <a 
+                href={link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs"
+              >
+                <span>Uveljavi popust</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+              <ShareMenu 
+                id={id} 
+                type="deal" 
+                title={title} 
+                description={description} 
+                url={`${window.location.origin}${postUrl}`}
+                imageUrl={image}
+                category={categoryName || category}
+                author={author}
+                discount={discount}
+                price={newPrice || oldPrice || discount}
+                location={region}
+                showLabel={true} 
+                buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
+              />
+            </div>
+
             {hasValidCode ? (
-              <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60">
+              <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60 ml-auto">
                 <span className="font-label-caps text-[10px] text-outline uppercase font-bold">Koda:</span>
                 <span className="font-mono font-bold text-primary px-2 py-0.5 bg-surface-container-lowest rounded select-all text-xs border border-surface-container">
                   {code!.trim()}
@@ -413,35 +458,6 @@ export const DealPost: React.FC<DealPostProps> = ({
                 {copied && <span className="text-[10px] font-bold text-secondary">Kopirano!</span>}
               </div>
             ) : null}
-
-            <div className="flex items-center gap-2 ml-auto">
-              <ShareMenu 
-                id={id} 
-                type="deal" 
-                title={title} 
-                description={description} 
-                url={`${window.location.origin}${postUrl}`}
-                showLabel={true} 
-                buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
-              />
-              <a
-                href={postUrl}
-                onClick={handleOpenDetail}
-                className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
-                title="Odpri celotno stran te ugodnosti s komentarji"
-              >
-                <span>Stran objave</span>
-              </a>
-              <a 
-                href={link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs"
-              >
-                <span>Uveljavi popust</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </a>
-            </div>
           </div>
         </div>
       </div>

@@ -29,7 +29,8 @@ import {
   Clock,
   CheckCircle,
   Ban,
-  ArrowLeft
+  ArrowLeft,
+  Heart
 } from 'lucide-react';
 import { AuthorProfileTarget, PostDetailTarget, ViewMode } from '../types';
 import { getPlainTextSnippet } from '../utils/textUtils';
@@ -195,6 +196,9 @@ export function UserProfile({
           location: p.location,
           tags: p.tags,
           rejectionReason: p.rejectionReason,
+          likesCount: p.likesCount || 0,
+          lovesCount: (p as any).lovesCount || 0,
+          viewsCount: p.viewsCount || 0,
         });
       }
     });
@@ -231,6 +235,9 @@ export function UserProfile({
           location: a.location,
           tags: a.tags,
           rejectionReason: a.rejectionReason,
+          likesCount: a.likesCount || 0,
+          lovesCount: (a as any).lovesCount || 0,
+          viewsCount: a.viewsCount || 0,
         });
       }
     });
@@ -272,12 +279,23 @@ export function UserProfile({
           ticketUrl: e.ticketUrl,
           tags: e.tags,
           rejectionReason: e.rejectionReason,
+          likesCount: e.likesCount || 0,
+          lovesCount: (e as any).lovesCount || 0,
+          viewsCount: e.viewsCount || 0,
         });
       }
     });
 
     return list;
   }, [userFirestorePosts, userFirestoreAds, userFirestoreEvents, currentUser]);
+
+  const totalUserLikes = useMemo(() => {
+    return myItems.reduce((acc, item) => acc + (item.likesCount || 0) + (item.lovesCount || 0), 0);
+  }, [myItems]);
+
+  const totalUserViews = useMemo(() => {
+    return myItems.reduce((acc, item) => acc + (item.viewsCount || 0), 0);
+  }, [myItems]);
 
   const handleDeleteMyItem = async (item: EditablePostItem) => {
     if (!window.confirm(`Ali res želite izbrisati objavo "${item.title}"?`)) return;
@@ -561,10 +579,18 @@ export function UserProfile({
             />
           </div>
           
-          <div className="flex items-center gap-6 mt-4">
+          <div className="flex items-center gap-6 mt-4 flex-wrap">
             <div className="flex flex-col">
               <span className="font-headline-sm text-lg font-bold text-on-surface">{myItems.length}</span>
               <span className="font-label-md text-xs text-outline uppercase tracking-wider">Objav</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-headline-sm text-lg font-bold text-amber-600 dark:text-amber-400">{totalUserLikes}</span>
+              <span className="font-label-md text-xs text-outline uppercase tracking-wider">Všečkov skupaj</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-headline-sm text-lg font-bold text-emerald-600 dark:text-emerald-400">{totalUserViews}</span>
+              <span className="font-label-md text-xs text-outline uppercase tracking-wider">Ogledov</span>
             </div>
             <div className="flex flex-col">
               <span className="font-headline-sm text-lg font-bold text-on-surface">1.2k</span>
@@ -762,6 +788,10 @@ export function UserProfile({
                               • {item.category}
                             </span>
                           )}
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20" title="Število všečkov te objave">
+                            <Heart className="w-2.5 h-2.5 fill-current" />
+                            {item.likesCount || 0} všečkov
+                          </span>
                           {/* Status Badge */}
                           {item.status === 'pending' && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">

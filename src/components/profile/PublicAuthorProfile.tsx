@@ -360,6 +360,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           price: ad.price,
           location: ad.location,
           date: ad.date,
+          likesCount: parseInt(String((ad as any).likesCount || 0)) || 0,
           viewsCount: ad.views || 0,
         });
       }
@@ -378,6 +379,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           price: ev.price,
           location: ev.location,
           date: ev.date,
+          likesCount: parseInt(String((ev as any).likesCount || 0)) || 0,
           interestedCount: ev.interestedCount,
         });
       }
@@ -397,7 +399,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           location: d.region,
           date: d.date,
           viewsCount: (d as any).views || 0,
-          likesCount: d.votes || 0,
+          likesCount: d.votes || (d as any).likesCount || 0,
         });
       }
     });
@@ -414,6 +416,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
         imageUrl: t.initialData?.image || t.initialData?.imageUrl,
         price: t.initialData?.price || t.initialData?.discount,
         location: t.initialData?.location || t.initialData?.region,
+        likesCount: (t.initialData as any)?.likesCount || 0,
       });
     }
 

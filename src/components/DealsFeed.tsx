@@ -875,7 +875,18 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                             verifiedText: deal.verifiedText,
                           }}
                         />
-                        <ShareMenu id={deal.id} type="deal" title={cleanTitle} description={cleanDescription} />
+                        <ShareMenu 
+                          id={deal.id} 
+                          type="deal" 
+                          title={cleanTitle} 
+                          description={cleanDescription} 
+                          imageUrl={dealImg}
+                          category={deal.categoryName || deal.category}
+                          author={deal.partner}
+                          discount={deal.discount}
+                          price={deal.newPrice || deal.discount || deal.oldPrice}
+                          location={deal.location || deal.region}
+                        />
                         <ReportButton 
                           targetId={deal.id} 
                           targetType="deal" 
@@ -968,8 +979,34 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
                     {/* Promo Code or Direct Link CTA */}
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <a 
+                          href={deal.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs"
+                        >
+                          <span>{deal.dealType === 'flyer' ? 'Prelistaj letak' : 'Uveljavi popust'}</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </a>
+                        <ShareMenu 
+                          id={deal.id} 
+                          type="deal" 
+                          title={cleanTitle} 
+                          description={cleanDescription} 
+                          imageUrl={dealImg}
+                          category={deal.categoryName || deal.category}
+                          author={deal.partner}
+                          discount={deal.discount}
+                          price={deal.newPrice || deal.discount || deal.oldPrice}
+                          location={deal.location || deal.region}
+                          showLabel={true} 
+                          buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
+                        />
+                      </div>
+
                       {deal.code && deal.code.trim() ? (
-                        <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60">
+                        <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60 ml-auto">
                           <span className="font-label-caps text-[10px] text-outline uppercase font-bold">Koda:</span>
                           <span className="font-mono font-bold text-primary px-2 py-0.5 bg-surface-container-lowest rounded select-all text-xs border border-surface-container">
                             {deal.code.trim()}
@@ -985,37 +1022,6 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           {isCopied && <span className="text-[10px] font-bold text-secondary">Kopirano!</span>}
                         </div>
                       ) : null}
-
-                      <div className="flex items-center gap-2 ml-auto">
-                        <ShareMenu 
-                          id={deal.id} 
-                          type="deal" 
-                          title={cleanTitle} 
-                          description={cleanDescription} 
-                          showLabel={true} 
-                          buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
-                        />
-                        <a 
-                          href={`#deal-${deal.id}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            window.location.hash = `deal-${deal.id}`;
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
-                          title="Poglej celotno stran te ugodnosti"
-                        >
-                          <span>Stran objave</span>
-                        </a>
-                        <a 
-                          href={deal.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs"
-                        >
-                          <span>{deal.dealType === 'flyer' ? 'Prelistaj letak' : 'Uveljavi popust'}</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </a>
-                      </div>
                     </div>
                   </div>
 

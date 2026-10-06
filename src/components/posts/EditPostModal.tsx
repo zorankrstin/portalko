@@ -58,6 +58,9 @@ export interface EditablePostItem {
   ticketUrl?: string;
   tags?: string[];
   rejectionReason?: string;
+  likesCount?: number;
+  lovesCount?: number;
+  viewsCount?: number;
   isPromoted?: boolean;
   promotion?: PromotionConfig;
   promotedUntil?: string;

@@ -436,9 +436,14 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                           />
                           <ShareMenu 
                             title={cleanTitle}
-                            description={cleanDescription}
+                            description={cleanDescription} 
                             type="ad"
                             id={ad.id}
+                            imageUrl={ad.imageUrl}
+                            category={ad.categoryName || ad.category}
+                            author={ad.authorName}
+                            price={ad.price}
+                            location={ad.location || ad.region}
                           />
                           <ReportButton 
                             targetId={ad.id} 

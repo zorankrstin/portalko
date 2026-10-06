@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
+import { LikeButton } from "../LikeButton";
 import { MapPin, Star, Ticket, Clock, ExternalLink, Calendar } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget, EventScheduleSlot } from "../../types";
@@ -353,11 +354,31 @@ export const EventPost: React.FC<EventPostProps> = ({
               )}
             </div>
             <div className="flex items-center gap-1">
+              <LikeButton 
+                id={id} 
+                targetType="event" 
+                initialLikesCount={likesCount} 
+                variant="minimal" 
+                itemTitle={title} 
+                className="p-1.5 rounded-xl hover:bg-surface-container text-outline hover:text-rose-500 transition-colors inline-flex items-center gap-1 cursor-pointer"
+              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}
               />
-              <ShareMenu id={id} type="event" title={title} description={cleanDescription} url={`${window.location.origin}${postUrl}`} />
+              <ShareMenu 
+                id={id} 
+                type="event" 
+                title={title} 
+                description={cleanDescription} 
+                url={`${window.location.origin}${postUrl}`}
+                imageUrl={image}
+                category={categoryName || category}
+                author={organizer || authorName}
+                date={date}
+                location={location}
+                price={price}
+              />
               <ReportButton 
                 targetId={id} 
                 targetType="event" 
@@ -427,6 +448,15 @@ export const EventPost: React.FC<EventPostProps> = ({
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <LikeButton 
+              id={id} 
+              targetType="event" 
+              initialLikesCount={likesCount} 
+              variant="pill" 
+              itemTitle={title} 
+              showLabel={false}
+              className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container" 
+            />
             {ticketUrl && (
               <a 
                 href={ticketUrl.startsWith('http') ? ticketUrl : `https://${ticketUrl}`}
@@ -447,6 +477,12 @@ export const EventPost: React.FC<EventPostProps> = ({
               title={title} 
               description={cleanDescription} 
               url={`${window.location.origin}${postUrl}`}
+              imageUrl={image}
+              category={categoryName || category}
+              author={organizer || authorName}
+              date={date}
+              location={location}
+              price={price}
               showLabel={true} 
               buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
             />

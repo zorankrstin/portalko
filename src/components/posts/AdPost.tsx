@@ -2,6 +2,7 @@ import React from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
+import { LikeButton } from "../LikeButton";
 import { MapPin, Phone } from 'lucide-react';
 import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget } from "../../types";
@@ -199,11 +200,30 @@ export const AdPost: React.FC<AdPostProps> = ({
           <div className="flex items-start justify-between gap-2">
             <span className="font-headline-lg text-xl font-bold text-primary">{price}</span>
             <div className="flex items-center gap-1">
+              <LikeButton 
+                id={id} 
+                targetType="ad" 
+                initialLikesCount={likesCount} 
+                variant="minimal" 
+                itemTitle={title} 
+                className="p-1.5 rounded-xl hover:bg-surface-container text-outline hover:text-rose-500 transition-colors inline-flex items-center gap-1 cursor-pointer"
+              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}
               />
-              <ShareMenu id={id} type="ad" title={title} description={cleanDescription} url={`${window.location.origin}${postUrl}`} />
+              <ShareMenu 
+                id={id} 
+                type="ad" 
+                title={title} 
+                description={cleanDescription} 
+                url={`${window.location.origin}${postUrl}`}
+                imageUrl={image}
+                category={categoryName || category}
+                author={author}
+                price={price}
+                location={location}
+              />
               <ReportButton 
                 targetId={id} 
                 targetType="ad" 
@@ -264,12 +284,26 @@ export const AdPost: React.FC<AdPostProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <LikeButton 
+              id={id} 
+              targetType="ad" 
+              initialLikesCount={likesCount} 
+              variant="pill" 
+              itemTitle={title} 
+              showLabel={false}
+              className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container" 
+            />
             <ShareMenu 
               id={id} 
               type="ad" 
               title={title} 
               description={description} 
               url={`${window.location.origin}${postUrl}`}
+              imageUrl={image}
+              category={categoryName || category}
+              author={author}
+              price={price}
+              location={location}
               showLabel={true} 
               buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
             />

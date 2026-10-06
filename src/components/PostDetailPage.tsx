@@ -11,6 +11,7 @@ import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from 
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
 import { ReportButton } from './ReportButton';
+import { LikeButton } from './LikeButton';
 import { useLikes } from '../contexts/LikeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -1987,6 +1988,18 @@ export function PostDetailPage({
               )}
             </button>
 
+            {/* Všečkaj objavo */}
+            <LikeButton
+              id={itemData.id || target.id}
+              targetType={target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'blog'}
+              initialLikesCount={itemData.likesCount || 0}
+              variant="pill"
+              showLabel={true}
+              showCount={true}
+              itemTitle={itemData.title}
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer shadow-2xs border border-surface-container/60 bg-surface-container-low hover:bg-surface-container"
+            />
+
             {/* Shrani */}
             <BookmarkButton
               id={itemData.id}
@@ -2156,6 +2169,11 @@ export function PostDetailPage({
                 <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
                 <span>{formattedViews}</span>
               </span>
+              <span>•</span>
+              <span className="flex items-center gap-1.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2.5 py-0.5 rounded-full font-semibold text-xs border border-rose-500/20" title="Število všečkov objave">
+                <Heart className="w-3.5 h-3.5 fill-current" />
+                <span>{getLikesCount(itemData.id || target.id, itemData.likesCount || 0)} všečkov</span>
+              </span>
             </div>
           </div>
 
@@ -2324,7 +2342,8 @@ export function PostDetailPage({
             </div>
           )}
           {target.type === 'deal' && (
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/10 via-surface-container-low to-secondary/10 border border-primary/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex flex-col gap-3">
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/10 via-surface-container-low to-secondary/10 border border-primary/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="flex flex-col gap-1.5">
                 <span className="font-label-caps text-xs text-primary uppercase font-extrabold tracking-wider flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5" />
@@ -2401,11 +2420,60 @@ export function PostDetailPage({
                 </a>
               </div>
             </div>
+
+            {/* Deal Metrics & Like Counter */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] text-outline uppercase font-semibold">Ugodnost</div>
+                  <div className="text-sm font-bold text-on-surface truncate">{itemData.discount || itemData.newPrice || 'Akcija'}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] text-outline uppercase font-semibold">Ogledov (v živo)</div>
+                  <div className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                    <span>{formattedViews}</span>
+                    <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" title="Posodabljanje v živo" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0">
+                  <ThumbsUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
+                  <div className="text-sm font-bold text-on-surface">
+                    {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary-container/30 text-primary flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] text-outline uppercase font-semibold">Veljavnost</div>
+                  <div className="text-sm font-bold text-on-surface truncate">{itemData.expirationDate ? `Do ${itemData.expirationDate}` : 'Do preklica'}</div>
+                </div>
+              </div>
+            </div>
+            </div>
           )}
 
           {target.type === 'event' && (
             <div className="flex flex-col gap-3">
-              <div className={`grid grid-cols-1 ${itemData.eventTime ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container`}>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
                     <Calendar className="w-5 h-5" />
@@ -2416,17 +2484,15 @@ export function PostDetailPage({
                   </div>
                 </div>
 
-                {itemData.eventTime && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-outline uppercase font-semibold">Čas dogodka (24h)</div>
-                      <div className="text-sm font-bold text-on-surface">{itemData.eventTime}</div>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5" />
                   </div>
-                )}
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">{itemData.eventTime ? 'Čas (24h)' : 'Cena'}</div>
+                    <div className="text-sm font-bold text-on-surface">{itemData.eventTime || itemData.price || 'Vstop prost'}</div>
+                  </div>
+                </div>
 
                 {(() => {
                   const distinctScheduleLocations = Array.isArray(itemData.eventSchedule)
@@ -2453,6 +2519,18 @@ export function PostDetailPage({
                     </div>
                   );
                 })()}
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
+                    <Heart className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
+                    <div className="text-sm font-bold text-on-surface">
+                      {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Detailed Schedule & Hours section if repetitive dates or specific schedule slots exist */}
@@ -2589,13 +2667,63 @@ export function PostDetailPage({
           )}
 
           {target.type === 'ad' && (
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 text-xs text-amber-950 dark:text-amber-200">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <strong className="font-bold">Nasvet za varen nakup:</strong>
-                <p className="mt-0.5 text-on-surface-variant">
-                  Pred nakupom priporočamo osebni ogled in preizkus artikla. Nikoli ne nakazujte celotnega zneska vnaprej neznanim osebam brez potrdila ali varnih plačilnih metod.
-                </p>
+            <div className="flex flex-col gap-3">
+              {/* Ad Stats & Like Counter */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container/60">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600/15 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Tag className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Cena</div>
+                    <div className="text-sm font-bold text-on-surface truncate">{itemData.price || 'Po dogovoru'}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
+                    <Eye className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Ogledov (v živo)</div>
+                    <div className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                      <span>{formattedViews}</span>
+                      <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" title="Posodabljanje v živo" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
+                    <Heart className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
+                    <div className="text-sm font-bold text-on-surface">
+                      {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary-container/30 text-primary flex items-center justify-center shrink-0">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
+                    <div className="text-sm font-bold text-on-surface truncate">{itemData.location || 'Slovenija'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 text-xs text-amber-950 dark:text-amber-200">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="font-bold">Nasvet za varen nakup:</strong>
+                  <p className="mt-0.5 text-on-surface-variant">
+                    Pred nakupom priporočamo osebni ogled in preizkus artikla. Nikoli ne nakazujte celotnega zneska vnaprej neznanim osebam brez potrdila ali varnih plačilnih metod.
+                  </p>
+                </div>
               </div>
             </div>
           )}

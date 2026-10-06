@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
+import { LikeButton } from "../LikeButton";
 import { Heart, MessageCircle, Sparkles, Edit3, Check, Ban, ArrowRight, Trash2, Loader2 } from 'lucide-react';
 import { FirestorePost, deletePostInFirestore, deleteAdInFirestore, deleteEventInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
@@ -460,6 +461,14 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
               </button>
             </div>
           )}
+          <LikeButton
+            id={post.id}
+            targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
+            initialLikesCount={post.likesCount || 0}
+            variant="minimal"
+            itemTitle={post.title}
+            className="p-1.5 rounded-xl hover:bg-surface-container text-outline hover:text-rose-500 transition-colors inline-flex items-center gap-1 cursor-pointer"
+          />
           <BookmarkButton id={post.id} data={bookmarkData} />
           <ShareMenu 
             id={post.id} 
@@ -467,6 +476,13 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             title={post.title} 
             description={post.content}
             url={`${window.location.origin}${postUrl}`}
+            imageUrl={(post as any).image || (post.images && post.images[0])}
+            category={post.categoryName || post.category}
+            author={post.authorName}
+            price={(post as any).price}
+            location={(post as any).location || (post as any).region}
+            discount={(post as any).discount}
+            date={(post as any).date}
           />
           <ReportButton 
             targetId={post.id}
@@ -519,6 +535,14 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low pt-3 mt-1">
         <div className="flex items-center gap-4">
+          <LikeButton
+            id={post.id}
+            targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
+            initialLikesCount={post.likesCount || 0}
+            variant="card-action"
+            itemTitle={post.title}
+          />
+
           <a 
             href={postUrl}
             onClick={handleOpenDetail}
@@ -534,6 +558,13 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             title={post.title}
             description={post.content}
             url={`${window.location.origin}${postUrl}`}
+            imageUrl={(post as any).image || (post.images && post.images[0])}
+            category={post.categoryName || post.category}
+            author={post.authorName}
+            price={(post as any).price}
+            location={(post as any).location || (post as any).region}
+            discount={(post as any).discount}
+            date={(post as any).date}
             showLabel={true}
             buttonClassName="flex items-center gap-1.5 text-outline hover:text-primary text-label-md font-label-md transition-colors cursor-pointer"
           />
