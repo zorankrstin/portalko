@@ -768,7 +768,7 @@ export function UserProfile({
                 {myItems.map((item) => (
                   <div
                     key={`${item.type}-${item.id}`}
-                    className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs flex flex-col sm:flex-row gap-4 justify-between"
+                    className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:scale-[1.01] hover:border-primary/40 transition-all duration-300 ease-out flex flex-col sm:flex-row gap-4 justify-between"
                   >
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                       {item.imageUrl && (

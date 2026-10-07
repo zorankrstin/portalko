@@ -81,7 +81,7 @@ export function AdsCategoryLocationFilter({
 
   // Tertiary categories (Znamka / Tip / Model / Pod-raven)
   const availableTertiaryList = useMemo(() => {
-    return getTertiaryCategories(selectedCategory, selectedSubcategory, categories);
+    return getTertiaryCategories(selectedCategory, selectedSubcategory, categories, 'ads');
   }, [selectedCategory, selectedSubcategory, categories]);
 
   // Contextual labels & icon for 3rd level filter

@@ -82,7 +82,7 @@ export function BlogCategoryLocationFilter({
 
   // Tertiary categories (Zvrst / Ključna tema / Oznaka / Pod-raven)
   const availableTertiaryList = useMemo(() => {
-    return getTertiaryCategories(selectedCategory, selectedSubcategory, categories);
+    return getTertiaryCategories(selectedCategory, selectedSubcategory, categories, 'blog');
   }, [selectedCategory, selectedSubcategory, categories]);
 
   // Contextual labels & icon for 3rd level filter

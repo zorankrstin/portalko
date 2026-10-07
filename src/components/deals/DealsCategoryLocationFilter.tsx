@@ -64,6 +64,12 @@ export function DealsCategoryLocationFilter({
     return categories.find(c => c.id === selectedCategory) || null;
   }, [categories, selectedCategory]);
 
+  // Ensure categories are restricted to deals section
+  const dealsCategories = useMemo(() => {
+    const filtered = categories.filter(c => !c.section || c.section === 'deals');
+    return filtered.length > 0 ? filtered : categories;
+  }, [categories]);
+
   // Subcategories of active category (or all available when 'all' is selected)
   const availableSubcategories = useMemo(() => {
     if (activeCategoryObj) {
@@ -71,7 +77,7 @@ export function DealsCategoryLocationFilter({
     }
     const allSubs: SubCategory[] = [];
     const seen = new Set<string>();
-    for (const cat of categories) {
+    for (const cat of dealsCategories) {
       for (const sub of (cat.subcategories || [])) {
         const key = sub.name.toLowerCase().trim();
         if (!seen.has(sub.id) && !seen.has(key)) {
@@ -82,12 +88,12 @@ export function DealsCategoryLocationFilter({
       }
     }
     return allSubs;
-  }, [activeCategoryObj, categories]);
+  }, [activeCategoryObj, dealsCategories]);
 
-  // Tertiary categories (Znamka / Trgovina / Ponudnik / Tip)
+  // Tertiary categories (Znamka / Trgovina / Ponudnik / Tip) specifically for Akcije / Deals
   const availableTertiaryList = useMemo(() => {
-    return getTertiaryCategories(selectedCategory, selectedSubcategory, categories);
-  }, [selectedCategory, selectedSubcategory, categories]);
+    return getTertiaryCategories(selectedCategory, selectedSubcategory, dealsCategories, 'deals');
+  }, [selectedCategory, selectedSubcategory, dealsCategories]);
 
   // Contextual labels & icon for 3rd level filter
   const tertiaryConfig = useMemo(() => {

@@ -121,8 +121,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   }, [categories, category]);
 
   const availableTertiaryOptions = useMemo(() => {
-    return getTertiaryCategories(category, subcategory, categories);
-  }, [category, subcategory, categories]);
+    return getTertiaryCategories(category, subcategory, categories, section);
+  }, [category, subcategory, categories, section]);
 
   // Contextual labels & hints for 3rd level filter/input
   const tertiaryConfig = useMemo(() => {

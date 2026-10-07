@@ -798,7 +798,7 @@ export function CategoryManager({
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-1">
                         {cat.subcategories.map(sub => {
-                          const tertiaryList = sub.tertiaryItems || getTertiaryCategories(cat.id, sub.id);
+                          const tertiaryList = sub.tertiaryItems || getTertiaryCategories(cat.id, sub.id, undefined, cat.section);
                           const hasCustomTertiary = Array.isArray(sub.tertiaryItems) && sub.tertiaryItems.length > 0;
 
                           return (

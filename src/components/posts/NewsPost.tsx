@@ -40,7 +40,7 @@ export const NewsPost: React.FC<NewsPostProps> = ({
   };
 
   return (
-    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm border-l-4 border-l-outline-variant">
+    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:border-surface-container-high transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col gap-space-sm border-l-4 border-l-outline-variant">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-surface-variant flex items-center justify-center font-bold text-xs text-on-surface-variant">

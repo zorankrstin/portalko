@@ -53,11 +53,9 @@ export function scrollToSidebarsTop(behavior: ScrollBehavior = 'instant') {
   // Animation frame (handles browser paint and reflow)
   requestAnimationFrame(performSidebarReset);
 
-  // Progressive delayed passes for mounting sidebars and image layout shifts
-  setTimeout(performSidebarReset, 20);
+  // Progressive delayed passes for mounting sidebars (kept brief to avoid interfering with user interactions)
+  setTimeout(performSidebarReset, 25);
   setTimeout(performSidebarReset, 60);
-  setTimeout(performSidebarReset, 150);
-  setTimeout(performSidebarReset, 300);
 }
 
 export function scrollToPageTop() {
@@ -103,10 +101,16 @@ export function scrollToPageTop() {
     performReset();
   });
 
-  // Timed execution to overcome late component mount & image layout shifts
-  setTimeout(performReset, 25);
-  setTimeout(performReset, 80);
-  setTimeout(performReset, 180);
-  setTimeout(performReset, 350);
+  // Safe delayed execution: only resets if the user is still at or near the top (< 120px)
+  // This prevents any unwanted jerk/scroll-hijacking when the user has already begun scrolling down!
+  const safeReset = () => {
+    const currentY = window.scrollY || document.documentElement?.scrollTop || document.body?.scrollTop || 0;
+    if (currentY < 120) {
+      performReset();
+    }
+  };
+
+  setTimeout(safeReset, 25);
+  setTimeout(safeReset, 80);
 }
 

@@ -355,8 +355,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
   };
 
   return (
-    <article className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border hover:shadow-md transition-shadow flex flex-col gap-space-sm relative overflow-hidden ${
-      isActivelyPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50'
+    <article className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col gap-space-sm relative overflow-hidden ${
+      isActivelyPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
     }`}>
       {post.status === 'rejected' && (
         <div className="bg-error/10 border border-error/20 rounded-xl p-2.5 text-xs text-error flex items-center gap-2">
@@ -427,11 +427,6 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
                 {roleLabels[post.authorRole] || 'Član'}
               </span>
-            </div>
-            <div className="font-label-caps text-[11px] text-outline flex items-center gap-1">
-              <span>Ravno objavljeno</span>
-              <span>•</span>
-              <span className="capitalize">{post.category || 'Članek'}</span>
             </div>
           </div>
         </div>

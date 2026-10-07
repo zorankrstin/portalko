@@ -88,7 +88,7 @@ export function EventsCategoryLocationFilter({
 
   // Tertiary categories (Žanr / Tip dogodka / Prizorišče / Pod-raven)
   const availableTertiaryList = useMemo(() => {
-    return getTertiaryCategories(selectedCategory, selectedSubcategory, categories);
+    return getTertiaryCategories(selectedCategory, selectedSubcategory, categories, 'events');
   }, [selectedCategory, selectedSubcategory, categories]);
 
   // Contextual labels & icon for 3rd level filter

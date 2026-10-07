@@ -259,8 +259,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
   // Dynamic 3rd level options based on active category & subcategory from admin configuration
   const availableTertiaryOptions = useMemo(() => {
-    return getTertiaryCategories(selectedCategoryId, selectedSubcategoryId, categories);
-  }, [selectedCategoryId, selectedSubcategoryId, categories]);
+    const sec = activeCategory?.section || (postType === 'deal' ? 'deals' : postType === 'event' ? 'events' : postType === 'ad' ? 'ads' : 'blog');
+    return getTertiaryCategories(selectedCategoryId, selectedSubcategoryId, categories, sec);
+  }, [selectedCategoryId, selectedSubcategoryId, categories, activeCategory, postType]);
 
   // Contextual labels & hints for 3rd level filter/input
   const tertiaryConfig = useMemo(() => {

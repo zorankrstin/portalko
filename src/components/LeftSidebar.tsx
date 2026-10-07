@@ -17,7 +17,7 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
     <aside 
       id="left-sidebar" 
       data-sidebar="left" 
-      className="sidebar-scrollable hidden lg:block lg:col-span-2 sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6"
+      className="sidebar-scrollable hidden lg:block lg:col-span-2 sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
       <div className="flex flex-col gap-space-md">
       

@@ -775,8 +775,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             return (
               <article 
                 key={`deal-${deal.id}-${idx}`}
-                className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row group ${
-                  isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60'
+                className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row group ${
+                  isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60 hover:border-surface-container-high'
                 }`}
               >
                 {/* PHOTO CONTAINER */}

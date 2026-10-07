@@ -723,7 +723,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
               <article
                 key={`${item.type}-${item.id}`}
                 onClick={() => handleCardClick(item)}
-                className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:border-primary/40 transition-all cursor-pointer flex flex-col sm:flex-row gap-4 justify-between group"
+                className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:scale-[1.01] hover:border-primary/40 transition-all duration-300 ease-out cursor-pointer flex flex-col sm:flex-row gap-4 justify-between group"
               >
                 <div className="flex items-start gap-3.5 flex-1 min-w-0">
                   {item.imageUrl ? (

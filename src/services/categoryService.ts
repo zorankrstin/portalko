@@ -1401,15 +1401,84 @@ export const CATEGORY_GENERAL_TERTIARY_DATA: Record<string, string[]> = {
   ]
 };
 
+// General fallback brands & stores for entire sections when 'all' is selected
+export const DEALS_GENERAL_TERTIARY_DATA: string[] = [
+  'Spar & Interspar', 
+  'Hofer', 
+  'Lidl', 
+  'Mercator', 
+  'Tuš', 
+  'Eurospin', 
+  'Big Bang', 
+  'Mimovrste', 
+  'Shoppster', 
+  'Lesnina XXXL', 
+  'Ikea', 
+  'About You', 
+  'Zalando', 
+  'DM drogerie markt', 
+  'Müller', 
+  'Notino', 
+  'Terme Olimia', 
+  'Terme Čatež', 
+  'Megabon', 
+  'AMZS', 
+  'Telekom Slovenije',
+  'A1'
+];
+
+export const EVENTS_GENERAL_TERTIARY_DATA: string[] = [
+  'Rock & Metal', 
+  'Pop & Estrada', 
+  'Komedija & Stand-up', 
+  'Gledališče', 
+  'Maraton & Tek', 
+  'Odprta kuhna', 
+  'Festival Lent', 
+  'Lutkovna predstava', 
+  'Poslovna konferenca', 
+  'Kino na prostem'
+];
+
+export const ADS_GENERAL_TERTIARY_DATA: string[] = [
+  'Volkswagen', 'Renault', 'BMW', 'Audi', 'Mercedes-Benz', 
+  'Apple', 'Samsung', 'Xiaomi', 'Sony', 'Ikea', 'Trek'
+];
+
+export const BLOG_GENERAL_TERTIARY_DATA: string[] = [
+  'Bled & Bohinj', 'Tradicionalne jedi', 'Umetna inteligenca (AI)', 
+  'Prenova doma', 'Osebne finance', 'Zdrav življenjski slog'
+];
+
 /**
  * Returns available 3rd level category/make/type options based on category and subcategory.
  */
 export function getTertiaryCategories(
   categoryId: string, 
   subcategoryId?: string, 
-  customCategories?: CategoryItem[]
+  customCategories?: CategoryItem[],
+  section?: CategorySection
 ): string[] {
   const categoryPool = customCategories && customCategories.length > 0 ? customCategories : activeCategories;
+
+  // Detect section if not provided explicitly
+  let effectiveSection: CategorySection | undefined = section;
+  if (!effectiveSection) {
+    if (customCategories && customCategories.length > 0 && customCategories[0]?.section) {
+      effectiveSection = customCategories[0].section;
+    } else if (categoryId && categoryId !== 'all') {
+      const catLower = categoryId.toLowerCase();
+      if (catLower.startsWith('deals') || catLower.includes('deal') || catLower === 'tehnika' || catLower === 'prehrana' || catLower === 'turizem') {
+        effectiveSection = 'deals';
+      } else if (catLower.startsWith('events') || catLower.includes('event') || catLower.includes('dogod')) {
+        effectiveSection = 'events';
+      } else if (catLower.startsWith('ads') || catLower.includes('mali-oglasi') || catLower.includes('oglas')) {
+        effectiveSection = 'ads';
+      } else if (catLower.startsWith('blog') || catLower.includes('clank')) {
+        effectiveSection = 'blog';
+      }
+    }
+  }
 
   // 1. Check if admin configured custom tertiaryItems on active subcategory
   if (subcategoryId && subcategoryId !== 'all') {
@@ -1438,12 +1507,60 @@ export function getTertiaryCategories(
     if (matchedKey) return TERTIARY_CATEGORIES_DATA[matchedKey];
   }
 
-  // If category is selected (e.g. 'ads-avto-moto', 'deals-trgovine-hrana', 'events-koncerti-zabava')
+  // 3. If category is selected (e.g. 'ads-avto-moto', 'deals-trgovine-hrana', 'events-koncerti-zabava')
   if (categoryId && categoryId !== 'all') {
     if (CATEGORY_GENERAL_TERTIARY_DATA[categoryId]) {
       return CATEGORY_GENERAL_TERTIARY_DATA[categoryId];
     }
     const catLower = categoryId.toLowerCase();
+
+    // If section is 'deals'
+    if (effectiveSection === 'deals') {
+      if (catLower.includes('tehnik') || catLower.includes('elektronik') || catLower.includes('telefon') || catLower.includes('racunal')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['deals-tehnika-elektronika'];
+      }
+      if (catLower.includes('hrana') || catLower.includes('trgovin') || catLower.includes('zivil') || catLower.includes('prehran') || catLower.includes('market')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['deals-trgovine-hrana'];
+      }
+      if (catLower.includes('moda') || catLower.includes('lepota') || catLower.includes('sport') || catLower.includes('oblacil') || catLower.includes('obutev') || catLower.includes('kozmetik')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['deals-moda-lepota'];
+      }
+      if (catLower.includes('dom') || catLower.includes('vrt') || catLower.includes('bivanj') || catLower.includes('pohistv')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['deals-dom-bivanje'];
+      }
+      if (catLower.includes('potovan') || catLower.includes('turiz') || catLower.includes('wellnes') || catLower.includes('term') || catLower.includes('pocitnic')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['deals-potovanja-wellness'];
+      }
+      if (catLower.includes('storitv') || catLower.includes('avto') || catLower.includes('mobilnost') || catLower.includes('zavarovanj')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['deals-storitve-avto'];
+      }
+      return DEALS_GENERAL_TERTIARY_DATA;
+    }
+
+    // If section is 'events'
+    if (effectiveSection === 'events') {
+      if (catLower.includes('koncert') || catLower.includes('zabav') || catLower.includes('glasb')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['events-koncerti-zabava'];
+      }
+      if (catLower.includes('kultur') || catLower.includes('umetnost') || catLower.includes('gledalis')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['events-kultura-umetnost'];
+      }
+      if (catLower.includes('sport') || catLower.includes('rekreacij') || catLower.includes('tek') || catLower.includes('koles')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['events-sport-rekreacija'];
+      }
+      if (catLower.includes('sejm') || catLower.includes('gastronom') || catLower.includes('kulinari')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['events-sejmi-gastronomija'];
+      }
+      if (catLower.includes('druzina') || catLower.includes('otroc') || catLower.includes('lutk')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['events-druzina-otroci'];
+      }
+      if (catLower.includes('posel') || catLower.includes('izobrazev') || catLower.includes('konferenc')) {
+        return CATEGORY_GENERAL_TERTIARY_DATA['events-posel-izobrazevanje'];
+      }
+      return EVENTS_GENERAL_TERTIARY_DATA;
+    }
+
+    // Generic fallback checks if section is unspecified
     if (catLower.includes('koncert') || catLower.includes('zabav') || catLower.includes('glasb')) {
       return CATEGORY_GENERAL_TERTIARY_DATA['events-koncerti-zabava'];
     }
@@ -1470,7 +1587,7 @@ export function getTertiaryCategories(
         ? CATEGORY_GENERAL_TERTIARY_DATA['deals-tehnika-elektronika']
         : CATEGORY_GENERAL_TERTIARY_DATA['ads-tehnika'];
     }
-    if (catLower.includes('hrana') || catLower.includes('trgovin') || catLower.includes('zivil')) {
+    if (catLower.includes('hrana') || catLower.includes('trgovin') || catLower.includes('zivil') || catLower.includes('prehran')) {
       return CATEGORY_GENERAL_TERTIARY_DATA['deals-trgovine-hrana'];
     }
     if (catLower.includes('moda') || catLower.includes('lepota') || catLower.includes('oblacil') || catLower.includes('kozmetik')) {
@@ -1513,10 +1630,21 @@ export function getTertiaryCategories(
     }
   }
 
-  // General popular makes & items when 'all' is selected
-  return [
-    'Rock & Metal', 'Pop & Estrada', 'Komedija & Stand-up', 'Gledališče', 'Maraton & Tek', 
-    'Odprta kuhna', 'Festival Lent', 'Lutkovna predstava', 'Poslovna konferenca', 'Kino na prostem'
-  ];
+  // 4. Fallback when category is 'all' or no specific match found
+  if (effectiveSection === 'deals') {
+    return DEALS_GENERAL_TERTIARY_DATA;
+  }
+  if (effectiveSection === 'ads') {
+    return ADS_GENERAL_TERTIARY_DATA;
+  }
+  if (effectiveSection === 'blog') {
+    return BLOG_GENERAL_TERTIARY_DATA;
+  }
+  if (effectiveSection === 'events') {
+    return EVENTS_GENERAL_TERTIARY_DATA;
+  }
+
+  // Default fallback
+  return EVENTS_GENERAL_TERTIARY_DATA;
 }
 

@@ -54,7 +54,7 @@ export const RssPost: React.FC<RssPostProps> = ({
   const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64` : '';
 
   return (
-    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:shadow-md transition-shadow flex flex-col gap-space-sm border-l-4 border-l-primary">
+    <article className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 hover:border-surface-container-high transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col gap-space-sm border-l-4 border-l-primary">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-md bg-surface-container-high flex items-center justify-center font-bold text-xs text-on-surface-variant overflow-hidden shrink-0">
