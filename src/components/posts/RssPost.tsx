@@ -73,14 +73,6 @@ export const RssPost: React.FC<RssPostProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <LikeButton 
-            id={id} 
-            targetType="news" 
-            initialLikesCount={likesCount} 
-            variant="minimal" 
-            itemTitle={title} 
-            className="p-1 rounded-xl hover:bg-surface-container text-outline hover:text-rose-500 transition-colors inline-flex items-center gap-1 cursor-pointer"
-          />
           <BookmarkButton id={id} data={{ title, link, description, sourceName, pubDate, thumbnail, type: 'news', category: 'news' }} />
           <ShareMenu 
             id={id} 

@@ -300,15 +300,6 @@ export const DealPost: React.FC<DealPostProps> = ({
             </div>
             
             <div className="flex items-center gap-1 shrink-0">
-              <LikeButton
-                id={id}
-                targetType="deal"
-                initialLikesCount={votesCount || 0}
-                variant="minimal"
-                iconType="thumbs-up"
-                itemTitle={cleanTitle}
-                className="p-1.5 rounded-xl hover:bg-surface-container text-outline hover:text-primary transition-colors inline-flex items-center gap-1 cursor-pointer"
-              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}
@@ -399,22 +390,21 @@ export const DealPost: React.FC<DealPostProps> = ({
                 </>
               )}
             </div>
-
-            {/* Upvote / Like button */}
-            <LikeButton
-              id={id}
-              targetType="deal"
-              initialLikesCount={votesCount || 0}
-              variant="pill"
-              iconType="thumbs-up"
-              itemTitle={cleanTitle}
-              className="px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
-            />
           </div>
 
           {/* Promo Code or Direct Link CTA */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Upvote / Like button */}
+              <LikeButton
+                id={id}
+                targetType="deal"
+                initialLikesCount={votesCount || 0}
+                variant="pill"
+                iconType="thumbs-up"
+                itemTitle={cleanTitle}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
+              />
               <a 
                 href={link}
                 target="_blank"

@@ -461,14 +461,6 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
               </button>
             </div>
           )}
-          <LikeButton
-            id={post.id}
-            targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
-            initialLikesCount={post.likesCount || 0}
-            variant="minimal"
-            itemTitle={post.title}
-            className="p-1.5 rounded-xl hover:bg-surface-container text-outline hover:text-rose-500 transition-colors inline-flex items-center gap-1 cursor-pointer"
-          />
           <BookmarkButton id={post.id} data={bookmarkData} />
           <ShareMenu 
             id={post.id} 

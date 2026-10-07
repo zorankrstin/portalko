@@ -59,14 +59,6 @@ export const NewsPost: React.FC<NewsPostProps> = ({
             <span>Beri na viru</span>
             <ExternalLink className="w-[1em] h-[1em] text-xs" />
           </a>
-          <LikeButton 
-            id={id} 
-            targetType="news" 
-            initialLikesCount={likesCount} 
-            variant="minimal" 
-            itemTitle={title} 
-            className="p-1 rounded-xl hover:bg-surface-container text-outline hover:text-rose-500 transition-colors inline-flex items-center gap-1 cursor-pointer"
-          />
           <BookmarkButton id={id} data={bookmarkData} />
           <ShareMenu 
             id={id} 

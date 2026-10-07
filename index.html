@@ -10,6 +10,24 @@
             window.history.replaceState(null, '', decodeURIComponent(spaRoute) + window.location.hash);
           }
         } catch (e) {}
+
+        // Suppress benign WebSocket / Vite HMR connection notices in preview iframe
+        window.addEventListener('error', function(event) {
+          var msg = event && event.message ? event.message : '';
+          var src = event && event.filename ? event.filename : '';
+          if (msg.indexOf('WebSocket') !== -1 || src.indexOf('@vite/client') !== -1 || msg.indexOf('createWebSocketModuleRunnerTransport') !== -1) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason ? (event.reason.message || String(event.reason)) : '';
+          if (reason.indexOf('WebSocket') !== -1 || reason.indexOf('@vite/client') !== -1 || reason.indexOf('createWebSocketModuleRunnerTransport') !== -1) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
       })();
     </script>
     <!-- Google tag (gtag.js) -->

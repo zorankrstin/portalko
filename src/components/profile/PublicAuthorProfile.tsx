@@ -567,8 +567,6 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
               <div className="flex items-center gap-3 text-xs text-outline font-medium">
                 <span>{authorProfile.username}</span>
-                <span>•</span>
-                <span>Član Portalko skupnosti</span>
               </div>
 
               <p className="font-body-md text-on-surface-variant text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
@@ -608,18 +606,10 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-surface-container/60 relative z-10">
+        <div className="grid grid-cols-3 gap-3 pt-4 border-t border-surface-container/60 relative z-10">
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
             <span className="font-headline-sm text-xl font-black text-on-surface">{authorItems.length}</span>
             <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Vseh objav</span>
-          </div>
-          <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
-            <span className="font-headline-sm text-xl font-black text-sky-600 dark:text-sky-400">
-              {eventsCount > 0 ? eventsCount : adsCount > 0 ? adsCount : (postsCount + dealsCount)}
-            </span>
-            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">
-              {eventsCount > 0 ? 'Dogodkov' : adsCount > 0 ? 'Malih oglasov' : 'Člankov'}
-            </span>
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
             <span className="font-headline-sm text-xl font-black text-emerald-600 dark:text-emerald-400">{totalViews}</span>
@@ -627,7 +617,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
             <span className="font-headline-sm text-xl font-black text-amber-600 dark:text-amber-400">{totalLikes}</span>
-            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Všečkov skupaj</span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Všečkov</span>
           </div>
         </div>
       </div>

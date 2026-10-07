@@ -200,14 +200,6 @@ export const AdPost: React.FC<AdPostProps> = ({
           <div className="flex items-start justify-between gap-2">
             <span className="font-headline-lg text-xl font-bold text-primary">{price}</span>
             <div className="flex items-center gap-1">
-              <LikeButton 
-                id={id} 
-                targetType="ad" 
-                initialLikesCount={likesCount} 
-                variant="minimal" 
-                itemTitle={title} 
-                className="p-1.5 rounded-xl hover:bg-surface-container text-outline hover:text-rose-500 transition-colors inline-flex items-center gap-1 cursor-pointer"
-              />
               <BookmarkButton 
                 id={id} 
                 data={bookmarkData}

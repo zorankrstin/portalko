@@ -41,6 +41,7 @@ import {
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
 import { ReportButton } from './ReportButton';
+import { LikeButton } from './LikeButton';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, createPostInFirestore } from '../services/firestoreService';
 import { PostDetailTarget } from '../types';
@@ -960,26 +961,21 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           <span>{deal.location || deal.region}</span>
                         </span>
                       </div>
-
-                      {/* Upvote button */}
-                      <button
-                        onClick={() => handleVote(deal.id, deal.votes)}
-                        disabled={hasVoted}
-                        className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
-                          hasVoted 
-                            ? 'bg-secondary/10 text-secondary' 
-                            : 'bg-surface-container-low hover:bg-surface-container text-on-surface'
-                        }`}
-                        title="Glasuj za to ugodnost"
-                      >
-                        <ThumbsUp className={`w-3.5 h-3.5 ${hasVoted ? 'fill-current' : ''}`} />
-                        <span>{currentVotes}</span>
-                      </button>
                     </div>
 
                     {/* Promo Code or Direct Link CTA */}
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {/* Upvote / Like button */}
+                        <LikeButton
+                          id={deal.id}
+                          targetType="deal"
+                          initialLikesCount={deal.votes || 0}
+                          variant="pill"
+                          iconType="thumbs-up"
+                          itemTitle={cleanTitle}
+                          className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
+                        />
                         <a 
                           href={deal.link}
                           target="_blank"
