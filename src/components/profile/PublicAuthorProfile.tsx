@@ -719,9 +719,9 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {filteredItems.map((item) => (
+            {filteredItems.map((item, idx) => (
               <article
-                key={`${item.type}-${item.id}`}
+                key={`author-item-${item.type}-${item.id}-${idx}`}
                 onClick={() => handleCardClick(item)}
                 className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:scale-[1.01] hover:border-primary/40 transition-all duration-300 ease-out cursor-pointer flex flex-col sm:flex-row gap-4 justify-between group"
               >

@@ -529,7 +529,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
             </div>
           </div>
         ) : (
-          sortedComments.map((comment) => {
+          sortedComments.map((comment, idx) => {
             const isAuthorOfComment = Boolean(currentUser && (
               (comment.authorId && currentUser.id === comment.authorId) ||
               (!comment.authorId && currentUser.name?.toLowerCase().trim() === comment.authorName?.toLowerCase().trim())
@@ -541,7 +541,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
             return (
               <div 
-                key={comment.id} 
+                key={`comment-${comment.id}-${idx}`} 
                 id={`comment-${comment.id}`}
                 className="py-4 first:pt-1 last:pb-1 flex items-start gap-3 group transition-colors"
               >

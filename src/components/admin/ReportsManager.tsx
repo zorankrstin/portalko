@@ -271,14 +271,14 @@ export function ReportsManager({ onNavigatePost }: ReportsManagerProps) {
             </p>
           </div>
         ) : (
-          filteredReports.map((report) => {
+          filteredReports.map((report, idx) => {
             const typeConf = TYPE_CONFIG[report.targetType] || { label: report.targetType, color: 'bg-surface text-outline' };
             const isPending = report.status === 'pending';
             const isBusy = actionInProgress === report.id;
 
             return (
               <div 
-                key={report.id}
+                key={`report-${report.id}-${idx}`}
                 className={`bg-surface rounded-xl border transition-all overflow-hidden p-4 sm:p-5 flex flex-col gap-4 ${
                   isPending 
                     ? 'border-error/30 bg-error/[0.01]' 

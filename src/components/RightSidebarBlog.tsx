@@ -95,7 +95,7 @@ export function RightSidebarBlog({ onNavigatePost }: RightSidebarBlogProps) {
           ) : (
             blogPosts.map((post, idx) => (
               <div
-                key={post.id}
+                key={`blog-${post.id}-${idx}`}
                 onClick={() => handleOpenPost(post.id)}
                 className="group flex gap-2.5 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer"
               >

@@ -158,9 +158,9 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
             </p>
           </div>
         ) : (
-          visibleNews.map((item) => (
+          visibleNews.map((item, idx) => (
             <RssPost
-              key={item.id}
+              key={`rss-${item.id}-${idx}`}
               id={item.id}
               title={item.title}
               link={item.link}

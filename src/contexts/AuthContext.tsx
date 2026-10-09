@@ -206,6 +206,58 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+export function deduplicateUsers(userList: (User | null | undefined)[]): User[] {
+  const byId = new Map<string, User>();
+  const byEmail = new Map<string, User>();
+
+  for (const u of userList) {
+    if (!u || !u.id || isDummyUser(u)) continue;
+    const emailNorm = (u.email || '').toLowerCase().trim();
+
+    // Check if we already have this user by id or by email
+    const existingById = byId.get(u.id);
+    const existingByEmail = emailNorm ? byEmail.get(emailNorm) : undefined;
+    const existing = existingById || existingByEmail;
+
+    if (existing) {
+      // Pick the canonical ID (prefer the longer ID like Firebase UID over placeholder 'u1')
+      const canonicalId = (u.id.length > existing.id.length) ? u.id : existing.id;
+      
+      const cleanAvatar = (u.avatar && !isDummyAvatar(u.avatar)) 
+        ? u.avatar 
+        : ((existing.avatar && !isDummyAvatar(existing.avatar)) ? existing.avatar : undefined);
+
+      const merged: User = {
+        ...existing,
+        ...u,
+        id: canonicalId,
+        avatar: cleanAvatar,
+        role: (u.role === 'superadmin' || existing.role === 'superadmin') ? 'superadmin' : (u.role || existing.role),
+      };
+
+      // Remove previous keys if ID changed
+      byId.delete(existing.id);
+      byId.delete(u.id);
+      byId.set(canonicalId, merged);
+
+      if (emailNorm) {
+        byEmail.set(emailNorm, merged);
+      }
+      const existingEmailNorm = (existing.email || '').toLowerCase().trim();
+      if (existingEmailNorm && existingEmailNorm !== emailNorm) {
+        byEmail.set(existingEmailNorm, merged);
+      }
+    } else {
+      byId.set(u.id, u);
+      if (emailNorm) {
+        byEmail.set(emailNorm, u);
+      }
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -213,20 +265,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const savedUsers = localStorage.getItem('portal_users');
-    let initialUsers = DEFAULT_USERS.filter(u => !isDummyUser(u));
+    let initialUsers = deduplicateUsers(DEFAULT_USERS);
     if (savedUsers) {
       try {
         const parsed = JSON.parse(savedUsers);
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Ensure default passwords if missing from older saved states, filter dummy users,
           // and strip any legacy dummy avatars so only user-uploaded images are used.
-          initialUsers = parsed
+          const cleanedParsed = parsed
             .filter((u: User) => !isDummyUser(u))
             .map((u: User) => ({
               ...u,
               avatar: (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : undefined,
               password: u.password || (u.role === 'superadmin' ? 'admin123' : 'geslo123'),
             }));
+          initialUsers = deduplicateUsers([...initialUsers, ...cleanedParsed]);
         }
       } catch (e) {
         console.error('Error parsing stored users', e);
@@ -250,18 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubUsers = subscribeToUsers((firestoreUsers) => {
       if (firestoreUsers && firestoreUsers.length > 0) {
         setUsers(prev => {
-          const map = new Map<string, User>();
-          DEFAULT_USERS.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
-          prev.filter(u => !isDummyUser(u)).forEach(u => map.set(u.id, u));
-          firestoreUsers.filter(u => !isDummyUser(u)).forEach(u => {
-            const existing = map.get(u.id);
-            // Prioritize genuine user-uploaded avatar over empty or dummy
-            const cleanUploadedAvatar = (u.avatar && !isDummyAvatar(u.avatar))
-              ? u.avatar
-              : ((existing?.avatar && !isDummyAvatar(existing.avatar)) ? existing.avatar : undefined);
-            map.set(u.id, existing ? { ...existing, ...u, avatar: cleanUploadedAvatar } : { ...u, avatar: cleanUploadedAvatar });
-          });
-          const merged = Array.from(map.values()).filter(u => !isDummyUser(u));
+          const merged = deduplicateUsers([...prev, ...DEFAULT_USERS, ...firestoreUsers]);
           localStorage.setItem('portal_users', JSON.stringify(merged));
           return merged;
         });
@@ -304,19 +346,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           syncUserProfile(activeProfile).catch(console.error);
         }
 
-        // Align users list so that the logged-in user is recognized with proper ID
+        // Align users list so that the logged-in user is recognized with proper ID and without duplicates
         setUsers(prev => {
-          const updated = prev
-            .filter(u => !isDummyUser(u))
-            .map(u => {
-              if (u.email.toLowerCase() === email || (email === 'zoran.krstin@gmail.com' && u.id === 'u1')) {
-                return { ...u, ...activeProfile, id: activeProfile.id };
-              }
-              return u;
-            });
-          if (!updated.some(u => u.id === activeProfile.id)) {
-            updated.unshift(activeProfile);
-          }
+          const updated = deduplicateUsers([activeProfile, ...prev]);
           localStorage.setItem('portal_users', JSON.stringify(updated));
           return updated;
         });

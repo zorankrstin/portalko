@@ -187,9 +187,9 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
                 </div>
               </div>
             ) : (
-              filteredNotifications.map((notif) => (
+              filteredNotifications.map((notif, idx) => (
                 <div 
-                  key={notif.id} 
+                  key={`notif-${notif.id}-${idx}`} 
                   onClick={() => handleNotificationClick(notif)}
                   className={`flex gap-3 p-3 sm:p-3.5 hover:bg-surface-container-low transition-colors cursor-pointer group relative ${
                     notif.read ? 'opacity-75 bg-transparent' : 'bg-primary/5'

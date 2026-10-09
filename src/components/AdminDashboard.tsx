@@ -10,7 +10,7 @@ import { ReportsManager } from './admin/ReportsManager';
 import { PortalSettingsManager } from './admin/PortalSettingsManager';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { subscribeToReports } from '../services/reportService';
-import { useAuth, Role } from '../contexts/AuthContext';
+import { useAuth, Role, User } from '../contexts/AuthContext';
 import { 
   RssFeedConfig, 
   DEFAULT_RSS_FEEDS, 
@@ -222,7 +222,22 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
 
   // Memoized user search & filtering across name, email, role, and verification
   const filteredUsers = useMemo(() => {
-    return users.filter(user => {
+    // Ensure strict uniqueness by ID and email
+    const seenIds = new Set<string>();
+    const seenEmails = new Set<string>();
+    const uniqueUsers: User[] = [];
+
+    for (const u of users) {
+      if (!u || !u.id) continue;
+      const emailLower = (u.email || '').toLowerCase().trim();
+      if (seenIds.has(u.id)) continue;
+      if (emailLower && seenEmails.has(emailLower)) continue;
+      seenIds.add(u.id);
+      if (emailLower) seenEmails.add(emailLower);
+      uniqueUsers.push(u);
+    }
+
+    return uniqueUsers.filter(user => {
       // Role filter
       if (userFilterRole === 'verification' && !user.verificationRequested) return false;
       if (userFilterRole !== 'all' && userFilterRole !== 'verification' && user.role !== userFilterRole) return false;
@@ -1014,14 +1029,14 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map(user => {
+                    filteredUsers.map((user, idx) => {
                       const isSuperadmin = currentUser?.role === 'superadmin';
                       const canManageVerification = isSuperadmin || currentUser?.role === 'admin';
                       const authorSlug = slugify(user.name) || user.id || 'uporabnik';
                       const profileUrl = `/avtor/${authorSlug}`;
 
                       return (
-                        <tr key={user.id} className={`hover:bg-surface-container-lowest transition-colors ${user.verificationRequested ? 'bg-amber-500/5' : ''}`}>
+                        <tr key={`admin-user-${user.id}-${idx}`} className={`hover:bg-surface-container-lowest transition-colors ${user.verificationRequested ? 'bg-amber-500/5' : ''}`}>
                           <td className="p-3">
                             <div className="flex items-start gap-2.5">
                               <a 
@@ -1287,7 +1302,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                       </td>
                     </tr>
                   ) : (
-                    filteredPosts.map(post => {
+                    filteredPosts.map((post, idx) => {
                       const postUrl = buildPostUrl({
                         type: (post.type === 'ad' ? 'ad' : post.type === 'event' ? 'event' : post.type === 'deal' ? 'deal' : 'blog'),
                         id: post.id,
@@ -1298,7 +1313,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                       const authorUrl = `/avtor/${slugify(post.authorName)}`;
 
                       return (
-                        <tr key={post.id} className="hover:bg-surface-container-low/40 transition-colors">
+                        <tr key={`admin-post-${post.id}-${idx}`} className="hover:bg-surface-container-low/40 transition-colors">
                           <td className="p-3">
                             <div className="flex items-center gap-2.5 max-w-xs sm:max-w-md">
                               {post.imageUrl && (

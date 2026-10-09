@@ -80,13 +80,13 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
           {upcomingEvents.length === 0 ? (
             <p className="text-xs text-outline py-3 text-center">Trenutno ni prihajajočih dogodkov.</p>
           ) : (
-            upcomingEvents.map(ev => {
+            upcomingEvents.map((ev, idx) => {
               const dateInfo = parseEventDateInfo(ev.upcomingDate || ev.eventDate || ev.date, ev.eventTime);
               const isToday = ev.upcomingDate === todayYmd;
 
               return (
                 <a 
-                  key={ev.id}
+                  key={`ev-${ev.id}-${idx}`}
                   className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer" 
                   href={`#event-${ev.id}`}
                   onClick={(e) => handleOpenEvent(ev.id, e)}

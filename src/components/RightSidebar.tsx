@@ -67,9 +67,9 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
           ) : latestNews.length === 0 ? (
             <p className="text-xs text-outline py-2 text-center">Trenutno ni svežih RSS novic.</p>
           ) : (
-            latestNews.map((item) => (
+            latestNews.map((item, idx) => (
               <a 
-                key={item.id} 
+                key={`news-rs-${item.id}-${idx}`} 
                 className="group flex flex-col gap-1 hover:bg-surface-container-low p-2 rounded-xl transition-colors" 
                 href={item.link} 
                 target="_blank" 

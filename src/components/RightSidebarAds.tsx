@@ -49,9 +49,9 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
           {ads.length === 0 ? (
             <p className="text-xs text-outline py-3 text-center">Trenutno ni objavljenih malih oglasov.</p>
           ) : (
-            ads.map(ad => (
+            ads.map((ad, idx) => (
               <a
-                key={ad.id}
+                key={`ad-${ad.id}-${idx}`}
                 href={`#ad-${ad.id}`}
                 onClick={(e) => handleOpenAd(ad.id, e)}
                 className="group flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent hover:border-surface-container/60"

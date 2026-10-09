@@ -68,9 +68,9 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
           {userDeals.length === 0 ? (
             <p className="text-xs text-outline py-2 text-center">Trenutno ni objavljenih ugodnosti.</p>
           ) : (
-            userDeals.slice(0, 3).map(deal => (
+            userDeals.slice(0, 3).map((deal, idx) => (
               <a
-                key={deal.id}
+                key={`deal-${deal.id}-${idx}`}
                 href={`#deal-${deal.id}`}
                 onClick={(e) => handleOpenDeal(deal.id, e)}
                 className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center gap-3 group border border-surface-container/50 cursor-pointer"

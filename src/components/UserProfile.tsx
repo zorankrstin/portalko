@@ -768,9 +768,9 @@ export function UserProfile({
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {myItems.map((item) => (
+                {myItems.map((item, idx) => (
                   <div
-                    key={`${item.type}-${item.id}`}
+                    key={`${item.type}-${item.id}-${idx}`}
                     className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:scale-[1.01] hover:border-primary/40 transition-all duration-300 ease-out flex flex-col sm:flex-row gap-4 justify-between"
                   >
                     <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -1014,11 +1014,11 @@ export function UserProfile({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {userSocialLinks.map((link) => {
+                  {userSocialLinks.map((link, idx) => {
                     const formattedUrl = link.url.startsWith('http') ? link.url : `https://${link.url}`;
                     return (
                       <div 
-                        key={link.id} 
+                        key={`social-${link.id || idx}-${idx}`} 
                         className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low border border-surface-container hover:border-surface-container-highest transition-colors"
                       >
                         <div className="flex items-center gap-3 min-w-0">
@@ -1082,9 +1082,9 @@ export function UserProfile({
               </div>
 
               <div className="flex flex-col gap-2">
-                {sortedMenuTabs.map((item) => (
+                {sortedMenuTabs.map((item, idx) => (
                   <div
-                    key={item.id}
+                    key={`menu-${item.id || idx}-${idx}`}
                     className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
                       item.visible
                         ? 'border-surface-container bg-surface-container-low/60'

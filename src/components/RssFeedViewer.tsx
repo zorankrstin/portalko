@@ -129,9 +129,9 @@ export function RssFeedViewer({ searchQuery = '' }: { searchQuery?: string }) {
 
   return (
     <div className="flex flex-col gap-space-md">
-      {filteredItems.map(item => (
+      {filteredItems.map((item, idx) => (
         <RssPost 
-          key={item.id}
+          key={`rss-viewer-${item.id}-${idx}`}
           id={item.id}
           title={item.title}
           link={item.link}

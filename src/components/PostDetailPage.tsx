@@ -2518,7 +2518,7 @@ export function PostDetailPage({
               </p>
             </div>
           ) : (
-            comments.map((comment) => {
+            comments.map((comment, cIdx) => {
               const canDelete = Boolean(currentUser && (
                 currentUser.role === 'admin' || 
                 currentUser.role === 'superadmin' || 
@@ -2526,7 +2526,7 @@ export function PostDetailPage({
               ));
 
               return (
-                <div key={comment.id} className="py-3.5 first:pt-0 last:pb-0 flex items-start gap-3">
+                <div key={`comment-${comment.id}-${cIdx}`} className="py-3.5 first:pt-0 last:pb-0 flex items-start gap-3">
                   <UserAvatar
                     src={comment.authorAvatar}
                     name={comment.author}
