@@ -1899,15 +1899,6 @@ export function PostDetailPage({
                 <Clock className="w-3.5 h-3.5 text-primary" />
                 <span>{itemData.date || itemData.eventDate || 'Objavljeno danes'}</span>
               </span>
-              {target.type === 'event' && (itemData.eventTime || itemData.price) && (
-                <>
-                  <span>•</span>
-                  <span className="flex items-center gap-1 font-semibold text-on-surface">
-                    <Clock className="w-3.5 h-3.5 text-primary" />
-                    <span>{itemData.eventTime ? itemData.eventTime : ''}{itemData.eventTime && itemData.price ? ' • ' : ''}{itemData.price || ''}</span>
-                  </span>
-                </>
-              )}
               {target.type === 'deal' && itemData.expirationDate && (
                 <>
                   <span>•</span>
