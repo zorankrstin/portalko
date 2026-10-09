@@ -29,6 +29,7 @@ export interface EditablePostItem {
   id: string;
   type: EditableItemType;
   title: string;
+  subtitle?: string;
   content: string;
   category: string;
   categoryName?: string;
@@ -77,6 +78,7 @@ interface EditPostModalProps {
 
 export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, item, onSaved, onOpenPromotion }) => {
   const [title, setTitle] = useState('');
+  const [subtitle, setSubtitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('');
   const [subcategory, setSubcategory] = useState('');
@@ -284,6 +286,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   useEffect(() => {
     if (isOpen && item) {
       setTitle(item.title || '');
+      setSubtitle(item.subtitle || '');
       setContent(item.content || '');
       const isDeal = item.type === 'deal' || 
                      item.category === 'deal' || 
@@ -406,6 +409,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         const adStatus = targetStatus === 'published' ? 'active' : targetStatus;
         await updateAdInFirestore(item.id, {
           title: title.trim(),
+          subtitle: subtitle.trim() || undefined,
           description: content.trim(),
           category: category.trim() || item.category || 'ostalo',
           categoryName: activeCategoryObj?.name || item.categoryName,
@@ -460,6 +464,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
         await updateEventInFirestore(item.id, {
           title: title.trim(),
+          subtitle: subtitle.trim() || undefined,
           description: content.trim(),
           category: category.trim() || item.category || 'dogodki',
           categoryName: activeCategoryObj?.name || item.categoryName,
@@ -505,6 +510,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
         await updatePostInFirestore(item.id, {
           title: title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
+          subtitle: subtitle.trim() || undefined,
           content: content.trim(),
           category: preservedCategory,
           categoryName: preservedCategoryName,
@@ -708,6 +714,21 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
               className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container font-body-sm text-sm text-on-surface outline-none focus:border-primary"
               placeholder="Naslov..."
               required
+            />
+          </div>
+
+          {/* Subtitle (H2) - Optional */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="font-label-caps uppercase font-semibold text-outline">Podnaslov (H2)</label>
+              <span className="text-[11px] text-outline font-normal">Izbirno</span>
+            </div>
+            <input
+              type="text"
+              value={subtitle}
+              onChange={e => setSubtitle(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container font-body-sm text-sm text-on-surface outline-none focus:border-primary"
+              placeholder="Podnaslov objave (izbirno)..."
             />
           </div>
 

@@ -101,6 +101,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     id: post.id,
     type: isDeal ? 'deal' : post.category === 'ad' ? 'ad' : post.category === 'event' ? 'event' : 'post',
     title: post.title,
+    subtitle: post.subtitle,
     content: post.content,
     category: isDeal ? (post.category && post.category !== 'blog' && post.category !== 'post' ? post.category : 'deal') : post.category,
     categoryName: isDeal ? (post.categoryName || 'Ugodnosti') : post.categoryName,
@@ -179,6 +180,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         <AdPost
           id={post.id}
           title={post.title}
+          subtitle={post.subtitle}
           price={post.price || "Po dogovoru"}
           author={post.authorName}
           authorId={post.authorId}
@@ -213,6 +215,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         <DealPost
           id={post.id}
           title={post.title}
+          subtitle={post.subtitle}
           discount={post.discount || post.price || "Ugodnost"}
           oldPrice={post.oldPrice}
           newPrice={post.newPrice}
@@ -258,6 +261,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         <EventPost
           id={post.id}
           title={post.title}
+          subtitle={post.subtitle}
           organizer={post.authorName}
           authorId={post.authorId}
           authorAvatar={post.authorAvatar}
@@ -490,6 +494,11 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           <h2 className="font-headline-sm text-title-md text-on-surface font-bold leading-snug group-hover/title:text-primary transition-colors">
             {post.title}
           </h2>
+          {post.subtitle && post.subtitle.trim() && (
+            <p className="font-headline-xs text-xs sm:text-sm font-medium text-on-surface-variant/90 leading-snug mt-1">
+              {post.subtitle.trim()}
+            </p>
+          )}
         </a>
         <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
           {getPlainTextSnippet(post.content)}

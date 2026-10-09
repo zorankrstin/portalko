@@ -319,6 +319,7 @@ export function PostDetailPage({
         id: fs.id,
         type: 'event' as const,
         title: fs.title,
+        subtitle: fs.subtitle,
         description: fs.description,
         location: resolvedDate.location || fs.location,
         date: resolvedDate.dateInfo.fullDate,
@@ -357,6 +358,7 @@ export function PostDetailPage({
         id: fs.id,
         type: 'deal' as const,
         title: fs.title,
+        subtitle: fs.subtitle,
         description: fs.content,
         discount: fs.discount || fs.price || 'Ugodnost',
         oldPrice: fs.oldPrice,
@@ -392,6 +394,7 @@ export function PostDetailPage({
         id: fs.id,
         type: 'ad' as const,
         title: fs.title,
+        subtitle: fs.subtitle,
         description: fs.description,
         price: fs.price,
         location: fs.location,
@@ -453,6 +456,7 @@ export function PostDetailPage({
         id: fs.id,
         type: 'blog' as const,
         title: fs.title,
+        subtitle: fs.subtitle,
         description: fs.content,
         content: fs.content,
         author: fs.authorName,
@@ -1646,6 +1650,7 @@ export function PostDetailPage({
   const editableItem: EditablePostItem = {
     id: itemData.id,
     title: itemData.title,
+    subtitle: itemData.subtitle,
     content: itemData.description || itemData.content || '',
     category: resolvedCategory,
     categoryName: isDealItem ? (itemData.categoryName || 'Ugodnosti') : itemData.categoryName,
@@ -1793,7 +1798,7 @@ export function PostDetailPage({
         {/* Post Top Header Area (Above Photo) */}
         <div className="p-4 sm:p-6 md:p-8 flex flex-col gap-6 border-b border-surface-container/60 bg-surface-container-lowest">
           {/* Author / Seller / Partner Block */}
-          <div className="p-4 rounded-2xl bg-surface-container-low/70 border border-surface-container flex flex-wrap items-center justify-between gap-4">
+          <div className="p-4 rounded-2xl bg-surface-container-low/70 border border-surface-container flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               {(() => {
                 const resolvedPhoto = resolveUserUploadedAvatar(
@@ -1839,150 +1844,36 @@ export function PostDetailPage({
                 </div>
               </div>
             </div>
-
-            {/* Quick Author / Partner Action */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                id="btn-post-detail-view-author-profile"
-                onClick={handleAuthorClick}
-                className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer border border-surface-container"
-                title={`Odpri javni profil avtorja: ${authorDisplayName}`}
-              >
-                <User className="w-3.5 h-3.5 text-primary" />
-                <span>Profil avtorja</span>
-              </button>
-              {target.type === 'ad' && (
-                <button
-                  onClick={() => setShowPhone(!showPhone)}
-                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-bold flex items-center gap-2 transition-all shadow-xs cursor-pointer"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span>{showPhone ? '+386 41 982 431' : 'Prikaži telefon'}</span>
-                </button>
-              )}
-
-              {target.type === 'deal' && (
-                <button
-                  onClick={handleVote}
-                  disabled={hasVoted}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    hasVoted 
-                      ? 'bg-secondary/15 text-secondary border border-secondary/30' 
-                      : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
-                  }`}
-                  title="Glasuj za to ugodnost"
-                >
-                  <ThumbsUp className={`w-4 h-4 ${hasVoted ? 'fill-current' : ''}`} />
-                  <span>{votes} {votes === 1 ? 'glas' : 'glasov'}</span>
-                </button>
-              )}
-
-              {target.type === 'event' && itemData.ticketUrl && (
-                <a
-                  href={itemData.ticketUrl.startsWith('http') ? itemData.ticketUrl : `https://${itemData.ticketUrl}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-label-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs hover:shadow-md"
-                  title="Odpri zunanjo povezavo za nakup vstopnic"
-                >
-                  <Ticket className="w-4 h-4" />
-                  <span>Kupi vstopnice</span>
-                  <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-                </a>
-              )}
-
-              <div 
-                className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors border border-surface-container shadow-xs"
-                title="Število ogledov v živo (priljubljenost objave)"
-              >
-                <Eye className="w-4 h-4 text-secondary shrink-0" />
-                <span className="font-bold">{formattedViews}</span>
-              </div>
-            </div>
           </div>
 
-          {/* Post Header: Category Badges, Post Title, and Meta Row */}
+          {/* Post Header: Post Title and Meta Row */}
           <div className="flex flex-col gap-3">
-            {/* Top row category & status badges */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (target.type === 'event') {
-                    filterByEventCategory(
-                      itemData.category || '', 
-                      itemData.categoryName || feedCategoryName, 
-                      itemData.subcategory, 
-                      itemData.subcategoryName
-                    );
-                    onViewChange('events');
-                  } else if (target.type === 'deal') {
-                    onViewChange('deals');
-                  } else if (target.type === 'ad') {
-                    onViewChange('ads');
-                  } else {
-                    onViewChange('blog');
-                  }
-                }}
-                className="px-3 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-label-caps text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border border-primary/20 cursor-pointer"
-                title={`Kategorija: ${itemData.categoryName || feedCategoryName}`}
-              >
-                {target.type === 'deal' && <Tag className="w-3.5 h-3.5 text-primary" />}
-                {target.type === 'event' && <Calendar className="w-3.5 h-3.5 text-primary" />}
-                {target.type === 'ad' && <Store className="w-3.5 h-3.5 text-primary" />}
-                {(target.type === 'blog' || target.type === 'post') && <BookOpen className="w-3.5 h-3.5 text-primary" />}
-                <span>{itemData.categoryName || feedCategoryName}</span>
-              </button>
-
-              {target.type === 'deal' && (itemData.discount || itemData.price) && (
-                <span className="px-3 py-1 rounded-lg bg-secondary/15 text-secondary font-headline-sm text-xs font-bold border border-secondary/25">
-                  {itemData.discount || itemData.price}
-                </span>
-              )}
-
+            {/* Post Title: Prominent, high-contrast, clean H1 above description */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <h1 className="font-headline-lg text-2xl sm:text-3xl md:text-4xl font-black text-on-surface leading-tight tracking-tight flex-1">
+                {itemData.title}
+              </h1>
               {target.type === 'ad' && itemData.price && (
-                <span className="px-3.5 py-1 rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 font-headline-sm text-xs font-bold border border-emerald-600/20">
+                <div className="px-3.5 py-1.5 rounded-xl bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 font-black text-lg sm:text-xl border border-emerald-600/25 shrink-0 self-start">
                   {itemData.price}
-                </span>
+                </div>
               )}
-
-              {target.type === 'event' && (itemData.month || itemData.day) && (
-                <span className="px-3 py-1 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300 font-headline-sm text-xs font-bold border border-sky-500/20 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                  <span>{itemData.day ? `${itemData.day}. ${itemData.month || ''}` : itemData.month}</span>
-                </span>
-              )}
-
-              {(target.type === 'blog' || target.type === 'post') && itemData.readTime && (
-                <span className="px-2.5 py-1 rounded-lg bg-surface-container-high text-on-surface-variant font-label-md text-xs font-semibold flex items-center gap-1 border border-surface-container">
-                  <Clock className="w-3 h-3 text-outline" />
-                  <span>{itemData.readTime}</span>
-                </span>
+              {target.type === 'deal' && (itemData.discount || itemData.newPrice) && (
+                <div className="px-3.5 py-1.5 rounded-xl bg-secondary/15 text-secondary font-black text-lg sm:text-xl border border-secondary/25 shrink-0 self-start">
+                  {itemData.discount || itemData.newPrice}
+                </div>
               )}
             </div>
 
-            {/* Post Title: Prominent, high-contrast, clean H1 above description */}
-            <h1 className="font-headline-lg text-2xl sm:text-3xl md:text-4xl font-black text-on-surface leading-tight tracking-tight">
-              {itemData.title}
-            </h1>
+            {/* Subtitle component (H2) positioned below the title (optional) */}
+            {itemData.subtitle && itemData.subtitle.trim() && (
+              <h2 className="font-headline-sm text-base sm:text-lg md:text-xl font-medium text-on-surface-variant leading-snug">
+                {itemData.subtitle.trim()}
+              </h2>
+            )}
 
             {/* Post Metadata Row */}
             <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-on-surface-variant pt-0.5">
-              <button
-                type="button"
-                id="btn-post-detail-author-link"
-                onClick={handleAuthorClick}
-                className="flex items-center gap-1.5 font-bold text-on-surface hover:text-primary transition-colors cursor-pointer group/author py-0.5"
-                title={`Ogled profila avtorja: ${authorDisplayName}`}
-              >
-                <User className="w-3.5 h-3.5 text-primary group-hover/author:scale-110 transition-transform" />
-                <span className="underline decoration-surface-container-highest group-hover/author:decoration-primary underline-offset-2">{authorDisplayName}</span>
-                {isAuthorVerified && (
-                  <VerifiedBadge size="xs" />
-                )}
-              </button>
-              <span>•</span>
               {(itemData.location || itemData.region) && (
                 <>
                   <button
@@ -2008,15 +1899,32 @@ export function PostDetailPage({
                 <Clock className="w-3.5 h-3.5 text-primary" />
                 <span>{itemData.date || itemData.eventDate || 'Objavljeno danes'}</span>
               </span>
+              {target.type === 'event' && (itemData.eventTime || itemData.price) && (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center gap-1 font-semibold text-on-surface">
+                    <Clock className="w-3.5 h-3.5 text-primary" />
+                    <span>{itemData.eventTime ? itemData.eventTime : ''}{itemData.eventTime && itemData.price ? ' • ' : ''}{itemData.price || ''}</span>
+                  </span>
+                </>
+              )}
+              {target.type === 'deal' && itemData.expirationDate && (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center gap-1 text-error font-medium" title="Veljavnost ugodnosti">
+                    <Clock className="w-3.5 h-3.5 text-error" />
+                    <span>
+                      {itemData.expirationDate.includes('-')
+                        ? `Do ${new Date(itemData.expirationDate).toLocaleDateString('sl-SI')}`
+                        : `Do ${itemData.expirationDate}`}
+                    </span>
+                  </span>
+                </>
+              )}
               <span>•</span>
               <span className="flex items-center gap-1.5 bg-surface-container-high px-2.5 py-0.5 rounded-full text-on-surface font-semibold text-xs border border-surface-container" title="Število ogledov objave">
                 <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
                 <span>{formattedViews}</span>
-              </span>
-              <span>•</span>
-              <span className="flex items-center gap-1.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2.5 py-0.5 rounded-full font-semibold text-xs border border-rose-500/20" title="Število všečkov objave">
-                <Heart className="w-3.5 h-3.5 fill-current" />
-                <span>{getLikesCount(itemData.id || target.id, itemData.likesCount || 0)} všečkov</span>
               </span>
             </div>
           </div>
@@ -2287,104 +2195,18 @@ export function PostDetailPage({
 
         {/* Post Content Body */}
         <div className="p-4 sm:p-6 md:p-8 flex flex-col gap-6">
-          {/* Type-Specific Interactive Panel */}
-          {(target.type === 'blog' || target.type === 'post') && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Čas branja</div>
-                  <div className="text-sm font-bold text-on-surface">{itemData.readTime || '5 min branja'}</div>
-                </div>
-              </div>
+          {/* Detailed Description (moved below Action Buttons) */}
+          <div className="flex flex-col gap-3">
+            <div 
+              className="font-body-lg text-sm md:text-base text-on-surface-variant leading-relaxed tiptap"
+              dangerouslySetInnerHTML={{ __html: getCleanHtml(itemData.description || itemData.content || 'Ni dodatnega opisa za to objavo.') }}
+            />
+          </div>
 
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
-                  <Eye className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Ogledov (v živo)</div>
-                  <div className="text-sm font-bold text-on-surface flex items-center gap-1.5">
-                    <span>{formattedViews}</span>
-                    <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" title="Posodabljanje v živo" />
-                  </div>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
-                  <Heart className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
-                  <div className="text-sm font-bold text-on-surface">
-                    {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary-container/30 text-primary flex items-center justify-center shrink-0">
-                  <BookOpen className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Glavna tema</div>
-                  <div className="text-sm font-bold text-on-surface truncate capitalize">{itemData.categoryName || feedCategoryName || 'Zgodbe'}</div>
-                </div>
-              </div>
-            </div>
-          )}
           {target.type === 'deal' && (
             <div className="flex flex-col gap-3">
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/10 via-surface-container-low to-secondary/10 border border-primary/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex flex-col gap-1.5">
-                <span className="font-label-caps text-xs text-primary uppercase font-extrabold tracking-wider flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Ekskluzivna ponudba za člane Portalka
-                </span>
-                
-                {/* Pricing row */}
-                <div className="flex items-baseline gap-3 flex-wrap">
-                  {itemData.newPrice && (
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-xs uppercase font-bold text-outline">Akcija:</span>
-                      <span className="font-headline-lg text-2xl sm:text-3xl font-black text-secondary">
-                        {itemData.newPrice}
-                      </span>
-                    </div>
-                  )}
-                  {itemData.oldPrice && (
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-xs text-outline">Redna:</span>
-                      <span className="text-sm line-through text-outline font-semibold">
-                        {itemData.oldPrice}
-                      </span>
-                    </div>
-                  )}
-                  {itemData.discount && (
-                    <span className="px-2.5 py-1 rounded-lg bg-secondary/15 text-secondary font-bold text-xs border border-secondary/25">
-                      {itemData.discount}
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-outline flex items-center gap-1.5 mt-0.5">
-                  <Clock className="w-3.5 h-3.5 text-error" />
-                  <span>
-                    {itemData.startDate && itemData.expirationDate
-                      ? `Akcija velja: ${itemData.startDate.includes('-') ? new Date(itemData.startDate).toLocaleDateString('sl-SI') : itemData.startDate} – ${itemData.expirationDate.includes('-') ? new Date(itemData.expirationDate).toLocaleDateString('sl-SI') : itemData.expirationDate}`
-                      : itemData.expirationDate
-                        ? `Veljavno do: ${itemData.expirationDate.includes('-') ? new Date(itemData.expirationDate).toLocaleDateString('sl-SI') : itemData.expirationDate}`
-                        : itemData.startDate
-                          ? `Začetek akcije: ${itemData.startDate.includes('-') ? new Date(itemData.startDate).toLocaleDateString('sl-SI') : itemData.startDate}`
-                          : (itemData.date || 'Veljavno do preklica ali odprodaje zalog.')}
-                  </span>
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-primary/10 via-surface-container-low to-secondary/10 border border-primary/20 flex flex-col sm:flex-row items-center justify-between gap-4">
                 {itemData.code && itemData.code.trim() ? (
                   <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-2 rounded-xl border border-primary/30 shadow-xs">
                     <span className="text-xs text-outline uppercase font-bold">Koda:</span>
@@ -2401,132 +2223,27 @@ export function PostDetailPage({
                     {copiedCode && <span className="text-xs font-bold text-secondary">Kopirano!</span>}
                   </div>
                 ) : (
-                  <span className="text-xs font-medium text-outline italic">Koda ni potrebna (neposredna akcija)</span>
+                  <div className="text-sm font-semibold text-on-surface flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-primary" />
+                    <span>Ekskluzivna ponudba za obiskovalce portala</span>
+                  </div>
                 )}
 
                 <a
                   href={itemData.link || 'https://www.google.com'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold inline-flex items-center gap-2 transition-all shadow-sm"
+                  className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold inline-flex items-center gap-2 transition-all shadow-sm shrink-0"
                 >
                   <span>Uveljavi ugodnost</span>
                   <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
             </div>
-
-            {/* Deal Metrics & Like Counter */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container/60">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <Tag className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Ugodnost</div>
-                  <div className="text-sm font-bold text-on-surface truncate">{itemData.discount || itemData.newPrice || 'Akcija'}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
-                  <Eye className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Ogledov (v živo)</div>
-                  <div className="text-sm font-bold text-on-surface flex items-center gap-1.5">
-                    <span>{formattedViews}</span>
-                    <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" title="Posodabljanje v živo" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0">
-                  <ThumbsUp className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
-                  <div className="text-sm font-bold text-on-surface">
-                    {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary-container/30 text-primary flex items-center justify-center shrink-0">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] text-outline uppercase font-semibold">Veljavnost</div>
-                  <div className="text-sm font-bold text-on-surface truncate">{itemData.expirationDate ? `Do ${itemData.expirationDate}` : 'Do preklica'}</div>
-                </div>
-              </div>
-            </div>
-            </div>
           )}
 
-          {target.type === 'event' && (
+          {target.type === 'event' && ((itemData.eventSchedule && itemData.eventSchedule.length > 0) || itemData.ticketUrl) && (
             <div className="flex flex-col gap-3">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                    <Calendar className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Datum</div>
-                    <div className="text-sm font-bold text-on-surface">{itemData.date || itemData.eventDate || 'Kmalu'}</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">{itemData.eventTime ? 'Čas (24h)' : 'Cena'}</div>
-                    <div className="text-sm font-bold text-on-surface">{itemData.eventTime || itemData.price || 'Vstop prost'}</div>
-                  </div>
-                </div>
-
-                {(() => {
-                  const distinctScheduleLocations = Array.isArray(itemData.eventSchedule)
-                    ? Array.from(new Set(itemData.eventSchedule.map((s: any) => s.location?.trim()).filter(Boolean)))
-                    : [];
-                  const hasMultipleLocations = distinctScheduleLocations.length > 1;
-
-                  return (
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
-                        <MapPin className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
-                        <div 
-                          className="text-sm font-bold text-on-surface truncate max-w-[220px]" 
-                          title={hasMultipleLocations ? distinctScheduleLocations.join(', ') : (itemData.location || 'Slovenija')}
-                        >
-                          {hasMultipleLocations 
-                            ? `Več lokacij (${distinctScheduleLocations.length} mest)` 
-                            : (itemData.location || 'Slovenija')}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
-                    <Heart className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
-                    <div className="text-sm font-bold text-on-surface">
-                      {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               {/* Detailed Schedule & Hours section if repetitive dates or specific schedule slots exist */}
               {itemData.eventSchedule && itemData.eventSchedule.length > 0 && (
@@ -2703,53 +2420,7 @@ export function PostDetailPage({
 
           {target.type === 'ad' && (
             <div className="flex flex-col gap-3">
-              {/* Ad Stats & Like Counter */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-container-low border border-surface-container/60">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-600/15 text-emerald-600 flex items-center justify-center shrink-0">
-                    <Tag className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Cena</div>
-                    <div className="text-sm font-bold text-on-surface truncate">{itemData.price || 'Po dogovoru'}</div>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
-                    <Eye className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Ogledov (v živo)</div>
-                    <div className="text-sm font-bold text-on-surface flex items-center gap-1.5">
-                      <span>{formattedViews}</span>
-                      <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" title="Posodabljanje v živo" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
-                    <Heart className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Všečkov</div>
-                    <div className="text-sm font-bold text-on-surface">
-                      {getLikesCount(itemData.id || target.id, itemData.likesCount || 0)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary-container/30 text-primary flex items-center justify-center shrink-0">
-                    <MapPin className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-outline uppercase font-semibold">Lokacija</div>
-                    <div className="text-sm font-bold text-on-surface truncate">{itemData.location || 'Slovenija'}</div>
-                  </div>
-                </div>
-              </div>
 
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 text-xs text-amber-950 dark:text-amber-200">
                 <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -2762,17 +2433,6 @@ export function PostDetailPage({
               </div>
             </div>
           )}
-
-          {/* Detailed Description */}
-          <div className="flex flex-col gap-3">
-            <h2 className="font-headline-md text-lg font-bold text-on-surface">
-              Podrobnosti objave
-            </h2>
-            <div 
-              className="font-body-lg text-sm md:text-base text-on-surface-variant leading-relaxed tiptap"
-              dangerouslySetInnerHTML={{ __html: getCleanHtml(itemData.description || itemData.content || 'Ni dodatnega opisa za to objavo.') }}
-            />
-          </div>
 
           {/* Embedded Social Media or Video if present */}
           {itemData.embedCode && (

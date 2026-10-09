@@ -87,6 +87,7 @@ export interface FirestorePost {
   id: string;
   type?: 'post' | 'blog' | 'deal' | 'news' | string;
   title: string;
+  subtitle?: string;
   content: string;
   category: string;
   categoryName?: string;
@@ -137,6 +138,7 @@ export interface FirestorePost {
 export interface FirestoreAd {
   id: string;
   title: string;
+  subtitle?: string;
   description: string;
   category: string;
   categoryName?: string;
@@ -174,6 +176,7 @@ export interface FirestoreAd {
 export interface FirestoreEvent {
   id: string;
   title: string;
+  subtitle?: string;
   description: string;
   location: string;
   region?: string;

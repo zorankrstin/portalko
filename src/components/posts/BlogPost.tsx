@@ -18,6 +18,7 @@ import type { PostDetailTarget } from "../../types";
 export interface BlogPostProps {
   id?: string;
   title?: string;
+  subtitle?: string;
   category?: string;
   categoryName?: string;
   subcategory?: string;
@@ -48,6 +49,7 @@ export interface BlogPostProps {
 export const BlogPost: React.FC<BlogPostProps> = ({ 
   id = "blog",
   title = "Potep po dolini Soče: 5 skritih kotičkov, ki jih morate obiskati to pomlad",
+  subtitle,
   category = "turizem-izleti",
   categoryName = "Turizem & Izleti",
   subcategory,
@@ -270,6 +272,11 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           <h4 className="font-headline-md text-headline-md font-bold text-on-surface group-hover/title:text-primary transition-colors">
             {title}
           </h4>
+          {subtitle && subtitle.trim() && (
+            <p className="font-headline-xs text-xs sm:text-sm font-medium text-on-surface-variant/90 leading-snug mt-0.5">
+              {subtitle.trim()}
+            </p>
+          )}
         </a>
         <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
           {getPlainTextSnippet(finalDesc)}

@@ -18,6 +18,7 @@ import { useAuth } from "../../contexts/AuthContext";
 export interface DealPostProps {
   id?: string;
   title?: string;
+  subtitle?: string;
   discount?: string;
   oldPrice?: string;
   newPrice?: string;
@@ -51,6 +52,7 @@ export interface DealPostProps {
 export const DealPost: React.FC<DealPostProps> = ({ 
   id = "default",
   title = "",
+  subtitle,
   discount = "",
   oldPrice,
   newPrice,
@@ -335,6 +337,11 @@ export const DealPost: React.FC<DealPostProps> = ({
             <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover/title:text-primary transition-colors leading-snug">
               {cleanTitle}
             </h3>
+            {subtitle && subtitle.trim() && (
+              <p className="font-headline-xs text-xs font-medium text-on-surface-variant/90 line-clamp-1 mt-0.5">
+                {subtitle.trim()}
+              </p>
+            )}
           </a>
 
           {/* Pricing Highlight: Old price & New price */}

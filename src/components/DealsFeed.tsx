@@ -100,6 +100,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   const [modalForm, setModalForm] = useState({
     store: '',
     title: '',
+    subtitle: '',
     description: '',
     category: 'tehnika' as 'tehnika' | 'prehrana' | 'turizem' | 'sport' | 'dom' | 'avto',
     locationType: 'online' as 'online' | 'physical',
@@ -547,6 +548,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     const newDeal: DealItem = {
       id: `user-deal-${Date.now()}`,
       title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
+      subtitle: modalForm.subtitle.trim() || undefined,
       partner: modalForm.store,
       partnerRole: 'Uporabniški predlog',
       partnerInitial: modalForm.store.substring(0, 2).toUpperCase(),
@@ -587,6 +589,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       if (currentUser) {
         await createPostInFirestore({
           title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
+          subtitle: modalForm.subtitle.trim() || undefined,
           content: modalForm.description || `${modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim()}. Trgovec: ${modalForm.store}. Koda: ${modalForm.code || 'Brez kode'}`,
           category: 'deal',
           categoryName: modalForm.category ? (
@@ -632,6 +635,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       setModalForm({
         store: '',
         title: '',
+        subtitle: '',
         description: '',
         category: 'tehnika',
         locationType: 'online',
@@ -1109,6 +1113,22 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     onChange={(e) => setModalForm({ ...modalForm, title: e.target.value })}
                     placeholder="npr. -25% na male gospodinjske aparate" 
                     required 
+                    className="w-full bg-surface-container-low px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-label-md text-on-surface font-semibold">
+                      Podnaslov (H2)
+                    </label>
+                    <span className="text-[11px] text-outline font-normal">Izbirno</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={modalForm.subtitle}
+                    onChange={(e) => setModalForm({ ...modalForm, subtitle: e.target.value })}
+                    placeholder="Vnesite podnaslov ugodnosti (izbirno)..." 
                     className="w-full bg-surface-container-low px-3 py-2 rounded-xl font-body-sm text-on-surface focus:outline-none focus:bg-surface-container border border-surface-container"
                   />
                 </div>

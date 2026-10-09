@@ -60,6 +60,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const editorRef = useRef<any>(null);
   const [postType, setPostType] = useState<PostType>(initialType);
   const [title, setTitle] = useState('');
+  const [subtitle, setSubtitle] = useState('');
   const [content, setContent] = useState('');
   const [price, setPrice] = useState('');
   const [oldPrice, setOldPrice] = useState('');
@@ -191,6 +192,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     if (isOpen) {
       setPostType(initialType);
       setTitle('');
+      setSubtitle('');
       setContent('');
       setPrice('');
       setOldPrice('');
@@ -520,6 +522,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         const cleanPostTitle = title.replace(/^\[Ugodnost\]\s*/i, '').trim();
         await createPostInFirestore({
           title: cleanPostTitle,
+          subtitle: subtitle.trim() || undefined,
           content: content.trim() || cleanPostTitle,
           category: postType === 'deal' ? 'deal' : categorySlug,
           categoryName: postType === 'deal' 
@@ -555,6 +558,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       } else if (postType === 'ad') {
         await createAdInFirestore({
           title: title.trim(),
+          subtitle: subtitle.trim() || undefined,
           description: content.trim() || title.trim(),
           category: categorySlug,
           categoryName,
@@ -616,6 +620,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
         await createEventInFirestore({
           title: title.trim(),
+          subtitle: subtitle.trim() || undefined,
           description: content.trim() || title.trim(),
           location: effectiveLocation,
           region: regionName,
@@ -775,6 +780,23 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               onChange={e => setTitle(e.target.value)}
               placeholder="Naslov objave..."
               className="w-full bg-surface-container-low px-4 py-2.5 rounded-xl font-headline-sm text-base text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
+            />
+          </div>
+
+          {/* Subtitle component (H2) positioned below the title (optional) */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-on-surface-variant">
+                Podnaslov (H2)
+              </label>
+              <span className="text-[10px] text-outline">Izbirno</span>
+            </div>
+            <input 
+              type="text" 
+              value={subtitle}
+              onChange={e => setSubtitle(e.target.value)}
+              placeholder="Podnaslov objave (izbirno)..."
+              className="w-full bg-surface-container-low px-4 py-2 rounded-xl font-body-md text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
             />
           </div>
 

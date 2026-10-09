@@ -20,6 +20,7 @@ import { isUserVerified } from "../../utils/userVerificationUtils";
 export interface EventPostProps {
   id?: string;
   title?: string;
+  subtitle?: string;
   organizer?: string;
   authorName?: string;
   authorId?: string;
@@ -58,6 +59,7 @@ export interface EventPostProps {
 export const EventPost: React.FC<EventPostProps> = ({ 
   id = "event",
   title = "Literarni večer z domačimi avtorji in akustični koncert Dua Sever",
+  subtitle,
   organizer = "Mestna knjižnica Kranj",
   authorName,
   authorId,
@@ -387,6 +389,11 @@ export const EventPost: React.FC<EventPostProps> = ({
             <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
               {title}
             </h3>
+            {subtitle && subtitle.trim() && (
+              <p className="font-headline-xs text-xs font-medium text-on-surface-variant/90 line-clamp-1 mt-0.5">
+                {subtitle.trim()}
+              </p>
+            )}
           </a>
           <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
             {cleanDescription || 'Vabljeni na prireditev v prijetnem vzdušju.'}

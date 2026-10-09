@@ -18,6 +18,7 @@ import { useAuth } from "../../contexts/AuthContext";
 export interface AdPostProps {
   id?: string;
   title?: string;
+  subtitle?: string;
   price?: string;
   author?: string;
   authorId?: string;
@@ -45,6 +46,7 @@ export interface AdPostProps {
 export const AdPost: React.FC<AdPostProps> = ({ 
   id = "ad",
   title = "Apple iPhone 15 Pro 128GB - Naravni Titan, garancija do nov. 2025",
+  subtitle,
   price = "790 €",
   author = "Marko K.",
   authorId,
@@ -232,6 +234,11 @@ export const AdPost: React.FC<AdPostProps> = ({
             <h3 className="font-headline-md text-base font-bold text-on-surface line-clamp-2 mt-1 group-hover/title:text-primary transition-colors">
               {title}
             </h3>
+            {subtitle && subtitle.trim() && (
+              <p className="font-headline-xs text-xs font-medium text-on-surface-variant/90 line-clamp-1 mt-0.5">
+                {subtitle.trim()}
+              </p>
+            )}
           </a>
           <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{cleanDescription}</p>
         </div>
