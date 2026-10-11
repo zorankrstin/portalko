@@ -29,7 +29,10 @@ import {
   deleteAdInFirestore,
   deleteEventInFirestore,
   recordItemViewInFirestore,
-  subscribeToItemViews
+  subscribeToItemViews,
+  subscribeToPostComments,
+  addCommentToFirestore,
+  deleteCommentFromFirestore
 } from '../services/firestoreService';
 import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
 import { ShareModal } from './common/ShareModal';
@@ -248,7 +251,7 @@ export function PostDetailPage({
   const [hasVoted, setHasVoted] = useState(false);
   const [blogLikes, setBlogLikes] = useState<number>(0);
   const [hasBlogLiked, setHasBlogLiked] = useState(false);
-  const { getLikesCount } = useLikes();
+  const { getLikesCount, isLiked, toggleLike } = useLikes();
 
   // Carousel & Lightbox state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -961,6 +964,46 @@ export function PostDetailPage({
     }
   }, [itemData, target]);
 
+  // Real-time comments subscription from Firestore (with local fallback)
+  useEffect(() => {
+    const effectivePostId = itemData?.id || target.id;
+    if (!effectivePostId) return;
+
+    let isSubscribed = true;
+    const unsub = subscribeToPostComments(effectivePostId, (fsComments) => {
+      if (!isSubscribed) return;
+      if (fsComments && fsComments.length > 0) {
+        const mapped: PostComment[] = fsComments.map((c) => ({
+          id: c.id,
+          author: c.authorName || 'Gost Portalko',
+          authorAvatar: c.authorAvatar || '',
+          authorRole: c.authorRole || 'Gost',
+          date: c.createdAt 
+            ? new Date(c.createdAt).toLocaleDateString('sl-SI', { 
+                day: 'numeric', 
+                month: 'short', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+              })
+            : 'ravnokar',
+          content: c.content,
+        }));
+        setComments(mapped);
+        try {
+          const storageKey = `portalko_comments_${target.type}_${target.id}`;
+          localStorage.setItem(storageKey, JSON.stringify(mapped));
+        } catch {
+          // ignore
+        }
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+      unsub();
+    };
+  }, [itemData?.id, target.id, target.type]);
+
   // Handle post upvote
   const handleVote = () => {
     if (!hasVoted) {
@@ -1000,7 +1043,7 @@ export function PostDetailPage({
   };
 
   // Handle new comment submission
-  const handleSubmitComment = (e: React.FormEvent) => {
+  const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCommentText.trim()) return;
 
@@ -1012,6 +1055,8 @@ export function PostDetailPage({
                        currentUser?.role === 'admin' ? 'Administrator' :
                        currentUser?.role === 'verified' ? 'Preverjen uporabnik' :
                        currentUser?.role === 'registered' ? 'Registriran uporabnik' : 'Gost';
+    const trimmedContent = newCommentText.trim();
+    const effectiveTargetId = itemData?.id || target.id;
 
     const newComment: PostComment = {
       id: `comment-${Date.now()}`,
@@ -1019,7 +1064,7 @@ export function PostDetailPage({
       authorAvatar,
       authorRole,
       date: 'ravnokar',
-      content: newCommentText.trim(),
+      content: trimmedContent,
     };
 
     setComments(prev => {
@@ -1032,12 +1077,38 @@ export function PostDetailPage({
       }
       return updated;
     });
+
     setNewCommentText('');
     setIsSubmittingComment(false);
+
+    // Persist to Firestore in background
+    try {
+      await addCommentToFirestore({
+        targetId: effectiveTargetId,
+        targetType: target.type,
+        authorId: currentUser?.id,
+        authorName,
+        authorAvatar,
+        authorRole,
+        content: trimmedContent,
+      });
+      addNotification({
+        title: 'Komentar objavljen',
+        description: 'Vaš komentar je bil uspešno oddan v razpravo.',
+        type: 'comment',
+        target: {
+          type: target.type,
+          id: effectiveTargetId,
+        },
+      });
+    } catch (err) {
+      console.warn('Firestore comment sync notice:', err);
+    }
   };
 
   // Handle comment deletion (for author or admin/superadmin)
-  const handleDeleteComment = (commentId: string) => {
+  const handleDeleteComment = async (commentId: string) => {
+    const effectiveTargetId = itemData?.id || target.id;
     setComments(prev => {
       const updated = prev.filter(c => c.id !== commentId);
       try {
@@ -1048,6 +1119,12 @@ export function PostDetailPage({
       }
       return updated;
     });
+
+    try {
+      await deleteCommentFromFirestore(commentId, effectiveTargetId, target.type);
+    } catch (err) {
+      console.warn('Firestore comment delete notice:', err);
+    }
   };
 
   // Determine 3-4 related articles from the same category as the currently viewed blog post
@@ -1699,6 +1776,11 @@ export function PostDetailPage({
 
   const formattedViews = formatViewsCount(currentViewsCount);
 
+  const currentPostId = itemData.id || target.id;
+  const initialPostLikes = itemData.likesCount ?? itemData.votes ?? 0;
+  const currentLikesCount = getLikesCount ? getLikesCount(currentPostId, initialPostLikes) : (Number(initialPostLikes) || 0);
+  const isPostLiked = isLiked ? isLiked(currentPostId) : false;
+
   const handleAuthorClick = () => {
     if (onAuthorClick) {
       onAuthorClick({
@@ -1917,6 +1999,29 @@ export function PostDetailPage({
                 <Eye className="w-3.5 h-3.5 text-secondary animate-pulse" />
                 <span>{formattedViews}</span>
               </span>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (toggleLike) {
+                    toggleLike(currentPostId, {
+                      targetType: (target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'blog'),
+                      initialCount: initialPostLikes,
+                      title: itemData.title,
+                    });
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-semibold text-xs border transition-all cursor-pointer select-none active:scale-95 ${
+                  isPostLiked 
+                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 shadow-2xs hover:bg-rose-500/15' 
+                    : 'bg-surface-container-high text-on-surface border-surface-container hover:bg-surface-container-highest hover:text-rose-500'
+                }`} 
+                title={isPostLiked ? "Všečkano (kliknite za preklic všečka)" : "Število všečkov objave (kliknite za všečkanje)"}
+                aria-label={`Všečki: ${currentLikesCount}`}
+              >
+                <Heart className={`w-3.5 h-3.5 transition-transform ${isPostLiked ? 'text-rose-500 fill-rose-500 scale-105' : 'text-rose-500 fill-rose-500/20 hover:scale-110'}`} />
+                <span>{currentLikesCount}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2465,7 +2570,7 @@ export function PostDetailPage({
       </article>
 
       {/* Discussion & Comments Section */}
-      <section className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-5">
+      <section id="comments-section" className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-5">
         <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
           <div className="flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-primary" />

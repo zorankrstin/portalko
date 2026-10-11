@@ -35,19 +35,19 @@ export function isUserVerified(params?: CheckUserVerifiedParams | string | null)
     }
   }
 
-  // 3. Check known verified IDs/names from initial verified accounts (e.g. Maja Zupan, Špas teater)
+  // 3. Check known verified IDs/names from initial verified accounts (e.g. Špas teater)
   const targetId = params.userId || params.authorId;
   const targetName = params.name || params.authorName;
 
   if (targetId) {
-    if (targetId === 'u3' || targetId === 'u_1790672978765') {
+    if (targetId === 'u_1790672978765') {
       return true;
     }
   }
 
   if (targetName) {
     const sName = slugify(targetName);
-    if (sName === 'spas-teater' || sName === 'maja-zupan') {
+    if (sName === 'spas-teater') {
       return true;
     }
   }

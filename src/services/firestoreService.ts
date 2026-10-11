@@ -13,7 +13,8 @@ import {
   orderBy, 
   limit,
   increment,
-  serverTimestamp 
+  serverTimestamp,
+  arrayUnion
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { User, Role } from '../contexts/AuthContext';
@@ -384,11 +385,144 @@ export async function verifyUserEmailInFirestore(userId: string): Promise<void> 
   }
 }
 
-export async function deleteUserFromFirestore(userId: string): Promise<void> {
-  const path = `users/${userId}`;
+const DELETED_USER_IDS_KEY = 'portal_deleted_user_ids';
+const DELETED_USER_EMAILS_KEY = 'portal_deleted_user_emails';
+
+// Seed list of known dummy / removed accounts so they never resurrect anywhere
+const SEED_DELETED_IDS = new Set<string>(['u2', 'u3', 'u4']);
+const SEED_DELETED_EMAILS = new Set<string>([
+  'luka.n@example.com',
+  'luka.novak.portal@gmail.com',
+  'maja.z@example.com',
+  'janez.h@example.com',
+]);
+
+export function isDummyUserEmail(email?: string | null, id?: string | null): boolean {
+  const e = (email || '').toLowerCase().trim();
+  const i = (id || '').trim();
+  if (SEED_DELETED_IDS.has(i) || (e && SEED_DELETED_EMAILS.has(e))) return true;
+  return (
+    e.startsWith('luka.n@') ||
+    e.startsWith('luka.novak.portal@') ||
+    e.startsWith('maja.z@') ||
+    e.startsWith('janez.h@')
+  );
+}
+
+export function getDeletedUserIds(): Set<string> {
+  const result = new Set<string>(SEED_DELETED_IDS);
   try {
+    const raw = localStorage.getItem(DELETED_USER_IDS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        arr.forEach(item => { if (typeof item === 'string' && item.trim()) result.add(item.trim()); });
+      }
+    }
+  } catch {}
+  return result;
+}
+
+export function getDeletedUserEmails(): Set<string> {
+  const result = new Set<string>(SEED_DELETED_EMAILS);
+  try {
+    const raw = localStorage.getItem(DELETED_USER_EMAILS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        arr.forEach(item => { if (typeof item === 'string' && item.trim()) result.add(item.toLowerCase().trim()); });
+      }
+    }
+  } catch {}
+  return result;
+}
+
+export function recordUserAsDeletedLocally(userId: string, email?: string): void {
+  const ids = getDeletedUserIds();
+  const emails = getDeletedUserEmails();
+  if (userId) ids.add(userId.trim());
+  if (email && email.trim()) emails.add(email.toLowerCase().trim());
+
+  try {
+    localStorage.setItem(DELETED_USER_IDS_KEY, JSON.stringify(Array.from(ids)));
+    localStorage.setItem(DELETED_USER_EMAILS_KEY, JSON.stringify(Array.from(emails)));
+  } catch {}
+}
+
+export function isUserDeletedSync(userId?: string | null, email?: string | null): boolean {
+  if (isDummyUserEmail(email, userId)) return true;
+  const ids = getDeletedUserIds();
+  const emails = getDeletedUserEmails();
+  if (userId && ids.has(userId.trim())) return true;
+  if (email) {
+    const clean = email.toLowerCase().trim();
+    if (emails.has(clean)) return true;
+  }
+  return false;
+}
+
+export async function syncDeletedUsersFromFirestore(): Promise<void> {
+  try {
+    const ref = doc(db, 'settings', 'deleted_users');
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data();
+      const ids: string[] = Array.isArray(data.ids) ? data.ids : [];
+      const emails: string[] = Array.isArray(data.emails) ? data.emails : [];
+      const localIds = getDeletedUserIds();
+      const localEmails = getDeletedUserEmails();
+      ids.forEach(id => { if (typeof id === 'string' && id.trim()) localIds.add(id.trim()); });
+      emails.forEach(e => { if (typeof e === 'string' && e.trim()) localEmails.add(e.toLowerCase().trim()); });
+      localStorage.setItem(DELETED_USER_IDS_KEY, JSON.stringify(Array.from(localIds)));
+      localStorage.setItem(DELETED_USER_EMAILS_KEY, JSON.stringify(Array.from(localEmails)));
+    }
+  } catch {}
+}
+
+export async function deleteUserFromFirestore(userId: string, email?: string): Promise<void> {
+  const path = `users/${userId}`;
+  const cleanEmail = (email || '').toLowerCase().trim();
+
+  // Record tombstone locally immediately
+  recordUserAsDeletedLocally(userId, cleanEmail);
+
+  try {
+    // 1. Delete document by path
     const userRef = doc(db, 'users', userId);
-    await deleteDoc(userRef);
+    await deleteDoc(userRef).catch(() => {});
+
+    // 2. Delete any documents where 'email' matches
+    if (cleanEmail) {
+      try {
+        const qEmail = query(collection(db, 'users'), where('email', '==', cleanEmail));
+        const emailSnap = await getDocs(qEmail);
+        for (const d of emailSnap.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      } catch {}
+    }
+
+    // 3. Delete any documents where 'id' field matches
+    try {
+      const qId = query(collection(db, 'users'), where('id', '==', userId));
+      const idSnap = await getDocs(qId);
+      for (const d of idSnap.docs) {
+        await deleteDoc(d.ref).catch(() => {});
+      }
+    } catch {}
+
+    // 4. Persist tombstone into settings/deleted_users
+    try {
+      const tombstoneRef = doc(db, 'settings', 'deleted_users');
+      const payload: Record<string, any> = {
+        ids: arrayUnion(userId),
+        updatedAt: new Date().toISOString(),
+      };
+      if (cleanEmail) {
+        payload.emails = arrayUnion(cleanEmail);
+      }
+      await setDoc(tombstoneRef, payload, { merge: true });
+    } catch {}
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -397,19 +531,24 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
 export async function fetchUsersList(): Promise<User[]> {
   const path = 'users';
   try {
+    await syncDeletedUsersFromFirestore().catch(() => {});
     const q = query(collection(db, path), limit(100));
     const snap = await getDocs(q);
     const users: User[] = [];
     for (const d of snap.docs) {
       const data = d.data();
       const email = (data.email || '').toLowerCase().trim();
-      if (email === 'luka.n@example.com' || email === 'luka.novak.portal@gmail.com' || d.id === 'u2') {
-        // Automatically cleanup dummy users from database
+      const docId = d.id;
+      const effectiveId = data.id || docId;
+
+      if (isDummyUserEmail(email, effectiveId) || isUserDeletedSync(effectiveId, email) || isUserDeletedSync(docId, email)) {
+        // Automatically cleanup dummy and deleted users from Firestore
         deleteDoc(d.ref).catch(() => {});
         continue;
       }
+
       users.push({
-        id: data.id || d.id,
+        id: effectiveId,
         name: data.name || '',
         email: data.email || '',
         role: (data.role || 'registered') as Role,
@@ -437,19 +576,24 @@ export async function fetchUsersList(): Promise<User[]> {
 export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
   const path = 'users';
   try {
+    syncDeletedUsersFromFirestore().catch(() => {});
     const q = query(collection(db, path), limit(100));
     return onSnapshot(q, (snapshot) => {
       const users: User[] = [];
       snapshot.docs.forEach(d => {
         const data = d.data();
         const email = (data.email || '').toLowerCase().trim();
-        if (email === 'luka.n@example.com' || email === 'luka.novak.portal@gmail.com' || d.id === 'u2') {
-          // Automatically cleanup dummy users from database
+        const docId = d.id;
+        const effectiveId = data.id || docId;
+
+        if (isDummyUserEmail(email, effectiveId) || isUserDeletedSync(effectiveId, email) || isUserDeletedSync(docId, email)) {
+          // Automatically cleanup dummy and deleted users from database
           deleteDoc(d.ref).catch(() => {});
           return;
         }
+
         users.push({
-          id: data.id || d.id,
+          id: effectiveId,
           name: data.name || '',
           email: data.email || '',
           role: (data.role || 'registered') as Role,
@@ -487,7 +631,7 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
       const base: Partial<User> = fallbackUser || {};
       const fullDoc = {
         id: userId,
-        name: data.name || base.name || (userId === 'u3' ? 'Maja Zupan' : userId === 'u4' ? 'Janez Horvat' : 'Uporabnik'),
+        name: data.name || base.name || 'Uporabnik',
         email: data.email || base.email || `${userId}@portalko.net`,
         role: data.role || base.role || 'registered',
         status: data.status || base.status || 'active',

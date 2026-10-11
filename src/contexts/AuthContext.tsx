@@ -1,7 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth, googleProvider } from '../lib/firebase';
-import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged, createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
-import { syncUserProfile, updateUserInFirestore, fetchUserProfile, subscribeToUsers, deleteUserFromFirestore, findUserForVerification, verifyUserEmailInFirestore } from '../services/firestoreService';
+import { 
+  signInWithPopup, 
+  signOut as fbSignOut, 
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword, 
+  sendEmailVerification 
+} from 'firebase/auth';
+import { 
+  syncUserProfile, 
+  updateUserInFirestore, 
+  fetchUserProfile, 
+  subscribeToUsers, 
+  deleteUserFromFirestore, 
+  findUserForVerification, 
+  verifyUserEmailInFirestore,
+  isUserDeletedSync,
+  recordUserAsDeletedLocally,
+  syncDeletedUsersFromFirestore
+} from '../services/firestoreService';
 import { sendNoreplyConfirmationEmail } from '../services/emailService';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { slugify } from '../utils/urlUtils';
@@ -95,33 +112,6 @@ export const DEFAULT_USERS: User[] = [
     authProvider: 'google',
     googleId: 'g_zoran_krstin'
   },
-  { 
-    id: 'u3', 
-    name: 'Maja Zupan', 
-    email: 'maja.z@example.com', 
-    role: 'verified', 
-    status: 'active', 
-    emailVerified: true,
-    bio: 'Kulinarični blog in doživetja po Sloveniji.',
-    username: '@maja_zupan',
-    socialLinks: [
-      { id: 's1', platform: 'instagram', url: 'https://instagram.com', label: 'Instagram' },
-    ],
-    profileMenu: DEFAULT_PROFILE_MENU,
-    password: 'geslo123'
-  },
-  { 
-    id: 'u4', 
-    name: 'Janez Horvat', 
-    email: 'janez.h@example.com', 
-    role: 'registered', 
-    status: 'banned', 
-    emailVerified: true,
-    bio: 'Član skupnosti.',
-    username: '@janez_h',
-    profileMenu: DEFAULT_PROFILE_MENU,
-    password: 'geslo123'
-  },
   {
     id: 'u_1790075229756',
     name: 'Uredništvo Portalko.net',
@@ -162,9 +152,15 @@ export function isDummyUser(user?: { email?: string; id?: string } | null): bool
   return (
     email === 'luka.n@example.com' ||
     email === 'luka.novak.portal@gmail.com' ||
+    email === 'maja.z@example.com' ||
+    email === 'janez.h@example.com' ||
     id === 'u2' ||
+    id === 'u3' ||
+    id === 'u4' ||
     email.startsWith('luka.n@') ||
-    email.startsWith('luka.novak.portal@')
+    email.startsWith('luka.novak.portal@') ||
+    email.startsWith('maja.z@') ||
+    email.startsWith('janez.h@')
   );
 }
 
@@ -193,7 +189,7 @@ interface AuthContextType {
   loginById: (id: string) => { success: boolean; error?: string; user?: User };
   logout: () => void;
   updateUser: (id: string, data: Partial<User>) => void;
-  deleteUser: (id: string) => void;
+  deleteUser: (id: string, email?: string) => Promise<void> | void;
   changePassword: (userId: string, oldPass: string, newPass: string) => { success: boolean; error?: string };
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean; smtpBlocked?: boolean }>;
   resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string; confirmationUrl?: string }>;
@@ -211,7 +207,7 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
   const byEmail = new Map<string, User>();
 
   for (const u of userList) {
-    if (!u || !u.id || isDummyUser(u)) continue;
+    if (!u || !u.id || isDummyUser(u) || isUserDeletedSync(u.id, u.email)) continue;
     const emailNorm = (u.email || '').toLowerCase().trim();
 
     // Check if we already have this user by id or by email
@@ -264,16 +260,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    syncDeletedUsersFromFirestore().catch(() => {});
     const savedUsers = localStorage.getItem('portal_users');
     let initialUsers = deduplicateUsers(DEFAULT_USERS);
     if (savedUsers) {
       try {
         const parsed = JSON.parse(savedUsers);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Ensure default passwords if missing from older saved states, filter dummy users,
+          // Ensure default passwords if missing from older saved states, filter dummy/deleted users,
           // and strip any legacy dummy avatars so only user-uploaded images are used.
           const cleanedParsed = parsed
-            .filter((u: User) => !isDummyUser(u))
+            .filter((u: User) => !isDummyUser(u) && !isUserDeletedSync(u?.id, u?.email))
             .map((u: User) => ({
               ...u,
               avatar: (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : undefined,
@@ -463,12 +460,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const deleteUser = (userId: string) => {
-    deleteUserFromFirestore(userId).catch(console.error);
+  const deleteUser = async (userId: string, email?: string) => {
+    const target = users.find(u => u.id === userId || (email && u.email.toLowerCase() === email.toLowerCase()));
+    const effectiveEmail = (email || target?.email || '').toLowerCase().trim();
+
+    recordUserAsDeletedLocally(userId, effectiveEmail);
+    await deleteUserFromFirestore(userId, effectiveEmail).catch(console.error);
+
     setUsers(prev => {
-      const filtered = prev.filter(u => u.id !== userId);
+      const filtered = prev.filter(u => {
+        if (u.id === userId) return false;
+        if (effectiveEmail && (u.email || '').toLowerCase().trim() === effectiveEmail) return false;
+        return true;
+      });
       localStorage.setItem('portal_users', JSON.stringify(filtered));
-      if (currentUser?.id === userId) {
+      if (currentUser?.id === userId || (effectiveEmail && currentUser?.email?.toLowerCase() === effectiveEmail)) {
         logout();
       }
       return filtered;

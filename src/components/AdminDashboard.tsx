@@ -4,13 +4,14 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X, Flag, ImageIcon
+  UserCheck, X, Flag, ImageIcon, Loader2
 } from 'lucide-react';
 import { ReportsManager } from './admin/ReportsManager';
 import { PortalSettingsManager } from './admin/PortalSettingsManager';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { subscribeToReports } from '../services/reportService';
-import { useAuth, Role, User } from '../contexts/AuthContext';
+import { useAuth, Role, User, isDummyUser } from '../contexts/AuthContext';
+import { isUserDeletedSync } from '../services/firestoreService';
 import { 
   RssFeedConfig, 
   DEFAULT_RSS_FEEDS, 
@@ -75,8 +76,8 @@ interface AdminPost {
 }
 
 const MOCK_POSTS: AdminPost[] = [
-  { id: 'p1', title: 'Potep po dolini Soče: 5 skritih kotičkov', author: 'Maja Zupan', type: 'blog', status: 'published', date: '12. Sep 2026' },
-  { id: 'p2', title: 'Prodam Audi A4 2.0 TDI', author: 'Janez Horvat', type: 'ad', status: 'removed', date: '11. Sep 2026' },
+  { id: 'p1', title: 'Potep po dolini Soče: 5 skritih kotičkov', author: 'Uredništvo Portalko.net', type: 'blog', status: 'published', date: '12. Sep 2026' },
+  { id: 'p2', title: 'Prodam Audi A4 2.0 TDI', author: 'Uredništvo Portalko.net', type: 'ad', status: 'removed', date: '11. Sep 2026' },
   { id: 'p3', title: 'Koncert Joker Out', author: 'Kino Šiška', type: 'event', status: 'published', date: '10. Sep 2026' },
   { id: 'p4', title: '-20% popust na pnevmatike', author: 'Vulkanizerstvo', type: 'deal', status: 'published', date: '09. Sep 2026' },
 ];
@@ -116,6 +117,46 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
   const [postStatusFilter, setPostStatusFilter] = useState<string>('all');
   const [userFilterRole, setUserFilterRole] = useState<string>('all');
   const [actionFeedback, setActionFeedback] = useState<{ id: string; message: string; type: 'success' | 'error' } | null>(null);
+
+  // User Deletion Confirmation Modal State
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && userToDelete && !isDeletingUser) {
+        setUserToDelete(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [userToDelete, isDeletingUser]);
+
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    try {
+      await deleteUser(userToDelete.id, userToDelete.email);
+      setActionFeedback({
+        id: `del-${userToDelete.id}`,
+        message: `Uporabnik ${userToDelete.name} (${userToDelete.email}) je bil uspešno izbrisan.`,
+        type: 'success'
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (error) {
+      console.error('Napaka pri brisanju uporabnika:', error);
+      setActionFeedback({
+        id: `del-err-${userToDelete.id}`,
+        message: 'Pri brisanju uporabnika je prišlo do napake.',
+        type: 'error'
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } finally {
+      setIsDeletingUser(false);
+      setUserToDelete(null);
+    }
+  };
 
   // Category & Subcategory State Management in AdminDashboard
   // Uses functional updates that merge new items with the existing list instead of replacing the entire array
@@ -228,7 +269,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     const uniqueUsers: User[] = [];
 
     for (const u of users) {
-      if (!u || !u.id) continue;
+      if (!u || !u.id || isDummyUser(u) || isUserDeletedSync(u.id, u.email)) continue;
       const emailLower = (u.email || '').toLowerCase().trim();
       if (seenIds.has(u.id)) continue;
       if (emailLower && seenEmails.has(emailLower)) continue;
@@ -1182,18 +1223,9 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                     </button>
                                     <button 
                                       type="button"
-                                      onClick={() => {
-                                        if (window.confirm(`Ali ste prepričani, da želite izbrisati uporabnika ${user.name} (${user.email})?`)) {
-                                          deleteUser(user.id);
-                                          setActionFeedback({
-                                            id: `del-${user.id}`,
-                                            message: `Uporabnik ${user.name} je bil uspešno izbrisan.`,
-                                            type: 'success'
-                                          });
-                                        }
-                                      }}
+                                      onClick={() => setUserToDelete(user)}
                                       className="p-1 rounded bg-error/10 text-error hover:bg-error/20 transition-colors cursor-pointer"
-                                      title="Izbriši uporabnika"
+                                      title={`Izbriši uporabnika ${user.name}`}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
@@ -1725,6 +1757,122 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         onSavePromotion={handleSavePromotion}
         onRemovePromotion={handleRemovePromotion}
       />
+
+      {/* User Deletion Confirmation Modal ("Are you sure?") */}
+      {userToDelete && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-user-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeletingUser) {
+              setUserToDelete(null);
+            }
+          }}
+        >
+          <div 
+            className="bg-surface-container-lowest w-full max-w-md rounded-2xl shadow-2xl border border-surface-container overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between bg-error/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-error/15 text-error flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-error" />
+                </div>
+                <div>
+                  <h2 id="delete-user-modal-title" className="font-headline-sm text-base font-bold text-on-surface">
+                    Ste prepričani?
+                  </h2>
+                  <p className="text-xs text-outline">
+                    Potrditev trajnega izbrisa uporabnika
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isDeletingUser) setUserToDelete(null);
+                }}
+                disabled={isDeletingUser}
+                className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer disabled:opacity-50"
+                aria-label="Zapri"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4 text-xs">
+              {/* User Details Card */}
+              <div className="p-3.5 rounded-xl bg-surface-container-low border border-surface-container flex items-center gap-3">
+                <UserAvatar 
+                  src={userToDelete.avatar} 
+                  name={userToDelete.name} 
+                  userId={userToDelete.id} 
+                  role={userToDelete.role} 
+                  size="md" 
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-on-surface truncate">
+                      {userToDelete.name}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-container text-on-surface-variant border border-surface-container-high">
+                      {userToDelete.role}
+                    </span>
+                  </div>
+                  <p className="text-xs text-outline truncate mt-0.5">
+                    {userToDelete.email}
+                  </p>
+                </div>
+              </div>
+
+              {/* Warning Message Box */}
+              <div className="p-3.5 rounded-xl bg-error/10 border border-error/20 space-y-1.5">
+                <p className="font-semibold text-error text-xs flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>To dejanje je nepovratno</span>
+                </p>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  Ali ste prepričani, da želite trajno izbrisati uporabnika <strong className="text-on-surface font-bold">{userToDelete.name}</strong> ({userToDelete.email})? Vsi podatki o računu in pravice bodo trajno odstranjeni.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="px-5 py-3.5 border-t border-surface-container bg-surface-container-low/50 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                disabled={isDeletingUser}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-on-surface hover:bg-surface-container transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Prekliči
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteUser}
+                disabled={isDeletingUser}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-error hover:bg-error/90 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+              >
+                {isDeletingUser ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Brisanje...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Da, izbriši uporabnika</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
