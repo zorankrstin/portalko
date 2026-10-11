@@ -4,8 +4,9 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X, Flag, ImageIcon, Loader2
+  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck
 } from 'lucide-react';
+import { UserGrowthChart } from './admin/UserGrowthChart';
 import { ReportsManager } from './admin/ReportsManager';
 import { PortalSettingsManager } from './admin/PortalSettingsManager';
 import { VerifiedBadge } from './common/VerifiedBadge';
@@ -88,6 +89,8 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [showUserGrowthChart, setShowUserGrowthChart] = useState(true);
+  const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
 
   // New user form state
   const [newUserName, setNewUserName] = useState('');
@@ -155,6 +158,67 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     } finally {
       setIsDeletingUser(false);
       setUserToDelete(null);
+    }
+  };
+
+  // Role hierarchy and helpers for quick upgrade / downgrade
+  const ROLE_HIERARCHY: Role[] = ['registered', 'moderator', 'admin', 'superadmin'];
+
+  const canUpgradeRole = (currentRole: Role) => {
+    const idx = ROLE_HIERARCHY.indexOf(currentRole);
+    return idx >= 0 && idx < ROLE_HIERARCHY.length - 1;
+  };
+
+  const canDowngradeRole = (currentRole: Role) => {
+    const idx = ROLE_HIERARCHY.indexOf(currentRole);
+    return idx > 0;
+  };
+
+  const getNextRole = (currentRole: Role): Role | null => {
+    const idx = ROLE_HIERARCHY.indexOf(currentRole);
+    if (idx >= 0 && idx < ROLE_HIERARCHY.length - 1) {
+      return ROLE_HIERARCHY[idx + 1];
+    }
+    return null;
+  };
+
+  const getPreviousRole = (currentRole: Role): Role | null => {
+    const idx = ROLE_HIERARCHY.indexOf(currentRole);
+    if (idx > 0) {
+      return ROLE_HIERARCHY[idx - 1];
+    }
+    return null;
+  };
+
+  const handleRoleChange = async (userId: string, userName: string, newRole: Role) => {
+    if (roleUpdatingId === userId) return;
+    setRoleUpdatingId(userId);
+    try {
+      await updateUser(userId, { role: newRole });
+      const roleLabels: Record<Role, string> = {
+        superadmin: 'Superadmin',
+        admin: 'Administrator',
+        moderator: 'Moderator',
+        verified: 'Preverjen uporabnik',
+        registered: 'Uporabnik',
+        guest: 'Gost'
+      };
+      setActionFeedback({
+        id: `role-${userId}-${Date.now()}`,
+        message: `Vloga za uporabnika »${userName}« je bila uspešno spremenjena v »${roleLabels[newRole] || newRole}«.`,
+        type: 'success'
+      });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err) {
+      console.error('Napaka pri posodabljanju vloge uporabnika:', err);
+      setActionFeedback({
+        id: `role-err-${userId}-${Date.now()}`,
+        message: `Pri posodabljanju vloge uporabnika ${userName} je prišlo do napake.`,
+        type: 'error'
+      });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } finally {
+      setRoleUpdatingId(null);
     }
   };
 
@@ -752,21 +816,42 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                 </p>
               </div>
 
-              {currentUser?.role === 'superadmin' && (
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsAddUserOpen(true);
-                    setAddUserError('');
-                    setAddUserSuccess('');
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 self-start sm:self-auto cursor-pointer"
+                  onClick={() => setShowUserGrowthChart(prev => !prev)}
+                  className={`px-3 py-2 rounded-xl font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer border ${
+                    showUserGrowthChart 
+                      ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20' 
+                      : 'bg-surface-container-low text-on-surface-variant border-surface-container hover:bg-surface-container'
+                  }`}
+                  title="Prikaži ali skrij analitiko rasti uporabnikov v zadnjih 30 dneh"
                 >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Dodaj uporabnika</span>
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  <span>{showUserGrowthChart ? 'Skrij rast' : 'Rast uporabnikov'}</span>
                 </button>
-              )}
+
+                {currentUser?.role === 'superadmin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddUserOpen(true);
+                      setAddUserError('');
+                      setAddUserSuccess('');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Dodaj uporabnika</span>
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* User Growth Visualization (Past 30 Days) */}
+            {showUserGrowthChart && (
+              <UserGrowthChart users={users} />
+            )}
 
             {/* Dedicated Search Bar & Filters Panel */}
             <div className="bg-surface-container-low/70 border border-surface-container rounded-2xl p-3 sm:p-4 flex flex-col gap-3 shadow-2xs">
@@ -806,6 +891,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                       <option value="all">Vse vloge ({users.length})</option>
                       <option value="verification">⭐ Čakajo na verifikacijo ({pendingVerifications.length})</option>
                       <option value="registered">Registrirani ({users.filter(u => u.role === 'registered').length})</option>
+                      <option value="moderator">🛡️ Moderatorji ({users.filter(u => u.role === 'moderator').length})</option>
                       <option value="verified">Preverjeni ({users.filter(u => u.role === 'verified').length})</option>
                       <option value="admin">Administratorji ({users.filter(u => u.role === 'admin').length})</option>
                       <option value="superadmin">Superadmini ({users.filter(u => u.role === 'superadmin').length})</option>
@@ -988,6 +1074,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                   >
                     <option value="superadmin">⭐ Superadmin</option>
                     <option value="admin">Administrator</option>
+                    <option value="moderator">🛡️ Moderator</option>
                     <option value="verified">Preverjeni uporabnik</option>
                     <option value="registered">Registrirani uporabnik</option>
                     <option value="guest">Gost</option>
@@ -1039,7 +1126,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                 <thead className="bg-surface-container-low/50">
                   <tr>
                     <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Uporabnik</th>
-                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Vloga</th>
+                    <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold min-w-[210px]">Vloga & Nadzor</th>
                     <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Status</th>
                     <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold text-right">Akcije</th>
                   </tr>
@@ -1144,25 +1231,128 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                           </td>
                           <td className="p-3 align-top">
                             {isSuperadmin && user.id !== currentUser?.id ? (
-                              <select
-                                value={user.role}
-                                onChange={(e) => updateUser(user.id, { role: e.target.value as any })}
-                                className="bg-surface-container-low text-xs p-1 rounded border-none outline-none cursor-pointer"
-                              >
-                                <option value="superadmin">superadmin</option>
-                                <option value="admin">admin</option>
-                                <option value="verified">verified</option>
-                                <option value="registered">registered</option>
-                                <option value="guest">guest</option>
-                              </select>
+                              <div className="flex flex-col gap-1.5 min-w-[210px] max-w-[260px]">
+                                {/* Quick 3-Tier Segmented Toggle: User | Moderator | Admin */}
+                                <div className="inline-flex items-center rounded-lg bg-surface-container-low p-0.5 border border-surface-container text-xs shadow-2xs w-fit">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRoleChange(user.id, user.name, 'registered')}
+                                    disabled={roleUpdatingId === user.id}
+                                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                                      user.role === 'registered' 
+                                        ? 'bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900 shadow-2xs' 
+                                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+                                    }`}
+                                    title="Hitro nastavi vlogo na Uporabnik (user)"
+                                  >
+                                    Uporabnik
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRoleChange(user.id, user.name, 'moderator')}
+                                    disabled={roleUpdatingId === user.id}
+                                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                                      user.role === 'moderator' 
+                                        ? 'bg-blue-600 text-white shadow-2xs' 
+                                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+                                    }`}
+                                    title="Hitro nadgradi ali znižaj vlogo na Moderator"
+                                  >
+                                    Moderator
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRoleChange(user.id, user.name, 'admin')}
+                                    disabled={roleUpdatingId === user.id}
+                                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                                      user.role === 'admin' 
+                                        ? 'bg-rose-600 text-white shadow-2xs' 
+                                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+                                    }`}
+                                    title="Hitro nadgradi vlogo na Administrator (admin)"
+                                  >
+                                    Admin
+                                  </button>
+                                </div>
+
+                                {/* Full Dropdown Selector & Quick Steppers (Upgrade ▲ / Downgrade ▼) */}
+                                <div className="flex items-center gap-1.5">
+                                  <div className="relative flex-1">
+                                    <select
+                                      value={user.role}
+                                      disabled={roleUpdatingId === user.id}
+                                      onChange={(e) => handleRoleChange(user.id, user.name, e.target.value as Role)}
+                                      className={`w-full pl-2 pr-6 py-1 rounded-md text-[11px] font-semibold border cursor-pointer transition-colors appearance-none ${
+                                        user.role === 'superadmin' ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30' :
+                                        user.role === 'admin' ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30' :
+                                        user.role === 'moderator' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30' :
+                                        user.role === 'verified' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30' :
+                                        'bg-surface-container-low text-on-surface-variant border-surface-container'
+                                      }`}
+                                      title="Izberi natančno vlogo uporabnika"
+                                    >
+                                      <option value="registered">👤 Uporabnik (user)</option>
+                                      <option value="moderator">🛡️ Moderator (moderator)</option>
+                                      <option value="admin">⚡ Administrator (admin)</option>
+                                      <option value="verified">⭐ Preverjen (verified)</option>
+                                      <option value="superadmin">👑 Superadmin</option>
+                                      <option value="guest">Gost (guest)</option>
+                                    </select>
+                                    <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
+                                  </div>
+
+                                  {/* Quick Stepper Buttons: Downgrade ▼ / Upgrade ▲ */}
+                                  <div className="inline-flex rounded-md border border-surface-container overflow-hidden bg-surface-container-lowest shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const prevRole = getPreviousRole(user.role);
+                                        if (prevRole) handleRoleChange(user.id, user.name, prevRole);
+                                      }}
+                                      disabled={!canDowngradeRole(user.role) || roleUpdatingId === user.id}
+                                      className="p-1 text-outline hover:text-on-surface hover:bg-surface-container-low disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
+                                      title={canDowngradeRole(user.role) ? `Znižaj vlogo na ${getPreviousRole(user.role)}` : 'Nižja stopnja ni na voljo'}
+                                      aria-label="Znižaj vlogo"
+                                    >
+                                      <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const nextRole = getNextRole(user.role);
+                                        if (nextRole) handleRoleChange(user.id, user.name, nextRole);
+                                      }}
+                                      disabled={!canUpgradeRole(user.role) || roleUpdatingId === user.id}
+                                      className="p-1 text-outline hover:text-on-surface hover:bg-surface-container-low disabled:opacity-25 disabled:pointer-events-none transition-colors border-l border-surface-container cursor-pointer"
+                                      title={canUpgradeRole(user.role) ? `Nadgradi vlogo na ${getNextRole(user.role)}` : 'Najvišja stopnja vloge'}
+                                      aria-label="Nadgradi vlogo"
+                                    >
+                                      <ChevronUp className="w-3 h-3" />
+                                    </button>
+                                  </div>
+
+                                  {roleUpdatingId === user.id && (
+                                    <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
+                                  )}
+                                </div>
+                              </div>
                             ) : (
-                              <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${
-                                user.role === 'superadmin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' : 
-                                user.role === 'admin' ? 'bg-error/10 text-error' : 
-                                user.role === 'verified' ? 'bg-secondary/10 text-secondary' : 'bg-surface-container text-on-surface-variant'
-                              }`}>
-                                {user.role}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold ${
+                                  user.role === 'superadmin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-300/40' : 
+                                  user.role === 'admin' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 border border-rose-300/40' : 
+                                  user.role === 'moderator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-300/40' : 
+                                  user.role === 'verified' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300/40' : 
+                                  'bg-surface-container text-on-surface-variant'
+                                }`} title={user.id === currentUser?.id ? 'Vaš lasten račun (Superadmin)' : `Vloga: ${user.role}`}>
+                                  {user.role === 'superadmin' && <Crown className="w-3 h-3 text-purple-600 dark:text-purple-400" />}
+                                  {user.role === 'admin' && <Shield className="w-3 h-3 text-rose-600 dark:text-rose-400" />}
+                                  {user.role === 'moderator' && <ShieldCheck className="w-3 h-3 text-blue-600 dark:text-blue-400" />}
+                                  {user.role === 'verified' && <CheckCircle className="w-3 h-3 text-amber-600 dark:text-amber-400" />}
+                                  <span>{user.role}</span>
+                                  {user.id === currentUser?.id && <span className="opacity-75 text-[10px] font-normal">(Vi)</span>}
+                                </span>
+                              </div>
                             )}
                           </td>
                           <td className="p-3 align-top">

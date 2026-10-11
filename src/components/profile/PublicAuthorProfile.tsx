@@ -451,6 +451,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     const roleTitle = targetAuthor.role || realAuthorMetadata?.role || (
       role === 'superadmin' ? 'Superadmin Portalko' :
       role === 'admin' ? 'Administrator' :
+      role === 'moderator' ? 'Moderator Portalko' :
       role === 'partner' ? 'Partner Portalko' :
       role === 'verified' ? 'Preverjen uporabnik' : 'Član skupnosti'
     );

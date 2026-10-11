@@ -564,6 +564,7 @@ export async function fetchUsersList(): Promise<User[]> {
         emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
         verificationToken: data.verificationToken || undefined,
         verificationSentAt: data.verificationSentAt || undefined,
+        createdAt: data.createdAt || undefined,
       });
     }
     return users;
@@ -610,6 +611,7 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
           verificationToken: data.verificationToken || undefined,
           verificationSentAt: data.verificationSentAt || undefined,
+          createdAt: data.createdAt || undefined,
         });
       });
       onUsers(users);

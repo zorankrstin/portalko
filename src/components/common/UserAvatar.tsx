@@ -103,14 +103,20 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
           className={`absolute -bottom-0.5 -right-0.5 rounded-full flex items-center justify-center shadow-xs border border-white dark:border-surface-container-lowest ${
             role === 'superadmin' ? 'bg-purple-600 text-white' :
             role === 'admin' ? 'bg-rose-600 text-white' :
+            role === 'moderator' ? 'bg-blue-600 text-white' :
             role === 'verified' ? 'bg-amber-500 text-white' :
             'bg-primary text-white'
           } ${sizeConfig.badge}`}
-          title={role === 'superadmin' ? 'Superadmin' : role === 'admin' ? 'Administrator' : 'Preverjen uporabnik'}
+          title={
+            role === 'superadmin' ? 'Superadmin' : 
+            role === 'admin' ? 'Administrator' : 
+            role === 'moderator' ? 'Moderator' : 
+            'Preverjen uporabnik'
+          }
         >
           {role === 'superadmin' ? (
             <Crown className="w-full h-full" />
-          ) : role === 'admin' ? (
+          ) : role === 'admin' || role === 'moderator' ? (
             <Shield className="w-full h-full" />
           ) : (
             <CheckCircle className="w-full h-full" />

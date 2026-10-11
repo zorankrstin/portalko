@@ -1,4 +1,4 @@
-export type Role = 'superadmin' | 'admin' | 'verified' | 'registered' | 'guest';
+export type Role = 'superadmin' | 'admin' | 'moderator' | 'verified' | 'registered' | 'guest';
 export type ViewMode = 'main' | 'news' | 'ads' | 'events' | 'blog' | 'profile' | 'admin' | 'saved' | 'deals' | 'post-detail';
 
 export type PostDetailType = 'deal' | 'event' | 'ad' | 'post' | 'blog' | 'news';

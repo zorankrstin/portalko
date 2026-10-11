@@ -23,7 +23,7 @@ import { sendNoreplyConfirmationEmail } from '../services/emailService';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { slugify } from '../utils/urlUtils';
 
-export type Role = 'superadmin' | 'admin' | 'verified' | 'registered' | 'guest';
+export type Role = 'superadmin' | 'admin' | 'moderator' | 'verified' | 'registered' | 'guest';
 
 export type SocialPlatform = 
   | 'website'
@@ -90,6 +90,7 @@ export interface User {
   verificationToken?: string;
   verificationSentAt?: string;
   verificationConfirmedAt?: string;
+  createdAt?: string;
 }
 
 export const DEFAULT_USERS: User[] = [
@@ -110,12 +111,13 @@ export const DEFAULT_USERS: User[] = [
     profileMenu: DEFAULT_PROFILE_MENU,
     password: 'admin123',
     authProvider: 'google',
-    googleId: 'g_zoran_krstin'
+    googleId: 'g_zoran_krstin',
+    createdAt: '2026-09-15T10:00:00.000Z'
   },
   {
-    id: 'u_1790075229756',
+    id: 'u_1791056763486',
     name: 'Uredništvo Portalko.net',
-    email: 'telemach987@proton.me',
+    email: 'urednistvo@portalko.net',
     role: 'admin',
     status: 'active',
     emailVerified: true,
@@ -126,7 +128,8 @@ export const DEFAULT_USERS: User[] = [
     password: 'admin123',
     socialLinks: [
       { id: 's1', platform: 'website', url: 'https://portalko.net', label: 'Portalko.net' }
-    ]
+    ],
+    createdAt: '2026-09-24T12:00:00.000Z'
   },
   {
     id: 'u_1790672978765',
@@ -141,7 +144,8 @@ export const DEFAULT_USERS: User[] = [
     profileMenu: DEFAULT_PROFILE_MENU,
     socialLinks: [
       { id: 's1', platform: 'website', url: 'https://spasteater.com', label: 'spasteater.com' }
-    ]
+    ],
+    createdAt: '2026-10-02T15:30:00.000Z'
   },
 ];
 
@@ -206,8 +210,19 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
   const byId = new Map<string, User>();
   const byEmail = new Map<string, User>();
 
-  for (const u of userList) {
-    if (!u || !u.id || isDummyUser(u) || isUserDeletedSync(u.id, u.email)) continue;
+  for (const rawUser of userList) {
+    if (!rawUser || !rawUser.id || isDummyUser(rawUser) || isUserDeletedSync(rawUser.id, rawUser.email)) continue;
+    const isOldUrednistvo = rawUser.email?.toLowerCase().trim() === 'telemach987@proton.me' || rawUser.id === 'u_1790075229756';
+    const u: User = isOldUrednistvo
+      ? {
+          ...rawUser,
+          id: 'u_1791056763486',
+          email: 'urednistvo@portalko.net',
+          name: rawUser.name || 'Uredništvo Portalko.net',
+          role: 'admin',
+        }
+      : rawUser;
+
     const emailNorm = (u.email || '').toLowerCase().trim();
 
     // Check if we already have this user by id or by email
@@ -271,11 +286,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // and strip any legacy dummy avatars so only user-uploaded images are used.
           const cleanedParsed = parsed
             .filter((u: User) => !isDummyUser(u) && !isUserDeletedSync(u?.id, u?.email))
-            .map((u: User) => ({
-              ...u,
-              avatar: (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : undefined,
-              password: u.password || (u.role === 'superadmin' ? 'admin123' : 'geslo123'),
-            }));
+            .map((u: User) => {
+              const isOldUrednistvo = u.email === 'telemach987@proton.me' || u.id === 'u_1790075229756';
+              return {
+                ...u,
+                id: isOldUrednistvo ? 'u_1791056763486' : u.id,
+                email: isOldUrednistvo ? 'urednistvo@portalko.net' : u.email,
+                name: isOldUrednistvo ? 'Uredništvo Portalko.net' : u.name,
+                role: isOldUrednistvo ? ('admin' as Role) : u.role,
+                avatar: (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : undefined,
+                password: u.password || (u.role === 'superadmin' ? 'admin123' : 'geslo123'),
+              };
+            });
           initialUsers = deduplicateUsers([...initialUsers, ...cleanedParsed]);
         }
       } catch (e) {
@@ -542,6 +564,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       emailVerified: isAutoVerified,
       verificationToken,
       verificationSentAt: isAutoVerified ? undefined : new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
 
     const updatedUsers = [...users, newUser];
@@ -766,7 +789,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       avatar: cleanAvatar,
       authProvider: 'google',
       googleId: data.googleId || `g_${Date.now().toString(36)}`,
-      password: 'google_oauth_user'
+      password: 'google_oauth_user',
+      createdAt: new Date().toISOString()
     };
 
     const updatedUsers = [...users, newUser];
