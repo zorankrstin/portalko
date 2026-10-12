@@ -3108,15 +3108,15 @@ export function PostDetailPage({
                       </span>
                     )}
 
-                    {/* Price Badge */}
-                    {post.price && (
+                    {/* Price Badge (omitted for events as requested) */}
+                    {post.price && post.type !== 'event' && target.type !== 'event' && (
                       <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold shadow-xs">
                         {post.price}
                       </span>
                     )}
 
                     {/* Read Time Pill */}
-                    {post.readTime && !post.price && (
+                    {post.readTime && !post.price && post.type !== 'event' && (
                       <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         <span>{post.readTime}</span>
