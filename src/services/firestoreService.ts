@@ -369,6 +369,74 @@ export async function findUserForVerification(token: string, email?: string): Pr
 }
 
 /**
+ * Searches Firestore for a user matching a password reset token or email.
+ */
+export async function findUserForPasswordReset(token: string, email?: string): Promise<User | null> {
+  const cleanToken = token.trim();
+  const path = 'users';
+
+  try {
+    if (cleanToken) {
+      const qToken = query(collection(db, path), where('passwordResetToken', '==', cleanToken), limit(1));
+      const snap = await getDocs(qToken);
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name || '',
+          email: data.email || '',
+          role: (data.role || 'registered') as Role,
+          status: (data.status || 'active') as 'active' | 'banned',
+          avatar: data.avatar,
+          bio: data.bio,
+          username: data.username,
+          password: data.password,
+          socialLinks: data.socialLinks,
+          profileMenu: data.profileMenu,
+          emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+          passwordResetToken: data.passwordResetToken,
+          passwordResetSentAt: data.passwordResetSentAt,
+          createdAt: data.createdAt,
+        };
+      }
+    }
+
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      const qEmail = query(collection(db, path), where('email', '==', cleanEmail), limit(1));
+      const snap = await getDocs(qEmail);
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name || '',
+          email: data.email || '',
+          role: (data.role || 'registered') as Role,
+          status: (data.status || 'active') as 'active' | 'banned',
+          avatar: data.avatar,
+          bio: data.bio,
+          username: data.username,
+          password: data.password,
+          socialLinks: data.socialLinks,
+          profileMenu: data.profileMenu,
+          emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+          passwordResetToken: data.passwordResetToken,
+          passwordResetSentAt: data.passwordResetSentAt,
+          createdAt: data.createdAt,
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.warn(`[Firestore findUserForPasswordReset] Query failed:`, error);
+    return null;
+  }
+}
+
+/**
  * Marks user's email as verified in Firestore
  */
 export async function verifyUserEmailInFirestore(userId: string): Promise<void> {
@@ -565,6 +633,8 @@ export async function fetchUsersList(): Promise<User[]> {
         verificationToken: data.verificationToken || undefined,
         verificationSentAt: data.verificationSentAt || undefined,
         createdAt: data.createdAt || undefined,
+        passwordResetToken: data.passwordResetToken || undefined,
+        passwordResetSentAt: data.passwordResetSentAt || undefined,
       });
     }
     return users;
@@ -612,6 +682,8 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           verificationToken: data.verificationToken || undefined,
           verificationSentAt: data.verificationSentAt || undefined,
           createdAt: data.createdAt || undefined,
+          passwordResetToken: data.passwordResetToken || undefined,
+          passwordResetSentAt: data.passwordResetSentAt || undefined,
         });
       });
       onUsers(users);
@@ -672,68 +744,45 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
  * Propagates updated user avatar across the user's events, posts and ads in Firestore
  */
 export async function syncUserAvatarToAuthorContent(userId: string, newAvatar: string, authorName?: string): Promise<void> {
-  if (!userId && !authorName) return;
+  if (!userId) return;
   const cleanAvatar = (newAvatar && !isDummyAvatar(newAvatar)) ? newAvatar : '';
-  const authorSlug = authorName ? slugify(authorName) : '';
 
   try {
-    // 1. Update events
+    // 1. Update events authored by this specific user ID
     const eventsSnap = await getDocs(collection(db, 'events'));
     const eventPromises: Promise<any>[] = [];
     eventsSnap.forEach((d) => {
       const ev = d.data();
-      const matchesUser = (userId && ev.authorId === userId) ||
-        (authorName && ev.authorName && ev.authorName.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
-        (authorSlug && ev.authorName && slugify(ev.authorName) === authorSlug);
+      const matchesUser = ev.authorId === userId;
       if (matchesUser && ev.authorAvatar !== cleanAvatar) {
         eventPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
       }
     });
     await Promise.all(eventPromises);
 
-    // 2. Update posts
+    // 2. Update posts authored by this specific user ID
     const postsSnap = await getDocs(collection(db, 'posts'));
     const postPromises: Promise<any>[] = [];
     postsSnap.forEach((d) => {
       const p = d.data();
-      const matchesUser = (userId && p.authorId === userId) ||
-        (authorName && p.authorName && p.authorName.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
-        (authorSlug && p.authorName && slugify(p.authorName) === authorSlug);
+      const matchesUser = p.authorId === userId;
       if (matchesUser && p.authorAvatar !== cleanAvatar) {
         postPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
       }
     });
     await Promise.all(postPromises);
 
-    // 3. Update ads
+    // 3. Update ads authored by this specific user ID
     const adsSnap = await getDocs(collection(db, 'ads'));
     const adPromises: Promise<any>[] = [];
     adsSnap.forEach((d) => {
       const a = d.data();
-      const matchesUser = (userId && a.authorId === userId) ||
-        (authorName && a.authorName && a.authorName.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
-        (authorSlug && a.authorName && slugify(a.authorName) === authorSlug);
+      const matchesUser = a.authorId === userId;
       if (matchesUser && a.authorAvatar !== cleanAvatar) {
         adPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
       }
     });
     await Promise.all(adPromises);
-
-    // 4. Update matching users (e.g. duplicate accounts for same organization)
-    if (cleanAvatar) {
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const userPromises: Promise<any>[] = [];
-      usersSnap.forEach((d) => {
-        const u = d.data();
-        const matchesUser = (userId && d.id === userId) ||
-          (authorName && u.name && u.name.trim().toLowerCase() === authorName.trim().toLowerCase()) ||
-          (authorSlug && u.name && slugify(u.name) === authorSlug);
-        if (matchesUser && u.avatar !== cleanAvatar) {
-          userPromises.push(updateDoc(d.ref, { avatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
-        }
-      });
-      await Promise.all(userPromises);
-    }
   } catch (err) {
     console.warn('[syncUserAvatarToAuthorContent] Failed to propagate avatar:', err);
   }
@@ -742,7 +791,7 @@ export async function syncUserAvatarToAuthorContent(userId: string, newAvatar: s
 // ---------------- POSTS OPERATIONS ----------------
 
 export const KNOWN_ADMIN_IDS = new Set(['admin', 'u1', 'superadmin', 'AABsRoeGCgaddFMh9S2cZqN9CaG3']);
-export const KNOWN_ADMIN_NAMES = new Set(['superadmin', 'zoran krstin', 'uredništvo', 'administrator', 'admin']);
+export const KNOWN_ADMIN_NAMES = new Set(['superadmin', 'uredništvo', 'administrator', 'admin']);
 
 export function isUserAdminIdentity(id?: string, name?: string, role?: string): boolean {
   if (id && (KNOWN_ADMIN_IDS.has(id) || (auth.currentUser && id === auth.currentUser.uid))) return true;
@@ -1888,6 +1937,10 @@ export interface FirestoreComment {
   content: string;
   createdAt: string;
   updatedAt?: string;
+  upvotes?: number;
+  downvotes?: number;
+  score?: number;
+  voters?: Record<string, 'up' | 'down'>;
 }
 
 /**
@@ -1912,7 +1965,7 @@ export function subscribeToPostComments(
         id: docSnap.id,
         ...(docSnap.data() as Omit<FirestoreComment, 'id'>)
       }));
-      // Sort chronologically ascending
+      // Sort chronologically ascending by default
       comments.sort((a, b) => {
         const timeA = new Date(a.createdAt).getTime() || 0;
         const timeB = new Date(b.createdAt).getTime() || 0;
@@ -1957,6 +2010,10 @@ export async function addCommentToFirestore(
       content: commentData.content.trim(),
       createdAt: now,
       updatedAt: now,
+      upvotes: 0,
+      downvotes: 0,
+      score: 0,
+      voters: {},
     };
     await setDoc(commentRef, cleanDataForFirestore(newComment));
 
@@ -1979,6 +2036,59 @@ export async function addCommentToFirestore(
     return commentRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+}
+
+/**
+ * Votes on an individual comment (up-vote or down-vote).
+ * If user already voted this type, toggles it off.
+ * If user voted opposite type, switches it.
+ */
+export async function voteCommentInFirestore(
+  commentId: string,
+  userId: string,
+  voteType: 'up' | 'down'
+): Promise<{ upvotes: number; downvotes: number; score: number; userVote: 'up' | 'down' | null }> {
+  const path = `comments/${commentId}`;
+  try {
+    const commentRef = doc(db, 'comments', commentId);
+    const snap = await getDoc(commentRef);
+    if (!snap.exists()) {
+      return { upvotes: 0, downvotes: 0, score: 0, userVote: null };
+    }
+    const data = snap.data();
+    const voters: Record<string, 'up' | 'down'> = { ...(data.voters || {}) };
+    const currentVote = voters[userId] || null;
+
+    let nextUserVote: 'up' | 'down' | null = null;
+    if (currentVote === voteType) {
+      delete voters[userId];
+      nextUserVote = null;
+    } else {
+      voters[userId] = voteType;
+      nextUserVote = voteType;
+    }
+
+    let upvotes = 0;
+    let downvotes = 0;
+    Object.values(voters).forEach((v) => {
+      if (v === 'up') upvotes++;
+      else if (v === 'down') downvotes++;
+    });
+    const score = upvotes - downvotes;
+
+    await updateDoc(commentRef, {
+      voters,
+      upvotes,
+      downvotes,
+      score,
+      updatedAt: new Date().toISOString()
+    });
+
+    return { upvotes, downvotes, score, userVote: nextUserVote };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
     throw error;
   }
 }

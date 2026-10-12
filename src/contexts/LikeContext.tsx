@@ -8,6 +8,7 @@ import {
   subscribeToUserReactions, 
   toggleItemReactionInFirestore 
 } from '../services/firestoreService';
+import { sendTargetAuthorNotification } from '../services/fcmService';
 import type { PostDetailType } from '../types';
 
 export type LikeTargetType = PostDetailType | 'news' | 'ad' | 'event' | 'blog' | 'deal' | 'post';
@@ -23,6 +24,7 @@ interface LikeContextType {
       targetType?: LikeTargetType;
       initialCount?: number | string;
       title?: string;
+      authorId?: string;
     }
   ) => Promise<{ success: boolean; liked: boolean; newCount: number }>;
 
@@ -40,6 +42,7 @@ interface LikeContextType {
       targetType?: LikeTargetType;
       initialCounts?: { likes?: number; loves?: number; dislikes?: number };
       title?: string;
+      authorId?: string;
     }
   ) => Promise<{ 
     success: boolean; 
@@ -227,6 +230,7 @@ export function LikeProvider({ children }: { children: ReactNode }) {
       targetType?: LikeTargetType;
       initialCount?: number | string;
       title?: string;
+      authorId?: string;
     }
   ): Promise<{ success: boolean; liked: boolean; newCount: number }> => {
     const activeUid = currentUserId;
@@ -248,6 +252,7 @@ export function LikeProvider({ children }: { children: ReactNode }) {
       targetType: options?.targetType,
       initialCounts: { likes: parseCount(options?.initialCount) },
       title: options?.title,
+      authorId: options?.authorId,
     });
 
     return {
@@ -264,6 +269,7 @@ export function LikeProvider({ children }: { children: ReactNode }) {
       targetType?: LikeTargetType;
       initialCounts?: { likes?: number; loves?: number; dislikes?: number };
       title?: string;
+      authorId?: string;
     }
   ): Promise<{ 
     success: boolean; 
@@ -334,6 +340,20 @@ export function LikeProvider({ children }: { children: ReactNode }) {
     try {
       const targetType = (options?.targetType || 'post') as any;
       await toggleItemReactionInFirestore(targetType, id, activeUid, nextReaction, previousReaction);
+
+      // Trigger Firebase push notification to author if adding a positive reaction (like or love)
+      if ((nextReaction === 'like' || nextReaction === 'love') && activeUid) {
+        sendTargetAuthorNotification({
+          targetAuthorId: options?.authorId,
+          senderId: activeUid,
+          senderName: currentUser?.name || 'Uporabnik Portalko',
+          senderAvatar: currentUser?.avatar || '',
+          type: 'like',
+          postTitle: options?.title,
+          targetId: id,
+          targetType: (options?.targetType || 'post') as any,
+        }).catch((e) => console.warn('[LikeContext FCM error]:', e));
+      }
     } catch (err) {
       console.error('Error persisting reaction to Firestore:', err);
     }

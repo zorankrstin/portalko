@@ -80,47 +80,34 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     const authorSlug = slugify(targetAuthor.name);
     const cleanAuthorSlug = authorSlug.replace(/-/g, '');
 
-    // 1. If active currentUser matches target author, use currentUser (contains the freshest uploaded avatar)
-    if (currentUser) {
-      if (targetAuthor.id && currentUser.id === targetAuthor.id) return currentUser;
-      if (currentUser.name) {
-        const cLower = currentUser.name.trim().toLowerCase();
-        if (cLower === authorNameLower || slugify(currentUser.name) === authorSlug || slugify(currentUser.name).replace(/-/g, '') === cleanAuthorSlug) {
-          return currentUser;
-        }
-      }
-      if (currentUser.username) {
-        const cUserClean = currentUser.username.replace('@', '').trim().toLowerCase();
-        if (cUserClean === authorNameLower || slugify(cUserClean) === authorSlug) {
-          return currentUser;
-        }
-      }
+    // 1. If targetAuthor has an id, find the exact matching user
+    if (targetAuthor.id) {
+      if (currentUser && currentUser.id === targetAuthor.id) return currentUser;
+      const exactUser = users.find(u => u.id === targetAuthor.id);
+      if (exactUser) return exactUser;
     }
 
-    // 2. Collect all matching user records and prioritize user with custom uploaded avatar
+    // 2. If targetAuthor has an email, find by exact email
+    if ((targetAuthor as any).email) {
+      const emailLower = (targetAuthor as any).email.toLowerCase().trim();
+      if (currentUser && currentUser.email?.toLowerCase().trim() === emailLower) return currentUser;
+      const exactByEmail = users.find(u => u.email && u.email.toLowerCase().trim() === emailLower);
+      if (exactByEmail) return exactByEmail;
+    }
+
+    // 3. Fallback to name search only when no id was provided
     const matches = users.filter(u => 
-      (targetAuthor.id && u.id === targetAuthor.id) ||
       (u.name && u.name.trim().toLowerCase() === authorNameLower) ||
-      (u.name && slugify(u.name) === authorSlug) ||
-      (u.name && slugify(u.name).replace(/-/g, '') === cleanAuthorSlug) ||
-      (u.username && slugify(u.username.replace('@', '')) === authorSlug) ||
       (authorNameLower.includes('portalko') && u.name.toLowerCase().includes('portalko'))
     );
 
-    if (matches.length > 0) {
-      matches.sort((a, b) => {
-        // If active logged-in currentUser is among matches, prioritize their account first
-        if (currentUser) {
-          if (a.id === currentUser.id && b.id !== currentUser.id) return -1;
-          if (b.id === currentUser.id && a.id !== currentUser.id) return 1;
-        }
-        const aScore = isCustomUploadedAvatar(a.avatar) ? 3 : (a.avatar && isUserUploadedAvatar(a.avatar) ? 2 : (a.avatar ? 1 : 0));
-        const bScore = isCustomUploadedAvatar(b.avatar) ? 3 : (b.avatar && isUserUploadedAvatar(b.avatar) ? 2 : (b.avatar ? 1 : 0));
-        if (bScore !== aScore) return bScore - aScore;
-        const aLen = a.avatar ? a.avatar.length : 0;
-        const bLen = b.avatar ? b.avatar.length : 0;
-        return bLen - aLen;
-      });
+    if (matches.length === 1) {
+      return matches[0];
+    } else if (matches.length > 1) {
+      // If multiple accounts share this name, do not arbitrarily merge avatars; pick the matching ID if any, or first created
+      if (currentUser && matches.some(m => m.id === currentUser.id && targetAuthor.id === currentUser.id)) {
+        return currentUser;
+      }
       return matches[0];
     }
 

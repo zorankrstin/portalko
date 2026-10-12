@@ -410,6 +410,7 @@ export const DealPost: React.FC<DealPostProps> = ({
                 variant="pill"
                 iconType="thumbs-up"
                 itemTitle={cleanTitle}
+                authorId={authorId}
                 className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
               />
               <a 

@@ -1,24 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, LogIn, UserPlus, Shield, Check, AlertCircle, UserCheck, User, Eye, EyeOff, Sparkles, Mail, Send, RefreshCw, ExternalLink, ArrowLeft, Copy } from 'lucide-react';
+import { X, LogIn, UserPlus, Shield, Check, AlertCircle, UserCheck, User, Eye, EyeOff, Sparkles, Mail, Send, RefreshCw, ExternalLink, ArrowLeft, Copy, KeyRound, Loader2 } from 'lucide-react';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { GoogleAuthButton } from './GoogleAuthButton';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialMode?: 'login' | 'register';
+  initialMode?: 'login' | 'register' | 'forgot-password';
 }
 
 export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModalProps) {
-  const { loginWithCredentials, register, resendVerificationEmail, confirmEmailWithToken, users } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+  const { loginWithCredentials, register, resendVerificationEmail, confirmEmailWithToken, requestPasswordReset, users } = useAuth();
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot-password'>(initialMode);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [unverifiedLoginEmail, setUnverifiedLoginEmail] = useState('');
+
+  // Forgot password form state
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState<{
+    email: string;
+    resetUrl?: string;
+    token?: string;
+    emailSent?: boolean;
+    smtpBlocked?: boolean;
+    userName?: string;
+  } | null>(null);
+  const [forgotCopiedLink, setForgotCopiedLink] = useState(false);
 
   // Registration form state
   const [regName, setRegName] = useState('');
@@ -51,6 +64,11 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
       setVerificationPending(null);
       setUnverifiedLoginEmail('');
       setResendFeedback('');
+      setForgotSuccess(null);
+      setForgotCopiedLink(false);
+      if (loginEmail) {
+        setForgotEmail(loginEmail);
+      }
     }
   }, [isOpen, initialMode]);
 
@@ -186,6 +204,37 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
     }
   };
 
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+    setForgotSuccess(null);
+    setForgotSubmitting(true);
+
+    try {
+      const res = await requestPasswordReset(forgotEmail);
+      if (!res.success) {
+        setErrorMsg(res.error || 'Zahtevek za ponastavitev gesla ni uspel. Preverite vneseni e-poštni naslov.');
+        setForgotSubmitting(false);
+        return;
+      }
+
+      setForgotSuccess({
+        email: forgotEmail.trim().toLowerCase(),
+        resetUrl: res.resetUrl,
+        token: res.token,
+        emailSent: res.emailSent,
+        smtpBlocked: res.smtpBlocked,
+        userName: res.user?.name,
+      });
+      setSuccessMsg('Povezava za ponastavitev gesla je pripravljena!');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Prišlo je do napake pri zahtevku za ponastavitev gesla.');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
   return createPortal(
     <div 
       className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" 
@@ -204,7 +253,11 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                 <span className="text-primary font-black">Portalko</span>
                 <span className="text-outline font-normal text-xs">•</span>
                 <span className="text-xs font-semibold text-on-surface-variant">
-                  {mode === 'login' ? 'Prijava v račun' : 'Registracija novega računa'}
+                  {mode === 'login'
+                    ? 'Prijava v račun'
+                    : mode === 'forgot-password'
+                    ? 'Ponastavitev pozabljenega gesla'
+                    : 'Registracija novega računa'}
                 </span>
               </h2>
             </div>
@@ -222,7 +275,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
         <div className="shrink-0 flex border-b border-surface-container-low bg-surface-container-lowest">
           <button
             type="button"
-            onClick={() => { setMode('login'); setErrorMsg(''); setSuccessMsg(''); }}
+            onClick={() => { setMode('login'); setErrorMsg(''); setSuccessMsg(''); setForgotSuccess(null); }}
             className={`flex-1 py-3 text-center font-label-md text-sm font-semibold border-b-2 transition-all flex items-center justify-center gap-2 ${
               mode === 'login'
                 ? 'border-primary text-primary bg-primary/5'
@@ -234,7 +287,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
           </button>
           <button
             type="button"
-            onClick={() => { setMode('register'); setErrorMsg(''); setSuccessMsg(''); }}
+            onClick={() => { setMode('register'); setErrorMsg(''); setSuccessMsg(''); setForgotSuccess(null); }}
             className={`flex-1 py-3 text-center font-label-md text-sm font-semibold border-b-2 transition-all flex items-center justify-center gap-2 ${
               mode === 'register'
                 ? 'border-primary text-primary bg-primary/5'
@@ -488,6 +541,21 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                     <label className="font-label-md text-xs font-semibold text-on-surface">
                       Geslo
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot-password');
+                        setErrorMsg('');
+                        setSuccessMsg('');
+                        setForgotSuccess(null);
+                        if (loginEmail) {
+                          setForgotEmail(loginEmail);
+                        }
+                      }}
+                      className="text-[11px] font-semibold text-primary hover:text-primary-container hover:underline transition-colors cursor-pointer"
+                    >
+                      Ste pozabili geslo?
+                    </button>
                   </div>
                   <div className="relative">
                     <input
@@ -523,13 +591,188 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                   Še nimate računa?{' '}
                   <button
                     type="button"
-                    onClick={() => { setMode('register'); setErrorMsg(''); setSuccessMsg(''); setVerificationPending(null); }}
+                    onClick={() => { setMode('register'); setErrorMsg(''); setSuccessMsg(''); setVerificationPending(null); setForgotSuccess(null); }}
                     className="text-primary font-bold hover:underline"
                   >
                     Registrirajte se tukaj
                   </button>
                 </p>
               </div>
+            </div>
+          ) : mode === 'forgot-password' ? (
+            <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+              {forgotSuccess ? (
+                <div className="flex flex-col items-center text-center py-2 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-4 shadow-sm relative">
+                    <KeyRound className="w-8 h-8 text-primary" />
+                    <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-secondary text-on-secondary flex items-center justify-center text-[10px] font-bold shadow-xs">
+                      ✓
+                    </span>
+                  </div>
+
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-3 border border-primary/20">
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Zahtevek za ponastavitev oddan</span>
+                  </div>
+
+                  <h3 className="font-headline-sm text-lg font-bold text-on-surface mb-2">
+                    Preverite vaš e-poštni predal
+                  </h3>
+
+                  <p className="font-body-md text-sm text-on-surface-variant max-w-sm mb-4 leading-relaxed">
+                    Navodila za ponastavitev gesla so bila poslana na e-poštni naslov <strong className="text-on-surface font-semibold">{forgotSuccess.email}</strong> iz naslova <strong className="text-primary font-semibold">noreply@portalko.net</strong>.
+                  </p>
+
+                  {/* Step by step instructions */}
+                  <div className="w-full text-left bg-surface-container-low rounded-xl p-3.5 border border-surface-container mb-4 text-xs text-on-surface-variant space-y-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
+                      <span>Odprite vaš e-poštni predal (preverite tudi mapo <em>Spam</em> / vsiljena pošta).</span>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
+                      <span>Poiščite sporočilo z zadevo <strong>»Ponastavitev gesla - Portalko.net«</strong>.</span>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
+                      <span>Kliknite gumb <strong>»Ponastavi moje geslo«</strong> in vnesite novo geslo. Povezava velja 24 ur.</span>
+                    </div>
+                  </div>
+
+                  {/* Immediate direct reset link helper */}
+                  {forgotSuccess.resetUrl && (
+                    <div className="w-full p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-left space-y-2.5 mb-2">
+                      <p className="text-xs font-semibold text-on-surface flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-primary shrink-0" />
+                        <span>Takojšnja ponastavitev gesla:</span>
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2 pt-0.5">
+                        <a
+                          href={forgotSuccess.resetUrl}
+                          className="flex-1 py-2.5 px-3 rounded-lg bg-primary hover:bg-primary-container text-on-primary text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm text-center"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Odpri obrazec za novo geslo</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (forgotSuccess.resetUrl) {
+                              navigator.clipboard.writeText(forgotSuccess.resetUrl);
+                              setForgotCopiedLink(true);
+                              setTimeout(() => setForgotCopiedLink(false), 2500);
+                            }
+                          }}
+                          className="py-2.5 px-3 rounded-lg border border-surface-container hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          title="Kopiraj povezavo"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-outline" />
+                          <span>{forgotCopiedLink ? 'Kopirano!' : 'Kopiraj povezavo'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="w-full flex flex-col gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotSuccess(null);
+                        setMode('login');
+                        setLoginEmail(forgotSuccess.email);
+                        setErrorMsg('');
+                        setSuccessMsg('');
+                      }}
+                      className="w-full py-2.5 rounded-xl border border-surface-container hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-2"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Nazaj na prijavo</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-left space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium mb-1">
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Pozabljeno geslo</span>
+                    </div>
+                    <h3 className="font-headline-sm text-base font-bold text-on-surface">
+                      Ste pozabili svoje geslo?
+                    </h3>
+                    <p className="font-body-md text-xs text-on-surface-variant leading-relaxed">
+                      Vnesite e-poštni naslov, s katerim ste registrirani ali verificirani na portalu Portalko.net. Poslali vam bomo varno povezavo za izbiro novega gesla.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleForgotPasswordSubmit} className="flex flex-col gap-3.5">
+                    <div className="flex flex-col gap-1">
+                      <label className="font-label-md text-xs font-semibold text-on-surface">
+                        Vaš registrirani e-poštni naslov
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="email"
+                          required
+                          placeholder="npr. janez.novak@example.com"
+                          value={forgotEmail}
+                          onChange={e => setForgotEmail(e.target.value)}
+                          className="w-full px-3.5 py-2.5 pl-10 rounded-xl bg-surface-container-low border border-surface-container focus:border-primary focus:bg-surface-container-lowest outline-none text-sm text-on-surface transition-all"
+                        />
+                        <Mail className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      </div>
+                      <p className="text-[11px] text-outline mt-0.5">
+                        Zahtevek deluje za vse registrirane in verificirane uporabnike portala.
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={forgotSubmitting}
+                      className="w-full mt-1 py-3 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+                    >
+                      {forgotSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Pošiljanje zahteve...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          <span>Pošlji povezavo za ponastavitev</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+
+                  <div className="pt-2 text-center border-t border-surface-container-low flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('login');
+                        setErrorMsg('');
+                        setSuccessMsg('');
+                      }}
+                      className="text-xs font-semibold text-primary hover:underline flex items-center gap-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Nazaj na prijavo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('register');
+                        setErrorMsg('');
+                        setSuccessMsg('');
+                      }}
+                      className="text-xs text-on-surface-variant hover:text-on-surface"
+                    >
+                      Ustvarite nov račun
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-4">

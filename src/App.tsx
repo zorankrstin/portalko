@@ -22,6 +22,7 @@ import { SavedView } from './components/SavedView';
 import { BackToTopButton } from './components/BackToTopButton';
 import { PostDetailPage } from './components/PostDetailPage';
 import { Breadcrumbs } from './components/Breadcrumbs';
+import { ResetPasswordModal } from './components/ResetPasswordModal';
 import type { ViewMode, PostDetailTarget, PostDetailType, AuthorProfileTarget } from './types';
 import { useAuth } from './contexts/AuthContext';
 import { scrollToPageTop, scrollToSidebarsTop } from './utils/scrollUtils';
@@ -51,6 +52,15 @@ export default function App() {
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+  const [resetPasswordState, setResetPasswordState] = useState<{
+    isOpen: boolean;
+    token: string;
+    email: string;
+  }>({
+    isOpen: false,
+    token: '',
+    email: '',
+  });
 
   const usersRef = useRef(users);
   useEffect(() => {
@@ -125,6 +135,58 @@ export default function App() {
       });
     }
   }, [confirmEmailWithToken]);
+
+  // Check for password reset parameter on load (?reset-password=..., ?resetToken=..., etc.)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    let resetToken = urlParams.get('reset-password') || urlParams.get('resetToken') || urlParams.get('reset_token') || urlParams.get('reset');
+    let emailParam = urlParams.get('email') || '';
+
+    // Handle spa_route fallback parameter from static host 404.html
+    const spaRoute = urlParams.get('spa_route');
+    if (spaRoute) {
+      try {
+        const decodedSpa = decodeURIComponent(spaRoute);
+        const spaUrl = new URL(decodedSpa, window.location.origin);
+        if (!resetToken) {
+          resetToken = spaUrl.searchParams.get('reset-password') || spaUrl.searchParams.get('resetToken') || spaUrl.searchParams.get('reset_token') || spaUrl.searchParams.get('reset');
+        }
+        if (!emailParam) {
+          emailParam = spaUrl.searchParams.get('email') || '';
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Handle hash-based reset tokens e.g. #reset-password=...
+    if (!resetToken && window.location.hash) {
+      const hashClean = window.location.hash.replace(/^#\/?/, '');
+      const hashParams = new URLSearchParams(hashClean.includes('?') ? hashClean.split('?')[1] : hashClean);
+      resetToken = hashParams.get('reset-password') || hashParams.get('resetToken') || hashParams.get('reset_token') || hashParams.get('reset');
+      if (!emailParam) emailParam = hashParams.get('email') || '';
+    }
+
+    if (resetToken) {
+      setResetPasswordState({
+        isOpen: true,
+        token: resetToken,
+        email: emailParam,
+      });
+
+      // Clean up url parameters without full page reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('reset-password');
+      newUrl.searchParams.delete('resetToken');
+      newUrl.searchParams.delete('reset_token');
+      newUrl.searchParams.delete('reset');
+      newUrl.searchParams.delete('email');
+      newUrl.searchParams.delete('spa_route');
+      const cleanPath = newUrl.pathname + (newUrl.searchParams.toString() ? `?${newUrl.searchParams.toString()}` : '') + newUrl.hash;
+      window.history.replaceState(null, '', cleanPath || '/');
+    }
+  }, []);
 
   // Disable browser automatic scroll restoration to ensure reliable top-scroll and init analytics tracker
   useEffect(() => {
@@ -787,6 +849,21 @@ export default function App() {
       <BottomNav currentView={activeNavView} onViewChange={handleViewChange} />
       <BackToTopButton />
       <RlsModal isOpen={isRlsModalOpen} onClose={() => setIsRlsModalOpen(false)} />
+      {resetPasswordState.isOpen && (
+        <ResetPasswordModal
+          isOpen={resetPasswordState.isOpen}
+          token={resetPasswordState.token}
+          email={resetPasswordState.email}
+          onClose={() => setResetPasswordState({ isOpen: false, token: '', email: '' })}
+          onSuccess={() => {
+            setResetPasswordState({ isOpen: false, token: '', email: '' });
+            setVerificationBanner({
+              type: 'success',
+              message: '🎉 Vaše geslo je bilo uspešno posodobljeno! Zdaj se lahko prijavite z novim geslom.',
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,13 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { PostDetailType } from '../types';
+import { useAuth } from './AuthContext';
+import {
+  requestFcmToken,
+  showBrowserNotification,
+  subscribeToUserNotifications,
+  listenForForegroundFcm,
+  isFcmSupported,
+} from '../services/fcmService';
 
 export type NotificationType = 'comment' | 'interaction' | 'system' | 'like' | 'deal' | 'event' | 'ad';
 
@@ -27,6 +35,10 @@ interface NotificationContextType {
   markAllAsRead: () => void;
   clearNotification: (id: string) => void;
   clearAll: () => void;
+  // FCM Push Notifications properties
+  isPushSupported: boolean;
+  pushPermission: NotificationPermission;
+  enablePushNotifications: () => Promise<boolean>;
 }
 
 const INITIAL_NOTIFICATIONS: AppNotification[] = [
@@ -81,6 +93,7 @@ const LOCAL_STORAGE_KEY = 'portalko_notifications_v1';
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+  const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -93,6 +106,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return INITIAL_NOTIFICATIONS;
   });
 
+  const [isPushSupported, setIsPushSupported] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'default';
+  });
+
+  // Check browser push support on mount
+  useEffect(() => {
+    isFcmSupported().then(setIsPushSupported);
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushPermission(Notification.permission);
+    }
+  }, []);
+
+  // Save in localStorage on change
   useEffect(() => {
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(notifications));
@@ -101,23 +131,88 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, [notifications]);
 
+  // Request token and register in Firestore if permission already granted or when user logs in
+  useEffect(() => {
+    if (currentUser?.id && pushPermission === 'granted') {
+      requestFcmToken(currentUser.id).catch(() => {});
+    }
+  }, [currentUser?.id, pushPermission]);
+
+  // Real-time Firestore subscription for notifications directed to currentUser
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const unsubscribe = subscribeToUserNotifications(currentUser.id, (newNotif) => {
+      // Add incoming real-time notification to local list if not already present
+      setNotifications(prev => {
+        if (prev.some(n => n.id === newNotif.id)) return prev;
+        const mapped: AppNotification = {
+          id: newNotif.id || `notif-${Date.now()}`,
+          type: newNotif.type || 'interaction',
+          title: newNotif.title || 'Novo obvestilo',
+          description: newNotif.body || 'Imate novo interakcijo.',
+          time: 'Pravkar',
+          timestamp: newNotif.timestamp || Date.now(),
+          read: false,
+          target: newNotif.targetId ? {
+            type: newNotif.targetType || 'post',
+            id: newNotif.targetId,
+          } : undefined,
+          authorName: newNotif.senderName,
+          authorAvatar: newNotif.senderAvatar,
+        };
+        return [mapped, ...prev];
+      });
+      playNotificationSound();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUser?.id]);
+
+  // Listen for FCM foreground messages
+  useEffect(() => {
+    const unsubscribe = listenForForegroundFcm((payload) => {
+      const title = payload.notification?.title || payload.data?.title || 'Novo obvestilo';
+      const body = payload.notification?.body || payload.data?.body || '';
+      addNotification({
+        type: (payload.data?.type as any) || 'interaction',
+        title,
+        description: body,
+        target: payload.data?.targetId ? {
+          type: payload.data?.targetType || 'post',
+          id: payload.data?.targetId,
+        } : undefined,
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const playNotificationSound = () => {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
 
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime); // Low volume (subtle)
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.1);
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime); // Low volume (subtle)
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.1);
 
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.1);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.1);
+    } catch {
+      // Audio autoplay restrictions
+    }
   };
 
   const addNotification = (notif: Omit<AppNotification, 'id' | 'timestamp' | 'read' | 'time'>) => {
@@ -130,6 +225,31 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
     setNotifications(prev => [newNotif, ...prev]);
     playNotificationSound();
+
+    // Trigger browser native push if granted
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      showBrowserNotification(newNotif.title, {
+        body: newNotif.description,
+        data: newNotif.target,
+      });
+    }
+  };
+
+  const enablePushNotifications = async (): Promise<boolean> => {
+    try {
+      const res = await requestFcmToken(currentUser?.id);
+      setPushPermission(res.permission);
+      if (res.permission === 'granted') {
+        showBrowserNotification('🎉 Obvestila Portalko.net so vklopljena!', {
+          body: 'Prejemali boste takojšnja obvestila v brskalniku ob novih komentarjih in všečkih.',
+        });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.warn('enablePushNotifications failed:', e);
+      return false;
+    }
   };
 
   const markAsRead = (id: string) => {
@@ -158,6 +278,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         markAllAsRead,
         clearNotification,
         clearAll,
+        isPushSupported,
+        pushPermission,
+        enablePushNotifications,
       }}
     >
       {children}

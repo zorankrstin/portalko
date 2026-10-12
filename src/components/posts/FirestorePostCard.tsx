@@ -537,6 +537,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             initialLikesCount={post.likesCount || 0}
             variant="card-action"
             itemTitle={post.title}
+            authorId={post.authorId}
           />
 
           <a 

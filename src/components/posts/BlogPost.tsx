@@ -320,6 +320,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             initialLikesCount={likesCount}
             variant="card-action"
             itemTitle={title}
+            authorId={authorId}
           />
           <button 
             onClick={handleOpenDetail}

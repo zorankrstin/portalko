@@ -59,6 +59,16 @@ service cloud.firestore {
       match /reactions/{reactionId} {
         allow read, write: if true;
       }
+
+      // User FCM device tokens
+      match /fcmTokens/{tokenId} {
+        allow read, write: if true;
+      }
+
+      // User real-time notifications
+      match /notifications/{notifId} {
+        allow read, write: if true;
+      }
     }
 
     // Posts Collection

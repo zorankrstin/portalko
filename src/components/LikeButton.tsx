@@ -14,6 +14,7 @@ export interface LikeButtonProps {
   countClassName?: string;
   iconClassName?: string;
   itemTitle?: string;
+  authorId?: string;
   variant?: 'minimal' | 'pill' | 'card-action';
   iconType?: 'heart' | 'thumbs-up';
   onLikeChanged?: (isLiked: boolean, newCount: number) => void;
@@ -33,6 +34,7 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
   countClassName,
   iconClassName,
   itemTitle,
+  authorId,
   variant = 'minimal',
   iconType,
   onLikeChanged,
@@ -62,6 +64,7 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
         targetType,
         initialCount: initialLikesCount,
         title: itemTitle,
+        authorId,
       });
 
       if (res.success && onLikeChanged) {

@@ -5,6 +5,7 @@ import {
   Trash2, 
   CornerDownRight, 
   ThumbsUp, 
+  ThumbsDown,
   Sparkles, 
   Smile, 
   X, 
@@ -16,14 +17,17 @@ import {
   AlertCircle,
   LogIn,
   SlidersHorizontal,
-  ArrowUpDown
+  ArrowUpDown,
+  Award,
+  TrendingUp
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   FirestoreComment, 
   subscribeToPostComments, 
   addCommentToFirestore, 
-  deleteCommentFromFirestore 
+  deleteCommentFromFirestore,
+  voteCommentInFirestore
 } from '../../services/firestoreService';
 import { ReportButton } from '../ReportButton';
 import { LoginModal } from '../LoginModal';
@@ -34,11 +38,21 @@ import { formatSlovenianDate, formatRelativeTime } from '../../utils/dateUtils';
 import { scrollToPageTop } from '../../utils/scrollUtils';
 import { VerifiedBadge } from './VerifiedBadge';
 import { isUserVerified } from '../../utils/userVerificationUtils';
+import { sendTargetAuthorNotification } from '../../services/fcmService';
+
+export type CommentVoteType = 'up' | 'down';
+
+export interface LocalCommentVoteMap {
+  [commentId: string]: CommentVoteType;
+}
 
 export interface CommentSectionProps {
   targetId: string;
   targetType: PostDetailType;
   targetTitle: string;
+  targetAuthorId?: string;
+  allowVoting?: boolean;
+  onVoteComment?: (commentId: string, voteType: CommentVoteType) => void;
   onAuthorClick?: (author: AuthorProfileTarget) => void;
   onViewChange?: (view: ViewMode) => void;
   className?: string;
@@ -50,10 +64,26 @@ export interface LocalCommentLikeMap {
 
 const QUICK_EMOJIS = ['👍', '❤️', '👏', '🔥', '🎉', '💡', '👌', '🙌'];
 
+const getGuestVoterId = (): string => {
+  try {
+    let gid = localStorage.getItem('portalko_guest_voter_id');
+    if (!gid) {
+      gid = 'guest_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('portalko_guest_voter_id', gid);
+    }
+    return gid;
+  } catch {
+    return 'guest_anon';
+  }
+};
+
 export const CommentSection: React.FC<CommentSectionProps> = ({
   targetId,
   targetType,
   targetTitle,
+  targetAuthorId,
+  allowVoting = true,
+  onVoteComment,
   onAuthorClick,
   onViewChange,
   className = '',
@@ -66,8 +96,16 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const [replyTo, setReplyTo] = useState<FirestoreComment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [sortOrder, setSortOrder] = useState<'top' | 'newest' | 'oldest'>('top');
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [commentVotes, setCommentVotes] = useState<LocalCommentVoteMap>(() => {
+    try {
+      const saved = localStorage.getItem('portalko_comment_votes');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [likedComments, setLikedComments] = useState<LocalCommentLikeMap>(() => {
     try {
       const saved = localStorage.getItem('portalko_liked_comments');
@@ -99,6 +137,10 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
             authorRole: p.authorRole,
             content: p.content,
             createdAt: p.createdAt || p.date || new Date().toISOString(),
+            upvotes: p.upvotes || 0,
+            downvotes: p.downvotes || 0,
+            score: p.score || 0,
+            voters: p.voters || {},
           }));
         }
       } catch {
@@ -132,7 +174,111 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     };
   }, [targetId, targetType]);
 
-  // Handle comment like
+  // Handle comment upvote or downvote
+  const handleVoteComment = async (commentId: string, voteType: CommentVoteType) => {
+    const voterId = currentUser?.id || getGuestVoterId();
+    const currentVote = commentVotes[commentId] || null;
+    const nextVote: CommentVoteType | null = currentVote === voteType ? null : voteType;
+
+    // 1. Update active user votes state & localStorage
+    setCommentVotes(prev => {
+      const next = { ...prev };
+      if (nextVote) {
+        next[commentId] = nextVote;
+      } else {
+        delete next[commentId];
+      }
+      try {
+        localStorage.setItem('portalko_comment_votes', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+
+    // 2. Optimistically update comment score in state
+    setComments(prev => prev.map(c => {
+      if (c.id !== commentId) return c;
+      let up = c.upvotes || 0;
+      let down = c.downvotes || 0;
+      const voters = { ...(c.voters || {}) };
+
+      // Revert previous vote if any
+      if (currentVote === 'up') up = Math.max(0, up - 1);
+      if (currentVote === 'down') down = Math.max(0, down - 1);
+
+      // Apply new vote
+      if (nextVote === 'up') {
+        up++;
+        voters[voterId] = 'up';
+      } else if (nextVote === 'down') {
+        down++;
+        voters[voterId] = 'down';
+      } else {
+        delete voters[voterId];
+      }
+
+      const score = up - down;
+      return {
+        ...c,
+        upvotes: up,
+        downvotes: down,
+        score,
+        voters,
+      };
+    }));
+
+    // 3. Keep localStorage fallback in sync
+    try {
+      const storageKey = `portalko_comments_${targetType}_${targetId}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const updated = parsed.map((item: any) => {
+          if (item.id === commentId) {
+            let up = item.upvotes || 0;
+            let down = item.downvotes || 0;
+            if (currentVote === 'up') up = Math.max(0, up - 1);
+            if (currentVote === 'down') down = Math.max(0, down - 1);
+            if (nextVote === 'up') up++;
+            if (nextVote === 'down') down++;
+            return {
+              ...item,
+              upvotes: up,
+              downvotes: down,
+              score: up - down,
+            };
+          }
+          return item;
+        });
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      }
+    } catch {
+      // ignore
+    }
+
+    // 4. Show user feedback toast
+    if (nextVote === 'up') {
+      setFeedbackMsg({ text: 'Glas ZA oddan (+1). Hvala za izpostavitev koristnega prispevka!', type: 'success' });
+    } else if (nextVote === 'down') {
+      setFeedbackMsg({ text: 'Glas PROTI zabeležen (-1).', type: 'success' });
+    } else {
+      setFeedbackMsg({ text: 'Vaš glas je bil preklican.', type: 'success' });
+    }
+    setTimeout(() => setFeedbackMsg(null), 2500);
+
+    // 5. Fire optional callback
+    onVoteComment?.(commentId, voteType);
+
+    // 6. Persist to Firestore
+    try {
+      await voteCommentInFirestore(commentId, voterId, voteType);
+    } catch (err) {
+      console.warn('Firestore comment vote sync error:', err);
+    }
+  };
+
+  // Handle comment simple like toggle fallback
   const handleToggleLikeComment = (commentId: string) => {
     setLikedComments(prev => {
       const isLiked = Boolean(prev[commentId]);
@@ -202,6 +348,20 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       setReplyTo(null);
       setFeedbackMsg({ text: 'Komentar je bil uspešno objavljen!', type: 'success' });
       setTimeout(() => setFeedbackMsg(null), 3500);
+
+      if (!targetAuthorId || !currentUser?.id || currentUser.id !== targetAuthorId) {
+        sendTargetAuthorNotification({
+          targetAuthorId,
+          senderId: currentUser?.id,
+          senderName: authorName,
+          senderAvatar: authorAvatar,
+          type: 'comment',
+          postTitle: targetTitle,
+          targetId,
+          targetType,
+          commentSnippet: cleanContent.slice(0, 100),
+        }).catch((e) => console.warn('[FCM comment notify error]:', e));
+      }
     } catch (err: any) {
       console.error('Error adding comment to Firestore:', err);
       // Local fallback on network error
@@ -222,6 +382,20 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       setReplyTo(null);
       setFeedbackMsg({ text: 'Komentar je shranjen lokalno.', type: 'success' });
       setTimeout(() => setFeedbackMsg(null), 3000);
+
+      if (!targetAuthorId || !currentUser?.id || currentUser.id !== targetAuthorId) {
+        sendTargetAuthorNotification({
+          targetAuthorId,
+          senderId: currentUser?.id,
+          senderName: authorName,
+          senderAvatar: authorAvatar,
+          type: 'comment',
+          postTitle: targetTitle,
+          targetId,
+          targetType,
+          commentSnippet: cleanContent.slice(0, 100),
+        }).catch((e) => console.warn('[FCM comment notify error]:', e));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -262,10 +436,35 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     textareaRef.current?.focus();
   };
 
-  // Sorted comments
+  // Top most helpful comment id (with positive score)
+  const topCommentId = useMemo(() => {
+    if (comments.length === 0) return null;
+    let highestScore = 0;
+    let bestId: string | null = null;
+    for (const c of comments) {
+      const score = c.score ?? ((c.upvotes || 0) - (c.downvotes || 0));
+      if (score > highestScore && score >= 1) {
+        highestScore = score;
+        bestId = c.id;
+      }
+    }
+    return bestId;
+  }, [comments]);
+
+  // Sorted comments: by top helpfulness, newest or oldest
   const sortedComments = useMemo(() => {
     const list = [...comments];
     list.sort((a, b) => {
+      if (sortOrder === 'top') {
+        const scoreA = a.score ?? ((a.upvotes || 0) - (a.downvotes || 0));
+        const scoreB = b.score ?? ((b.upvotes || 0) - (b.downvotes || 0));
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA;
+        }
+        const timeA = new Date(a.createdAt).getTime() || 0;
+        const timeB = new Date(b.createdAt).getTime() || 0;
+        return timeB - timeA;
+      }
       const timeA = new Date(a.createdAt).getTime() || 0;
       const timeB = new Date(b.createdAt).getTime() || 0;
       return sortOrder === 'newest' ? timeB - timeA : timeA - timeB;
@@ -324,6 +523,19 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
         <div className="flex items-center gap-2 self-start sm:self-auto">
           {comments.length > 1 && (
             <div className="flex items-center gap-1 bg-surface-container-low p-1 rounded-xl border border-surface-container/70 text-xs">
+              <button
+                type="button"
+                onClick={() => setSortOrder('top')}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  sortOrder === 'top'
+                    ? 'bg-surface-container-lowest text-amber-700 dark:text-amber-300 shadow-2xs font-bold ring-1 ring-amber-500/30'
+                    : 'text-outline hover:text-on-surface'
+                }`}
+                title="Prikaži najbolj koristne in najbolje ocenjene prispevke na vrhu"
+              >
+                <Award className="w-3.5 h-3.5 text-amber-500" />
+                <span>Najbolj koristni</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setSortOrder('newest')}
@@ -537,13 +749,21 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
             const isAdmin = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin'));
             const canDelete = isAuthorOfComment || isAdmin;
-            const isLiked = Boolean(likedComments[comment.id]);
+            const isTopComment = Boolean(topCommentId && comment.id === topCommentId);
+            const score = comment.score ?? ((comment.upvotes || 0) - (comment.downvotes || 0));
+            const userVote = commentVotes[comment.id] || null;
 
             return (
               <div 
                 key={`comment-${comment.id}-${idx}`} 
                 id={`comment-${comment.id}`}
-                className="py-4 first:pt-1 last:pb-1 flex items-start gap-3 group transition-colors"
+                className={`py-4 first:pt-1 last:pb-1 flex items-start gap-3 group transition-all duration-200 ${
+                  isTopComment
+                    ? 'bg-gradient-to-r from-amber-500/[0.06] via-amber-500/[0.02] to-transparent border-l-2 border-l-amber-500 pl-3.5 pr-2 rounded-r-2xl my-1 shadow-2xs'
+                    : score >= 3
+                    ? 'bg-gradient-to-r from-emerald-500/[0.04] to-transparent border-l-2 border-l-emerald-500/60 pl-3 rounded-r-xl'
+                    : ''
+                }`}
               >
                 {/* Avatar */}
                 <button
@@ -576,7 +796,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                 </button>
 
                 {/* Comment Body */}
-                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       {(() => {
@@ -625,6 +845,21 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                           {comment.authorRole}
                         </span>
                       )}
+
+                      {/* Top helpful badge highlight */}
+                      {isTopComment && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-200 border border-amber-500/30 text-[10px] font-bold tracking-tight shadow-2xs">
+                          <Award className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                          <span>Najbolj koristen prispevek</span>
+                        </span>
+                      )}
+
+                      {!isTopComment && score >= 3 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[10px] font-semibold">
+                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                          <span>Koristno ({score > 0 ? `+${score}` : score})</span>
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -666,32 +901,74 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                     )}
                   </div>
 
-                  {/* Comment Actions: Reply & Like */}
-                  <div className="flex items-center gap-3 pt-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleLikeComment(comment.id)}
-                      className={`inline-flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer ${
-                        isLiked 
-                          ? 'text-primary' 
-                          : 'text-outline hover:text-primary'
-                      }`}
-                      title="Všeč mi je ta komentar"
-                    >
-                      <ThumbsUp className={`w-3.5 h-3.5 ${isLiked ? 'fill-current' : ''}`} />
-                      <span>{isLiked ? 'Všečkano' : 'Všeč mi je'}</span>
-                    </button>
+                  {/* Comment Actions: Upvote/Downvote, Net Score, Reply */}
+                  <div className="flex items-center gap-3 pt-1 text-xs flex-wrap">
+                    {/* Voting System */}
+                    {allowVoting && (
+                      <div className="inline-flex items-center gap-0.5 bg-surface-container-low p-0.5 rounded-xl border border-surface-container/70 shadow-2xs">
+                        {/* Up-vote button */}
+                        <button
+                          type="button"
+                          onClick={() => handleVoteComment(comment.id, 'up')}
+                          aria-label={`Glasuj ZA komentar uporabnika ${comment.authorName}`}
+                          title="Koristen prispevek (Glasuj ZA)"
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                            userVote === 'up'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/30 shadow-2xs'
+                              : 'text-outline hover:text-emerald-600 hover:bg-surface-container-lowest'
+                          }`}
+                        >
+                          <ThumbsUp className={`w-3.5 h-3.5 transition-transform ${userVote === 'up' ? 'fill-current scale-110' : ''}`} />
+                          <span className="text-[11px] font-semibold">
+                            {comment.upvotes && comment.upvotes > 0 ? comment.upvotes : ''}
+                          </span>
+                        </button>
 
+                        {/* Net score display */}
+                        <span 
+                          className={`min-w-6 text-center px-1.5 py-0.5 text-[11px] font-bold rounded-md ${
+                            score > 0 
+                              ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10' 
+                              : score < 0 
+                              ? 'text-rose-700 dark:text-rose-400 bg-rose-500/10' 
+                              : 'text-outline'
+                          }`}
+                          title={`Ocena koristnosti: ${score} (${comment.upvotes || 0} ZA, ${comment.downvotes || 0} PROTI)`}
+                        >
+                          {score > 0 ? `+${score}` : score}
+                        </span>
+
+                        {/* Down-vote button */}
+                        <button
+                          type="button"
+                          onClick={() => handleVoteComment(comment.id, 'down')}
+                          aria-label={`Glasuj PROTI komentarju uporabnika ${comment.authorName}`}
+                          title="Manj koristen prispevek (Glasuj PROTI)"
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                            userVote === 'down'
+                              ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 font-bold border border-rose-500/30 shadow-2xs'
+                              : 'text-outline hover:text-rose-600 hover:bg-surface-container-lowest'
+                          }`}
+                        >
+                          <ThumbsDown className={`w-3.5 h-3.5 transition-transform ${userVote === 'down' ? 'fill-current scale-110' : ''}`} />
+                          <span className="text-[11px] font-semibold">
+                            {comment.downvotes && comment.downvotes > 0 ? comment.downvotes : ''}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Reply button */}
                     <button
                       type="button"
                       onClick={() => {
                         setReplyTo(comment);
                         textareaRef.current?.focus();
                       }}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-outline hover:text-primary transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-outline hover:text-primary hover:bg-surface-container-low transition-colors cursor-pointer"
                       title={`Odgovori uporabniku ${comment.authorName}`}
                     >
-                      <CornerDownRight className="w-3 h-3" />
+                      <CornerDownRight className="w-3.5 h-3.5" />
                       <span>Odgovori</span>
                     </button>
                   </div>

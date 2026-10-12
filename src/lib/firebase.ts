@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseProjectConfig from '../../firebase-applet-config.json';
 
 const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : (typeof process !== 'undefined' ? process.env : {});
@@ -20,7 +20,15 @@ const firebaseConfig = {
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 /* CRITICAL: The app will break without specifying firestoreDatabaseId */
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = (() => {
+  try {
+    return initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    }, firebaseConfig.firestoreDatabaseId);
+  } catch (err) {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+})();
 export const firestore = db;
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

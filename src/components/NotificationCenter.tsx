@@ -23,8 +23,12 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
     markAsRead, 
     markAllAsRead, 
     clearNotification, 
-    clearAll 
+    clearAll,
+    isPushSupported,
+    pushPermission,
+    enablePushNotifications,
   } = useNotifications();
+  const [isEnablingPush, setIsEnablingPush] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -35,6 +39,15 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const handleTogglePush = async () => {
+    setIsEnablingPush(true);
+    try {
+      await enablePushNotifications();
+    } finally {
+      setIsEnablingPush(false);
+    }
+  };
 
   const filteredNotifications = notifications.filter(n => {
     if (activeFilter === 'all') return true;
@@ -127,6 +140,31 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
               )}
             </div>
           </div>
+
+          {/* FCM Push Notifications Banner */}
+          {isPushSupported && (
+            <div className="px-3.5 py-2 border-b border-surface-container-low bg-surface-container-low/60 flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${pushPermission === 'granted' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                <span className="truncate text-on-surface-variant font-medium">
+                  {pushPermission === 'granted'
+                    ? 'Potisna obvestila v brskalniku so aktivna'
+                    : 'Omogočite takojšnja obvestila v brskalniku'}
+                </span>
+              </div>
+              {pushPermission !== 'granted' && (
+                <button
+                  type="button"
+                  onClick={handleTogglePush}
+                  disabled={isEnablingPush}
+                  className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover text-white text-[11px] font-bold shadow-2xs shrink-0 cursor-pointer transition-colors disabled:opacity-50"
+                  title="Vklopi potisna obvestila brskalnika ob novih komentarjih in všečkih"
+                >
+                  {isEnablingPush ? 'Vklapljanje...' : 'Vklopi'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Filter Pills */}
           <div className="flex items-center flex-wrap gap-1.5 px-3 py-2 border-b border-surface-container-low bg-surface-container-low/40 text-xs">

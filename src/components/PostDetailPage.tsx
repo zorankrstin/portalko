@@ -15,6 +15,7 @@ import { LikeButton } from './LikeButton';
 import { useLikes } from '../contexts/LikeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
+import { sendTargetAuthorNotification } from '../services/fcmService';
 import { INITIAL_DEALS, HERO_BENTO_DEALS, DealItem } from '../data/mockDealsData';
 import { INITIAL_EVENTS, INITIAL_ADS, INITIAL_BLOG_POSTS, MockEventItem, MockAdItem, MockBlogItem } from '../data/mockFeedData';
 import { 
@@ -36,6 +37,7 @@ import {
 } from '../services/firestoreService';
 import { EditPostModal, EditablePostItem } from './posts/EditPostModal';
 import { ShareModal } from './common/ShareModal';
+import { CommentSection } from './common/CommentSection';
 import { scrollToPageTop, scrollToSidebarsTop } from '../utils/scrollUtils';
 import { parseEventDateInfo, resolveEventDisplayDate } from '../utils/dateUtils';
 import { getCleanHtml, formatViewsCount, getPlainTextSnippet } from '../utils/textUtils';
@@ -144,6 +146,10 @@ interface PostComment {
   authorRole?: string;
   date: string;
   content: string;
+  upvotes?: number;
+  downvotes?: number;
+  score?: number;
+  userVote?: 'up' | 'down' | null;
 }
 
 export function PostDetailPage({ 
@@ -1101,6 +1107,22 @@ export function PostDetailPage({
           id: effectiveTargetId,
         },
       });
+
+      // Send real-time browser push notification to the author of the post
+      const targetAuthorId = itemData?.authorId || (target as any).authorId;
+      if (targetAuthorId && (!currentUser?.id || currentUser.id !== targetAuthorId)) {
+        sendTargetAuthorNotification({
+          targetAuthorId,
+          senderId: currentUser?.id,
+          senderName: authorName,
+          senderAvatar: authorAvatar,
+          type: 'comment',
+          postTitle: itemData?.title || (target as any).title || '',
+          targetId: effectiveTargetId,
+          targetType: target.type as any,
+          commentSnippet: trimmedContent.slice(0, 100),
+        }).catch((e) => console.warn('[FCM comment notify error]:', e));
+      }
     } catch (err) {
       console.warn('Firestore comment sync notice:', err);
     }
@@ -1125,6 +1147,31 @@ export function PostDetailPage({
     } catch (err) {
       console.warn('Firestore comment delete notice:', err);
     }
+  };
+
+  // Handle comment up-voting / down-voting to highlight most helpful contributions
+  const handleVoteComment = (commentId: string, voteType: 'up' | 'down') => {
+    setComments(prev => prev.map(c => {
+      if (c.id !== commentId) return c;
+      const currentVote = c.userVote || null;
+      const nextVote = currentVote === voteType ? null : voteType;
+      let up = c.upvotes || 0;
+      let down = c.downvotes || 0;
+
+      if (currentVote === 'up') up = Math.max(0, up - 1);
+      if (currentVote === 'down') down = Math.max(0, down - 1);
+
+      if (nextVote === 'up') up++;
+      if (nextVote === 'down') down++;
+
+      return {
+        ...c,
+        upvotes: up,
+        downvotes: down,
+        score: up - down,
+        userVote: nextVote,
+      };
+    }));
   };
 
   // Determine 3-4 related articles from the same category as the currently viewed blog post
@@ -2008,6 +2055,7 @@ export function PostDetailPage({
                       targetType: (target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'blog'),
                       initialCount: initialPostLikes,
                       title: itemData.title,
+                      authorId: itemData.authorId || (itemData as any).userId,
                     });
                   }
                 }}
@@ -2230,6 +2278,7 @@ export function PostDetailPage({
               showLabel={true}
               showCount={true}
               itemTitle={itemData.title}
+              authorId={itemData.authorId}
               className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer shadow-2xs border border-surface-container/60 bg-surface-container-low hover:bg-surface-container"
             />
 
@@ -2569,148 +2618,17 @@ export function PostDetailPage({
         </div>
       </article>
 
-      {/* Discussion & Comments Section */}
-      <section id="comments-section" className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-5">
-        <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-primary" />
-            <h3 className="font-headline-md text-base sm:text-lg font-bold text-on-surface">
-              Vprašanja in komentarji ({comments.length})
-            </h3>
-          </div>
-          <span className="text-xs text-outline">Vsak nov komentar obvesti sodelujoče</span>
-        </div>
-
-        {/* Submit Comment Form */}
-        <form onSubmit={handleSubmitComment} className="flex flex-col gap-2.5 bg-surface-container-low/50 p-3.5 rounded-xl border border-surface-container">
-          <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-            <span>Zapišite vprašanje ali mnenje o tej objavi</span>
-          </label>
-          <div className="relative">
-            <textarea
-              value={newCommentText}
-              onChange={(e) => setNewCommentText(e.target.value)}
-              placeholder="Napišite komentar ali vprašajte avtorja..."
-              rows={3}
-              className="w-full p-3 rounded-xl bg-surface-container-lowest border border-surface-container focus:border-primary focus:outline-none text-sm text-on-surface font-body-sm resize-none"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-outline">
-              Prijavljeni kot: <strong>{currentUser ? currentUser.name : 'Gost'}</strong>
-            </span>
-            <button
-              type="submit"
-              disabled={isSubmittingComment || !newCommentText.trim()}
-              className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Objavi komentar</span>
-            </button>
-          </div>
-        </form>
-
-        {/* Comments List */}
-        <div className="flex flex-col divide-y divide-surface-container-low">
-          {comments.length === 0 ? (
-            <div className="py-8 px-4 text-center flex flex-col items-center justify-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-outline">
-                <MessageSquare className="w-5 h-5 opacity-60" />
-              </div>
-              <p className="text-sm font-medium text-on-surface">Ni še komentarjev</p>
-              <p className="text-xs text-outline max-w-sm">
-                Bodite prvi, ki boste postavili vprašanje avtorju ali delili svoje mnenje.
-              </p>
-            </div>
-          ) : (
-            comments.map((comment, cIdx) => {
-              const canDelete = Boolean(currentUser && (
-                currentUser.role === 'admin' || 
-                currentUser.role === 'superadmin' || 
-                currentUser.name === comment.author
-              ));
-
-              return (
-                <div key={`comment-${comment.id}-${cIdx}`} className="py-3.5 first:pt-0 last:pb-0 flex items-start gap-3">
-                  <UserAvatar
-                    src={comment.authorAvatar}
-                    name={comment.author}
-                    role={comment.authorRole}
-                    size="sm"
-                    className="w-9 h-9 shrink-0 ring-1 ring-black/5"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2">
-                        {(() => {
-                          const isCommentAuthorVerified = isUserVerified({
-                            role: comment.authorRole,
-                            name: comment.author,
-                            users,
-                          });
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (onAuthorClick) {
-                                  onAuthorClick({
-                                    name: comment.author,
-                                    avatar: comment.authorAvatar,
-                                    role: comment.authorRole,
-                                    fromPostTarget: target
-                                  });
-                                } else {
-                                  onViewChange('profile');
-                                }
-                              }}
-                              className="font-bold text-xs sm:text-sm text-on-surface hover:text-primary hover:underline text-left cursor-pointer transition-colors inline-flex items-center gap-1"
-                              title={`Ogled profila avtorja: ${comment.author}`}
-                            >
-                              <span>{comment.author}</span>
-                              {isCommentAuthorVerified && (
-                                <VerifiedBadge size="xs" />
-                              )}
-                            </button>
-                          );
-                        })()}
-                        {comment.authorRole && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-outline font-semibold">
-                            {comment.authorRole}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-outline">{comment.date}</span>
-                        <ReportButton
-                          targetId={comment.id}
-                          targetType="comment"
-                          targetTitle={`Komentar (${comment.author}): "${comment.content.substring(0, 40)}..."`}
-                          targetAuthor={comment.author}
-                          size="sm"
-                          className="p-1 rounded text-outline hover:text-error hover:bg-surface-container transition-colors cursor-pointer"
-                        />
-                        {canDelete && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteComment(comment.id)}
-                            title="Izbriši komentar"
-                            className="p-1 rounded text-outline hover:text-error hover:bg-surface-container transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed">
-                      {comment.content}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </section>
+      {/* Discussion & Comments Section with Up-vote & Down-vote */}
+      <CommentSection
+        targetId={itemData.id || target.id}
+        targetType={target.type}
+        targetTitle={itemData.title || ''}
+        targetAuthorId={itemData.authorId || (itemData as any).userId}
+        allowVoting={true}
+        onVoteComment={handleVoteComment}
+        onAuthorClick={onAuthorClick}
+        onViewChange={onViewChange}
+      />
 
       {/* Suggested & Related Posts Section */}
       {(target.type === 'blog' || target.type === 'post') ? (

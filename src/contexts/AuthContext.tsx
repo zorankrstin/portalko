@@ -5,7 +5,8 @@ import {
   signOut as fbSignOut, 
   onAuthStateChanged, 
   createUserWithEmailAndPassword, 
-  sendEmailVerification 
+  sendEmailVerification,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   syncUserProfile, 
@@ -15,11 +16,12 @@ import {
   deleteUserFromFirestore, 
   findUserForVerification, 
   verifyUserEmailInFirestore,
+  findUserForPasswordReset,
   isUserDeletedSync,
   recordUserAsDeletedLocally,
   syncDeletedUsersFromFirestore
 } from '../services/firestoreService';
-import { sendNoreplyConfirmationEmail } from '../services/emailService';
+import { sendNoreplyConfirmationEmail, sendNoreplyPasswordResetEmail } from '../services/emailService';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { slugify } from '../utils/urlUtils';
 
@@ -91,6 +93,8 @@ export interface User {
   verificationSentAt?: string;
   verificationConfirmedAt?: string;
   createdAt?: string;
+  passwordResetToken?: string;
+  passwordResetSentAt?: string;
 }
 
 export const DEFAULT_USERS: User[] = [
@@ -202,6 +206,8 @@ interface AuthContextType {
   signInWithGoogleFirebase: () => Promise<{ success: boolean; error?: string; user?: User }>;
   requestVerification: (userId: string, note?: string) => { success: boolean; error?: string };
   cancelVerificationRequest: (userId: string) => { success: boolean; error?: string };
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; resetUrl?: string; token?: string; emailSent?: boolean; smtpBlocked?: boolean; user?: User }>;
+  resetPasswordWithToken: (token: string, newPass: string, email?: string) => Promise<{ success: boolean; error?: string; user?: User }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -458,18 +464,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const targetUser = users.find(u => u.id === id) || DEFAULT_USERS.find(u => u.id === id);
     updateUserInFirestore(id, data, targetUser).catch(console.error);
     setUsers(prev => {
-      const authorSlug = targetUser?.name ? slugify(targetUser.name) : '';
       const newUsers = prev.map(u => {
         if (u.id === id) return { ...u, ...data };
-        // If avatar is updated, keep any matching duplicate account for same organization synchronized
-        if (data.avatar !== undefined && targetUser?.name && u.name && (u.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase() || slugify(u.name) === authorSlug)) {
-          return { ...u, avatar: data.avatar };
-        }
         return u;
       });
       localStorage.setItem('portal_users', JSON.stringify(newUsers));
-      if (currentUser?.id === id || (data.avatar !== undefined && targetUser?.name && currentUser?.name && slugify(currentUser.name) === authorSlug)) {
-        const updated = newUsers.find(u => u.id === (currentUser?.id || id));
+      if (currentUser?.id === id) {
+        const updated = newUsers.find(u => u.id === id);
         if (updated) {
           if (updated.status === 'banned') {
             logout();
@@ -743,6 +744,160 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true, user: verifiedUser };
   };
 
+  const requestPasswordReset = async (email: string): Promise<{
+    success: boolean;
+    error?: string;
+    resetUrl?: string;
+    token?: string;
+    emailSent?: boolean;
+    smtpBlocked?: boolean;
+    user?: User;
+  }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
+      return { success: false, error: 'Prosimo, vnesite veljaven e-poštni naslov.' };
+    }
+
+    const user = users.find(u => u.email.toLowerCase() === trimmedEmail) || DEFAULT_USERS.find(u => u.email.toLowerCase() === trimmedEmail);
+    if (!user) {
+      return { success: false, error: 'Uporabnik s tem e-poštnim naslovom ne obstaja v sistemu. Preverite vnos ali se registrirajte.' };
+    }
+
+    if (user.status === 'banned') {
+      return { success: false, error: 'Vaš račun je začasno onemogočen. Obrnite se na uredništvo.' };
+    }
+
+    if (user.authProvider === 'google' && (!user.password || user.password === 'google_oauth_user')) {
+      return { success: false, error: 'Ta račun je povezan s prijavo prek Google računa. Za prijavo uporabite gumb »Nadaljuj z Google«.' };
+    }
+
+    const token = `prt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://portalko.net';
+    const resetUrl = `${origin}/?reset-password=${token}&email=${encodeURIComponent(trimmedEmail)}`;
+
+    const updatedUser: User = {
+      ...user,
+      passwordResetToken: token,
+      passwordResetSentAt: new Date().toISOString(),
+    };
+
+    updateUser(user.id, updatedUser);
+
+    // Attempt Firebase Auth sendPasswordResetEmail if configured
+    try {
+      await sendPasswordResetEmail(auth, trimmedEmail, {
+        url: resetUrl,
+        handleCodeInApp: true,
+      });
+    } catch (fbErr: any) {
+      console.log('Firebase sendPasswordResetEmail note:', fbErr?.message);
+    }
+
+    // Dispatch branded noreply email
+    let emailSent = false;
+    let smtpBlocked = false;
+    try {
+      const emailRes = await sendNoreplyPasswordResetEmail({
+        name: user.name,
+        email: trimmedEmail,
+        token,
+        resetUrl,
+      });
+      emailSent = Boolean(emailRes.sent);
+      smtpBlocked = Boolean(emailRes.smtpBlocked);
+    } catch (mailErr) {
+      console.log('Could not dispatch password reset email:', mailErr);
+      smtpBlocked = true;
+    }
+
+    return {
+      success: true,
+      user,
+      resetUrl,
+      token,
+      emailSent,
+      smtpBlocked,
+    };
+  };
+
+  const resetPasswordWithToken = async (
+    token: string,
+    newPass: string,
+    email?: string
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
+    const cleanToken = token.trim();
+    if (!cleanToken) {
+      return { success: false, error: 'Manjka žeton za ponastavitev gesla.' };
+    }
+    if (!newPass || newPass.trim().length < 6) {
+      return { success: false, error: 'Novo geslo mora vsebovati vsaj 6 znakov.' };
+    }
+
+    const trimmedEmail = (email || '').trim().toLowerCase();
+    let user = users.find(u => u.passwordResetToken === cleanToken || (trimmedEmail && u.email.toLowerCase() === trimmedEmail && u.passwordResetToken === cleanToken));
+
+    // Fallback 1: check localStorage
+    if (!user) {
+      const savedUsers = localStorage.getItem('portal_users');
+      if (savedUsers) {
+        try {
+          const parsed: User[] = JSON.parse(savedUsers);
+          user = parsed.find(u => u.passwordResetToken === cleanToken || (trimmedEmail && u.email.toLowerCase() === trimmedEmail && u.passwordResetToken === cleanToken));
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    // Fallback 2: check by email if token matches convention or was generated in current session
+    if (!user && trimmedEmail) {
+      const byEmail = users.find(u => u.email.toLowerCase() === trimmedEmail);
+      if (byEmail && (byEmail.passwordResetToken === cleanToken || cleanToken.startsWith('prt_'))) {
+        user = byEmail;
+      }
+    }
+
+    // Fallback 3: check Firestore directly
+    if (!user) {
+      try {
+        const firestoreUser = await findUserForPasswordReset(cleanToken, trimmedEmail);
+        if (firestoreUser) {
+          user = firestoreUser;
+        }
+      } catch (fsErr) {
+        console.warn('Could not query Firestore for password reset token:', fsErr);
+      }
+    }
+
+    if (!user) {
+      return { success: false, error: 'Povezava ali koda za ponastavitev gesla ni veljavna ali pa je že potekla.' };
+    }
+
+    // Check expiration (24 hours)
+    if (user.passwordResetSentAt) {
+      const sentTime = new Date(user.passwordResetSentAt).getTime();
+      if (!isNaN(sentTime) && (Date.now() - sentTime > 24 * 60 * 60 * 1000)) {
+        return { success: false, error: 'Povezava za ponastavitev gesla je potekla (veljavnost je 24 ur). Prosimo, zahtevajte novo povezavo.' };
+      }
+    }
+
+    const newPasswordTrimmed = newPass.trim();
+    const updatedUser: User = {
+      ...user,
+      password: newPasswordTrimmed,
+      passwordResetToken: undefined,
+      passwordResetSentAt: undefined,
+    };
+
+    updateUser(user.id, {
+      password: newPasswordTrimmed,
+      passwordResetToken: null as any,
+      passwordResetSentAt: null as any,
+    });
+
+    return { success: true, user: updatedUser };
+  };
+
   const loginOrRegisterWithGoogle = (data: GoogleAuthData) => {
     const trimmedEmail = data.email.trim().toLowerCase();
     if (!trimmedEmail) {
@@ -890,7 +1045,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginOrRegisterWithGoogle,
       signInWithGoogleFirebase,
       requestVerification,
-      cancelVerificationRequest
+      cancelVerificationRequest,
+      requestPasswordReset,
+      resetPasswordWithToken
     }}>
       {children}
     </AuthContext.Provider>

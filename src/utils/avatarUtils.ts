@@ -7,7 +7,7 @@
 import { slugify } from './urlUtils';
 
 export const KNOWN_ADMIN_IDS = new Set(['admin', 'u1', 'superadmin', 'AABsRoeGCgaddFMh9S2cZqN9CaG3']);
-export const KNOWN_ADMIN_NAMES = new Set(['superadmin', 'zoran krstin', 'uredništvo', 'administrator', 'admin', 'uredništvo portalko.net']);
+export const KNOWN_ADMIN_NAMES = new Set(['superadmin', 'uredništvo', 'administrator', 'admin', 'uredništvo portalko.net']);
 
 export interface AvatarUser {
   id?: string;
@@ -127,7 +127,10 @@ export function getAvatarRoleColors(role?: string | null, name?: string | null):
 }
 
 /**
- * Resolves the genuine user-uploaded avatar for a user or author, strictly ignoring dummy images.
+ * Resolves the genuine user-uploaded avatar for a user or author.
+ * Strictly isolates avatars by unique userId/email so different accounts
+ * with the same name before @ (e.g. zoran.krstin@siol.net and zoran.krstin@outlook.com)
+ * never leak or share avatars.
  */
 export function resolveUserUploadedAvatar(
   explicitAvatar?: string | null,
@@ -136,138 +139,79 @@ export function resolveUserUploadedAvatar(
   usersList?: AvatarUser[] | null,
   activeCurrentUser?: AvatarUser | null
 ): string | undefined {
-  const trimmedAuthorName = authorName ? authorName.trim().toLowerCase() : '';
-  const authorSlug = authorName ? slugify(authorName) : '';
-  const cleanAuthorSlug = authorSlug.replace(/-/g, '');
-
-  const isTargetAdmin = Boolean(
-    (userId && KNOWN_ADMIN_IDS.has(userId)) ||
-    (authorName && KNOWN_ADMIN_NAMES.has(trimmedAuthorName))
-  );
-
-  // 1. If active logged-in user matches the author, their current session avatar is the most fresh
-  if (activeCurrentUser?.avatar && isUserUploadedAvatar(activeCurrentUser.avatar)) {
-    let isCurrentMatch = false;
-    if (userId && (activeCurrentUser.id === userId || (KNOWN_ADMIN_IDS.has(userId) && KNOWN_ADMIN_IDS.has(activeCurrentUser.id || '')))) {
-      isCurrentMatch = true;
-    }
-    if (!isCurrentMatch && trimmedAuthorName && activeCurrentUser.name) {
-      const curLower = activeCurrentUser.name.trim().toLowerCase();
-      if (curLower === trimmedAuthorName || slugify(activeCurrentUser.name) === authorSlug || slugify(activeCurrentUser.name).replace(/-/g, '') === cleanAuthorSlug) {
-        isCurrentMatch = true;
-      }
-    }
-    if (!isCurrentMatch && trimmedAuthorName && activeCurrentUser.username) {
-      const curUserClean = activeCurrentUser.username.replace('@', '').trim().toLowerCase();
-      if (curUserClean === trimmedAuthorName || slugify(curUserClean) === authorSlug) {
-        isCurrentMatch = true;
-      }
-    }
-    if (isCurrentMatch) {
-      return activeCurrentUser.avatar;
-    }
-  }
-
-  const findInList = (list: AvatarUser[]): string | undefined => {
-    if (!list || list.length === 0) return undefined;
-
-    // Collect all matching user candidates
-    const matchedUsers: AvatarUser[] = [];
-
-    for (const u of list) {
-      let isMatch = false;
-      if (userId) {
-        if (u.id === userId) isMatch = true;
-        else if (u.googleId && u.googleId === userId) isMatch = true;
-        else if (u.email && u.email.toLowerCase() === userId.toLowerCase()) isMatch = true;
-        else {
-          const cleanUserId = userId.replace(/^(user|author|organizer|partner)-/, '');
-          if (u.id === cleanUserId) isMatch = true;
-        }
-      }
-      if (!isMatch && trimmedAuthorName && u.name) {
-        const uNameLower = u.name.trim().toLowerCase();
-        if (uNameLower === trimmedAuthorName) isMatch = true;
-        else if (authorSlug && slugify(u.name) === authorSlug) isMatch = true;
-        else if (cleanAuthorSlug && slugify(u.name).replace(/-/g, '') === cleanAuthorSlug) isMatch = true;
-      }
-      if (!isMatch && trimmedAuthorName && u.username) {
-        const uClean = u.username.replace('@', '').trim().toLowerCase();
-        if (uClean === trimmedAuthorName || (authorSlug && slugify(uClean) === authorSlug)) isMatch = true;
-      }
-      if (!isMatch && isTargetAdmin) {
-        if (u.id && KNOWN_ADMIN_IDS.has(u.id)) isMatch = true;
-        else if (u.email === 'zoran.krstin@gmail.com') isMatch = true;
-        else if (u.name && KNOWN_ADMIN_NAMES.has(u.name.trim().toLowerCase())) isMatch = true;
-        else if (u.role === 'superadmin') isMatch = true;
-      }
-      if (isMatch) {
-        matchedUsers.push(u);
-      }
-    }
-
-    if (matchedUsers.length > 0) {
-      // Prioritize activeCurrentUser if present among matches, then custom uploaded avatars, then exact userId match
-      matchedUsers.sort((a, b) => {
-        if (activeCurrentUser) {
-          if (a.id === activeCurrentUser.id && b.id !== activeCurrentUser.id) return -1;
-          if (b.id === activeCurrentUser.id && a.id !== activeCurrentUser.id) return 1;
-        }
-        if (userId) {
-          if (a.id === userId && b.id !== userId) return -1;
-          if (b.id === userId && a.id !== userId) return 1;
-        }
-        const aScore = isCustomUploadedAvatar(a.avatar) ? 3 : (a.avatar && !isDummyAvatar(a.avatar) ? 2 : 0);
-        const bScore = isCustomUploadedAvatar(b.avatar) ? 3 : (b.avatar && !isDummyAvatar(b.avatar) ? 2 : 0);
-        if (bScore !== aScore) return bScore - aScore;
-        const aLen = a.avatar ? a.avatar.length : 0;
-        const bLen = b.avatar ? b.avatar.length : 0;
-        return bLen - aLen;
-      });
-
-      for (const m of matchedUsers) {
-        if (m.avatar && !isDummyAvatar(m.avatar)) {
-          return m.avatar;
-        }
-      }
-    }
-
-    return undefined;
-  };
-
-  // 2. Direct explicit avatar if it is a genuine custom uploaded image (data:image/, blob, storage)
+  // 1. Direct explicit avatar if provided and uploaded by user
   if (explicitAvatar && isCustomUploadedAvatar(explicitAvatar)) {
     return explicitAvatar;
   }
 
-  // 3. Look up in active users list provided from context (prioritizing user-uploaded photos)
-  if (usersList && usersList.length > 0) {
-    const fromList = findInList(usersList);
-    if (fromList) return fromList;
+  // 2. If active logged-in user matches by unique ID or email, their current session avatar applies
+  if (activeCurrentUser && userId) {
+    const isCurrentUserMatch =
+      activeCurrentUser.id === userId ||
+      (activeCurrentUser.googleId && activeCurrentUser.googleId === userId) ||
+      (activeCurrentUser.email && activeCurrentUser.email.toLowerCase() === userId.toLowerCase());
+
+    if (isCurrentUserMatch) {
+      if (activeCurrentUser.avatar && isUserUploadedAvatar(activeCurrentUser.avatar)) {
+        return activeCurrentUser.avatar;
+      }
+      // If active user is the target but has no custom avatar, return undefined (use initials)
+      return undefined;
+    }
   }
 
-  // 4. Direct explicit avatar if uploaded by user and not a dummy image
-  if (explicitAvatar && isUserUploadedAvatar(explicitAvatar)) {
-    return explicitAvatar;
+  // 3. Look up strictly by unique userId / email in usersList
+  if (userId && usersList && usersList.length > 0) {
+    const cleanUserId = userId.replace(/^(user|author|organizer|partner)-/, '');
+    const matched = usersList.find(u =>
+      u.id === userId ||
+      u.id === cleanUserId ||
+      (u.googleId && u.googleId === userId) ||
+      (u.email && u.email.toLowerCase() === userId.toLowerCase())
+    );
+
+    if (matched) {
+      if (matched.avatar && isUserUploadedAvatar(matched.avatar)) {
+        return matched.avatar;
+      }
+      // User found in list but has no avatar: do not cross-match another user with same name!
+      return undefined;
+    }
   }
 
-  // 4. Fallback to localStorage portal_users
-  try {
-    if (typeof window !== 'undefined') {
+  // 4. Look up strictly in localStorage portal_users by userId / email
+  if (userId && typeof window !== 'undefined') {
+    try {
       const rawUsers = localStorage.getItem('portal_users');
       if (rawUsers) {
         const parsed = JSON.parse(rawUsers);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const fromLocal = findInList(parsed);
-          if (fromLocal) return fromLocal;
+          const cleanUserId = userId.replace(/^(user|author|organizer|partner)-/, '');
+          const matched = parsed.find((u: any) =>
+            u.id === userId ||
+            u.id === cleanUserId ||
+            (u.googleId && u.googleId === userId) ||
+            (u.email && u.email.toLowerCase() === userId.toLowerCase())
+          );
+          if (matched) {
+            if (matched.avatar && isUserUploadedAvatar(matched.avatar)) {
+              return matched.avatar;
+            }
+            return undefined;
+          }
         }
       }
+    } catch {
+      // ignore
     }
-  } catch (e) {
-    // Ignore JSON parse errors in localStorage
   }
 
-  // 5. Known official editorial fallback only
+  // 5. Fallback to explicit non-dummy avatar if available
+  if (explicitAvatar && isUserUploadedAvatar(explicitAvatar)) {
+    return explicitAvatar;
+  }
+
+  // 6. Known official editorial fallback only
   if (authorName) {
     const lower = authorName.toLowerCase();
     if (lower.includes('portalko') || lower.includes('uredništvo')) {

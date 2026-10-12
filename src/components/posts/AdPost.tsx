@@ -289,6 +289,7 @@ export const AdPost: React.FC<AdPostProps> = ({
               initialLikesCount={likesCount} 
               variant="pill" 
               itemTitle={title} 
+              authorId={authorId}
               showLabel={false}
               className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container" 
             />

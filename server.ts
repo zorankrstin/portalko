@@ -631,6 +631,191 @@ async function startServer() {
     }
   });
 
+  // Noreply Password Reset Email Dispatch Endpoint
+  app.post(["/api/auth/send-password-reset-email", "/api/send-password-reset-email"], async (req, res) => {
+    try {
+      const { name, email, token, resetUrl } = req.body;
+      if (!email || !token || !resetUrl) {
+        return res.status(400).json({ error: "Manjkajo obvezni podatki (email, token ali resetUrl)." });
+      }
+
+      const safeName = (name || "").trim() || "Uporabnik";
+      const noreplyFrom = `"${process.env.NOREPLY_NAME || "Portalko.net"}" <${process.env.NOREPLY_EMAIL || "noreply@portalko.net"}>`;
+
+      const emailHtml = `<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="UTF-8">
+  <title>Ponastavitev vašega gesla na Portalko.net</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:580px;margin:0 auto;background-color:#ffffff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="background:linear-gradient(135deg,#7c3aed 0%,#4f46e5 100%);padding:28px 24px;text-align:center;color:#ffffff;">
+        <h1 style="margin:0 0 4px 0;font-size:26px;font-weight:800;letter-spacing:-0.5px;">Portalko.net</h1>
+        <p style="margin:0;font-size:13px;opacity:0.9;">Slovenski portal za novice, male oglase in dogodke</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:32px 28px;">
+        <h2 style="margin:0 0 16px 0;font-size:18px;font-weight:700;color:#0f172a;">Pozdravljeni, ${safeName}!</h2>
+        <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#334155;">
+          Prejeli smo zahtevek za ponastavitev gesla vašega uporabniškega računa na portalu <strong>Portalko.net</strong>. Za nastavitev novega gesla kliknite na spodnji gumb:
+        </p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${resetUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background-color:#7c3aed;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 32px;border-radius:12px;box-shadow:0 4px 12px rgba(124,58,237,0.3);">
+            Ponastavi moje geslo
+          </a>
+        </div>
+        <p style="margin:24px 0 8px 0;font-size:13px;color:#64748b;">
+          Če gumb zgoraj ne deluje, kopirajte naslednjo povezavo neposredno v vaš spletni brskalnik:
+        </p>
+        <div style="background-color:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:12px;word-break:break-all;color:#64748b;">
+          <a href="${resetUrl}" style="color:#7c3aed;text-decoration:underline;">${resetUrl}</a>
+        </div>
+        <p style="margin:24px 0 0 0;font-size:13px;color:#64748b;">
+          Povezava je veljavna 24 ur. Če tega zahtevka niste oddali vi, lahko to sporočilo mirno prezrete &ndash; vaše geslo ostaja nespremenjeno.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="border-top:1px solid #f1f5f9;background-color:#fafafa;padding:20px 28px;font-size:12px;color:#94a3b8;text-align:center;line-height:1.5;">
+        <span style="display:inline-block;background-color:#e2e8f0;color:#475569;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-bottom:8px;">Samodejno sporočilo • Ne odgovarjajte</span>
+        <p style="margin:4px 0;">
+          To sporočilo je bilo samodejno poslano iz naslova <strong>noreply@portalko.net</strong>.
+        </p>
+        <p style="margin:8px 0 0 0;">
+          &copy; ${new Date().getFullYear()} Portalko.net. Vse pravice pridržane.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+      const plainText = `Pozdravljeni, ${safeName}!\n\nPrejeli smo zahtevek za ponastavitev gesla na Portalko.net.\nZa nastavitev novega gesla kliknite na povezavo:\n${resetUrl}\n\nPovezava je veljavna 24 ur.\nČe zahtevka niste oddali vi, lahko to sporočilo prezrete.`;
+
+      // 1. Resend API
+      if (process.env.RESEND_API_KEY) {
+        try {
+          const resendResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: noreplyFrom,
+              to: [email],
+              subject: "Ponastavitev vašega gesla na Portalko.net",
+              html: emailHtml,
+              text: plainText,
+            }),
+          });
+          if (resendResponse.ok) {
+            const resendData = await resendResponse.json().catch(() => ({}));
+            return res.json({
+              success: true,
+              sent: true,
+              provider: "resend",
+              messageId: resendData.id,
+              resetUrl,
+              message: "Navodila za ponastavitev gesla so bila uspešno poslana na vaš e-poštni naslov.",
+            });
+          }
+        } catch (resendErr: any) {
+          console.warn("[PASSWORD RESET RESEND EXCEPTION]:", resendErr.message);
+        }
+      }
+
+      // 2. Brevo API
+      const brevoKey = process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY;
+      if (brevoKey) {
+        try {
+          const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: {
+              "api-key": brevoKey,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({
+              sender: { name: process.env.NOREPLY_NAME || "Portalko.net", email: process.env.NOREPLY_EMAIL || "noreply@portalko.net" },
+              to: [{ email, name: safeName }],
+              subject: "Ponastavitev vašega gesla na Portalko.net",
+              htmlContent: emailHtml,
+              textContent: plainText,
+            }),
+          });
+          if (brevoResponse.ok) {
+            const brevoData = await brevoResponse.json().catch(() => ({}));
+            return res.json({
+              success: true,
+              sent: true,
+              provider: "brevo",
+              messageId: brevoData.messageId,
+              resetUrl,
+              message: "Navodila za ponastavitev gesla so bila uspešno poslana na vaš e-poštni naslov.",
+            });
+          }
+        } catch (brevoErr: any) {
+          console.warn("[PASSWORD RESET BREVO ERROR]:", brevoErr.message);
+        }
+      }
+
+      // 3. Nodemailer SMTP if configured
+      if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+        try {
+          const nodemailer = await import("nodemailer");
+          const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: Number(process.env.SMTP_PORT || 465),
+            secure: process.env.SMTP_SECURE === "true" || Number(process.env.SMTP_PORT || 465) === 465,
+            auth: {
+              user: process.env.SMTP_USER,
+              pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD,
+            },
+            tls: { rejectUnauthorized: false },
+          });
+
+          const info = await transporter.sendMail({
+            from: noreplyFrom,
+            to: email,
+            subject: "Ponastavitev vašega gesla na Portalko.net",
+            html: emailHtml,
+            text: plainText,
+          });
+
+          return res.json({
+            success: true,
+            sent: true,
+            provider: "smtp",
+            messageId: info.messageId,
+            resetUrl,
+            message: "Navodila za ponastavitev gesla so bila uspešno poslana na vaš e-poštni naslov.",
+          });
+        } catch (mailErr: any) {
+          console.log("[PASSWORD RESET SMTP NOTICE]:", mailErr.message);
+        }
+      }
+
+      // Simulated fallback for local dev / unconfigured host
+      console.log(`[PASSWORD RESET READY] To: ${email} Reset URL: ${resetUrl}`);
+      return res.json({
+        success: true,
+        sent: false,
+        simulated: true,
+        smtpBlocked: true,
+        messageId: `sim_reset_${Date.now()}`,
+        resetUrl,
+        message: "Povezava za ponastavitev gesla je pripravljena.",
+      });
+    } catch (err: any) {
+      console.error("Napaka pri pošiljanju ponastavitve gesla:", err);
+      res.status(500).json({ error: err.message || "Napaka pri obdelavi ponastavitve gesla." });
+    }
+  });
+
   // Page serving & Vite middleware
   const isProduction = 
     process.env.NODE_ENV === "production" || 
