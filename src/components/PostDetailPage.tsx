@@ -2921,17 +2921,6 @@ export function PostDetailPage({
                         <Calendar className="w-8 h-8" />
                       </div>
                     )}
-                    {evt.day && (
-                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/75 backdrop-blur-xs text-white text-[10px] font-bold shadow-xs flex items-center gap-1">
-                        <span>{evt.day}</span>
-                        <span>{evt.month}</span>
-                      </span>
-                    )}
-                    {evt.categoryName && (
-                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium">
-                        {evt.categoryName}
-                      </span>
-                    )}
                   </div>
                   <div className="p-3.5 flex-1 flex flex-col gap-1.5">
                     <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
@@ -3113,7 +3102,7 @@ export function PostDetailPage({
                     )}
                     
                     {/* Category Pill */}
-                    {post.categoryName && (
+                    {post.categoryName && post.type !== 'event' && (
                       <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-surface-container-lowest/90 backdrop-blur-xs text-[10px] font-bold text-primary shadow-2xs border border-surface-container/40">
                         {post.categoryName}
                       </span>
@@ -3134,8 +3123,8 @@ export function PostDetailPage({
                       </span>
                     )}
 
-                    {/* Event Date Pill */}
-                    {post.eventDay && (
+                    {/* Event Date Pill (omitted for events as requested) */}
+                    {post.eventDay && post.type !== 'event' && (
                       <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         <span>{post.eventDay} {post.eventMonth}</span>
