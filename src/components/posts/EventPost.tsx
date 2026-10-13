@@ -173,6 +173,7 @@ export const EventPost: React.FC<EventPostProps> = ({
         categorySlug: slugify(categoryName || category),
         subcategorySlug: subcategoryName || subcategory ? slugify(subcategoryName || subcategory) : undefined,
         initialData: {
+          id,
           title,
           category,
           categoryName,
@@ -194,6 +195,8 @@ export const EventPost: React.FC<EventPostProps> = ({
           price,
           ticketUrl,
           description,
+          likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
+          interestedCount,
         },
       });
     } else {

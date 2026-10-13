@@ -9,7 +9,7 @@ const firebaseConfig = {
   ...firebaseProjectConfig,
   projectId: env.VITE_FIREBASE_PROJECT_ID || firebaseProjectConfig.projectId,
   appId: env.VITE_FIREBASE_APP_ID || firebaseProjectConfig.appId,
-  apiKey: env.VITE_FIREBASE_API_KEY || (firebaseProjectConfig as any).apiKey || "AIzaSyB35ggTZeyyH50V9mRoOAKcc3KNFugrdfg",
+  apiKey: env.VITE_FIREBASE_API_KEY || (firebaseProjectConfig as any).apiKey || "",
   authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || firebaseProjectConfig.authDomain,
   firestoreDatabaseId: env.VITE_FIREBASE_DATABASE_ID || firebaseProjectConfig.firestoreDatabaseId,
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || firebaseProjectConfig.storageBucket,

@@ -654,12 +654,20 @@ export function PostDetailPage({
       matchedDoc ? {
         ...matchedDoc,
         ...initialData,
+        id: matchedDoc.id || initialData.id || target.id,
+        likesCount: (matchedDoc as any).likesCount ?? initialData.likesCount ?? 0,
+        votes: (matchedDoc as any).votes ?? initialData.votes ?? (matchedDoc as any).likesCount ?? initialData.likesCount ?? 0,
         image: initialData.image || matchedDoc.image || (matchedDoc as any).imageUrl,
         imageUrl: initialData.imageUrl || (matchedDoc as any).imageUrl || initialData.image || matchedDoc.image,
         images: (initialData.images && initialData.images.length > 0)
           ? initialData.images
           : (matchedDoc.images || ((matchedDoc as any).imageUrls) || (matchedDoc.image ? [matchedDoc.image] : undefined)),
-      } : initialData
+      } : {
+        ...initialData,
+        id: initialData.id || target.id,
+        likesCount: initialData.likesCount ?? 0,
+        votes: initialData.votes ?? initialData.likesCount ?? 0,
+      }
     ) : matchedDoc;
 
     if (resolvedItem && (resolvedItem.type === 'event' || target.type === 'event')) {
@@ -1825,7 +1833,11 @@ export function PostDetailPage({
   const formattedViews = formatViewsCount(currentViewsCount);
 
   const currentPostId = itemData.id || target.id;
-  const initialPostLikes = itemData.likesCount ?? itemData.votes ?? 0;
+  const initialPostLikes = typeof itemData.likesCount === 'number'
+    ? itemData.likesCount
+    : (typeof itemData.votes === 'number'
+        ? itemData.votes
+        : (parseInt(String(itemData.likesCount || itemData.votes || 0).replace(/\D/g, ''), 10) || 0));
   const currentLikesCount = getLikesCount ? getLikesCount(currentPostId, initialPostLikes) : (Number(initialPostLikes) || 0);
   const isPostLiked = isLiked ? isLiked(currentPostId) : false;
 
@@ -2038,29 +2050,22 @@ export function PostDetailPage({
                 <span>{formattedViews}</span>
               </span>
               <span>•</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (toggleLike) {
-                    toggleLike(currentPostId, {
-                      targetType: (target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'blog'),
-                      initialCount: initialPostLikes,
-                      title: itemData.title,
-                      authorId: itemData.authorId || (itemData as any).userId,
-                    });
-                  }
-                }}
+              <LikeButton
+                id={currentPostId}
+                targetType={target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'blog'}
+                initialLikesCount={initialPostLikes}
+                variant="minimal"
+                showLabel={false}
+                showCount={true}
+                itemTitle={itemData.title}
+                authorId={itemData.authorId || (itemData as any).userId}
                 className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-semibold text-xs border transition-all cursor-pointer select-none active:scale-95 ${
                   isPostLiked 
                     ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 shadow-2xs hover:bg-rose-500/15' 
                     : 'bg-surface-container-high text-on-surface border-surface-container hover:bg-surface-container-highest hover:text-rose-500'
-                }`} 
-                title={isPostLiked ? "Všečkano (kliknite za preklic všečka)" : "Število všečkov objave (kliknite za všečkanje)"}
-                aria-label={`Všečki: ${currentLikesCount}`}
-              >
-                <Heart className={`w-3.5 h-3.5 transition-transform ${isPostLiked ? 'text-rose-500 fill-rose-500 scale-105' : 'text-rose-500 fill-rose-500/20 hover:scale-110'}`} />
-                <span>{currentLikesCount}</span>
-              </button>
+                }`}
+                iconClassName="w-3.5 h-3.5"
+              />
             </div>
           </div>
         </div>

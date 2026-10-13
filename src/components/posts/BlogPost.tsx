@@ -129,6 +129,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
         categorySlug: slugify(categoryName || category),
         subcategorySlug: subcategoryName || subcategory ? slugify(subcategoryName || subcategory) : undefined,
         initialData: {
+          id,
           title,
           category,
           categoryName,
@@ -143,6 +144,9 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           date,
           location,
           description: finalDesc,
+          likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
+          viewsCount,
+          commentsCount,
         },
       });
     } else {

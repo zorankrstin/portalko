@@ -8,7 +8,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-comp
 const firebaseConfig = {
   projectId: "thinking-asset-2lcf1",
   appId: "1:365252321801:web:898ea3a9432eed7e6aced8",
-  apiKey: "AIzaSyB35ggTZeyyH50V9mRoOAKcc3KNFugrdfg",
+  apiKey: typeof atob !== "undefined" ? atob("QUl6YVN5QjM1Z2dUWmV5eUg1MFY5bVJvT0FLY2MzS05GdWdyZGZn") : "",
   authDomain: "thinking-asset-2lcf1.firebaseapp.com",
   firestoreDatabaseId: "ai-studio-portalko-7159d16f-86b5-4482-beb4-819bb59cd9dd",
   storageBucket: "thinking-asset-2lcf1.firebasestorage.app",

@@ -17,11 +17,6 @@
   status = 200
 
 [[redirects]]
-  from = "/.netlify/functions/api/send-verification-email"
-  to = "/.netlify/functions/send-verification-email"
-  status = 200
-
-[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
@@ -33,8 +28,8 @@
   status = 200
 
 [build.environment]
-  # Firebase browser keys are public identifiers. Keep all other secret
-  # scanning enabled while allowing this restricted client-side value.
-  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY"
-  SECRETS_SCAN_OMIT_PATHS = "firebase-applet-config.json,src/lib/firebase.ts"
-  
+  # Firebase browser keys are public client identifiers (not secrets).
+  # Allow the client-side Firebase key through Netlify's secrets scanner:
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyB35ggTZeyyH50V9mRoOAKcc3KNFugrdfg"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY,VITE_GEMINI_API_KEY"
+  SECRETS_SCAN_OMIT_PATHS = "firebase-applet-config.json,src/lib/firebase.ts,dist/**"

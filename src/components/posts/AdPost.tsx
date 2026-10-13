@@ -92,6 +92,7 @@ export const AdPost: React.FC<AdPostProps> = ({
         categorySlug: slugify(categoryName || category),
         subcategorySlug: subcategoryName || subcategory ? slugify(subcategoryName || subcategory) : undefined,
         initialData: {
+          id,
           title,
           category,
           categoryName,
@@ -107,6 +108,7 @@ export const AdPost: React.FC<AdPostProps> = ({
           location,
           date,
           description,
+          likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
         },
       });
     } else {

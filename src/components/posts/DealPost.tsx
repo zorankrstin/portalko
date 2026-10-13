@@ -111,12 +111,14 @@ export const DealPost: React.FC<DealPostProps> = ({
         categorySlug: slugify(categoryName || category),
         subcategorySlug: subcategoryName || subcategory ? slugify(subcategoryName || subcategory) : undefined,
         initialData: {
+          id,
           title,
           category,
           categoryName,
           subcategory,
           subcategoryName,
           author,
+          authorId,
           authorRole,
           authorAvatar,
           image: imgSrc || image || '',
@@ -129,6 +131,9 @@ export const DealPost: React.FC<DealPostProps> = ({
           code: hasValidCode ? code!.trim() : undefined,
           link,
           region,
+          votes: votesCount || 0,
+          votesCount: votesCount || 0,
+          likesCount: votesCount || 0,
         },
       });
     } else {

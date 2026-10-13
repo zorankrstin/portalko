@@ -343,6 +343,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         categorySlug: slugify(post.categoryName || post.category || 'blog'),
         subcategorySlug: post.subcategoryName || post.subcategory ? slugify(post.subcategoryName || post.subcategory) : undefined,
         initialData: {
+          id: post.id,
           title: post.title,
           category: post.category,
           categoryName: post.categoryName,
@@ -353,6 +354,10 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           images: post.images || post.imageUrls || (imgSrc ? [imgSrc] : []),
           description: post.content,
           date: 'Ravno objavljeno',
+          likesCount: post.likesCount || 0,
+          votes: post.likesCount || 0,
+          commentsCount: post.commentsCount || 0,
+          viewsCount: post.viewsCount || 0,
         },
       });
     } else {
