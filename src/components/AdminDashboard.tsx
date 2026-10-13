@@ -4,11 +4,12 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck
+  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck, Megaphone
 } from 'lucide-react';
 import { UserGrowthChart } from './admin/UserGrowthChart';
 import { ReportsManager } from './admin/ReportsManager';
 import { PortalSettingsManager } from './admin/PortalSettingsManager';
+import { BannerManager } from './admin/BannerManager';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { subscribeToReports } from '../services/reportService';
 import { useAuth, Role, User, isDummyUser } from '../contexts/AuthContext';
@@ -85,7 +86,7 @@ const MOCK_POSTS: AdminPost[] = [
 
 export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: AdminDashboardProps = {}) {
   const { users, currentUser, updateUser, deleteUser, register } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'rss' | 'reports' | 'settings'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'settings'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -748,6 +749,15 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
       >
         <Layers className="w-4 h-4" />
         <span>Kategorije & Podkategorije</span>
+      </button>
+      <button 
+        onClick={() => setActiveTab('banners')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'banners' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <Megaphone className="w-4 h-4" />
+        <span>Promocijske pasice</span>
       </button>
       <button 
         onClick={() => setActiveTab('rss')}
@@ -1909,6 +1919,13 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         {activeTab === 'reports' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <ReportsManager />
+          </div>
+        )}
+
+        {/* Tab Content: Promotion Banners */}
+        {activeTab === 'banners' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <BannerManager currentUserId={currentUser?.id} />
           </div>
         )}
 

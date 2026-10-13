@@ -66,7 +66,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   images,
   readTime = "5 minut branja",
   photoCount = "8 fotografij",
-  likesCount = "84 všečkov",
+  likesCount = 0,
   lovesCount = 0,
   dislikesCount = 0,
   commentsCount = "0 komentarjev",

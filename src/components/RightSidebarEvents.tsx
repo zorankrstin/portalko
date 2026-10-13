@@ -7,6 +7,7 @@ import { parseEventDateInfo } from '../utils/dateUtils';
 import { EventCalendarWidget } from './common/EventCalendarWidget';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { getUpcomingEvents, getTodayYmd } from '../utils/eventFilterUtils';
+import { PromotionBannerZone } from './common/PromotionBannerZone';
 
 interface RightSidebarEventsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -64,6 +65,7 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
+      <PromotionBannerZone position="right_sidebar" />
       {/* 1. Interaktivni Koledar prireditev (Date Filter) */}
       <EventCalendarWidget events={allEvents} />
 

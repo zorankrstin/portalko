@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Settings, LayoutList, Store, Percent, Calendar, FileText, Rss, Network, PlusCircle, ChevronDown, Tag, CalendarPlus, PiggyBank, Bookmark } from 'lucide-react';
 import type { ViewMode } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { PromotionBannerZone } from './common/PromotionBannerZone';
 
 interface LeftSidebarProps {
   currentView: ViewMode;
@@ -158,6 +159,9 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
           </div>
         )}
       </div>
+      
+      {/* Promocijske pasice v levem stolpcu */}
+      <PromotionBannerZone position="left_sidebar" />
       
       <div className="px-2 text-outline font-label-md text-xs flex flex-wrap gap-x-2.5 gap-y-1">
         <a className="hover:text-primary transition-colors" href="#">Pogoji uporabe</a>

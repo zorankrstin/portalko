@@ -3,6 +3,7 @@ import { ShieldCheck, Lock, TrendingUp, Link as LinkIcon, ShoppingBag } from 'lu
 import { PostDetailTarget } from '../types';
 import { subscribeToAds, FirestoreAd } from '../services/firestoreService';
 import { scrollToPageTop } from '../utils/scrollUtils';
+import { PromotionBannerZone } from './common/PromotionBannerZone';
 
 interface RightSidebarAdsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -35,6 +36,7 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
+      <PromotionBannerZone position="right_sidebar" />
       
       {/* Priporočeni mali oglasi */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">

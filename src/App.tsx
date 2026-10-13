@@ -23,6 +23,7 @@ import { BackToTopButton } from './components/BackToTopButton';
 import { PostDetailPage } from './components/PostDetailPage';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { ResetPasswordModal } from './components/ResetPasswordModal';
+import { PromotionBannerZone } from './components/common/PromotionBannerZone';
 import type { ViewMode, PostDetailTarget, PostDetailType, AuthorProfileTarget } from './types';
 import { useAuth } from './contexts/AuthContext';
 import { scrollToPageTop, scrollToSidebarsTop } from './utils/scrollUtils';
@@ -728,6 +729,11 @@ export default function App() {
               onBack={handleBreadcrumbsBack}
               onClearSearch={() => handleSearchChange('')}
             />
+
+            {/* Promocijska pasica v glavnem vsebniku */}
+            {currentView !== 'admin' && (
+              <PromotionBannerZone position="main_container" />
+            )}
 
             {currentView === 'post-detail' && selectedPostTarget && (
               <PostDetailPage 

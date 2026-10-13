@@ -184,14 +184,28 @@ export function LikeProvider({ children }: { children: ReactNode }) {
     }
   }, [countsOverride, reactionsCounts]);
 
+  const cleanDocId = (rawId: string): string => {
+    if (!rawId) return '';
+    return rawId.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+  };
+
   const isLiked = (id: string): boolean => {
-    if (!currentUserId) return false;
-    return likedIds.includes(id);
+    if (!currentUserId || !id) return false;
+    if (likedIds.includes(id)) return true;
+    const clean = cleanDocId(id);
+    return likedIds.some(i => cleanDocId(i) === clean);
   };
 
   const getReaction = (id: string): ReactionType | null => {
-    if (!currentUserId) return null;
-    return reactions[id] || null;
+    if (!currentUserId || !id) return null;
+    if (reactions[id] !== undefined) return reactions[id];
+    const clean = cleanDocId(id);
+    for (const key of Object.keys(reactions)) {
+      if (cleanDocId(key) === clean) {
+        return reactions[key];
+      }
+    }
+    return null;
   };
 
   const parseCount = (cnt?: number | string): number => {
@@ -204,8 +218,18 @@ export function LikeProvider({ children }: { children: ReactNode }) {
   };
 
   const getLikesCount = (id: string, initialCount?: number | string): number => {
+    if (!id) return parseCount(initialCount);
     if (countsOverride[id] !== undefined) {
       return countsOverride[id];
+    }
+    const clean = cleanDocId(id);
+    if (countsOverride[clean] !== undefined) {
+      return countsOverride[clean];
+    }
+    for (const key of Object.keys(countsOverride)) {
+      if (cleanDocId(key) === clean) {
+        return countsOverride[key];
+      }
     }
     return parseCount(initialCount);
   };
@@ -214,8 +238,24 @@ export function LikeProvider({ children }: { children: ReactNode }) {
     id: string,
     initialCounts?: { likes?: number; loves?: number; dislikes?: number }
   ): { likes: number; loves: number; dislikes: number } => {
+    if (!id) {
+      return {
+        likes: parseCount(initialCounts?.likes),
+        loves: parseCount(initialCounts?.loves),
+        dislikes: parseCount(initialCounts?.dislikes),
+      };
+    }
     if (reactionsCounts[id] !== undefined) {
       return reactionsCounts[id];
+    }
+    const clean = cleanDocId(id);
+    if (reactionsCounts[clean] !== undefined) {
+      return reactionsCounts[clean];
+    }
+    for (const key of Object.keys(reactionsCounts)) {
+      if (cleanDocId(key) === clean) {
+        return reactionsCounts[key];
+      }
     }
     return {
       likes: parseCount(initialCounts?.likes),
@@ -319,21 +359,28 @@ export function LikeProvider({ children }: { children: ReactNode }) {
     }
 
     // Optimistically update reactions, standard likedIds, and overrides
+    const cleanId = cleanDocId(id);
     setReactions(prev => ({
       ...prev,
       [id]: nextReaction,
+      ...(cleanId ? { [cleanId]: nextReaction } : {}),
     }));
 
     setReactionsCounts(prev => ({
       ...prev,
       [id]: nextCounts,
+      ...(cleanId ? { [cleanId]: nextCounts } : {}),
     }));
 
     // Update standard likedIds array for 100% compatibility
-    setLikedIds(prev => (nextReaction === 'like' ? [...prev, id] : prev.filter(i => i !== id)));
+    setLikedIds(prev => {
+      const filtered = prev.filter(i => i !== id && cleanDocId(i) !== cleanId);
+      return nextReaction === 'like' ? [...filtered, id, ...(cleanId ? [cleanId] : [])] : filtered;
+    });
     setCountsOverride(prev => ({
       ...prev,
       [id]: nextCounts.likes,
+      ...(cleanId ? { [cleanId]: nextCounts.likes } : {}),
     }));
 
     // Persist to Firestore

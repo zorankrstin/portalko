@@ -120,6 +120,12 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Promotion Banners Collection
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Connection test document
     match /test/{docId} {
       allow read, write: if true;

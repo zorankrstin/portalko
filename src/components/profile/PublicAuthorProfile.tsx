@@ -788,10 +788,10 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                           <span>{item.viewsCount} {item.viewsCount === 1 ? 'ogled' : item.viewsCount === 2 ? 'ogleda' : 'ogledov'}</span>
                         </span>
                       )}
-                      {typeof item.likesCount === 'number' && (
+                      {item.likesCount !== undefined && (
                         <span className="flex items-center gap-1 text-on-surface-variant font-medium" title="Število všečkov objave">
                           <ThumbsUp className="w-3 h-3 text-primary" />
-                          <span>{item.likesCount + (item.lovesCount || 0)}</span>
+                          <span>{(Number(item.likesCount) || 0) + (Number(item.lovesCount) || 0)}</span>
                         </span>
                       )}
                       {item.type === 'event' && item.interestedCount !== undefined && item.interestedCount !== null && (

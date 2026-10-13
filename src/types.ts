@@ -89,3 +89,30 @@ export interface PromotionConfig {
   assignedById?: string;
 }
 
+// ---------------- PROMOTION BANNER TYPES ----------------
+export type BannerPosition = 'left_sidebar' | 'right_sidebar' | 'main_container';
+export type BannerType = 'image' | 'code';
+
+export interface PromotionBanner {
+  id: string;
+  title: string;
+  position: BannerPosition;
+  type: BannerType;
+  imageUrl?: string;
+  targetUrl?: string;
+  altText?: string;
+  caption?: string;
+  openInNewTab?: boolean;
+  customCode?: string;
+  isActive: boolean;
+  order?: number;
+  startDate?: string;
+  endDate?: string;
+  clicksCount?: number;
+  viewsCount?: number;
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+  createdById?: string;
+}
+

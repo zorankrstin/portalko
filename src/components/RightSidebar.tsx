@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Rss, Globe, RefreshCw } from 'lucide-react';
 import { Weather } from './Weather';
 import { AdSense } from './ads/AdSense';
+import { PromotionBannerZone } from './common/PromotionBannerZone';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 import { formatSlovenianDate } from '../utils/dateUtils';
 import type { PostDetailTarget } from '../types';
@@ -43,6 +44,7 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
+      <PromotionBannerZone position="right_sidebar" />
       <AdSense />
       
       {/* VREME WIDGET */}

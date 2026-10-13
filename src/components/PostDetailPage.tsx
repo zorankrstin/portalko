@@ -390,7 +390,8 @@ export function PostDetailPage({
         image: fs.imageUrl || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
         region: fs.location || 'Vsa Slovenija',
-        votes: fs.likesCount || 12,
+        votes: fs.likesCount ?? 0,
+        likesCount: fs.likesCount ?? 0,
         viewsCount: fs.viewsCount ?? 0,
         code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : undefined,
         link: fs.dealLink || 'https://www.portalko.net',
@@ -806,7 +807,7 @@ export function PostDetailPage({
 
     const initialBlogLikes = typeof itemData.likesCount === 'number'
       ? itemData.likesCount
-      : parseInt(String(itemData.likesCount)) || 42;
+      : parseInt(String(itemData.likesCount)) || 0;
     setBlogLikes(initialBlogLikes);
     setHasBlogLiked(false);
 
@@ -1978,20 +1979,10 @@ export function PostDetailPage({
           {/* Post Header: Post Title and Meta Row */}
           <div className="flex flex-col gap-3">
             {/* Post Title: Prominent, high-contrast, clean H1 above description */}
-            <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-4">
               <h1 className="font-headline-lg text-2xl sm:text-3xl md:text-4xl font-black text-on-surface leading-tight tracking-tight flex-1">
                 {itemData.title}
               </h1>
-              {target.type === 'ad' && itemData.price && (
-                <div className="px-3.5 py-1.5 rounded-xl bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 font-black text-lg sm:text-xl border border-emerald-600/25 shrink-0 self-start">
-                  {itemData.price}
-                </div>
-              )}
-              {target.type === 'deal' && (itemData.discount || itemData.newPrice) && (
-                <div className="px-3.5 py-1.5 rounded-xl bg-secondary/15 text-secondary font-black text-lg sm:text-xl border border-secondary/25 shrink-0 self-start">
-                  {itemData.discount || itemData.newPrice}
-                </div>
-              )}
             </div>
 
             {/* Subtitle component (H2) positioned below the title (optional) */}
@@ -2271,9 +2262,9 @@ export function PostDetailPage({
 
             {/* Všečkaj objavo */}
             <LikeButton
-              id={itemData.id || target.id}
+              id={currentPostId}
               targetType={target.type === 'ad' ? 'ad' : target.type === 'event' ? 'event' : target.type === 'deal' ? 'deal' : 'blog'}
-              initialLikesCount={itemData.likesCount || 0}
+              initialLikesCount={initialPostLikes}
               variant="pill"
               showLabel={true}
               showCount={true}
