@@ -717,7 +717,11 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
         verificationRequested: data.verificationRequested !== undefined ? data.verificationRequested : (base.verificationRequested || false),
         verificationRequestedAt: data.verificationRequestedAt !== undefined ? data.verificationRequestedAt : (base.verificationRequestedAt || ''),
         verificationNote: data.verificationNote !== undefined ? data.verificationNote : (base.verificationNote || ''),
-        createdAt: new Date().toISOString(),
+        emailVerified: data.emailVerified !== undefined ? data.emailVerified : (base.emailVerified !== undefined ? base.emailVerified : false),
+        verificationToken: data.verificationToken !== undefined ? data.verificationToken : (base.verificationToken || ''),
+        verificationSentAt: data.verificationSentAt !== undefined ? data.verificationSentAt : (base.verificationSentAt || ''),
+        verificationConfirmedAt: data.verificationConfirmedAt !== undefined ? data.verificationConfirmedAt : (base.verificationConfirmedAt || ''),
+        createdAt: base.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       await setDoc(userRef, cleanDataForFirestore(fullDoc));

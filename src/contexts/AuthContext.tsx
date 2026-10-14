@@ -196,7 +196,7 @@ interface AuthContextType {
   loginWithCredentials: (email: string, password: string) => { success: boolean; error?: string; user?: User; requiresVerification?: boolean; unverifiedEmail?: string };
   loginById: (id: string) => { success: boolean; error?: string; user?: User };
   logout: () => void;
-  updateUser: (id: string, data: Partial<User>) => void;
+  updateUser: (id: string, data: Partial<User>) => Promise<void> | void;
   deleteUser: (id: string, email?: string) => Promise<void> | void;
   changePassword: (userId: string, oldPass: string, newPass: string) => { success: boolean; error?: string };
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string; user?: User; requiresVerification?: boolean; confirmationUrl?: string; emailSent?: boolean; smtpBlocked?: boolean }>;
@@ -460,9 +460,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fbSignOut(auth).catch(console.error);
   };
 
-  const updateUser = (id: string, data: Partial<User>) => {
+  const updateUser = async (id: string, data: Partial<User>) => {
     const targetUser = users.find(u => u.id === id) || DEFAULT_USERS.find(u => u.id === id);
-    updateUserInFirestore(id, data, targetUser).catch(console.error);
     setUsers(prev => {
       const newUsers = prev.map(u => {
         if (u.id === id) return { ...u, ...data };
@@ -481,6 +480,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return newUsers;
     });
+    await updateUserInFirestore(id, data, targetUser).catch(console.error);
   };
 
   const deleteUser = async (userId: string, email?: string) => {

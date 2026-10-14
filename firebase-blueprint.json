@@ -230,6 +230,26 @@
         "createdById": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "title", "position", "type", "isActive"]
+    },
+    "ActivityLog": {
+      "title": "Admin Activity Log",
+      "description": "Audit trail log entries tracking actions performed by administrators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "adminId": { "type": "string", "maxLength": 128 },
+        "adminName": { "type": "string", "maxLength": 100 },
+        "adminEmail": { "type": "string", "maxLength": 120 },
+        "adminRole": { "type": "string", "maxLength": 50 },
+        "actionType": { "type": "string", "maxLength": 50 },
+        "category": { "type": "string", "maxLength": 50 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetTitle": { "type": "string", "maxLength": 200 },
+        "details": { "type": "string", "maxLength": 5000 },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "adminName", "actionType", "category", "details", "createdAt"]
     }
   },
   "firestore": {
@@ -276,6 +296,10 @@
     "/banners/{bannerId}": {
       "schema": "Banner",
       "description": "Promotion banners and third-party code ads placed in left sidebar, right sidebar, and main container"
+    },
+    "/activity_logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Audit trail log entries tracking actions performed by administrators"
     }
   }
 }

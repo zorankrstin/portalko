@@ -28,14 +28,17 @@ import {
   saveBanner,
   deleteBanner,
   toggleBannerStatus,
-  DEFAULT_SAMPLE_BANNERS
+  seedDefaultBannersManually
 } from '../../services/bannerService';
+import { useAuth } from '../../contexts/AuthContext';
+import { logAdminActivity } from '../../services/activityLogService';
 
 interface BannerManagerProps {
   currentUserId?: string;
 }
 
 export function BannerManager({ currentUserId }: BannerManagerProps) {
+  const { currentUser } = useAuth();
   const [banners, setBanners] = useState<PromotionBanner[]>([]);
   const [filterPosition, setFilterPosition] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -172,6 +175,28 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
         createdById: currentUserId
       });
 
+      // Log admin activity
+      logAdminActivity({
+        adminId: currentUser?.id || currentUserId || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: editingBanner ? 'banner_update' : 'banner_create',
+        category: 'banners',
+        targetId: editingBanner?.id || formData.title,
+        targetTitle: formData.title,
+        details: editingBanner
+          ? `Posodobljena promocijska pasica »${formData.title}« na poziciji ${formData.position}.`
+          : `Ustvarjena nova promocijska pasica »${formData.title}« na poziciji ${formData.position}.`,
+        metadata: {
+          position: formData.position,
+          type: formData.type,
+          isActive: formData.isActive,
+          targetUrl: formData.targetUrl,
+          order: formData.order
+        }
+      }).catch(() => {});
+
       setIsModalOpen(false);
       setSuccessNotice(
         editingBanner
@@ -189,7 +214,26 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
 
   const handleDeleteBanner = async (id: string) => {
     try {
+      const targetBanner = banners.find(b => b.id === id);
       await deleteBanner(id);
+
+      logAdminActivity({
+        adminId: currentUser?.id || currentUserId || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'banner_delete',
+        category: 'banners',
+        targetId: id,
+        targetTitle: targetBanner?.title || id,
+        details: `Izbrisana promocijska pasica »${targetBanner?.title || id}«.`,
+        metadata: {
+          bannerId: id,
+          bannerTitle: targetBanner?.title,
+          position: targetBanner?.position
+        }
+      }).catch(() => {});
+
       setDeleteConfirmId(null);
       setSuccessNotice('Pasica je bila uspešno izbrisana.');
       setTimeout(() => setSuccessNotice(null), 3000);
@@ -200,7 +244,26 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
 
   const handleToggleStatus = async (banner: PromotionBanner) => {
     try {
-      await toggleBannerStatus(banner.id, !banner.isActive);
+      const nextState = !banner.isActive;
+      await toggleBannerStatus(banner.id, nextState);
+
+      logAdminActivity({
+        adminId: currentUser?.id || currentUserId || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'banner_toggle',
+        category: 'banners',
+        targetId: banner.id,
+        targetTitle: banner.title,
+        details: `${nextState ? 'Aktivirana' : 'Deaktivirana'} promocijska pasica »${banner.title}« (${banner.position}).`,
+        metadata: {
+          bannerId: banner.id,
+          bannerTitle: banner.title,
+          isActive: nextState,
+          position: banner.position
+        }
+      }).catch(() => {});
     } catch (err) {
       console.error('Napaka pri spremembi statusa pasice:', err);
     }
@@ -474,13 +537,33 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
                 : 'Trenutno še niste dodali nobene pasice. Začnite s klikom na spodnji gumb.'}
             </p>
           </div>
-          <button
-            onClick={() => openAddModal()}
-            className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Dodaj prvo pasico</span>
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => openAddModal()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold cursor-pointer hover:bg-primary-container transition-colors shadow-2xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Dodaj prvo pasico</span>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await seedDefaultBannersManually();
+                  setSuccessNotice('Naložene so bile privzete vzorčne pasice.');
+                  setTimeout(() => setSuccessNotice(null), 3000);
+                } catch {
+                  setFormError('Prišlo je do napake pri nalaganju vzorčnih pasic.');
+                }
+              }}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold cursor-pointer border border-surface-container transition-colors"
+              title="Po želji naloži vzorčne primere pasic za takojšnji preizkus"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Naloži vzorčne pasice</span>
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -4,15 +4,17 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck, Megaphone
+  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck, Megaphone, History
 } from 'lucide-react';
 import { UserGrowthChart } from './admin/UserGrowthChart';
 import { ReportsManager } from './admin/ReportsManager';
 import { PortalSettingsManager } from './admin/PortalSettingsManager';
 import { BannerManager } from './admin/BannerManager';
+import { AdminActivityLog } from './admin/AdminActivityLog';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { subscribeToReports } from '../services/reportService';
 import { useAuth, Role, User, isDummyUser } from '../contexts/AuthContext';
+import { logAdminActivity } from '../services/activityLogService';
 import { isUserDeletedSync } from '../services/firestoreService';
 import { 
   RssFeedConfig, 
@@ -85,8 +87,8 @@ const MOCK_POSTS: AdminPost[] = [
 ];
 
 export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: AdminDashboardProps = {}) {
-  const { users, currentUser, updateUser, deleteUser, register } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'settings'>('posts');
+  const { users, currentUser, updateUser, deleteUser, register, resendVerificationEmail } = useAuth();
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -142,6 +144,24 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     setIsDeletingUser(true);
     try {
       await deleteUser(userToDelete.id, userToDelete.email);
+
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'user_delete',
+        category: 'users',
+        targetId: userToDelete.id,
+        targetTitle: userToDelete.name,
+        details: `Izbrisan uporabnik »${userToDelete.name}« (${userToDelete.email}).`,
+        metadata: {
+          deletedUserId: userToDelete.id,
+          deletedUserEmail: userToDelete.email,
+          deletedUserRole: userToDelete.role
+        }
+      }).catch(() => {});
+
       setActionFeedback({
         id: `del-${userToDelete.id}`,
         message: `Uporabnik ${userToDelete.name} (${userToDelete.email}) je bil uspešno izbrisan.`,
@@ -165,9 +185,11 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
   // Role hierarchy and helpers for quick upgrade / downgrade
   const ROLE_HIERARCHY: Role[] = ['registered', 'moderator', 'admin', 'superadmin'];
 
-  const canUpgradeRole = (currentRole: Role) => {
+  const canUpgradeRole = (currentRole: Role, isSuper: boolean = false) => {
     const idx = ROLE_HIERARCHY.indexOf(currentRole);
-    return idx >= 0 && idx < ROLE_HIERARCHY.length - 1;
+    if (idx < 0) return false;
+    const maxIdx = isSuper ? ROLE_HIERARCHY.length - 1 : ROLE_HIERARCHY.indexOf('admin');
+    return idx < maxIdx;
   };
 
   const canDowngradeRole = (currentRole: Role) => {
@@ -175,9 +197,10 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     return idx > 0;
   };
 
-  const getNextRole = (currentRole: Role): Role | null => {
+  const getNextRole = (currentRole: Role, isSuper: boolean = false): Role | null => {
     const idx = ROLE_HIERARCHY.indexOf(currentRole);
-    if (idx >= 0 && idx < ROLE_HIERARCHY.length - 1) {
+    const maxIdx = isSuper ? ROLE_HIERARCHY.length - 1 : ROLE_HIERARCHY.indexOf('admin');
+    if (idx >= 0 && idx < maxIdx) {
       return ROLE_HIERARCHY[idx + 1];
     }
     return null;
@@ -193,6 +216,17 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
 
   const handleRoleChange = async (userId: string, userName: string, newRole: Role) => {
     if (roleUpdatingId === userId) return;
+    const isSuper = currentUser?.role === 'superadmin';
+    if (!isSuper && newRole === 'superadmin') {
+      setActionFeedback({
+        id: `role-err-${userId}-${Date.now()}`,
+        message: 'Le Superadmin lahko dodeli vlogo Superadmin.',
+        type: 'error'
+      });
+      setTimeout(() => setActionFeedback(null), 3500);
+      return;
+    }
+
     setRoleUpdatingId(userId);
     try {
       await updateUser(userId, { role: newRole });
@@ -204,6 +238,26 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         registered: 'Uporabnik',
         guest: 'Gost'
       };
+
+      // Record in Admin Activity Log
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'role_change',
+        category: 'users',
+        targetId: userId,
+        targetTitle: userName,
+        details: `Spremenjena vloga uporabnika »${userName}« v »${roleLabels[newRole] || newRole}«.`,
+        metadata: {
+          targetUserId: userId,
+          targetUserName: userName,
+          newRole,
+          roleLabel: roleLabels[newRole] || newRole
+        }
+      }).catch(() => {});
+
       setActionFeedback({
         id: `role-${userId}-${Date.now()}`,
         message: `Vloga za uporabnika »${userName}« je bila uspešno spremenjena v »${roleLabels[newRole] || newRole}«.`,
@@ -220,6 +274,99 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
       setTimeout(() => setActionFeedback(null), 3500);
     } finally {
       setRoleUpdatingId(null);
+    }
+  };
+
+  const handleConfirmUserRegistration = async (userId: string, userName: string) => {
+    try {
+      await updateUser(userId, {
+        emailVerified: true,
+        verificationConfirmedAt: new Date().toISOString()
+      });
+
+      // Record in Admin Activity Log
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'registration_confirm',
+        category: 'users',
+        targetId: userId,
+        targetTitle: userName,
+        details: `Ročno potrjena registracija in veljavnost računa za uporabnika »${userName}«.`,
+        metadata: {
+          targetUserId: userId,
+          targetUserName: userName
+        }
+      }).catch(() => {});
+
+      setActionFeedback({
+        id: `confirm-reg-${userId}-${Date.now()}`,
+        message: `Registracija za uporabnika »${userName}« je bila uspešno ročno potrjena.`,
+        type: 'success'
+      });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err) {
+      console.error('Napaka pri potrditvi registracije:', err);
+      setActionFeedback({
+        id: `confirm-err-${userId}-${Date.now()}`,
+        message: `Pri potrditvi registracije uporabnika ${userName} je prišlo do napake.`,
+        type: 'error'
+      });
+      setTimeout(() => setActionFeedback(null), 3500);
+    }
+  };
+
+  const handleToggleUserBan = async (user: User) => {
+    const nextStatus = user.status === 'active' ? 'banned' : 'active';
+    await updateUser(user.id, { status: nextStatus });
+
+    logAdminActivity({
+      adminId: currentUser?.id || 'admin',
+      adminName: currentUser?.name || 'Administrator',
+      adminEmail: currentUser?.email || '',
+      adminRole: currentUser?.role || 'admin',
+      actionType: 'user_status_change',
+      category: 'users',
+      targetId: user.id,
+      targetTitle: user.name,
+      details: `${nextStatus === 'banned' ? 'Blokiran' : 'Odblokiran'} uporabnik »${user.name}« (${user.email}).`,
+      metadata: {
+        userId: user.id,
+        userEmail: user.email,
+        previousStatus: user.status,
+        newStatus: nextStatus
+      }
+    }).catch(() => {});
+
+    setActionFeedback({
+      id: `ban-${user.id}-${Date.now()}`,
+      message: `Uporabnik »${user.name}« je bil uspešno ${nextStatus === 'banned' ? 'blokiran' : 'odblokiran'}.`,
+      type: 'success'
+    });
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
+  const handleResendUserConfirmation = async (userEmail: string, userName: string) => {
+    try {
+      const res = await resendVerificationEmail(userEmail);
+      if (res.success) {
+        setActionFeedback({
+          id: `resend-${Date.now()}`,
+          message: `Potrditveno sporočilo je bilo ponovno poslano na ${userEmail}.`,
+          type: 'success'
+        });
+      } else {
+        setActionFeedback({
+          id: `resend-err-${Date.now()}`,
+          message: res.error || `Napaka pri pošiljanju potrditvenega sporočila na ${userEmail}.`,
+          type: 'error'
+        });
+      }
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err) {
+      console.error('Napaka pri ponovnem pošiljanju potrditve:', err);
     }
   };
 
@@ -344,9 +491,11 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     }
 
     return uniqueUsers.filter(user => {
-      // Role filter
+      // Role & Confirmation filter
       if (userFilterRole === 'verification' && !user.verificationRequested) return false;
-      if (userFilterRole !== 'all' && userFilterRole !== 'verification' && user.role !== userFilterRole) return false;
+      if (userFilterRole === 'unconfirmed' && user.emailVerified !== false) return false;
+      if (userFilterRole === 'confirmed' && user.emailVerified === false) return false;
+      if (userFilterRole !== 'all' && userFilterRole !== 'verification' && userFilterRole !== 'unconfirmed' && userFilterRole !== 'confirmed' && user.role !== userFilterRole) return false;
 
       // Search query filter
       const q = userSearchQuery.trim().toLowerCase();
@@ -562,6 +711,22 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
   const handleApproveItem = async (item: EditablePostItem) => {
     try {
       await approveItemInFirestore(item.id, item.type);
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'post_status_change',
+        category: 'posts',
+        targetId: item.id,
+        targetTitle: item.title,
+        details: `Odobrena objava »${item.title}« (${item.type}).`,
+        metadata: {
+          postId: item.id,
+          postType: item.type,
+          newStatus: 'published'
+        }
+      }).catch(() => {});
       setActionFeedback({ id: item.id, message: `Objava "${item.title}" je uspešno odobrena!`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 4000);
     } catch (err: any) {
@@ -575,6 +740,23 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
 
     try {
       await rejectItemInFirestore(item.id, item.type, reason.trim() || undefined);
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'post_status_change',
+        category: 'posts',
+        targetId: item.id,
+        targetTitle: item.title,
+        details: `Zavrnjena objava »${item.title}« (${item.type}). Razlog: ${reason.trim() || 'Brez navedenega razloga'}.`,
+        metadata: {
+          postId: item.id,
+          postType: item.type,
+          newStatus: 'rejected',
+          reason: reason.trim()
+        }
+      }).catch(() => {});
       setActionFeedback({ id: item.id, message: `Objava "${item.title}" je bila zavrnjena.`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 4000);
     } catch (err: any) {
@@ -593,6 +775,21 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
       } else {
         await deletePostInFirestore(item.id);
       }
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'post_delete',
+        category: 'posts',
+        targetId: item.id,
+        targetTitle: item.title,
+        details: `Trajno izbrisana objava »${item.title}« tipa ${item.type}.`,
+        metadata: {
+          postId: item.id,
+          postType: item.type
+        }
+      }).catch(() => {});
       setActionFeedback({ id: item.id, message: `Objava "${item.title}" je bila izbrisana.`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 4000);
     } catch (err: any) {
@@ -791,6 +988,15 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         <ImageIcon className="w-4 h-4" />
         <span>Nadomestna slika & Nastavitve</span>
       </button>
+      <button 
+        onClick={() => setActiveTab('logs')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'logs' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <History className="w-4 h-4" />
+        <span>Dnevnik aktivnosti</span>
+      </button>
     </div>
   );
 
@@ -841,7 +1047,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                   <span>{showUserGrowthChart ? 'Skrij rast' : 'Rast uporabnikov'}</span>
                 </button>
 
-                {currentUser?.role === 'superadmin' && (
+                {(currentUser?.role === 'superadmin' || currentUser?.role === 'admin') && (
                   <button
                     type="button"
                     onClick={() => {
@@ -899,6 +1105,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                       className="pl-8 pr-8 py-2 rounded-xl bg-surface-container-lowest border border-surface-container hover:border-primary/40 focus:border-primary focus:outline-none text-xs font-semibold text-on-surface cursor-pointer shadow-2xs transition-colors"
                     >
                       <option value="all">Vse vloge ({users.length})</option>
+                      <option value="unconfirmed">✉️ Nepotrjena registracija ({users.filter(u => u.emailVerified === false).length})</option>
                       <option value="verification">⭐ Čakajo na verifikacijo ({pendingVerifications.length})</option>
                       <option value="registered">Registrirani ({users.filter(u => u.role === 'registered').length})</option>
                       <option value="moderator">🛡️ Moderatorji ({users.filter(u => u.role === 'moderator').length})</option>
@@ -1032,7 +1239,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                 <div className="flex items-center justify-between">
                   <h4 className="font-headline-sm text-sm font-bold text-on-surface flex items-center gap-1.5">
                     <UserPlus className="w-4 h-4 text-primary" />
-                    Ustvari novega uporabnika (kot Superadmin)
+                    Ustvari novega uporabnika
                   </h4>
                   <button 
                     onClick={() => setIsAddUserOpen(false)}
@@ -1082,7 +1289,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                     onChange={(e) => setNewUserRole(e.target.value as Role)}
                     className="px-3 py-2 rounded-lg bg-surface-container-lowest border border-surface-container text-xs text-on-surface focus:border-primary outline-none cursor-pointer"
                   >
-                    <option value="superadmin">⭐ Superadmin</option>
+                    <option value="superadmin" disabled={currentUser?.role !== 'superadmin'}>⭐ Superadmin{currentUser?.role !== 'superadmin' ? ' (le Superadmin)' : ''}</option>
                     <option value="admin">Administrator</option>
                     <option value="moderator">🛡️ Moderator</option>
                     <option value="verified">Preverjeni uporabnik</option>
@@ -1169,7 +1376,11 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                   ) : (
                     filteredUsers.map((user, idx) => {
                       const isSuperadmin = currentUser?.role === 'superadmin';
-                      const canManageVerification = isSuperadmin || currentUser?.role === 'admin';
+                      const isAdmin = currentUser?.role === 'admin';
+                      const canManageVerification = isSuperadmin || isAdmin;
+                      const isSelf = user.id === currentUser?.id;
+                      const canEditThisUserRole = isSuperadmin ? !isSelf : (isAdmin && !isSelf && user.role !== 'superadmin');
+                      const canManageUserStatus = isSuperadmin ? !isSelf : (isAdmin && !isSelf && user.role !== 'superadmin');
                       const authorSlug = slugify(user.name) || user.id || 'uporabnik';
                       const profileUrl = `/avtor/${authorSlug}`;
 
@@ -1218,6 +1429,18 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                 </a>
                                 <span className="text-xs text-outline truncate">{user.email}</span>
 
+                                {user.emailVerified === false ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-200 border border-amber-500/30 w-max mt-1">
+                                    <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                                    <span>Nepotrjena registracija</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30 w-max mt-1">
+                                    <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                    <span>Potrjena registracija</span>
+                                  </span>
+                                )}
+
                                 {user.verificationRequested && (
                                   <div className="mt-1.5 flex flex-col gap-1">
                                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40 w-max">
@@ -1240,7 +1463,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                             </div>
                           </td>
                           <td className="p-3 align-top">
-                            {isSuperadmin && user.id !== currentUser?.id ? (
+                            {canEditThisUserRole ? (
                               <div className="flex flex-col gap-1.5 min-w-[210px] max-w-[260px]">
                                 {/* Quick 3-Tier Segmented Toggle: User | Moderator | Admin */}
                                 <div className="inline-flex items-center rounded-lg bg-surface-container-low p-0.5 border border-surface-container text-xs shadow-2xs w-fit">
@@ -1305,7 +1528,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                       <option value="moderator">🛡️ Moderator (moderator)</option>
                                       <option value="admin">⚡ Administrator (admin)</option>
                                       <option value="verified">⭐ Preverjen (verified)</option>
-                                      <option value="superadmin">👑 Superadmin</option>
+                                      <option value="superadmin" disabled={!isSuperadmin}>👑 Superadmin{!isSuperadmin ? ' (le Superadmin)' : ''}</option>
                                       <option value="guest">Gost (guest)</option>
                                     </select>
                                     <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
@@ -1329,12 +1552,12 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        const nextRole = getNextRole(user.role);
+                                        const nextRole = getNextRole(user.role, isSuperadmin);
                                         if (nextRole) handleRoleChange(user.id, user.name, nextRole);
                                       }}
-                                      disabled={!canUpgradeRole(user.role) || roleUpdatingId === user.id}
+                                      disabled={!canUpgradeRole(user.role, isSuperadmin) || roleUpdatingId === user.id}
                                       className="p-1 text-outline hover:text-on-surface hover:bg-surface-container-low disabled:opacity-25 disabled:pointer-events-none transition-colors border-l border-surface-container cursor-pointer"
-                                      title={canUpgradeRole(user.role) ? `Nadgradi vlogo na ${getNextRole(user.role)}` : 'Najvišja stopnja vloge'}
+                                      title={canUpgradeRole(user.role, isSuperadmin) ? `Nadgradi vlogo na ${getNextRole(user.role, isSuperadmin)}` : 'Najvišja stopnja vloge'}
                                       aria-label="Nadgradi vlogo"
                                     >
                                       <ChevronUp className="w-3 h-3" />
@@ -1345,6 +1568,13 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                     <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
                                   )}
                                 </div>
+
+                                {user.emailVerified === false && (
+                                  <span className="text-[10px] text-amber-700 dark:text-amber-300 font-medium flex items-center gap-1">
+                                    <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+                                    Registracija še ni potrjena (vlogo lahko prosto spreminjate)
+                                  </span>
+                                )}
                               </div>
                             ) : (
                               <div className="flex items-center gap-1.5">
@@ -1354,7 +1584,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                   user.role === 'moderator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-300/40' : 
                                   user.role === 'verified' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300/40' : 
                                   'bg-surface-container text-on-surface-variant'
-                                }`} title={user.id === currentUser?.id ? 'Vaš lasten račun (Superadmin)' : `Vloga: ${user.role}`}>
+                                }`} title={user.id === currentUser?.id ? 'Vaš lasten račun' : `Vloga: ${user.role}`}>
                                   {user.role === 'superadmin' && <Crown className="w-3 h-3 text-purple-600 dark:text-purple-400" />}
                                   {user.role === 'admin' && <Shield className="w-3 h-3 text-rose-600 dark:text-rose-400" />}
                                   {user.role === 'moderator' && <ShieldCheck className="w-3 h-3 text-blue-600 dark:text-blue-400" />}
@@ -1366,11 +1596,53 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                             )}
                           </td>
                           <td className="p-3 align-top">
-                            {user.status === 'active' ? (
-                              <span className="flex items-center gap-1 text-xs text-secondary font-medium"><CheckCircle className="w-3 h-3" /> Aktiven</span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-xs text-error font-medium"><XCircle className="w-3 h-3" /> Baniran</span>
-                            )}
+                            <div className="flex flex-col gap-1.5">
+                              <div>
+                                {user.status === 'active' ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-secondary font-medium"><CheckCircle className="w-3 h-3" /> Aktiven račun</span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-xs text-error font-medium"><XCircle className="w-3 h-3" /> Baniran</span>
+                                )}
+                              </div>
+
+                              {user.emailVerified === false ? (
+                                <div className="flex flex-col gap-1 pt-1 border-t border-surface-container/60">
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                                    <Clock className="w-3 h-3 text-amber-500 shrink-0" />
+                                    Čaka potrditev
+                                  </span>
+                                  {canManageVerification && (
+                                    <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleConfirmUserRegistration(user.id, user.name)}
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-2xs cursor-pointer"
+                                        title="Admin lahko ročno potrdi registracijo uporabnika"
+                                      >
+                                        <Check className="w-2.5 h-2.5" />
+                                        Potrdi reg.
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleResendUserConfirmation(user.email, user.name)}
+                                        className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded bg-surface-container hover:bg-surface-container-high text-outline hover:text-on-surface transition-colors cursor-pointer border border-surface-container"
+                                        title="Ponovno pošlji potrditveno povezavo na e-pošto"
+                                      >
+                                        <RefreshCw className="w-2.5 h-2.5" />
+                                        Pošlji e-pošto
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="pt-1 border-t border-surface-container/60">
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                                    <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                                    Reg. potrjena
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 text-right align-top">
                             <div className="flex flex-col items-end gap-1.5">
@@ -1413,7 +1685,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                   <span className="hidden sm:inline">Profil</span>
                                 </a>
 
-                                {isSuperadmin && user.id !== currentUser?.id && (
+                                {canManageUserStatus && (
                                   <>
                                     <button 
                                       onClick={() => updateUser(user.id, { status: user.status === 'active' ? 'banned' : 'active' })}
@@ -1933,6 +2205,20 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         {activeTab === 'settings' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <PortalSettingsManager currentUserId={currentUser?.id} />
+          </div>
+        )}
+
+        {/* Tab Content: Admin Activity Log */}
+        {activeTab === 'logs' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <AdminActivityLog
+              currentAdmin={currentUser ? {
+                id: currentUser.id,
+                name: currentUser.name,
+                email: currentUser.email,
+                role: currentUser.role
+              } : null}
+            />
           </div>
         )}
       </div>

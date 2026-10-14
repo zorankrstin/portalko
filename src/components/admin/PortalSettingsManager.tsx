@@ -23,12 +23,15 @@ import {
 import { usePortalSettings, PortalSettings } from '../../services/portalSettingsService';
 import { compressImageFileToDataUrl } from '../../utils/imageUtils';
 import { FALLBACK_PRESETS, FallbackPreset } from '../../utils/fallbackPresets';
+import { useAuth } from '../../contexts/AuthContext';
+import { logAdminActivity } from '../../services/activityLogService';
 
 interface PortalSettingsManagerProps {
   currentUserId?: string;
 }
 
 export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ currentUserId }) => {
+  const { currentUser } = useAuth();
   const { settings, loading, saveSettings } = usePortalSettings();
 
   const [fallbackImageUrl, setFallbackImageUrl] = useState('');
@@ -160,6 +163,24 @@ export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ cu
         },
         currentUserId
       );
+
+      logAdminActivity({
+        adminId: currentUser?.id || currentUserId || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'settings_update',
+        category: 'settings',
+        targetId: 'portal_global_config',
+        targetTitle: 'Sistemske nastavitve portala',
+        details: 'Posodobljene sistemske nastavitve portala in pravila privzete nadomestne slike.',
+        metadata: {
+          hasFallbackImage: Boolean(cleanUrl),
+          useFallbackForMissingImages,
+          useFallbackForBrokenImages
+        }
+      }).catch(() => {});
+
       setFeedback({
         type: 'success',
         message: 'Privzeta nadomestna slika in pravila so bila uspešno shranjena in takoj uveljavljena po celotnem portalu.'

@@ -116,3 +116,38 @@ export interface PromotionBanner {
   createdById?: string;
 }
 
+// ---------------- ADMIN ACTIVITY LOG TYPES ----------------
+export type AdminActionCategory = 'users' | 'banners' | 'categories' | 'posts' | 'settings' | 'reports';
+
+export type AdminActionType = 
+  | 'role_change'
+  | 'registration_confirm'
+  | 'user_status_change'
+  | 'user_create'
+  | 'user_delete'
+  | 'banner_create'
+  | 'banner_update'
+  | 'banner_delete'
+  | 'banner_toggle'
+  | 'category_create'
+  | 'category_update'
+  | 'category_delete'
+  | 'settings_update'
+  | 'post_status_change'
+  | 'post_delete';
+
+export interface AdminActivityLog {
+  id: string;
+  adminId: string;
+  adminName: string;
+  adminEmail: string;
+  adminRole: string;
+  actionType: AdminActionType;
+  category: AdminActionCategory;
+  targetId?: string;
+  targetTitle?: string;
+  details: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
