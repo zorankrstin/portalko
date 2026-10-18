@@ -32,6 +32,7 @@ import {
 } from '../../services/bannerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { logAdminActivity } from '../../services/activityLogService';
+import { ConfirmationModal } from '../common/ConfirmationModal';
 
 interface BannerManagerProps {
   currentUserId?: string;
@@ -49,7 +50,8 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBanner, setEditingBanner] = useState<PromotionBanner | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [bannerToDelete, setBannerToDelete] = useState<PromotionBanner | null>(null);
+  const [isDeletingBanner, setIsDeletingBanner] = useState(false);
   const [previewModalBanner, setPreviewModalBanner] = useState<PromotionBanner | null>(null);
 
   // Form fields
@@ -212,10 +214,12 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
     }
   };
 
-  const handleDeleteBanner = async (id: string) => {
+  const handleDeleteBanner = async () => {
+    if (!bannerToDelete) return;
+    const targetBanner = bannerToDelete;
+    setIsDeletingBanner(true);
     try {
-      const targetBanner = banners.find(b => b.id === id);
-      await deleteBanner(id);
+      await deleteBanner(targetBanner.id);
 
       logAdminActivity({
         adminId: currentUser?.id || currentUserId || 'admin',
@@ -224,21 +228,23 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
         adminRole: currentUser?.role || 'admin',
         actionType: 'banner_delete',
         category: 'banners',
-        targetId: id,
-        targetTitle: targetBanner?.title || id,
-        details: `Izbrisana promocijska pasica »${targetBanner?.title || id}«.`,
+        targetId: targetBanner.id,
+        targetTitle: targetBanner.title || targetBanner.id,
+        details: `Izbrisana promocijska pasica »${targetBanner.title || targetBanner.id}«.`,
         metadata: {
-          bannerId: id,
-          bannerTitle: targetBanner?.title,
-          position: targetBanner?.position
+          bannerId: targetBanner.id,
+          bannerTitle: targetBanner.title,
+          position: targetBanner.position
         }
       }).catch(() => {});
 
-      setDeleteConfirmId(null);
+      setBannerToDelete(null);
       setSuccessNotice('Pasica je bila uspešno izbrisana.');
       setTimeout(() => setSuccessNotice(null), 3000);
     } catch (err) {
       console.error('Napaka pri brisanju pasice:', err);
+    } finally {
+      setIsDeletingBanner(false);
     }
   };
 
@@ -716,7 +722,7 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
                     </button>
 
                     <button
-                      onClick={() => setDeleteConfirmId(banner.id)}
+                      onClick={() => setBannerToDelete(banner)}
                       className="p-1.5 rounded-lg text-xs font-semibold text-error hover:bg-error/10 transition-colors cursor-pointer"
                       title="Izbriši pasico"
                     >
@@ -730,37 +736,40 @@ export function BannerManager({ currentUserId }: BannerManagerProps) {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-surface-container-lowest rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-surface-container flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-error/10 text-error flex items-center justify-center shrink-0">
-                <AlertCircle className="w-5 h-5" />
+      {/* Delete Confirmation Modal using ConfirmationModal */}
+      <ConfirmationModal
+        isOpen={!!bannerToDelete}
+        onClose={() => {
+          if (!isDeletingBanner) setBannerToDelete(null);
+        }}
+        onConfirm={handleDeleteBanner}
+        title="Trajno brisanje promocijske pasice"
+        itemTitle={bannerToDelete?.title}
+        itemTypeLabel={bannerToDelete ? `Pasica • ${positionLabels[bannerToDelete.position]?.title || bannerToDelete.position}` : 'Promocijska pasica'}
+        message="Ali ste prepričani, da želite trajno izbrisati to promocijsko pasico? Pasica bo takoj umaknjena s portala portalko.net in izbrisana iz baze podatkov."
+        confirmLabel="Da, izbriši pasico"
+        cancelLabel="Prekliči"
+        isLoading={isDeletingBanner}
+        variant="danger"
+        details={bannerToDelete ? (
+          <div className="space-y-2 pt-1">
+            {bannerToDelete.type === 'image' && bannerToDelete.imageUrl && (
+              <div className="w-full h-24 rounded-lg overflow-hidden bg-surface-container border border-surface-container relative">
+                <img 
+                  src={bannerToDelete.imageUrl} 
+                  alt={bannerToDelete.altText || bannerToDelete.title} 
+                  className="w-full h-full object-cover" 
+                />
               </div>
-              <div>
-                <h4 className="font-bold text-sm text-on-surface">Ali ste prepričani?</h4>
-                <p className="text-xs text-outline mt-0.5">Izbris te promocijske pasice je trajen in je ni mogoče obnoviti.</p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-surface-container-low">
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
-              >
-                Prekliči
-              </button>
-              <button
-                onClick={() => handleDeleteBanner(deleteConfirmId)}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-error text-on-error hover:bg-error/90 transition-colors cursor-pointer"
-              >
-                Da, izbriši pasico
-              </button>
+            )}
+            <div className="flex items-center justify-between text-[11px] text-outline px-1">
+              <span>Prikazi: <strong className="text-on-surface">{bannerToDelete.viewsCount || 0}</strong></span>
+              <span>Kliki: <strong className="text-on-surface">{bannerToDelete.clicksCount || 0}</strong></span>
+              <span>Tip: <strong className="text-on-surface uppercase">{bannerToDelete.type}</strong></span>
             </div>
           </div>
-        </div>
-      )}
+        ) : undefined}
+      />
 
       {/* Live Preview Modal */}
       {previewModalBanner && (

@@ -230,6 +230,119 @@ export function parseEventDateInfo(dateStr?: string | null, timeStr?: string | n
   return formatWithTime({ day: '★', month: 'DOG', fullDate: trimmed });
 }
 
+/**
+ * Resolves an accurate entry/creation epoch timestamp (in milliseconds) for any post or feed item.
+ * Supports Firestore Timestamps, ISO date strings, RSS pubDates, Slovenian date formats, and fallback values.
+ */
+export function resolveItemEntryTimestamp(itemData: any): number {
+  if (!itemData) return 0;
+
+  // 1. Check createdAt (Firestore Timestamp, ISO string, Date object, or numeric milliseconds)
+  const createdAt = itemData.createdAt;
+  if (createdAt) {
+    if (typeof createdAt === 'number' && !isNaN(createdAt)) {
+      return createdAt;
+    }
+    if (typeof createdAt.toMillis === 'function') {
+      try {
+        const ms = createdAt.toMillis();
+        if (typeof ms === 'number' && !isNaN(ms)) return ms;
+      } catch {
+        // ignore
+      }
+    }
+    if (typeof createdAt.toDate === 'function') {
+      try {
+        const ms = createdAt.toDate().getTime();
+        if (typeof ms === 'number' && !isNaN(ms)) return ms;
+      } catch {
+        // ignore
+      }
+    }
+    if (typeof createdAt.seconds === 'number' && !isNaN(createdAt.seconds)) {
+      return createdAt.seconds * 1000 + (createdAt.nanoseconds ? Math.floor(createdAt.nanoseconds / 1000000) : 0);
+    }
+    if (createdAt instanceof Date && !isNaN(createdAt.getTime())) {
+      return createdAt.getTime();
+    }
+    if (typeof createdAt === 'string' && createdAt.trim()) {
+      const parsed = Date.parse(createdAt.trim());
+      if (!isNaN(parsed)) return parsed;
+      const rssParsed = parseRssDate(createdAt.trim());
+      if (rssParsed && !isNaN(rssParsed.getTime())) return rssParsed.getTime();
+    }
+  }
+
+  // 2. Check pubDate (standard on RSS news items)
+  if (itemData.pubDate && typeof itemData.pubDate === 'string') {
+    const rssParsed = parseRssDate(itemData.pubDate);
+    if (rssParsed && !isNaN(rssParsed.getTime())) {
+      return rssParsed.getTime();
+    }
+    const directParsed = Date.parse(itemData.pubDate);
+    if (!isNaN(directParsed)) return directParsed;
+  }
+
+  // 3. Check date field
+  if (itemData.date) {
+    if (typeof itemData.date === 'number' && !isNaN(itemData.date)) {
+      return itemData.date;
+    }
+    if (typeof itemData.date === 'string' && itemData.date.trim()) {
+      const trimmed = itemData.date.trim().toLowerCase();
+      if (trimmed === 'pravkar' || trimmed === 'ravno objavljeno' || trimmed.includes('min')) {
+        return Date.now();
+      }
+      if (trimmed === 'danes' || trimmed.startsWith('danes ob')) {
+        return Date.now() - 3600000;
+      }
+      if (trimmed === 'včeraj' || trimmed === 'vceraj' || trimmed.startsWith('včeraj ob')) {
+        return Date.now() - 86400000;
+      }
+      const parsed = Date.parse(itemData.date);
+      if (!isNaN(parsed)) return parsed;
+      const dmy = itemData.date.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+      if (dmy) {
+        const d = new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+    }
+  }
+
+  // 4. Check updatedAt as secondary fallback
+  const updatedAt = itemData.updatedAt;
+  if (updatedAt) {
+    if (typeof updatedAt === 'number' && !isNaN(updatedAt)) return updatedAt;
+    if (typeof updatedAt.toMillis === 'function') return updatedAt.toMillis();
+    if (typeof updatedAt.toDate === 'function') return updatedAt.toDate().getTime();
+    if (typeof updatedAt.seconds === 'number') return updatedAt.seconds * 1000;
+    if (typeof updatedAt === 'string') {
+      const parsed = Date.parse(updatedAt);
+      if (!isNaN(parsed)) return parsed;
+    }
+  }
+
+  // 5. Check startDate or eventDate as tertiary fallback
+  if (itemData.startDate && typeof itemData.startDate === 'string') {
+    const parsed = Date.parse(itemData.startDate);
+    if (!isNaN(parsed)) return parsed;
+  }
+  if (itemData.eventDate && typeof itemData.eventDate === 'string') {
+    const parsed = Date.parse(itemData.eventDate);
+    if (!isNaN(parsed)) return parsed;
+  }
+
+  // 6. Check numeric timestamps embedded in ID (e.g. u_1729012345000 or post-1729012345)
+  if (typeof itemData.id === 'string') {
+    const match13 = itemData.id.match(/\b(1[6-9]\d{11})\b/);
+    if (match13) return parseInt(match13[1], 10);
+    const match10 = itemData.id.match(/\b(1[6-9]\d{8})\b/);
+    if (match10) return parseInt(match10[1], 10) * 1000;
+  }
+
+  return 0;
+}
+
 export {
   resolveEventDisplayDate,
   type EventDateResolutionInput,

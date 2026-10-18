@@ -200,11 +200,10 @@ function preparePageHtml(rawHtml: string, reqUrl: string): string {
   html = html.replace(/<meta\s+name=["']twitter:description["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta name="twitter:description" content="${description}" />`);
   html = html.replace(/<meta\s+name=["']twitter:url["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta name="twitter:url" content="${canonicalUrl}" />`);
 
-  // Remove existing Google Analytics code to avoid duplicates
-  html = html.replace(/<!-- Google tag \(gtag\.js\) -->[\s\S]*?gtag\('config',\s*'G-DYZSLZ29C4'\);\s*<\/script>/gi, "");
-
-  // Insert Google Analytics code at the absolute beginning of <head>
-  html = html.replace(/(<head[^>]*>)/i, `$1\n${GA_TAG_HTML}`);
+  // Ensure Google Analytics is present in <head> if not already included
+  if (!html.includes("G-DYZSLZ29C4")) {
+    html = html.replace(/(<\/head>)/i, `${GA_TAG_HTML}\n$1`);
+  }
 
   return html;
 }

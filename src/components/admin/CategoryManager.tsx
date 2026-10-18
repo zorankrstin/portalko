@@ -39,6 +39,7 @@ import {
   seedCategoriesToFirestore,
   getTertiaryCategories
 } from '../../services/categoryService';
+import { ConfirmationModal } from '../common/ConfirmationModal';
 
 export interface CategoryManagerProps {
   categories?: CategoryItem[];
@@ -104,6 +105,12 @@ export function CategoryManager({
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [targetCategoryForBulk, setTargetCategoryForBulk] = useState<CategoryItem | null>(null);
   const [bulkSubcategoriesText, setBulkSubcategoriesText] = useState('');
+
+  // Confirmation Modals State
+  const [categoryToDelete, setCategoryToDelete] = useState<CategoryItem | null>(null);
+  const [subcategoryToDelete, setSubcategoryToDelete] = useState<{ cat: CategoryItem; sub: SubCategory } | null>(null);
+  const [isConfirmingSeedDefaults, setIsConfirmingSeedDefaults] = useState(false);
+  const [isDeletingCategoryAction, setIsDeletingCategoryAction] = useState(false);
 
   // Status & Feedback
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -242,10 +249,14 @@ export function CategoryManager({
   };
 
   // Delete Category
-  const handleDeleteCategory = async (cat: CategoryItem) => {
-    if (!window.confirm(`Ali ste prepričani, da želite izbrisati kategorijo "${cat.name}" in vseh njenih ${cat.subcategories?.length || 0} podkategorij?`)) {
-      return;
-    }
+  const handleDeleteCategory = (cat: CategoryItem) => {
+    setCategoryToDelete(cat);
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    const cat = categoryToDelete;
+    setIsDeletingCategoryAction(true);
 
     try {
       setCategories(prev => prev.filter(item => item.id !== cat.id));
@@ -255,9 +266,12 @@ export function CategoryManager({
         await deleteCategory(cat.id);
       }
       showNotification('success', `Kategorija "${cat.name}" je bila izbrisana.`);
+      setCategoryToDelete(null);
     } catch (err) {
       console.error(err);
       showNotification('error', 'Napaka pri brisanju kategorije.');
+    } finally {
+      setIsDeletingCategoryAction(false);
     }
   };
 
@@ -457,10 +471,14 @@ export function CategoryManager({
   };
 
   // Delete Subcategory
-  const handleDeleteSubcategory = async (cat: CategoryItem, sub: SubCategory) => {
-    if (!window.confirm(`Izbrišem podkategorijo "${sub.name}"?`)) {
-      return;
-    }
+  const handleDeleteSubcategory = (cat: CategoryItem, sub: SubCategory) => {
+    setSubcategoryToDelete({ cat, sub });
+  };
+
+  const handleConfirmDeleteSubcategory = async () => {
+    if (!subcategoryToDelete) return;
+    const { cat, sub } = subcategoryToDelete;
+    setIsDeletingCategoryAction(true);
 
     try {
       setCategories(prev => 
@@ -480,22 +498,26 @@ export function CategoryManager({
         await deleteSubcategory(cat.id, sub.id);
       }
       showNotification('success', `Podkategorija "${sub.name}" je bila izbrisana.`);
+      setSubcategoryToDelete(null);
     } catch (err) {
       console.error(err);
       showNotification('error', 'Napaka pri brisanju podkategorije.');
+    } finally {
+      setIsDeletingCategoryAction(false);
     }
   };
 
   // Seed / Reset to defaults
-  const handleSeedDefaults = async () => {
-    if (!window.confirm('Ali želite sinhronizirati in naložiti privzete kategorije ter podkategorije v Firestore? To bo osvežilo celoten nabor za vse 4 sekcije.')) {
-      return;
-    }
+  const handleSeedDefaults = () => {
+    setIsConfirmingSeedDefaults(true);
+  };
 
+  const handleConfirmSeedDefaults = async () => {
     setIsSeeding(true);
     try {
       const res = await seedCategoriesToFirestore();
       showNotification('success', `Uspešno naloženih ${res.count} privzetih kategorij v bazo.`);
+      setIsConfirmingSeedDefaults(false);
     } catch (err) {
       console.error(err);
       showNotification('error', 'Napaka pri sinhronizaciji kategorij.');
@@ -1161,6 +1183,69 @@ export function CategoryManager({
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal for Category Deletion */}
+      <ConfirmationModal
+        isOpen={!!categoryToDelete}
+        onClose={() => {
+          if (!isDeletingCategoryAction) setCategoryToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteCategory}
+        title="Trajno brisanje kategorije"
+        itemTitle={categoryToDelete ? `${categoryToDelete.icon || '📁'} ${categoryToDelete.name}` : undefined}
+        itemTypeLabel="Glavna kategorija"
+        message={`Ali ste prepričani, da želite trajno izbrisati to kategorijo in vseh njenih ${categoryToDelete?.subcategories?.length || 0} podkategorij?`}
+        confirmLabel="Da, izbriši kategorijo"
+        cancelLabel="Prekliči"
+        isLoading={isDeletingCategoryAction}
+        variant="danger"
+        details={categoryToDelete ? (
+          <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60 text-xs text-outline space-y-1">
+            <div className="flex justify-between">
+              <span>Sekcija:</span>
+              <span className="font-semibold text-on-surface uppercase">{categoryToDelete.section}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Število podkategorij:</span>
+              <span className="font-semibold text-on-surface">{categoryToDelete.subcategories?.length || 0}</span>
+            </div>
+          </div>
+        ) : undefined}
+      />
+
+      {/* Confirmation Modal for Subcategory Deletion */}
+      <ConfirmationModal
+        isOpen={!!subcategoryToDelete}
+        onClose={() => {
+          if (!isDeletingCategoryAction) setSubcategoryToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteSubcategory}
+        title="Trajno brisanje podkategorije"
+        itemTitle={subcategoryToDelete?.sub.name}
+        itemTypeLabel={subcategoryToDelete ? `Podkategorija (${subcategoryToDelete.cat.name})` : 'Podkategorija'}
+        message="Ali ste prepričani, da želite trajno izbrisati to podkategorijo? Vsi filtri za to podkategorijo bodo odstranjeni."
+        confirmLabel="Da, izbriši podkategorijo"
+        cancelLabel="Prekliči"
+        isLoading={isDeletingCategoryAction}
+        variant="danger"
+      />
+
+      {/* Confirmation Modal for Reset/Seed Defaults */}
+      <ConfirmationModal
+        isOpen={isConfirmingSeedDefaults}
+        onClose={() => {
+          if (!isSeeding) setIsConfirmingSeedDefaults(false);
+        }}
+        onConfirm={handleConfirmSeedDefaults}
+        title="Ponastavitev na privzete kategorije"
+        itemTitle="Vse 4 sekcije portala"
+        itemTypeLabel="Sistemska sinhronizacija"
+        message="Ali želite sinhronizirati in naložiti privzete kategorije ter podkategorije v Firestore? To bo osvežilo celoten nabor kategorij za Male oglase, Dogodke, Akcije in Blog."
+        confirmLabel="Da, naloži privzete kategorije"
+        cancelLabel="Prekliči"
+        isLoading={isSeeding}
+        variant="warning"
+      />
     </div>
   );
 }

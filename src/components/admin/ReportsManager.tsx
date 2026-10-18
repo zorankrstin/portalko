@@ -30,6 +30,7 @@ import {
 } from '../../services/reportService';
 import { formatFullSlovenianDateTime } from '../../utils/dateUtils';
 import { buildPostUrl, slugify } from '../../utils/urlUtils';
+import { ConfirmationModal } from '../common/ConfirmationModal';
 
 interface ReportsManagerProps {
   onNavigatePost?: (type: string, id: string) => void;
@@ -52,6 +53,8 @@ export function ReportsManager({ onNavigatePost }: ReportsManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [adminNoteInput, setAdminNoteInput] = useState<Record<string, string>>({});
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [contentToDelete, setContentToDelete] = useState<ReportItem | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
@@ -109,16 +112,20 @@ export function ReportsManager({ onNavigatePost }: ReportsManagerProps) {
     }
   };
 
-  const handleDeleteContent = async (report: ReportItem) => {
-    const confirm = window.confirm(`Ali ste prepričani, da želite trajno izbrisati vsebino "${report.targetTitle}" iz baze podatkov?`);
-    if (!confirm) return;
+  const handleDeleteContent = (report: ReportItem) => {
+    setContentToDelete(report);
+  };
 
+  const handleConfirmDeleteContent = async () => {
+    if (!contentToDelete) return;
+    const report = contentToDelete;
     setActionInProgress(report.id);
     try {
       await deleteReportedContent(report.targetId, report.targetType);
       const note = adminNoteInput[report.id] || 'Vsebina izbrisana s strani skrbnika na podlagi utemeljene prijave.';
       await updateReportStatus(report.id, 'resolved', note, 'deleted_target');
       showNotification('success', 'Vsebina je bila uspešno odstranjena iz sistema in prijava označena kot rešena.');
+      setContentToDelete(null);
     } catch (err) {
       console.error(err);
       showNotification('error', 'Brisanje vsebine ni uspelo.');
@@ -127,14 +134,18 @@ export function ReportsManager({ onNavigatePost }: ReportsManagerProps) {
     }
   };
 
-  const handleDeleteReport = async (reportId: string) => {
-    const confirm = window.confirm('Ali želite izbrisati ta zapis prijave?');
-    if (!confirm) return;
+  const handleDeleteReport = (reportId: string) => {
+    setReportToDelete(reportId);
+  };
 
+  const handleConfirmDeleteReport = async () => {
+    if (!reportToDelete) return;
+    const reportId = reportToDelete;
     setActionInProgress(reportId);
     try {
       await deleteReportFromFirestore(reportId);
       showNotification('success', 'Prijava je bila odstranjena.');
+      setReportToDelete(null);
     } catch (err) {
       console.error(err);
       showNotification('error', 'Odstranitev prijave ni uspela.');
@@ -460,6 +471,53 @@ export function ReportsManager({ onNavigatePost }: ReportsManagerProps) {
           })
         )}
       </div>
+
+      {/* Confirmation Modal for Reported Content Deletion */}
+      <ConfirmationModal
+        isOpen={!!contentToDelete}
+        onClose={() => {
+          if (!actionInProgress) setContentToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteContent}
+        title="Trajno brisanje prijavljene vsebine"
+        itemTitle={contentToDelete?.targetTitle}
+        itemTypeLabel={contentToDelete ? TYPE_CONFIG[contentToDelete.targetType]?.label || contentToDelete.targetType : 'Vsebina'}
+        message="Ali ste prepričani, da želite trajno izbrisati to prijavljeno vsebino iz baze podatkov? Objava bo dokončno odstranjena iz portala in prijava bo označena kot rešena."
+        confirmLabel="Da, trajno izbriši vsebino"
+        cancelLabel="Prekliči"
+        isLoading={actionInProgress === contentToDelete?.id}
+        variant="danger"
+        details={contentToDelete ? (
+          <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60 text-xs text-outline space-y-1">
+            <div className="flex justify-between">
+              <span>Razlog prijave:</span>
+              <span className="font-semibold text-error">{contentToDelete.reason}</span>
+            </div>
+            {contentToDelete.details && (
+              <p className="text-[11px] text-on-surface-variant italic mt-1 bg-surface-container/50 p-2 rounded-lg">
+                »{contentToDelete.details}«
+              </p>
+            )}
+          </div>
+        ) : undefined}
+      />
+
+      {/* Confirmation Modal for Report Entry Deletion */}
+      <ConfirmationModal
+        isOpen={!!reportToDelete}
+        onClose={() => {
+          if (!actionInProgress) setReportToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteReport}
+        title="Izbris zapisa prijave"
+        itemTitle={reportToDelete ? `Prijava #${reportToDelete.slice(0, 8)}` : undefined}
+        itemTypeLabel="Zapis v bazi"
+        message="Ali želite izbrisati ta zapis o prijavi iz seznama prijav? Zgodovina prijave bo odstranjena."
+        confirmLabel="Da, izbriši zapis"
+        cancelLabel="Prekliči"
+        isLoading={actionInProgress === reportToDelete}
+        variant="warning"
+      />
     </div>
   );
 }

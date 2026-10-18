@@ -11,23 +11,54 @@
           }
         } catch (e) {}
 
-        // Suppress benign WebSocket / Vite HMR connection notices in preview iframe
+        // Suppress benign third-party analytics / ads / HMR / Vite / iframe errors
+        var suppressPatterns = [
+          'WebSocket',
+          '@vite/client',
+          'createWebSocketModuleRunnerTransport',
+          'insertBefore',
+          'parentNode',
+          'adsbygoogle',
+          'property "insertBefore"',
+          'property \'insertBefore\''
+        ];
+
+        function shouldSuppress(msg) {
+          if (!msg) return false;
+          var str = String(msg);
+          for (var i = 0; i < suppressPatterns.length; i++) {
+            if (str.indexOf(suppressPatterns[i]) !== -1) return true;
+          }
+          return false;
+        }
+
         window.addEventListener('error', function(event) {
-          var msg = event && event.message ? event.message : '';
+          var msg = event && (event.message || (event.error && event.error.message)) || '';
           var src = event && event.filename ? event.filename : '';
-          if (msg.indexOf('WebSocket') !== -1 || src.indexOf('@vite/client') !== -1 || msg.indexOf('createWebSocketModuleRunnerTransport') !== -1) {
+          if (shouldSuppress(msg) || shouldSuppress(src)) {
             event.stopImmediatePropagation();
             event.preventDefault();
             return true;
           }
         }, true);
+
         window.addEventListener('unhandledrejection', function(event) {
           var reason = event && event.reason ? (event.reason.message || String(event.reason)) : '';
-          if (reason.indexOf('WebSocket') !== -1 || reason.indexOf('@vite/client') !== -1 || reason.indexOf('createWebSocketModuleRunnerTransport') !== -1) {
+          if (shouldSuppress(reason)) {
             event.stopImmediatePropagation();
             event.preventDefault();
           }
         }, true);
+
+        var origOnError = window.onerror;
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+          if (shouldSuppress(msg) || shouldSuppress(error && error.message)) {
+            return true;
+          }
+          if (typeof origOnError === 'function') {
+            return origOnError.apply(this, arguments);
+          }
+        };
       })();
     </script>
     <!-- Google tag (gtag.js) -->
@@ -39,9 +70,21 @@
 
       gtag('config', 'G-DYZSLZ29C4');
     </script>
-    <!-- Google AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5960488013082486"
-     crossorigin="anonymous"></script>
+    <!-- Google AdSense (only enabled in production on portalko.net) -->
+    <script>
+      (function() {
+        try {
+          var host = window.location.hostname;
+          if (host === 'portalko.net' || host === 'www.portalko.net') {
+            var s = document.createElement('script');
+            s.async = true;
+            s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5960488013082486';
+            s.crossOrigin = 'anonymous';
+            document.head.appendChild(s);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Portalko – Slovenski portal za novice, male oglase in dogodke</title>

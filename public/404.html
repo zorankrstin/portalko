@@ -4,9 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Portalko</title>
-    <!-- Google AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5960488013082486"
-     crossorigin="anonymous"></script>
+    <!-- Google AdSense (only in production on portalko.net) -->
+    <script>
+      (function() {
+        try {
+          var host = window.location.hostname;
+          if (host === 'portalko.net' || host === 'www.portalko.net') {
+            var s = document.createElement('script');
+            s.async = true;
+            s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5960488013082486';
+            s.crossOrigin = 'anonymous';
+            document.head.appendChild(s);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script>
       // Single Page Application redirect script for static hosts (GitHub Pages, etc.)
       (function() {

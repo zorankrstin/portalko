@@ -3,6 +3,7 @@ import { Settings, LayoutList, Store, Percent, Calendar, FileText, Rss, Network,
 import type { ViewMode } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { PromotionBannerZone } from './common/PromotionBannerZone';
+import { openCookieSettingsModal } from '../services/cookieConsentService';
 
 interface LeftSidebarProps {
   currentView: ViewMode;
@@ -164,14 +165,23 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
       <PromotionBannerZone position="left_sidebar" />
       
       <div className="px-2 text-outline font-label-md text-xs flex flex-wrap gap-x-2.5 gap-y-1">
-        <a className="hover:text-primary transition-colors" href="#">Pogoji uporabe</a>
+        <a className="hover:text-primary transition-colors" href="/pogoji-uporabe">Pogoji uporabe</a>
         <span>•</span>
-        <a className="hover:text-primary transition-colors" href="#">Piškotki</a>
+        <button 
+          type="button" 
+          onClick={(e) => {
+            e.preventDefault();
+            openCookieSettingsModal();
+          }}
+          className="hover:text-primary transition-colors cursor-pointer text-left bg-transparent p-0 border-0 text-inherit font-inherit"
+        >
+          Piškotki
+        </button>
         <span>•</span>
-        <a className="hover:text-primary transition-colors" href="#">RSS viri</a>
+        <a className="hover:text-primary transition-colors" href="/novice">RSS viri</a>
         <span>•</span>
-        <a className="hover:text-primary transition-colors" href="#">Skupnost</a>
-        <p className="w-full text-outline-variant font-label-caps text-label-caps pt-1">© 2025 Portalko • Vse pravice pridržane</p>
+        <a className="hover:text-primary transition-colors" href="/o-nas">O nas</a>
+        <p className="w-full text-outline-variant font-label-caps text-label-caps pt-1">© 2026 Portalko • Vse pravice pridržane</p>
       </div>
       </div>
     </aside>

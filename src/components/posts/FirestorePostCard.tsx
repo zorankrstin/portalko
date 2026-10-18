@@ -15,7 +15,7 @@ import { UserDisplayName } from "../common/UserDisplayName";
 import { UserAvatar } from "../common/UserAvatar";
 import { resolveUserUploadedAvatar } from "../../utils/avatarUtils";
 import { isItemActivelyPromoted } from "../../services/promotionService";
-import { parseEventDateInfo, resolveEventDisplayDate } from "../../utils/dateUtils";
+import { parseEventDateInfo, resolveEventDisplayDate, formatSlovenianDate } from "../../utils/dateUtils";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
@@ -305,7 +305,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     author: post.authorName,
     authorRole: post.authorRole,
     authorAvatar: post.authorAvatar,
-    date: 'Ravno objavljeno',
+    date: formatSlovenianDate(post.createdAt) || 'Nedavno',
     description: post.content,
     image: post.imageUrl,
   };
@@ -353,7 +353,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           image: imgSrc || post.imageUrl || '',
           images: post.images || post.imageUrls || (imgSrc ? [imgSrc] : []),
           description: post.content,
-          date: 'Ravno objavljeno',
+          date: formatSlovenianDate(post.createdAt) || 'Nedavno',
           likesCount: post.likesCount || 0,
           votes: post.likesCount || 0,
           commentsCount: post.commentsCount || 0,
@@ -439,6 +439,15 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
                 {roleLabels[post.authorRole] || 'Član'}
               </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-outline mt-0.5">
+              <span>{formatSlovenianDate(post.createdAt) || 'Nedavno'}</span>
+              {(post.categoryName || post.category) && (
+                <>
+                  <span>•</span>
+                  <span className="text-primary font-medium">{post.categoryName || post.category}</span>
+                </>
+              )}
             </div>
           </div>
         </div>

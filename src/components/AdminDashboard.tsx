@@ -46,6 +46,7 @@ import { setItemPromotionInFirestore, removeItemPromotionInFirestore } from '../
 import { PromotionConfig } from '../types';
 import { CategoryManager } from './admin/CategoryManager';
 import { UserAvatar } from './common/UserAvatar';
+import { ConfirmationModal } from './common/ConfirmationModal';
 import { 
   CategoryItem, 
   SubCategory, 
@@ -127,6 +128,19 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
   // User Deletion Confirmation Modal State
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  // Content/Item Deletion Confirmation Modal State (Posts, Ads, Events)
+  const [itemToDelete, setItemToDelete] = useState<EditablePostItem | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+
+  // Bulk Posts Multi-Selection & Deletion State
+  const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+
+  // RSS Feed Deletion Confirmation Modal State
+  const [feedToDelete, setFeedToDelete] = useState<RssFeedConfig | null>(null);
+  const [isDeletingFeed, setIsDeletingFeed] = useState(false);
 
   // Close modal on Escape key press
   useEffect(() => {
@@ -708,6 +722,99 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     });
   }, [allUnifiedItems, postSearchQuery, postTypeFilter, postStatusFilter]);
 
+  // Selected items for bulk operations
+  const selectedItems = useMemo(() => {
+    if (selectedPostIds.length === 0) return [];
+    const idSet = new Set(selectedPostIds);
+    return allUnifiedItems.filter(item => idSet.has(item.id));
+  }, [allUnifiedItems, selectedPostIds]);
+
+  const toggleSelectPost = (id: string) => {
+    setSelectedPostIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllFiltered = () => {
+    const filteredIds = filteredPosts.map(p => p.id);
+    const areAllSelected = filteredIds.length > 0 && filteredIds.every(id => selectedPostIds.includes(id));
+    
+    if (areAllSelected) {
+      setSelectedPostIds(prev => prev.filter(id => !filteredIds.includes(id)));
+    } else {
+      setSelectedPostIds(prev => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  };
+
+  const clearSelectedPosts = () => {
+    setSelectedPostIds([]);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (selectedItems.length === 0) return;
+    setIsDeletingBulk(true);
+
+    try {
+      const deletePromises = selectedItems.map(async (item) => {
+        if (item.type === 'ad') {
+          return deleteAdInFirestore(item.id);
+        } else if (item.type === 'event') {
+          return deleteEventInFirestore(item.id);
+        } else {
+          return deletePostInFirestore(item.id);
+        }
+      });
+
+      const results = await Promise.allSettled(deletePromises);
+      const successfulCount = results.filter(r => r.status === 'fulfilled').length;
+      const failedCount = results.filter(r => r.status === 'rejected').length;
+
+      // Log activity
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'post_delete',
+        category: 'posts',
+        targetId: `bulk-${Date.now()}`,
+        targetTitle: `Množično brisanje (${successfulCount} objav)`,
+        details: `Množično trajno izbrisanih ${successfulCount} objav${failedCount > 0 ? ` (${failedCount} neuspešnih)` : ''}.`,
+        metadata: {
+          count: successfulCount,
+          items: selectedItems.slice(0, 15).map(i => ({ id: i.id, title: i.title, type: i.type }))
+        }
+      }).catch(() => {});
+
+      if (failedCount === 0) {
+        setActionFeedback({
+          id: 'bulk-delete',
+          message: `Uspešno izbrisanih vseh ${successfulCount} izbranih objav.`,
+          type: 'success'
+        });
+      } else {
+        setActionFeedback({
+          id: 'bulk-delete',
+          message: `Izbrisanih ${successfulCount} objav, pri ${failedCount} objavah je prišlo do napake.`,
+          type: 'error'
+        });
+      }
+
+      setSelectedPostIds([]);
+      setIsBulkDeleteModalOpen(false);
+      setTimeout(() => setActionFeedback(null), 5000);
+    } catch (err) {
+      console.error('Napaka pri množičnem brisanju:', err);
+      setActionFeedback({
+        id: 'bulk-delete',
+        message: 'Prišlo je do napake pri množičnem brisanju objav.',
+        type: 'error'
+      });
+    } finally {
+      setIsDeletingBulk(false);
+    }
+  };
+
   const handleApproveItem = async (item: EditablePostItem) => {
     try {
       await approveItemInFirestore(item.id, item.type);
@@ -764,8 +871,14 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     }
   };
 
-  const handleDeleteItem = async (item: EditablePostItem) => {
-    if (!window.confirm(`Ali ste prepričani, da želite trajno izbrisati objavo "${item.title}"?`)) return;
+  const handleDeleteItem = (item: EditablePostItem) => {
+    setItemToDelete(item);
+  };
+
+  const handleConfirmDeleteItem = async () => {
+    if (!itemToDelete) return;
+    const item = itemToDelete;
+    setIsDeletingItem(true);
 
     try {
       if (item.type === 'ad') {
@@ -775,6 +888,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
       } else {
         await deletePostInFirestore(item.id);
       }
+
       logAdminActivity({
         adminId: currentUser?.id || 'admin',
         adminName: currentUser?.name || 'Administrator',
@@ -790,10 +904,41 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
           postType: item.type
         }
       }).catch(() => {});
-      setActionFeedback({ id: item.id, message: `Objava "${item.title}" je bila izbrisana.`, type: 'success' });
+
+      setActionFeedback({ id: item.id, message: `Objava "${item.title}" je bila uspešno izbrisana.`, type: 'success' });
+      setItemToDelete(null);
       setTimeout(() => setActionFeedback(null), 4000);
     } catch (err: any) {
+      console.error('Napaka pri brisanju objave:', err);
       setActionFeedback({ id: item.id, message: 'Napaka pri brisanju objave.', type: 'error' });
+    } finally {
+      setIsDeletingItem(false);
+    }
+  };
+
+  const handleConfirmDeleteFeed = () => {
+    if (!feedToDelete) return;
+    setIsDeletingFeed(true);
+    try {
+      const updated = feeds.filter(f => f.id !== feedToDelete.id);
+      setFeeds(updated);
+      saveAdminRssFeeds(updated);
+      logAdminActivity({
+        adminId: currentUser?.id || 'admin',
+        adminName: currentUser?.name || 'Administrator',
+        adminEmail: currentUser?.email || '',
+        adminRole: currentUser?.role || 'admin',
+        actionType: 'settings_update',
+        category: 'settings',
+        targetId: feedToDelete.id,
+        targetTitle: feedToDelete.name,
+        details: `Odstranjen RSS vir »${feedToDelete.name}«.`,
+      }).catch(() => {});
+      setFeedToDelete(null);
+    } catch (err) {
+      console.error('Napaka pri odstranitvi RSS vira:', err);
+    } finally {
+      setIsDeletingFeed(false);
     }
   };
 
@@ -1786,11 +1931,77 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
               </div>
             </div>
 
+            {/* Bulk Selection Action Bar */}
+            {selectedPostIds.length > 0 && (
+              <div className="p-3.5 bg-primary/10 border border-primary/25 rounded-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center font-bold text-xs shadow-xs">
+                    {selectedPostIds.length}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-on-surface">
+                      Izbranih <span className="text-primary font-black">{selectedPostIds.length}</span> od {filteredPosts.length} prikazanih objav
+                    </p>
+                    <p className="text-[11px] text-outline">
+                      Izberite želeno dejanje za hkratno izvedbo na vseh označenih vsebinah.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {selectedPostIds.length < filteredPosts.length && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPostIds(filteredPosts.map(p => p.id))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                    >
+                      Izberi vseh {filteredPosts.length}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={clearSelectedPosts}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
+                  >
+                    Počisti izbiro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkDeleteModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-lg bg-error hover:bg-error/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-98"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Izbriši izbrane ({selectedPostIds.length})</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Posts Table */}
             <div className="overflow-x-auto rounded-xl border border-surface-container bg-surface-container-lowest">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-surface-container-low/60">
                   <tr>
+                    <th className="p-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={filteredPosts.length > 0 && filteredPosts.every(p => selectedPostIds.includes(p.id))}
+                        ref={(input) => {
+                          if (input) {
+                            const someSelected = filteredPosts.some(p => selectedPostIds.includes(p.id));
+                            const allSelected = filteredPosts.length > 0 && filteredPosts.every(p => selectedPostIds.includes(p.id));
+                            input.indeterminate = someSelected && !allSelected;
+                          }
+                        }}
+                        onChange={toggleSelectAllFiltered}
+                        className="w-4 h-4 rounded border-surface-container text-primary focus:ring-primary cursor-pointer accent-primary align-middle"
+                        title={
+                          filteredPosts.length > 0 && filteredPosts.every(p => selectedPostIds.includes(p.id))
+                            ? 'Počisti izbiro vseh'
+                            : 'Izberi vse prikazane objave'
+                        }
+                      />
+                    </th>
                     <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Naslov & Vsebina</th>
                     <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Avtor</th>
                     <th className="p-3 font-label-caps text-xs text-outline uppercase font-semibold">Tip & Kategorija</th>
@@ -1801,12 +2012,13 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                 <tbody className="divide-y divide-surface-container-low">
                   {filteredPosts.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-6 text-center text-xs text-outline">
+                      <td colSpan={6} className="p-6 text-center text-xs text-outline">
                         Nobena objava ne ustreza izbranim filtrom.
                       </td>
                     </tr>
                   ) : (
                     filteredPosts.map((post, idx) => {
+                      const isSelected = selectedPostIds.includes(post.id);
                       const postUrl = buildPostUrl({
                         type: (post.type === 'ad' ? 'ad' : post.type === 'event' ? 'event' : post.type === 'deal' ? 'deal' : 'blog'),
                         id: post.id,
@@ -1817,7 +2029,19 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                       const authorUrl = `/avtor/${slugify(post.authorName)}`;
 
                       return (
-                        <tr key={`admin-post-${post.id}-${idx}`} className="hover:bg-surface-container-low/40 transition-colors">
+                        <tr 
+                          key={`admin-post-${post.id}-${idx}`} 
+                          className={`hover:bg-surface-container-low/40 transition-colors ${isSelected ? 'bg-primary/5 dark:bg-primary/10' : ''}`}
+                        >
+                          <td className="p-3 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectPost(post.id)}
+                              className="w-4 h-4 rounded border-surface-container text-primary focus:ring-primary cursor-pointer accent-primary align-middle"
+                              title={`Izberi objavo »${post.title}«`}
+                            />
+                          </td>
                           <td className="p-3">
                             <div className="flex items-center gap-2.5 max-w-xs sm:max-w-md">
                               {post.imageUrl && (
@@ -2174,7 +2398,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                       </div>
                     </div>
                     <button 
-                      onClick={() => setFeeds(feeds.filter(f => f.id !== feed.id))}
+                      onClick={() => setFeedToDelete(feed)}
                       className="p-2 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
                       title="Odstrani vir"
                     >
@@ -2366,6 +2590,133 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal for Content/Item Deletion (Posts, Ads, Events, Deals) */}
+      <ConfirmationModal
+        isOpen={!!itemToDelete}
+        onClose={() => {
+          if (!isDeletingItem) setItemToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteItem}
+        title="Trajno brisanje objave"
+        itemTitle={itemToDelete?.title}
+        itemTypeLabel={
+          itemToDelete?.type === 'ad' ? 'Mali oglas' :
+          itemToDelete?.type === 'event' ? 'Dogodek' :
+          itemToDelete?.type === 'deal' ? 'Ugodnost' : 'Blog objava'
+        }
+        message="Ali ste prepričani, da želite trajno izbrisati to vsebino iz portala? Izbris je nepovraten in bo dokončno odstranjen iz vseh javnih pregledov ter baze podatkov."
+        confirmLabel="Da, trajno izbriši"
+        cancelLabel="Prekliči"
+        isLoading={isDeletingItem}
+        variant="danger"
+        details={itemToDelete ? (
+          <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60 space-y-1.5 text-xs text-outline">
+            {itemToDelete.authorName && (
+              <div className="flex items-center justify-between">
+                <span>Avtor:</span>
+                <span className="font-semibold text-on-surface">{itemToDelete.authorName}</span>
+              </div>
+            )}
+            {(itemToDelete.categoryName || itemToDelete.category) && (
+              <div className="flex items-center justify-between">
+                <span>Kategorija:</span>
+                <span className="font-semibold text-on-surface">{itemToDelete.categoryName || itemToDelete.category}</span>
+              </div>
+            )}
+            {itemToDelete.status && (
+              <div className="flex items-center justify-between">
+                <span>Status:</span>
+                <span className="font-semibold text-on-surface uppercase text-[10px]">{itemToDelete.status}</span>
+              </div>
+            )}
+            {itemToDelete.location && (
+              <div className="flex items-center justify-between">
+                <span>Lokacija:</span>
+                <span className="font-semibold text-on-surface">{itemToDelete.location}</span>
+              </div>
+            )}
+            {itemToDelete.price && (
+              <div className="flex items-center justify-between">
+                <span>Cena:</span>
+                <span className="font-semibold text-primary">{itemToDelete.price}</span>
+              </div>
+            )}
+          </div>
+        ) : undefined}
+      />
+
+      {/* Confirmation Modal for RSS Feed Removal */}
+      <ConfirmationModal
+        isOpen={!!feedToDelete}
+        onClose={() => {
+          if (!isDeletingFeed) setFeedToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteFeed}
+        title="Odstranitev RSS vira"
+        itemTitle={feedToDelete?.name}
+        itemTypeLabel="RSS Vir"
+        message="Ali ste prepričani, da želite odstraniti ta RSS vir? Vsebine tega vira se ne bodo več samodejno osveževale v pregledu novic."
+        confirmLabel="Da, odstrani vir"
+        cancelLabel="Prekliči"
+        isLoading={isDeletingFeed}
+        variant="warning"
+        details={feedToDelete ? (
+          <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60 text-xs text-outline truncate font-mono">
+            {feedToDelete.url}
+          </div>
+        ) : undefined}
+      />
+
+      {/* Confirmation Modal for Bulk Posts Deletion */}
+      <ConfirmationModal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => {
+          if (!isDeletingBulk) setIsBulkDeleteModalOpen(false);
+        }}
+        onConfirm={handleConfirmBulkDelete}
+        title="Množično trajno brisanje objav"
+        itemTitle={`${selectedItems.length} izbranih objav`}
+        itemTypeLabel="Množično dejanje"
+        message={`Ali ste prepričani, da želite trajno izbrisati ${selectedItems.length} izbranih objav? Vse izbrane vsebine bodo dokončno in nepovratno odstranjene iz baze podatkov in vseh javnih pregledov.`}
+        confirmLabel={`Da, trajno izbriši (${selectedItems.length})`}
+        cancelLabel="Prekliči"
+        isLoading={isDeletingBulk}
+        variant="danger"
+        details={
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between text-[11px] text-outline font-semibold uppercase tracking-wider px-0.5">
+              <span>Pregled izbranih objav za izbris:</span>
+              <span>Skupaj: {selectedItems.length}</span>
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+              {selectedItems.slice(0, 15).map((item) => (
+                <div 
+                  key={item.id} 
+                  className="p-2 rounded-lg bg-surface-container-low border border-surface-container/70 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-on-surface truncate" title={item.title}>
+                      {item.title}
+                    </p>
+                    <p className="text-[10px] text-outline truncate">
+                      {item.authorName} • {item.categoryName || item.category}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-surface-container text-on-surface-variant shrink-0">
+                    {item.type === 'ad' ? 'Oglas' : item.type === 'event' ? 'Dogodek' : item.type === 'deal' ? 'Ugodnost' : 'Članek'}
+                  </span>
+                </div>
+              ))}
+              {selectedItems.length > 15 && (
+                <div className="p-2 text-center text-xs text-outline italic">
+                  ... in še {selectedItems.length - 15} drugih objav
+                </div>
+              )}
+            </div>
+          </div>
+        }
+      />
     </div>
   );
 }

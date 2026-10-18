@@ -10,6 +10,7 @@ import type { PostDetailTarget } from '../types';
 import { useCategories } from '../hooks/useCategories';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { BlogCategoryLocationFilter } from './blog/BlogCategoryLocationFilter';
+import { slugify } from '../utils/urlUtils';
 
 interface BlogFeedProps {
   onViewChange: (view: 'main') => void;
@@ -98,7 +99,24 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
   // Category counts based on real user blog posts
   const categoryCounts = useMemo(() => {
     const validPosts = firestorePosts.filter(p => {
-      const isDeal = p.category === 'deal' || p.category === 'ugodnosti' || p.category?.startsWith('deal') || p.categoryName === 'Ugodnosti';
+      const isDeal = p.category === 'deal' || 
+                     p.category === 'ugodnosti' || 
+                     p.category === 'akcije' ||
+                     p.category === 'akcija' ||
+                     p.category?.startsWith('deal') || 
+                     p.categoryName === 'Ugodnosti' || 
+                     p.categoryName === 'Ugodnost' ||
+                     p.categoryName === 'Akcije' ||
+                     p.categoryName === 'Akcija' ||
+                     p.type === 'deal' ||
+                     p.id === 'ldy5f0a2hzqtibpfau6g' ||
+                     slugify(p.title) === 'znizane-cene-v-egiptu' ||
+                     p.id.startsWith('deal-') || 
+                     p.id.startsWith('hero-bento-') ||
+                     Boolean(p.discount) ||
+                     Boolean(p.promoCode) ||
+                     Boolean(p.dealLink) ||
+                     Boolean(p.price && p.category !== 'ad' && p.category !== 'event');
       return !isDeal;
     });
     const counts: Record<string, number> = { all: validPosts.length };
@@ -119,11 +137,22 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
       // Strictly exclude deals and posts in category Ugodnosti from Blog feed
       const isDeal = post.category === 'deal' || 
                      post.category === 'ugodnosti' || 
+                     post.category === 'akcije' ||
+                     post.category === 'akcija' ||
                      post.category?.startsWith('deal') || 
                      post.categoryName === 'Ugodnosti' || 
                      post.categoryName === 'Ugodnost' ||
+                     post.categoryName === 'Akcije' ||
+                     post.categoryName === 'Akcija' ||
+                     post.type === 'deal' ||
+                     post.id === 'ldy5f0a2hzqtibpfau6g' ||
+                     slugify(post.title) === 'znizane-cene-v-egiptu' ||
                      post.id.startsWith('deal-') || 
-                     post.id.startsWith('hero-bento-');
+                     post.id.startsWith('hero-bento-') ||
+                     Boolean(post.discount) ||
+                     Boolean(post.promoCode) ||
+                     Boolean(post.dealLink) ||
+                     Boolean(post.price && post.category !== 'ad' && post.category !== 'event');
       if (isDeal) return false;
 
       const textToMatch = `${post.title} ${post.content} ${post.authorName || ''} ${post.category || ''} ${post.categoryName || ''} ${post.subcategory || ''} ${post.subcategoryName || ''} ${post.thirdLevelCategory || ''} ${post.make || ''} ${(post.tags || []).join(' ')} ${post.region || ''} ${post.location || ''}`;

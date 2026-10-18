@@ -24,6 +24,7 @@ import { PostDetailPage } from './components/PostDetailPage';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { ResetPasswordModal } from './components/ResetPasswordModal';
 import { PromotionBannerZone } from './components/common/PromotionBannerZone';
+import { CookieConsentBanner } from './components/common/CookieConsentBanner';
 import type { ViewMode, PostDetailTarget, PostDetailType, AuthorProfileTarget } from './types';
 import { useAuth } from './contexts/AuthContext';
 import { scrollToPageTop, scrollToSidebarsTop } from './utils/scrollUtils';
@@ -532,7 +533,13 @@ export default function App() {
   };
 
   const handleBackFromPost = () => {
-    const targetView = selectedPostTarget?.type === 'deal' ? 'deals' :
+    const isDeal = selectedPostTarget?.type === 'deal' || 
+                   selectedPostTarget?.initialData?.type === 'deal' ||
+                   selectedPostTarget?.initialData?.category === 'deal' ||
+                   selectedPostTarget?.initialData?.category === 'ugodnosti' ||
+                   selectedPostTarget?.initialData?.category === 'akcije' ||
+                   selectedPostTarget?.id === 'ldy5f0a2hzqtibpfau6g';
+    const targetView = isDeal ? 'deals' :
                        selectedPostTarget?.type === 'event' ? 'events' :
                        selectedPostTarget?.type === 'ad' ? 'ads' :
                        (selectedPostTarget?.type === 'blog' || selectedPostTarget?.type === 'post') ? 'blog' : previousView || 'main';
@@ -854,6 +861,7 @@ export default function App() {
       
       <BottomNav currentView={activeNavView} onViewChange={handleViewChange} />
       <BackToTopButton />
+      <CookieConsentBanner />
       <RlsModal isOpen={isRlsModalOpen} onClose={() => setIsRlsModalOpen(false)} />
       {resetPasswordState.isOpen && (
         <ResetPasswordModal

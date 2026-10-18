@@ -174,18 +174,23 @@ export function getActiveFallbackImage(
  * Otherwise, it gracefully hides the broken image container so no broken icon is shown.
  */
 export function handleImageFallbackError(e: React.SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget;
-  const fallback = cachedSettings.useFallbackForBrokenImages ? (cachedSettings.fallbackImageUrl || '') : '';
+  try {
+    const img = e.currentTarget;
+    if (!img) return;
+    const fallback = cachedSettings.useFallbackForBrokenImages ? (cachedSettings.fallbackImageUrl || '') : '';
 
-  if (fallback && img.src !== fallback) {
-    img.src = fallback;
-    return;
-  }
+    if (fallback && img.src !== fallback) {
+      img.src = fallback;
+      return;
+    }
 
-  // If no fallback is configured, gracefully hide the broken image element
-  img.style.display = 'none';
-  // Also hide parent link/container if it was an image wrapper
-  if (img.parentElement && img.parentElement.classList.contains('image-wrapper-hideable')) {
-    img.parentElement.style.display = 'none';
+    // If no fallback is configured, gracefully hide the broken image element
+    img.style.display = 'none';
+    // Also hide parent link/container if it was an image wrapper
+    if (img.parentElement && img.parentElement.classList?.contains('image-wrapper-hideable')) {
+      img.parentElement.style.display = 'none';
+    }
+  } catch {
+    // Gracefully handle any error when manipulating image DOM nodes
   }
 }

@@ -443,9 +443,12 @@ export function PostDetailPage({
                              catNameLower.includes('wellness') ||
                              catNameLower.includes('storitv') ||
                              fs.type === 'deal' ||
+                             fs.id === 'ldy5f0a2hzqtibpfau6g' ||
+                             slugify(fs.title) === 'znizane-cene-v-egiptu' ||
                              Boolean(fs.discount) ||
                              Boolean(fs.promoCode) ||
                              Boolean(fs.dealLink) ||
+                             Boolean(fs.price && fs.category !== 'ad' && fs.category !== 'event') ||
                              fs.id.startsWith('deal-') ||
                              fs.id.startsWith('hero-bento-') ||
                              target.type === 'deal';
@@ -843,9 +846,11 @@ export function PostDetailPage({
 
       const postAuthorName = itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor';
       
+      const resolvedType = itemData.type || target.type;
+
       // Clean SEO URL structure: /category/subcategory/title
       const cleanPath = buildPostUrl({
-        type: target.type,
+        type: resolvedType,
         id: itemData.id || target.id,
         title: itemData.title,
         category: itemData.category,
@@ -856,13 +861,13 @@ export function PostDetailPage({
 
       // Check if current URL is already valid for this item (e.g. /akcije/trgovine-hrana/subway-italian-bmt)
       // If so, keep user's URL intact and do not arbitrarily rewrite or overwrite it!
-      const isAlreadyValid = isCurrentPathValidForPost(window.location.pathname, itemData, target.type);
+      const isAlreadyValid = isCurrentPathValidForPost(window.location.pathname, itemData, resolvedType);
       const effectivePath = isAlreadyValid ? window.location.pathname : cleanPath;
       const fullUrl = `${window.location.origin}${effectivePath}`;
 
       // Update URL cleanly without hash if not already valid
       if ((!isAlreadyValid && window.location.pathname !== cleanPath) || window.location.hash) {
-        window.history.replaceState({ type: target.type, id: itemData.id || target.id }, '', cleanPath);
+        window.history.replaceState({ type: resolvedType, id: itemData.id || target.id }, '', cleanPath);
       }
 
       onTitleLoaded?.(itemData.title, {

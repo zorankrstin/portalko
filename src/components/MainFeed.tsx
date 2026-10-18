@@ -15,7 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, subscribeToAds, subscribeToEvents, FirestorePost, FirestoreAd, FirestoreEvent } from '../services/firestoreService';
 import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
 import { isItemActivelyPromoted } from '../services/promotionService';
-import { parseEventDateInfo, resolveEventDisplayDate } from '../utils/dateUtils';
+import { parseEventDateInfo, resolveEventDisplayDate, resolveItemEntryTimestamp, formatSlovenianDate } from '../utils/dateUtils';
 import { slugify } from '../utils/urlUtils';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 
@@ -127,6 +127,9 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
       items.push({ type: 'news', data: newsItem });
     });
 
+    // Sort all content by date of entry immediately so items are completely interleaved chronologically
+    items.sort((a, b) => resolveItemEntryTimestamp(b.data) - resolveItemEntryTimestamp(a.data));
+
     return items;
   }, [firestorePosts, firestoreAds, firestoreEvents, realNews, currentUser]);
 
@@ -215,7 +218,18 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
 
       if (aPromoted && !bPromoted) return -1;
       if (!aPromoted && bPromoted) return 1;
-      return 0;
+
+      // Primary chronological sort by date of entry (newest first). Do NOT group by category!
+      const timeA = resolveItemEntryTimestamp(a.data);
+      const timeB = resolveItemEntryTimestamp(b.data);
+
+      if (timeB !== timeA) {
+        return timeB - timeA;
+      }
+
+      const idA = String((a.data as any)?.id || '');
+      const idB = String((b.data as any)?.id || '');
+      return idA.localeCompare(idB);
     });
   }, [masterFeedItems, filterType, searchQuery]);
 
@@ -397,7 +411,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   authorRole={ad.authorRole}
                   authorInitials={ad.authorName.slice(0, 2).toUpperCase()}
                   location={ad.location || 'Slovenija'}
-                  date="Ravno objavljeno"
+                  date={formatSlovenianDate(ad.createdAt) || (ad as any).date || 'Ravno objavljeno'}
                   description={ad.description}
                   categoryName={ad.category || 'Mali oglas'}
                   category="oglasi"
@@ -482,7 +496,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   authorId={blog.authorId}
                   authorRole={blog.authorRole}
                   authorAvatar={blog.authorAvatar}
-                  date={blog.date}
+                  date={formatSlovenianDate(blog.createdAt) || blog.date || 'Nedavno'}
                   location={blog.location}
                   description={blog.description}
                   image={blog.image}
@@ -510,7 +524,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   authorRole={ad.authorRole}
                   authorInitials={ad.authorInitials}
                   location={ad.location}
-                  date={ad.date}
+                  date={formatSlovenianDate(ad.createdAt) || ad.date || 'Danes'}
                   description={ad.description}
                   categoryName={ad.categoryName}
                   category="oglasi"
@@ -531,7 +545,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   authorId={deal.authorId || deal.partnerId}
                   authorRole={deal.partnerRole}
                   authorAvatar={deal.partnerAvatar}
-                  date={deal.date}
+                  date={formatSlovenianDate(deal.createdAt) || deal.date || 'Aktualno'}
                   description={deal.description}
                   code={deal.code}
                   link={deal.link}

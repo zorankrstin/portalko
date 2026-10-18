@@ -25,6 +25,7 @@ import { compressImageFileToDataUrl } from '../../utils/imageUtils';
 import { FALLBACK_PRESETS, FallbackPreset } from '../../utils/fallbackPresets';
 import { useAuth } from '../../contexts/AuthContext';
 import { logAdminActivity } from '../../services/activityLogService';
+import { ConfirmationModal } from '../common/ConfirmationModal';
 
 interface PortalSettingsManagerProps {
   currentUserId?: string;
@@ -195,17 +196,22 @@ export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ cu
     }
   };
 
+  const [isConfirmRemoveImage, setIsConfirmRemoveImage] = useState(false);
+
   const handleRemoveImage = () => {
-    if (window.confirm('Ali ste prepričani, da želite odstraniti privzeto nadomestno sliko portala?')) {
-      setFallbackImageUrl('');
-      setFileDetails(null);
-      setUseFallbackForMissingImages(false);
-      setUseFallbackForBrokenImages(false);
-      setFeedback({
-        type: 'success',
-        message: 'Nadomestna slika je bila ponastavljena. Kliknite »Shrani nastavitve« za uveljavitev v bazi.'
-      });
-    }
+    setIsConfirmRemoveImage(true);
+  };
+
+  const handleConfirmRemoveImage = () => {
+    setFallbackImageUrl('');
+    setFileDetails(null);
+    setUseFallbackForMissingImages(false);
+    setUseFallbackForBrokenImages(false);
+    setFeedback({
+      type: 'success',
+      message: 'Nadomestna slika je bila ponastavljena. Kliknite »Shrani nastavitve« za uveljavitev v bazi.'
+    });
+    setIsConfirmRemoveImage(false);
   };
 
   const toggleFallbackType = (key: keyof typeof fallbackTypes) => {
@@ -811,6 +817,20 @@ export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ cu
         </div>
 
       </div>
+
+      {/* Confirmation Modal for Fallback Image Removal */}
+      <ConfirmationModal
+        isOpen={isConfirmRemoveImage}
+        onClose={() => setIsConfirmRemoveImage(false)}
+        onConfirm={handleConfirmRemoveImage}
+        title="Odstranitev nadomestne slike portala"
+        itemTitle="Privzeta nadomestna slika"
+        itemTypeLabel="Nastavitev portala"
+        message="Ali ste prepričani, da želite odstraniti privzeto nadomestno sliko portala? Če nastavitve shranite, objave brez slik ne bodo imele prikazane nadomestne slike."
+        confirmLabel="Da, odstrani sliko"
+        cancelLabel="Prekliči"
+        variant="warning"
+      />
     </div>
   );
 };

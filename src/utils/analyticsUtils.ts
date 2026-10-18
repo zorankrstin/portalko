@@ -63,31 +63,32 @@ export function ensureGoogleAnalyticsTag(): void {
 `;
   }
 
-  // Ensure both are placed right at the beginning of <head>
-  // Order: 1. externalScript, 2. inlineScript
-  if (document.head.firstChild !== externalScript) {
-    if (document.head.firstChild) {
-      document.head.insertBefore(externalScript, document.head.firstChild);
-    } else {
+  try {
+    if (!externalScript.parentNode) {
       document.head.appendChild(externalScript);
     }
-  }
-
-  if (externalScript.nextSibling !== inlineScript) {
-    if (externalScript.nextSibling) {
-      document.head.insertBefore(inlineScript, externalScript.nextSibling);
-    } else {
+    if (!inlineScript.parentNode) {
       document.head.appendChild(inlineScript);
     }
+  } catch {
+    // Gracefully ignore DOM attachment errors in preview/iframe environments
   }
 }
 
+import { getStoredCookieConsent } from '../services/cookieConsentService';
+
 /**
  * Tracks a page view for Google Analytics across every feed, post, and page.
- * Sends updated page_path, page_title, and page_location to GA4.
+ * Sends updated page_path, page_title, and page_location to GA4 when user consents.
  */
 export function trackPageView(title?: string, path?: string, location?: string): void {
   if (typeof window === 'undefined') return;
+
+  const consent = getStoredCookieConsent();
+  if (consent && !consent.analytics) {
+    // Analytics rejected by user in cookie consent
+    return;
+  }
 
   ensureGoogleAnalyticsTag();
 
@@ -117,6 +118,12 @@ export function trackPageView(title?: string, path?: string, location?: string):
  */
 export function trackEvent(eventName: string, eventParams: Record<string, any> = {}): void {
   if (typeof window === 'undefined') return;
+
+  const consent = getStoredCookieConsent();
+  if (consent && !consent.analytics) {
+    return;
+  }
+
   ensureGoogleAnalyticsTag();
   if (typeof window.gtag === 'function') {
     window.gtag('event', eventName, eventParams);
