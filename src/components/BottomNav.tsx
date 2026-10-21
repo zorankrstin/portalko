@@ -8,56 +8,91 @@ interface BottomNavProps {
 
 export function BottomNav({ currentView, onViewChange }: BottomNavProps) {
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface-container-lowest border-t border-surface-container/50 flex items-center justify-around pb-safe pt-2 px-1 z-50">
-      <a 
-        href="#domov"
-        onClick={(e) => { e.preventDefault(); onViewChange('main'); }}
-        className={`flex flex-col items-center gap-1 p-1.5 rounded-xl min-w-[3.2rem] transition-colors ${currentView === 'main' ? 'text-primary' : 'text-on-surface-variant'}`}
-      >
-        <Home className={`w-5 h-5 ${currentView === 'main' ? 'fill-primary/20' : ''}`} />
-        <span className="text-[10px] font-label-caps font-semibold">Domov</span>
-      </a>
-      <a 
-        href="#akcije"
-        onClick={(e) => { e.preventDefault(); onViewChange('deals'); }}
-        className={`flex flex-col items-center gap-1 p-1.5 rounded-xl min-w-[3.2rem] transition-colors ${currentView === 'deals' ? 'text-secondary' : 'text-on-surface-variant'}`}
-      >
-        <Percent className={`w-5 h-5 ${currentView === 'deals' ? 'stroke-[2.5]' : ''}`} />
-        <span className="text-[10px] font-label-caps font-semibold">Akcije</span>
-      </a>
-      <a 
-        href="#mali-oglasi"
-        onClick={(e) => { e.preventDefault(); onViewChange('ads'); }}
-        className={`flex flex-col items-center gap-1 p-1.5 rounded-xl min-w-[3.2rem] transition-colors ${currentView === 'ads' ? 'text-primary' : 'text-on-surface-variant'}`}
-      >
-        <ShoppingBag className={`w-5 h-5 ${currentView === 'ads' ? 'fill-primary/20' : ''}`} />
-        <span className="text-[10px] font-label-caps font-semibold">Oglasi</span>
-      </a>
-      <a 
-        href="#dogodki"
-        onClick={(e) => { e.preventDefault(); onViewChange('events'); }}
-        className={`flex flex-col items-center gap-1 p-1.5 rounded-xl min-w-[3.2rem] transition-colors ${currentView === 'events' ? 'text-tertiary-container' : 'text-on-surface-variant'}`}
-      >
-        <CalendarDays className={`w-5 h-5 ${currentView === 'events' ? 'fill-tertiary-container/20' : ''}`} />
-        <span className="text-[10px] font-label-caps font-semibold">Dogodki</span>
-      </a>
-      <a 
-        href="#shranjeno"
-        onClick={(e) => { e.preventDefault(); onViewChange('saved'); }}
-        className={`flex flex-col items-center gap-1 p-1.5 rounded-xl min-w-[3.2rem] transition-colors ${currentView === 'saved' ? 'text-primary' : 'text-on-surface-variant'}`}
-      >
-        <Bookmark className={`w-5 h-5 ${currentView === 'saved' ? 'fill-primary/20' : ''}`} />
-        <span className="text-[10px] font-label-caps font-semibold">Shranjeno</span>
-      </a>
-      <a 
-        href="#profil"
-        onClick={(e) => { e.preventDefault(); onViewChange('profile'); }}
-        className={`flex flex-col items-center gap-1 p-1.5 rounded-xl min-w-[3.2rem] transition-colors ${currentView === 'profile' ? 'text-primary' : 'text-on-surface-variant'}`}
-      >
-        <User className={`w-5 h-5 ${currentView === 'profile' ? 'fill-primary/20' : ''}`} />
-        <span className="text-[10px] font-label-caps font-semibold">Profil</span>
-      </a>
-    </div>
+    <nav 
+      aria-label="Mobilna navigacija"
+      className="lg:hidden fixed bottom-0 left-0 right-0 w-full max-w-full bg-white/95 backdrop-blur-md border-t border-surface-container/60 shadow-lg z-50 overflow-x-hidden touch-manipulation"
+    >
+      <div className="w-full max-w-lg mx-auto flex items-center justify-between px-0.5 sm:px-2 pt-1 pb-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+        <a 
+          href="#domov"
+          onClick={(e) => { e.preventDefault(); onViewChange('main'); }}
+          className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all ${
+            currentView === 'main' ? 'text-primary font-bold' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+          title="Domov"
+        >
+          <Home className={`w-5 h-5 shrink-0 ${currentView === 'main' ? 'fill-primary/20 stroke-[2.2]' : ''}`} />
+          <span className="text-[9px] xs:text-[10px] font-label-caps font-semibold leading-tight truncate max-w-full mt-0.5 text-center">
+            Domov
+          </span>
+        </a>
+        <a 
+          href="#akcije"
+          onClick={(e) => { e.preventDefault(); onViewChange('deals'); }}
+          className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all ${
+            currentView === 'deals' ? 'text-secondary font-bold' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+          title="Akcije"
+        >
+          <Percent className={`w-5 h-5 shrink-0 ${currentView === 'deals' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[9px] xs:text-[10px] font-label-caps font-semibold leading-tight truncate max-w-full mt-0.5 text-center">
+            Akcije
+          </span>
+        </a>
+        <a 
+          href="#mali-oglasi"
+          onClick={(e) => { e.preventDefault(); onViewChange('ads'); }}
+          className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all ${
+            currentView === 'ads' ? 'text-primary font-bold' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+          title="Mali oglasi"
+        >
+          <ShoppingBag className={`w-5 h-5 shrink-0 ${currentView === 'ads' ? 'fill-primary/20 stroke-[2.2]' : ''}`} />
+          <span className="text-[9px] xs:text-[10px] font-label-caps font-semibold leading-tight truncate max-w-full mt-0.5 text-center">
+            Oglasi
+          </span>
+        </a>
+        <a 
+          href="#dogodki"
+          onClick={(e) => { e.preventDefault(); onViewChange('events'); }}
+          className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all ${
+            currentView === 'events' ? 'text-tertiary-container font-bold' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+          title="Dogodki"
+        >
+          <CalendarDays className={`w-5 h-5 shrink-0 ${currentView === 'events' ? 'fill-tertiary-container/20 stroke-[2.2]' : ''}`} />
+          <span className="text-[9px] xs:text-[10px] font-label-caps font-semibold leading-tight truncate max-w-full mt-0.5 text-center">
+            Dogodki
+          </span>
+        </a>
+        <a 
+          href="#shranjeno"
+          onClick={(e) => { e.preventDefault(); onViewChange('saved'); }}
+          className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all ${
+            currentView === 'saved' ? 'text-primary font-bold' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+          title="Shranjeno"
+        >
+          <Bookmark className={`w-5 h-5 shrink-0 ${currentView === 'saved' ? 'fill-primary/20 stroke-[2.2]' : ''}`} />
+          <span className="text-[9px] xs:text-[10px] font-label-caps font-semibold leading-tight truncate max-w-full mt-0.5 text-center">
+            Shranjeno
+          </span>
+        </a>
+        <a 
+          href="#profil"
+          onClick={(e) => { e.preventDefault(); onViewChange('profile'); }}
+          className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all ${
+            currentView === 'profile' ? 'text-primary font-bold' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+          title="Profil"
+        >
+          <User className={`w-5 h-5 shrink-0 ${currentView === 'profile' ? 'fill-primary/20 stroke-[2.2]' : ''}`} />
+          <span className="text-[9px] xs:text-[10px] font-label-caps font-semibold leading-tight truncate max-w-full mt-0.5 text-center">
+            Profil
+          </span>
+        </a>
+      </div>
+    </nav>
   );
 }
 

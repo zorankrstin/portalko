@@ -88,7 +88,7 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
     <div className="relative" ref={dropdownRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className={`relative p-2 rounded-xl transition-colors cursor-pointer ${
+        className={`relative p-1.5 sm:p-2 rounded-xl transition-colors cursor-pointer ${
           isOpen 
             ? 'bg-surface-container-high text-on-surface' 
             : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
@@ -97,16 +97,16 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
         title="Center obvestil (komentarji, interakcije, sistem)"
         aria-label="Center obvestil"
       >
-        <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'animate-pulse' : ''}`} />
+        <Bell className={`w-4.5 h-4.5 sm:w-5 sm:h-5 ${unreadCount > 0 ? 'animate-pulse' : ''}`} />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-error text-white text-[10px] font-extrabold border-2 border-surface-container-lowest animate-pulse">
+          <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 flex items-center justify-center min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] px-1 rounded-full bg-error text-white text-[9px] sm:text-[10px] font-extrabold border-2 border-surface-container-lowest animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[340px] sm:w-[410px] bg-surface-container-lowest rounded-2xl shadow-2xl border border-surface-container/80 flex flex-col z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-1rem)] max-w-[340px] sm:w-[410px] bg-surface-container-lowest rounded-2xl shadow-2xl border border-surface-container/80 flex flex-col z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           {/* Header */}
           <div className="flex items-center justify-between p-3.5 border-b border-surface-container-low bg-surface-container/30">
             <div className="flex items-center gap-2">

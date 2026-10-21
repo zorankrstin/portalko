@@ -131,6 +131,12 @@
   }
 }
 
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+  position: relative;
+}
+
 /* Tiptap Placeholder Extension */
 .is-editor-empty:first-child::before {
   color: #88939e; /* outline color */

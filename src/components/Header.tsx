@@ -144,8 +144,8 @@ export function Header({
   const roleInfo = getRoleBadge(currentUser?.role);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-surface-container shadow-sm">
-      <div className="h-16 w-full px-margin-desktop flex items-center justify-between gap-space-md">
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-surface-container shadow-sm w-full max-w-full overflow-x-clip">
+      <div className="h-14 sm:h-16 w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-margin-desktop flex items-center justify-between gap-1.5 sm:gap-space-md">
         <a
           href="/"
           onClick={(e) => {
@@ -159,7 +159,7 @@ export function Header({
         >
           <img 
             alt="Portalko.net" 
-            className="h-12 sm:h-14 w-auto max-h-16 object-contain drop-shadow-2xs group-hover:scale-[1.02] transition-transform duration-200" 
+            className="h-7 xs:h-8 sm:h-11 md:h-13 w-auto max-h-14 object-contain drop-shadow-2xs group-hover:scale-[1.02] transition-transform duration-200" 
             src="https://raw.githubusercontent.com/zorankrstin/portalko/refs/heads/main/src/assets/images/Portalko.jpg" 
             id="header-brand-logo-img"
           />
@@ -251,27 +251,28 @@ export function Header({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-space-sm sm:gap-space-md flex-shrink-0">
+        <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-space-sm md:gap-space-md flex-shrink-0">
           {/* Mobile search toggle */}
           <button
             onClick={() => setIsMobileSearchOpen(prev => !prev)}
-            className={`md:hidden p-2 rounded-lg transition-colors ${isMobileSearchOpen ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'}`}
+            className={`md:hidden p-1.5 sm:p-2 rounded-lg transition-colors ${isMobileSearchOpen ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'}`}
             type="button"
             aria-label="Iskanje"
             title="Iskanje"
           >
-            <Search className="w-5 h-5" />
+            <Search className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
           </button>
 
+          {/* Header bookmark button - hidden on mobile since it's prominently accessible in the mobile BottomNav */}
           <button 
             onClick={onSavedClick}
-            className="relative p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+            className="hidden sm:flex relative p-1.5 sm:p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
             type="button"
             title="Shranjeno"
           >
-            <Bookmark className="w-[1em] h-[1em] text-xl" />
+            <Bookmark className="w-5 h-5" />
             {savedCount > 0 && (
-              <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-[9px] font-bold text-white bg-primary rounded-full border-2 border-white">
+              <span className="absolute top-0.5 right-0.5 flex items-center justify-center w-4 h-4 text-[9px] font-bold text-white bg-primary rounded-full border-2 border-white">
                 {savedCount > 9 ? '9+' : savedCount}
               </span>
             )}
@@ -282,7 +283,7 @@ export function Header({
             <div className="relative" ref={userMenuRef}>
               <button 
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center gap-2 p-1 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer"
+                className="flex items-center gap-1 sm:gap-2 p-1 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer"
                 aria-expanded={isUserMenuOpen}
                 title={`Profil: ${currentUser.name}`}
               >
@@ -292,7 +293,7 @@ export function Header({
                   userId={currentUser.id}
                   role={currentUser.role}
                   size="sm"
-                  className="w-9 h-9 ring-2 ring-primary/20 shadow-xs"
+                  className="w-8 h-8 sm:w-9 sm:h-9 ring-2 ring-primary/20 shadow-xs"
                 />
                 <div className="hidden md:flex flex-col text-left">
                   <span className="text-xs font-bold text-on-surface leading-tight truncate max-w-[120px]">
@@ -382,16 +383,16 @@ export function Header({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 ml-1">
+            <div className="flex items-center gap-1 sm:gap-2 ml-0.5 sm:ml-1 shrink-0">
               <button 
                 onClick={() => { setAuthModalMode('login'); setIsLoginModalOpen(true); }} 
-                className="px-3 py-1.5 rounded-xl border border-surface-container hover:bg-surface-container-low text-on-surface font-label-md text-xs sm:text-sm font-semibold transition-colors"
+                className="px-2 xs:px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl border border-surface-container hover:bg-surface-container-low text-on-surface font-label-md text-xs sm:text-sm font-semibold transition-colors shrink-0"
               >
                 Prijava
               </button>
               <button 
                 onClick={() => { setAuthModalMode('register'); setIsLoginModalOpen(true); }} 
-                className="px-3.5 py-1.5 bg-primary text-on-primary rounded-xl font-label-md text-xs sm:text-sm font-bold shadow hover:bg-primary-container transition-colors"
+                className="px-2 xs:px-2.5 sm:px-3.5 py-1 sm:py-1.5 bg-primary text-on-primary rounded-lg sm:rounded-xl font-label-md text-xs sm:text-sm font-bold shadow-xs hover:bg-primary-container transition-colors shrink-0 whitespace-nowrap"
               >
                 Registracija
               </button>
