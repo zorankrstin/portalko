@@ -151,3 +151,25 @@ export interface AdminActivityLog {
   createdAt: string;
 }
 
+// ---------------- SOCIAL MEDIA LINK TYPES ----------------
+export type SocialMediaPlatform = 
+  | 'facebook' 
+  | 'instagram' 
+  | 'twitter' 
+  | 'youtube' 
+  | 'tiktok' 
+  | 'linkedin' 
+  | 'threads' 
+  | 'telegram' 
+  | 'whatsapp' 
+  | 'custom';
+
+export interface SocialMediaLink {
+  id: string;
+  platform: SocialMediaPlatform;
+  label: string;
+  url: string;
+  isActive: boolean;
+  order: number;
+}
+

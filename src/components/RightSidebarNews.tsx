@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Rss, Globe, RefreshCw, ExternalLink, Newspaper, Radio, Flame, Sparkles } from 'lucide-react';
 import { Weather } from './Weather';
 import { AdSense } from './ads/AdSense';
-import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
+import { fetchRealRssNews, getCachedRssNews, RealNewsItem } from '../services/rssService';
 import { formatSlovenianDate } from '../utils/dateUtils';
 import type { PostDetailTarget } from '../types';
 
@@ -11,15 +11,19 @@ export interface RightSidebarNewsProps {
 }
 
 export function RightSidebarNews({ onNavigatePost }: RightSidebarNewsProps = {}) {
-  const [latestNews, setLatestNews] = useState<RealNewsItem[]>([]);
+  const [latestNews, setLatestNews] = useState<RealNewsItem[]>(() => getCachedRssNews().slice(0, 5));
   const [newsLoading, setNewsLoading] = useState(false);
 
   useEffect(() => {
     const loadSidebarNews = async () => {
       try {
-        setNewsLoading(true);
+        if (latestNews.length === 0) {
+          setNewsLoading(true);
+        }
         const news = await fetchRealRssNews();
-        setLatestNews(news.slice(0, 5));
+        if (news && news.length > 0) {
+          setLatestNews(news.slice(0, 5));
+        }
       } catch (e) {
         console.error('Failed to load sidebar news', e);
       } finally {

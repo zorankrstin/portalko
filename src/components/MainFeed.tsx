@@ -13,7 +13,7 @@ import { parseSearchQuery, matchesSearchAndCategory } from '../utils/searchUtils
 import type { ViewMode, PostDetailTarget } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, subscribeToAds, subscribeToEvents, FirestorePost, FirestoreAd, FirestoreEvent } from '../services/firestoreService';
-import { fetchRealRssNews, RealNewsItem } from '../services/rssService';
+import { fetchRealRssNews, getCachedRssNews, RealNewsItem } from '../services/rssService';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { parseEventDateInfo, resolveEventDisplayDate, resolveItemEntryTimestamp, formatSlovenianDate } from '../utils/dateUtils';
 import { slugify } from '../utils/urlUtils';
@@ -46,7 +46,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
   const [firestorePosts, setFirestorePosts] = useState<FirestorePost[]>([]);
   const [firestoreAds, setFirestoreAds] = useState<FirestoreAd[]>([]);
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
-  const [realNews, setRealNews] = useState<RealNewsItem[]>([]);
+  const [realNews, setRealNews] = useState<RealNewsItem[]>(() => getCachedRssNews());
 
   useEffect(() => {
     const unsubPosts = subscribeToPosts((posts) => {
@@ -67,10 +67,14 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
   }, []);
 
   useEffect(() => {
-    fetchRealRssNews().then(items => setRealNews(items));
+    fetchRealRssNews().then(items => {
+      if (items && items.length > 0) setRealNews(items);
+    });
 
     const handleRssUpdate = () => {
-      fetchRealRssNews(true).then(items => setRealNews(items));
+      fetchRealRssNews(true).then(items => {
+        if (items && items.length > 0) setRealNews(items);
+      });
     };
 
     window.addEventListener('rss_feeds_updated', handleRssUpdate);

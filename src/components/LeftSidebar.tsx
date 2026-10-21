@@ -4,6 +4,7 @@ import type { ViewMode } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { PromotionBannerZone } from './common/PromotionBannerZone';
 import { openCookieSettingsModal } from '../services/cookieConsentService';
+import { SidebarSocialLinks } from './common/SocialMediaIcons';
 
 interface LeftSidebarProps {
   currentView: ViewMode;
@@ -163,6 +164,9 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
       
       {/* Promocijske pasice v levem stolpcu */}
       <PromotionBannerZone position="left_sidebar" />
+      
+      {/* Povezave do družbenih omrežij v nogi */}
+      <SidebarSocialLinks className="pt-2 border-t border-surface-container/60" />
       
       <div className="px-2 text-outline font-label-md text-xs flex flex-wrap gap-x-2.5 gap-y-1">
         <a className="hover:text-primary transition-colors" href="/pogoji-uporabe">Pogoji uporabe</a>

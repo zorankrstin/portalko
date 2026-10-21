@@ -6,6 +6,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { SocialMediaLink } from '../types';
 
 export interface PortalSettings {
   fallbackImageUrl?: string;
@@ -18,9 +19,53 @@ export interface PortalSettings {
     deals?: boolean;
     news?: boolean;
   };
+  socialLinks?: SocialMediaLink[];
   updatedAt?: string;
   updatedBy?: string;
 }
+
+export const DEFAULT_SOCIAL_LINKS: SocialMediaLink[] = [
+  {
+    id: 'social-facebook',
+    platform: 'facebook',
+    label: 'Facebook',
+    url: 'https://facebook.com/portalko.net',
+    isActive: true,
+    order: 1,
+  },
+  {
+    id: 'social-instagram',
+    platform: 'instagram',
+    label: 'Instagram',
+    url: 'https://instagram.com/portalko_net',
+    isActive: true,
+    order: 2,
+  },
+  {
+    id: 'social-tiktok',
+    platform: 'tiktok',
+    label: 'TikTok',
+    url: 'https://tiktok.com/@portalko',
+    isActive: true,
+    order: 3,
+  },
+  {
+    id: 'social-twitter',
+    platform: 'twitter',
+    label: 'X (Twitter)',
+    url: 'https://x.com/portalko_net',
+    isActive: true,
+    order: 4,
+  },
+  {
+    id: 'social-youtube',
+    platform: 'youtube',
+    label: 'YouTube',
+    url: 'https://youtube.com/@portalko',
+    isActive: true,
+    order: 5,
+  },
+];
 
 const DEFAULT_SETTINGS: PortalSettings = {
   fallbackImageUrl: '',
@@ -33,6 +78,7 @@ const DEFAULT_SETTINGS: PortalSettings = {
     deals: true,
     news: true,
   },
+  socialLinks: DEFAULT_SOCIAL_LINKS,
 };
 
 // In-memory cache for fast, synchronous access across components
@@ -55,6 +101,7 @@ export function subscribeToPortalSettings(callback: (settings: PortalSettings) =
             useFallbackForMissingImages: !!data.useFallbackForMissingImages,
             useFallbackForBrokenImages: !!data.useFallbackForBrokenImages,
             fallbackTypes: data.fallbackTypes || DEFAULT_SETTINGS.fallbackTypes,
+            socialLinks: Array.isArray(data.socialLinks) ? data.socialLinks : DEFAULT_SOCIAL_LINKS,
             updatedAt: data.updatedAt,
             updatedBy: data.updatedBy,
           };
@@ -89,6 +136,7 @@ export async function getPortalSettings(): Promise<PortalSettings> {
         useFallbackForMissingImages: !!data.useFallbackForMissingImages,
         useFallbackForBrokenImages: !!data.useFallbackForBrokenImages,
         fallbackTypes: data.fallbackTypes || DEFAULT_SETTINGS.fallbackTypes,
+        socialLinks: Array.isArray(data.socialLinks) ? data.socialLinks : DEFAULT_SOCIAL_LINKS,
         updatedAt: data.updatedAt,
         updatedBy: data.updatedBy,
       };
@@ -97,6 +145,16 @@ export async function getPortalSettings(): Promise<PortalSettings> {
     console.warn('Error fetching portal settings:', err);
   }
   return cachedSettings;
+}
+
+/**
+ * Returns currently active, ordered social media links.
+ */
+export function getActiveSocialLinks(): SocialMediaLink[] {
+  const links = cachedSettings.socialLinks || DEFAULT_SOCIAL_LINKS;
+  return links
+    .filter(link => link.isActive && link.url && link.url.trim() !== '')
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
 /**

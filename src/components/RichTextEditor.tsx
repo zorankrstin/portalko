@@ -11,9 +11,9 @@ import {
   Image as ImageIcon, Smile, X, Check, ExternalLink, Share2, 
   Video, Code, Sparkles, AlertCircle 
 } from 'lucide-react';
-import { parseSocialEmbed, ParsedEmbed } from '../utils/embedUtils';
+import { parseSocialEmbed, ParsedEmbed, isIframeOrHtmlVertical } from '../utils/embedUtils';
 
-// Custom Tiptap Node for Iframe Embeds
+// Custom Tiptap Node for Iframe Embeds (Fully responsive with vertical and horizontal orientation support)
 const IframeNode = Node.create({
   name: 'iframe',
   group: 'block',
@@ -36,13 +36,30 @@ const IframeNode = Node.create({
         default: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
       },
       class: {
-        default: 'w-full aspect-video rounded-xl border border-surface-container my-3',
+        default: 'w-full h-full border-0',
       },
       scrolling: {
         default: 'no',
       },
       title: {
         default: 'Vdelana vsebina',
+      },
+      'data-vertical': {
+        default: 'false',
+        parseHTML: element => {
+          const direct = element.getAttribute('data-vertical');
+          if (direct === 'true') return 'true';
+          if (direct === 'false') return 'false';
+          const parentContainer = element.closest('.embed-vertical-container');
+          if (parentContainer) return 'true';
+          const src = element.getAttribute('src') || '';
+          return isIframeOrHtmlVertical(element.outerHTML) || isIframeOrHtmlVertical(src) ? 'true' : 'false';
+        },
+        renderHTML: attributes => {
+          return {
+            'data-vertical': attributes['data-vertical'] || 'false',
+          };
+        },
       },
     };
   },
@@ -51,12 +68,54 @@ const IframeNode = Node.create({
     return [
       {
         tag: 'iframe',
+        getAttrs: (element: HTMLElement) => {
+          const src = element.getAttribute('src') || '';
+          const parentContainer = element.closest('.embed-vertical-container');
+          const isVertical = element.getAttribute('data-vertical') === 'true' || 
+                             Boolean(parentContainer) || 
+                             isIframeOrHtmlVertical(element.outerHTML) || 
+                             isIframeOrHtmlVertical(src);
+          return {
+            src,
+            frameborder: element.getAttribute('frameborder') || '0',
+            allowfullscreen: element.getAttribute('allowfullscreen') || 'true',
+            allow: element.getAttribute('allow') || 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+            scrolling: element.getAttribute('scrolling') || 'no',
+            title: element.getAttribute('title') || (isVertical ? 'Navpični video (9:16)' : 'Vdelana vsebina'),
+            'data-vertical': isVertical ? 'true' : 'false',
+          };
+        },
       },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', { class: 'relative w-full aspect-video my-3 overflow-hidden rounded-xl shadow-xs border border-surface-container' }, ['iframe', HTMLAttributes]];
+    const src = String(HTMLAttributes.src || '');
+    const isVertical = HTMLAttributes['data-vertical'] === 'true' || isIframeOrHtmlVertical(src);
+
+    if (isVertical) {
+      return [
+        'div',
+        { class: 'embed-vertical-container my-4 w-full flex justify-center' },
+        [
+          'div',
+          { 
+            class: 'w-full max-w-[360px] aspect-[9/16] min-h-[580px] max-h-[740px] rounded-2xl overflow-hidden border border-surface-container shadow-md bg-black relative flex justify-center',
+            style: 'aspect-ratio: 9/16; min-height: 580px;'
+          },
+          ['iframe', { ...HTMLAttributes, 'data-vertical': 'true', class: 'w-full h-full border-0' }]
+        ]
+      ];
+    }
+
+    return [
+      'div',
+      { 
+        class: 'embed-horizontal-container relative w-full max-w-3xl mx-auto aspect-video my-3 overflow-hidden rounded-xl shadow-xs border border-surface-container',
+        style: 'aspect-ratio: 16/9;'
+      },
+      ['iframe', { ...HTMLAttributes, 'data-vertical': 'false', class: 'w-full h-full border-0' }]
+    ];
   },
 });
 
@@ -104,6 +163,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
   const [embedInput, setEmbedInput] = useState('');
   const [embedError, setEmbedError] = useState('');
   const [parsedPreview, setParsedPreview] = useState<ParsedEmbed | null>(null);
+  const [embedOrientation, setEmbedOrientation] = useState<'auto' | 'vertical' | 'horizontal'>('auto');
 
   const linkInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -228,20 +288,33 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     setEmbedInput('');
     setEmbedError('');
     setParsedPreview(null);
+    setEmbedOrientation('auto');
     setIsEmbedDialogOpen(true);
     setIsLinkDialogOpen(false);
     setIsImageDialogOpen(false);
     setTimeout(() => embedInputRef.current?.focus(), 80);
   };
 
-  const handleEmbedInputChange = (val: string) => {
+  const handleEmbedInputChange = (val: string, forcedOri?: 'auto' | 'vertical' | 'horizontal') => {
     setEmbedInput(val);
     setEmbedError('');
+    const targetOri = forcedOri !== undefined ? forcedOri : embedOrientation;
     if (val.trim()) {
-      const parsed = parseSocialEmbed(val.trim());
+      const parsed = parseSocialEmbed(val.trim(), targetOri === 'auto' ? undefined : targetOri);
       setParsedPreview(parsed);
+      if (forcedOri === undefined && targetOri === 'auto' && parsed) {
+        setEmbedOrientation(parsed.isVertical ? 'vertical' : 'horizontal');
+      }
     } else {
       setParsedPreview(null);
+    }
+  };
+
+  const handleOrientationChange = (newOri: 'vertical' | 'horizontal') => {
+    setEmbedOrientation(newOri);
+    if (embedInput.trim()) {
+      const parsed = parseSocialEmbed(embedInput.trim(), newOri);
+      setParsedPreview(parsed);
     }
   };
 
@@ -253,7 +326,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       return;
     }
 
-    const parsed = parseSocialEmbed(trimmed);
+    const parsed = parseSocialEmbed(trimmed, embedOrientation === 'auto' ? undefined : embedOrientation);
     if (!parsed) {
       setEmbedError('Povezave ali kode ni bilo mogoče prepoznati. Preverite obliko URL-ja ali iframe kode.');
       return;
@@ -265,6 +338,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     setEmbedInput('');
     setParsedPreview(null);
     setEmbedError('');
+    setEmbedOrientation('auto');
   };
 
   useImperativeHandle(ref, () => ({
@@ -550,16 +624,49 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           )}
 
           {parsedPreview && (
-            <div className="p-2.5 rounded-xl bg-surface-container-low border border-secondary/20 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-secondary/15 text-secondary font-bold text-[10px] uppercase">
-                  {parsedPreview.platformName}
-                </span>
-                <span className="font-semibold text-on-surface truncate max-w-[260px]">
-                  {parsedPreview.previewTitle || parsedPreview.originalInput}
-                </span>
+            <div className="p-2.5 rounded-xl bg-surface-container-low border border-secondary/20 flex flex-col gap-2 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded bg-secondary/15 text-secondary font-bold text-[10px] uppercase">
+                    {parsedPreview.platformName}
+                  </span>
+                  <span className="font-semibold text-on-surface truncate max-w-[220px]">
+                    {parsedPreview.previewTitle || parsedPreview.originalInput}
+                  </span>
+                </div>
+                <span className="text-secondary text-[11px] font-bold shrink-0">Pripravljeno za vdelavo ✓</span>
               </div>
-              <span className="text-secondary text-[11px] font-bold">Pripravljeno za vdelavo ✓</span>
+
+              {/* Format orientation chooser */}
+              <div className="flex items-center gap-2 pt-1.5 border-t border-surface-container/60 flex-wrap">
+                <span className="text-[11px] font-semibold text-outline">Oblika prikaza:</span>
+                <div className="inline-flex rounded-lg p-0.5 bg-surface-container border border-surface-container-high text-xs">
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('vertical')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      parsedPreview.isVertical
+                        ? 'bg-amber-500 text-black shadow-xs font-extrabold'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                    title="Navpični format primeren za YouTube Shorts, Instagram Reels, TikTok in portretne videe"
+                  >
+                    <span>📱 Navpično (9:16)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('horizontal')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      !parsedPreview.isVertical
+                        ? 'bg-primary text-on-primary shadow-xs font-extrabold'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                    title="Klasični vodoravni video 16:9 za standardne YouTube in Vimeo posnetke"
+                  >
+                    <span>📺 Vodoravno (16:9)</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

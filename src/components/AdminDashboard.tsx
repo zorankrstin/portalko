@@ -4,11 +4,12 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck, Megaphone, History
+  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck, Megaphone, History, Share2
 } from 'lucide-react';
 import { UserGrowthChart } from './admin/UserGrowthChart';
 import { ReportsManager } from './admin/ReportsManager';
 import { PortalSettingsManager } from './admin/PortalSettingsManager';
+import { SocialLinksManager } from './admin/SocialLinksManager';
 import { BannerManager } from './admin/BannerManager';
 import { AdminActivityLog } from './admin/AdminActivityLog';
 import { VerifiedBadge } from './common/VerifiedBadge';
@@ -89,7 +90,7 @@ const MOCK_POSTS: AdminPost[] = [
 
 export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: AdminDashboardProps = {}) {
   const { users, currentUser, updateUser, deleteUser, register, resendVerificationEmail } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings' | 'social'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -1131,7 +1132,16 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         }`}
       >
         <ImageIcon className="w-4 h-4" />
-        <span>Nadomestna slika & Nastavitve</span>
+        <span>Nastavitve portala</span>
+      </button>
+      <button 
+        onClick={() => setActiveTab('social')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'social' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <Share2 className="w-4 h-4" />
+        <span>Družbena omrežja</span>
       </button>
       <button 
         onClick={() => setActiveTab('logs')}
@@ -2429,6 +2439,13 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         {activeTab === 'settings' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <PortalSettingsManager currentUserId={currentUser?.id} />
+          </div>
+        )}
+
+        {/* Tab Content: Social Links */}
+        {activeTab === 'social' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <SocialLinksManager />
           </div>
         )}
 

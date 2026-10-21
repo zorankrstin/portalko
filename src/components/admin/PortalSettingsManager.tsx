@@ -18,7 +18,8 @@ import {
   Sliders,
   Check,
   Zap,
-  ArrowRight
+  ArrowRight,
+  Share2
 } from 'lucide-react';
 import { usePortalSettings, PortalSettings } from '../../services/portalSettingsService';
 import { compressImageFileToDataUrl } from '../../utils/imageUtils';
@@ -26,6 +27,7 @@ import { FALLBACK_PRESETS, FallbackPreset } from '../../utils/fallbackPresets';
 import { useAuth } from '../../contexts/AuthContext';
 import { logAdminActivity } from '../../services/activityLogService';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { SocialLinksManager } from './SocialLinksManager';
 
 interface PortalSettingsManagerProps {
   currentUserId?: string;
@@ -34,6 +36,8 @@ interface PortalSettingsManagerProps {
 export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ currentUserId }) => {
   const { currentUser } = useAuth();
   const { settings, loading, saveSettings } = usePortalSettings();
+
+  const [activeSubTab, setActiveSubTab] = useState<'images' | 'social'>('images');
 
   const [fallbackImageUrl, setFallbackImageUrl] = useState('');
   const [useFallbackForMissingImages, setUseFallbackForMissingImages] = useState(false);
@@ -232,28 +236,61 @@ export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ cu
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl">
-      {/* Header Banner */}
-      <div className="bg-surface-container-lowest p-6 rounded-2xl border border-surface-container/60 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
-              <ImageIcon className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="font-headline-sm text-lg font-bold text-on-surface">
-                Privzeta nadomestna slika portala (Fallback Image)
-              </h2>
-              <p className="text-xs text-outline mt-0.5 max-w-2xl">
-                Določite osrednjo fotografijo ali grafiko, ki se prikaže pri objavah brez lastne slike ter samodejno nadomesti nedelujoče zunanje povezave (broken image links).
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* Subtab Navigator */}
+      <div className="flex items-center gap-2 p-1.5 bg-surface-container-low rounded-2xl border border-surface-container/60 w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('images')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeSubTab === 'images'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+          }`}
+        >
+          <ImageIcon className="w-4 h-4" />
+          <span>Privzete nadomestne slike</span>
+        </button>
 
         <button
           type="button"
-          onClick={handleSave}
-          disabled={isSaving}
+          onClick={() => setActiveSubTab('social')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeSubTab === 'social'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+          }`}
+        >
+          <Share2 className="w-4 h-4" />
+          <span>Družbena omrežja v nogi</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'social' ? (
+        <SocialLinksManager />
+      ) : (
+        <>
+          {/* Header Banner */}
+          <div className="bg-surface-container-lowest p-6 rounded-2xl border border-surface-container/60 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="font-headline-sm text-lg font-bold text-on-surface">
+                    Privzeta nadomestna slika portala (Fallback Image)
+                  </h2>
+                  <p className="text-xs text-outline mt-0.5 max-w-2xl">
+                    Določite osrednjo fotografijo ali grafiko, ki se prikaže pri objavah brez lastne slike ter samodejno nadomesti nedelujoče zunanje povezave (broken image links).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
           className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary/90 font-bold text-sm shadow-sm transition-all cursor-pointer disabled:opacity-50 self-start sm:self-auto shrink-0"
         >
           {isSaving ? (
@@ -815,7 +852,6 @@ export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ cu
 
           </div>
         </div>
-
       </div>
 
       {/* Confirmation Modal for Fallback Image Removal */}
@@ -831,6 +867,8 @@ export const PortalSettingsManager: React.FC<PortalSettingsManagerProps> = ({ cu
         cancelLabel="Prekliči"
         variant="warning"
       />
-    </div>
+    </>
+  )}
+</div>
   );
 };

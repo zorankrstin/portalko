@@ -42,11 +42,25 @@ export function getCleanHtml(html?: string): string {
       // fallback
     }
   }
+
+  // Auto-correct any vertical video/embeds (YouTube Shorts, Instagram Reels, TikTok, portrait iframes)
+  // that were previously mistakenly saved with horizontal aspect-video or embed-horizontal-container classes
+  content = content.replace(
+    /<div[^>]*class=["'][^"']*(?:aspect-video|embed-horizontal-container)[^"']*["'][^>]*>(\s*<iframe[^>]+(?:shorts|reel|reels|tiktok\.com|instagram\.com|data-vertical=["']true["'])[^>]*><\/iframe>\s*)<\/div>/gi,
+    '<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] aspect-[9/16] min-h-[580px] max-h-[740px] rounded-2xl overflow-hidden border border-surface-container shadow-md bg-black relative flex justify-center" style="aspect-ratio: 9/16; min-height: 580px;">$1</div></div>'
+  );
+
+  content = content.replace(
+    /(<iframe[^>]+(?:shorts|reel|reels|tiktok\.com|instagram\.com|data-vertical=["']true["'])[^>]+class=["'][^"']*)aspect-video([^"']*["'][^>]*>)/gi,
+    '$1w-full h-full border-0$2'
+  );
+
   return DOMPurify.sanitize(content, {
     ADD_TAGS: ['iframe', 'blockquote', 'u'],
     ADD_ATTR: [
       'allow', 
       'allowfullscreen', 
+      'allowtransparency',
       'frameborder', 
       'scrolling', 
       'src', 
@@ -57,6 +71,12 @@ export function getCleanHtml(html?: string): string {
       'target', 
       'rel', 
       'title',
+      'data-vertical',
+      'data-orientation',
+      'data-aspect',
+      'data-dnt',
+      'loading',
+      'referrerpolicy',
       'data-instgrm-permalink', 
       'data-instgrm-version'
     ]

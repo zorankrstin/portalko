@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Rss, Search, ChevronDown, RefreshCw, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Rss, Search, ChevronDown, RefreshCw, ExternalLink, ShieldCheck, Clock, AlertCircle } from 'lucide-react';
 import { RssPost } from './posts/RssPost';
+import { NewsFeedSkeletonList } from './posts/RssPostSkeleton';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
-import { fetchRealRssNews, getAdminRssFeeds, RealNewsItem, RssFeedConfig } from '../services/rssService';
+import { 
+  fetchRealRssNewsWithRetry, 
+  getCachedRssNews, 
+  getAdminRssFeeds, 
+  RealNewsItem, 
+  RssFeedConfig 
+} from '../services/rssService';
 
 interface NewsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -12,25 +19,55 @@ interface NewsFeedProps {
 export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [rssItems, setRssItems] = useState<RealNewsItem[]>([]);
-  const [activeFeeds, setActiveFeeds] = useState<RssFeedConfig[]>([]);
+  const [rssItems, setRssItems] = useState<RealNewsItem[]>(() => getCachedRssNews());
+  const [activeFeeds, setActiveFeeds] = useState<RssFeedConfig[]>(() => getAdminRssFeeds().filter(f => f.active));
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(() => getCachedRssNews().length > 0);
+  const [retryAttempt, setRetryAttempt] = useState<number>(0);
+  const [isUsingFallbackCache, setIsUsingFallbackCache] = useState<boolean>(false);
 
   const loadFeeds = async (force: boolean = false) => {
     try {
       setIsRefreshing(true);
+      setRetryAttempt(0);
       const configuredFeeds = getAdminRssFeeds();
       setActiveFeeds(configuredFeeds.filter(f => f.active));
 
-      const realNews = await fetchRealRssNews(force);
-      setRssItems(realNews);
+      // Automated retry mechanism (up to 2 retries with backoff delay)
+      const result = await fetchRealRssNewsWithRetry({
+        forceRefresh: force,
+        maxRetries: 2,
+        retryDelayMs: 1200,
+        onRetry: (attempt) => {
+          setRetryAttempt(attempt);
+        }
+      });
+
+      if (result.items && result.items.length > 0) {
+        setRssItems(result.items);
+        setIsUsingFallbackCache(result.isFromCache);
+      } else {
+        // Fallback to cached version if fetch returned nothing
+        const cached = getCachedRssNews();
+        if (cached && cached.length > 0) {
+          setRssItems(cached);
+          setIsUsingFallbackCache(true);
+        }
+      }
       setHasLoaded(true);
     } catch (err) {
       console.error('Error loading real RSS news:', err);
+      // Fall back to cached version on error to guarantee users consistently see content
+      const cached = getCachedRssNews();
+      if (cached && cached.length > 0) {
+        setRssItems(cached);
+        setIsUsingFallbackCache(true);
+      }
+      setHasLoaded(true);
     } finally {
       setIsRefreshing(false);
+      setRetryAttempt(0);
     }
   };
 
@@ -100,11 +137,15 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
           <button 
             onClick={() => loadFeeds(true)}
             disabled={isRefreshing}
-            className="flex-shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer border border-surface-container"
+            className="flex-shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer border border-surface-container disabled:opacity-70"
             title="Pridobi najnovejše objave iz vseh aktivnih RSS virov"
           >
             <RefreshCw className={`w-4 h-4 text-primary ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>{isRefreshing ? 'Prenašanje...' : 'Osveži vire'}</span>
+            <span>
+              {isRefreshing 
+                ? (retryAttempt > 0 ? `Ponovni poskus (${retryAttempt}/2)...` : 'Prenašanje...') 
+                : 'Osveži vire'}
+            </span>
           </button>
         </div>
 
@@ -125,6 +166,23 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
         </div>
       </div>
 
+      {/* Fallback Cache Notification Banner */}
+      {isUsingFallbackCache && visibleNews.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>Prikazana je shranjena različica novic (zunanja osvežitev je trenutno upočasnjena).</span>
+          </div>
+          <button
+            onClick={() => loadFeeds(true)}
+            disabled={isRefreshing}
+            className="font-bold underline hover:no-underline cursor-pointer shrink-0 disabled:opacity-50"
+          >
+            {isRefreshing ? 'Prenašanje...' : 'Poskusi znova'}
+          </button>
+        </div>
+      )}
+
       {/* Category & Source filters */}
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-1">
         {dynamicFilterPills.map(cat => (
@@ -144,32 +202,75 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
 
       {/* 10 Real News Cards initially */}
       <div className="flex flex-col gap-space-md">
-        {!hasLoaded && isRefreshing ? (
-          <div className="py-12 flex flex-col items-center justify-center text-outline bg-surface-container-lowest rounded-2xl border border-surface-container/50">
-            <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-3"></div>
-            <p className="font-label-md text-sm">Prenašanje resničnih novic iz RSS virov...</p>
-          </div>
+        {(!hasLoaded && isRefreshing) || (isRefreshing && rssItems.length === 0) ? (
+          <NewsFeedSkeletonList count={5} retryAttempt={retryAttempt} />
         ) : visibleNews.length === 0 ? (
-          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50 flex flex-col items-center gap-2">
+          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50 flex flex-col items-center gap-3">
             <Rss className="w-8 h-8 text-outline/50" />
             <p className="font-headline-sm text-base font-bold text-on-surface">Ni najdenih novic</p>
             <p className="font-body-sm text-xs text-outline max-w-sm">
-              Za izbrane filtre ali iskalni niz trenutno ni zadetkov v prenesenih RSS novicah. Poskusite z drugim iskanjem ali osvežite vire.
+              {searchQuery || selectedCategory !== 'all'
+                ? 'Za izbrane filtre ali iskalni niz trenutno ni zadetkov v prenesenih RSS novicah. Poskusite z drugim iskanjem ali osvežite vire.'
+                : 'Povezava z zunanjimi viri trenutno ni na voljo.'}
             </p>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={() => {
+                  setSelectedCategory('all');
+                  loadFeeds(true);
+                }}
+                disabled={isRefreshing}
+                className="px-4 py-2 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold shadow-xs flex items-center gap-2 cursor-pointer hover:bg-primary/90 transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>
+                  {isRefreshing 
+                    ? (retryAttempt > 0 ? `Ponovni poskus (${retryAttempt}/2)...` : 'Prenašanje...') 
+                    : 'Poskusi znova'}
+                </span>
+              </button>
+              {(searchQuery || selectedCategory !== 'all') && (
+                <button
+                  onClick={() => {
+                    setSelectedCategory('all');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-xs font-semibold transition-all cursor-pointer"
+                >
+                  Prikaži vse novice
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          visibleNews.map((item, idx) => (
-            <RssPost
-              key={`rss-${item.id}-${idx}`}
-              id={item.id}
-              title={item.title}
-              link={item.link}
-              description={item.description}
-              pubDate={item.pubDate}
-              sourceName={item.sourceName}
-              thumbnail={item.thumbnail}
-            />
-          ))
+          <>
+            {isRefreshing && visibleNews.length > 0 && (
+              <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container flex items-center justify-between text-xs text-on-surface-variant animate-pulse shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin" />
+                  <span>
+                    {retryAttempt > 0 
+                      ? `Osveževanje novic... Ponovni poskus (${retryAttempt}/2)` 
+                      : 'Pridobivanje novih novic iz RSS virov...'}
+                  </span>
+                </div>
+                <span className="font-label-caps text-[10px] uppercase font-bold text-outline">
+                  Posodabljanje
+                </span>
+              </div>
+            )}
+            {visibleNews.map((item, idx) => (
+              <RssPost
+                key={`rss-${item.id}-${idx}`}
+                id={item.id}
+                title={item.title}
+                link={item.link}
+                description={item.description}
+                pubDate={item.pubDate}
+                sourceName={item.sourceName}
+                thumbnail={item.thumbnail}
+              />
+            ))}
+          </>
         )}
       </div>
 

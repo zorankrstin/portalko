@@ -33,6 +33,7 @@ import { RichTextEditor, RichTextEditorRef } from './RichTextEditor';
 import { compressImageFileToDataUrl } from '../utils/imageUtils';
 import { UserAvatar } from './common/UserAvatar';
 import { isDummyAvatar } from '../utils/avatarUtils';
+import { parseSocialEmbed } from '../utils/embedUtils';
 import { 
   DealItem, 
   HERO_BENTO_DEALS, 
@@ -1596,15 +1597,31 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                       <Share2 className="w-3.5 h-3.5 text-secondary" />
                       <span>Vdelana objava z družbenih omrežij ali video (neobvezno)</span>
                     </span>
-                    <span className="text-[10px] text-outline font-normal">YouTube, Instagram, Facebook, X ali &lt;iframe&gt;</span>
+                    <span className="text-[10px] text-outline font-normal">YouTube, Shorts, Reels, TikTok ali &lt;iframe&gt;</span>
                   </label>
                   <input 
                     type="text" 
                     value={modalForm.embedCode}
                     onChange={(e) => setModalForm({ ...modalForm, embedCode: e.target.value })}
-                    placeholder="Prilepite povezavo (npr. https://youtube.com/watch?v=... ali https://x.com/... ali iframe kodo)"
-                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-secondary border border-surface-container"
+                    placeholder="Prilepite povezavo (npr. YouTube video/Shorts, Instagram Reel, TikTok ali iframe kodo)"
+                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-xl font-body-sm text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-secondary border border-surface-container font-mono"
                   />
+                  {modalForm.embedCode && parseSocialEmbed(modalForm.embedCode.trim()) && (
+                    <div className="flex items-center gap-2 pt-1 flex-wrap text-xs">
+                      <span className="font-bold text-[11px] text-primary">
+                        ✓ {parseSocialEmbed(modalForm.embedCode.trim())?.platformName}
+                      </span>
+                      {parseSocialEmbed(modalForm.embedCode.trim())?.isVertical ? (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 font-bold text-[10px]">
+                          📱 Navpični prikaz (9:16)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-400 font-bold text-[10px]">
+                          📺 Vodoravni prikaz (16:9)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 flex justify-end gap-2">

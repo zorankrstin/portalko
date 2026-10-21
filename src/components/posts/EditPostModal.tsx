@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, 
   Sparkles, Trash2, Loader2, Calendar, Tag, TrendingDown, Percent, 
-  Clock, Plus, Copy, CalendarDays, Layers, SlidersHorizontal, MapPin 
+  Clock, Plus, Copy, CalendarDays, Layers, SlidersHorizontal, MapPin, Share2 
 } from 'lucide-react';
 import { 
   FirestorePost, 
@@ -22,6 +22,7 @@ import { compressImageFileToDataUrl } from '../../utils/imageUtils';
 import { useCategories } from '../../hooks/useCategories';
 import { CategorySection, getTertiaryCategories } from '../../services/categoryService';
 import { getTodayYmd } from '../../utils/eventFilterUtils';
+import { parseSocialEmbed } from '../../utils/embedUtils';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -57,6 +58,7 @@ export interface EditablePostItem {
   eventDates?: string[];
   eventSchedule?: EventScheduleSlot[];
   ticketUrl?: string;
+  embedCode?: string;
   tags?: string[];
   rejectionReason?: string;
   likesCount?: number;
@@ -102,6 +104,9 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     { id: '1', date: '', times: [''], label: '', location: '' }
   ]);
   const [ticketUrl, setTicketUrl] = useState('');
+  const [embedCode, setEmbedCode] = useState('');
+  const [embedOrientation, setEmbedOrientation] = useState<'auto' | 'vertical' | 'horizontal'>('auto');
+  const [showEmbedPreview, setShowEmbedPreview] = useState(false);
   const [tagsString, setTagsString] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,6 +120,11 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     if (item?.type === 'deal') return 'deals';
     return 'blog';
   }, [item]);
+
+  const parsedEmbed = useMemo(() => {
+    if (!embedCode.trim()) return null;
+    return parseSocialEmbed(embedCode.trim(), embedOrientation === 'auto' ? undefined : embedOrientation);
+  }, [embedCode, embedOrientation]);
 
   const { categories } = useCategories(section);
 
@@ -341,6 +351,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       }
 
       setTicketUrl(item.ticketUrl || '');
+      setEmbedCode(item.embedCode || '');
+      setEmbedOrientation('auto');
       const rawTags = item.tags;
       const initialTagsStr = Array.isArray(rawTags) 
         ? rawTags.join(', ') 
@@ -420,6 +432,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           price: price.trim() || 'Po dogovoru',
           location: location.trim() || 'Slovenija',
           imageUrl: imageUrl.trim() || '',
+          embedCode: embedCode.trim() || undefined,
           tags: parsedTags,
           status: adStatus as any,
           authorId: item.authorId,
@@ -480,6 +493,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           eventSchedule: cleanSchedules.length > 0 ? cleanSchedules : undefined,
           ticketUrl: ticketUrl.trim() || '',
           imageUrl: imageUrl.trim() || '',
+          embedCode: embedCode.trim() || undefined,
           tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
@@ -528,6 +542,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           dealLink: isDeal ? (dealLink.trim() || undefined) : undefined,
           location: isDeal ? location.trim() : (location.trim() || item.location || ''),
           imageUrl: imageUrl.trim() || item.imageUrl || '',
+          embedCode: embedCode.trim() || undefined,
           tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
@@ -1402,6 +1417,78 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
               onChange={setContent}
               placeholder="Vnesite celotno besedilo objave..."
             />
+          </div>
+
+          {/* Vdelana vsebina / Video / Družbena omrežja */}
+          <div className="flex flex-col gap-2 pt-2 border-t border-surface-container-low">
+            <label className="font-label-caps uppercase font-semibold text-outline flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Share2 className="w-3.5 h-3.5 text-secondary" />
+                <span>Vdelana vsebina z družbenih omrežij ali video</span>
+              </span>
+              <span className="text-[10px] bg-secondary/10 text-secondary font-medium px-2 py-0.5 rounded">
+                YouTube, Shorts, Reels, TikTok ali &lt;iframe&gt;
+              </span>
+            </label>
+            <textarea
+              rows={2}
+              value={embedCode}
+              onChange={(e) => setEmbedCode(e.target.value)}
+              placeholder="Prilepite povezavo ali kodo (npr. YouTube Shorts, Instagram Reel, TikTok, Facebook ali iframe)..."
+              className="w-full bg-surface-container-low px-4 py-2.5 rounded-xl font-mono text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-surface-container/60 transition-colors"
+            />
+
+            {parsedEmbed && (
+              <div className="p-3 rounded-xl bg-surface-container-lowest border border-surface-container flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-[11px] text-primary">
+                      ✓ {parsedEmbed.platformName}
+                    </span>
+                    <div className="inline-flex rounded-lg p-0.5 bg-surface-container border border-surface-container-high text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setEmbedOrientation('vertical')}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          parsedEmbed.isVertical
+                            ? 'bg-amber-500 text-black shadow-xs font-extrabold'
+                            : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                        title="Navpični format (9:16) primeren za Shorts, Reels in TikTok"
+                      >
+                        <span>📱 Navpično (9:16)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEmbedOrientation('horizontal')}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          !parsedEmbed.isVertical
+                            ? 'bg-primary text-on-primary shadow-xs font-extrabold'
+                            : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                        title="Vodoravni format (16:9) za standardne videe"
+                      >
+                        <span>📺 Vodoravno (16:9)</span>
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmbedPreview(!showEmbedPreview)}
+                    className="text-xs text-secondary hover:underline font-semibold cursor-pointer shrink-0"
+                  >
+                    {showEmbedPreview ? 'Skrij predogled' : 'Pokaži predogled'}
+                  </button>
+                </div>
+
+                {showEmbedPreview && (
+                  <div 
+                    className="pt-2 border-t border-surface-container-low max-h-96 overflow-y-auto no-scrollbar rounded-lg"
+                    dangerouslySetInnerHTML={{ __html: parsedEmbed.embedHtml }}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </div>
 

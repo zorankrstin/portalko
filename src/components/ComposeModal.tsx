@@ -45,6 +45,7 @@ import { compressImageFileToDataUrl } from '../utils/imageUtils';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { getTodayYmd } from '../utils/eventFilterUtils';
 import { EventScheduleSlot } from '../types';
+import { parseSocialEmbed } from '../utils/embedUtils';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
 
@@ -90,6 +91,14 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
   const [isCompressing, setIsCompressing] = useState(false);
   const [embedCode, setEmbedCode] = useState('');
+  const [embedOrientation, setEmbedOrientation] = useState<'auto' | 'vertical' | 'horizontal'>('auto');
+  const [showEmbedLivePreview, setShowEmbedLivePreview] = useState(false);
+
+  const parsedEmbedPreview = useMemo(() => {
+    if (!embedCode.trim()) return null;
+    return parseSocialEmbed(embedCode.trim(), embedOrientation === 'auto' ? undefined : embedOrientation);
+  }, [embedCode, embedOrientation]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -1644,15 +1653,68 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 <Share2 className="w-3.5 h-3.5 text-secondary" />
                 <span>Vdelana vsebina z družbenih omrežij ali video (neobvezno)</span>
               </span>
-              <span className="text-[10px] bg-secondary/10 text-secondary font-medium px-1.5 py-0.5 rounded">YouTube, X, Instagram ali &lt;iframe&gt;</span>
+              <span className="text-[10px] bg-secondary/10 text-secondary font-medium px-1.5 py-0.5 rounded">YouTube, Shorts, Reels, TikTok ali &lt;iframe&gt;</span>
             </label>
             <textarea 
               value={embedCode}
               onChange={e => setEmbedCode(e.target.value)}
-              placeholder="Prilepite povezavo ali vdelano kodo (npr. YouTube, Facebook, X, Instagram)..."
-              className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors" 
+              placeholder="Prilepite povezavo ali kodo (npr. YouTube video/Shorts, Instagram Reel, TikTok, Facebook ali iframe)..."
+              className="w-full bg-surface-container-low px-4 py-2 rounded-lg font-body-sm text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary border border-transparent transition-colors font-mono text-xs" 
               rows={2}
             />
+
+            {/* Live detection indicator & preview */}
+            {parsedEmbedPreview && (
+              <div className="mt-1 p-2.5 rounded-xl bg-surface-container-lowest border border-surface-container flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-[11px] text-primary">
+                      ✓ Zaznana platforma: {parsedEmbedPreview.platformName}
+                    </span>
+                    <div className="inline-flex rounded-lg p-0.5 bg-surface-container border border-surface-container-high text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setEmbedOrientation('vertical')}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          parsedEmbedPreview.isVertical
+                            ? 'bg-amber-500 text-black shadow-xs font-extrabold'
+                            : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                        title="Navpični prikaz 9:16 (Shorts, Reels, TikTok)"
+                      >
+                        <span>📱 Navpično (9:16)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEmbedOrientation('horizontal')}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          !parsedEmbedPreview.isVertical
+                            ? 'bg-primary text-on-primary shadow-xs font-extrabold'
+                            : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                        title="Vodoravni prikaz 16:9 (standardni video)"
+                      >
+                        <span>📺 Vodoravno (16:9)</span>
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmbedLivePreview(!showEmbedLivePreview)}
+                    className="text-xs text-secondary hover:underline font-semibold cursor-pointer shrink-0"
+                  >
+                    {showEmbedLivePreview ? 'Skrij predogled' : 'Pokaži predogled'}
+                  </button>
+                </div>
+
+                {showEmbedLivePreview && (
+                  <div 
+                    className="pt-2 border-t border-surface-container-low max-h-96 overflow-y-auto no-scrollbar rounded-lg"
+                    dangerouslySetInnerHTML={{ __html: parsedEmbedPreview.embedHtml }}
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between border-t border-surface-container-low pt-4">

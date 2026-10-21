@@ -162,3 +162,71 @@
 .tiptap u {
   text-decoration: underline;
 }
+
+/* Responsive Social Media & Video Embeds (Horizontal & Vertical 9:16) */
+.embed-vertical-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.embed-vertical-container > div {
+  width: 100%;
+  max-width: 380px;
+  min-height: 580px;
+  max-height: 760px;
+  aspect-ratio: 9 / 16;
+}
+
+.embed-vertical-container iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+  display: block;
+}
+
+.embed-horizontal-container {
+  width: 100%;
+  max-width: 48rem;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  aspect-ratio: 16 / 9;
+}
+
+.embed-horizontal-container iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+  display: block;
+}
+
+/* Guard: If a vertical video was mistakenly wrapped in embed-horizontal-container, restore vertical display */
+.embed-horizontal-container:has(iframe[data-vertical="true"]),
+.embed-horizontal-container:has(iframe[src*="shorts"]),
+.embed-horizontal-container:has(iframe[src*="reel"]),
+.embed-horizontal-container:has(iframe[src*="tiktok.com"]) {
+  aspect-ratio: auto !important;
+  max-width: 380px !important;
+  min-height: 580px !important;
+  display: flex;
+  justify-content: center;
+}
+
+.embed-horizontal-container:has(iframe[data-vertical="true"]) iframe,
+.embed-horizontal-container:has(iframe[src*="shorts"]) iframe,
+.embed-horizontal-container:has(iframe[src*="reel"]) iframe,
+.embed-horizontal-container:has(iframe[src*="tiktok.com"]) iframe {
+  aspect-ratio: 9 / 16 !important;
+  min-height: 580px !important;
+  max-height: 740px !important;
+}
+
+.tiptap iframe {
+  max-width: 100%;
+}
+
