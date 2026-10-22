@@ -210,7 +210,7 @@ function preparePageHtml(rawHtml: string, reqUrl: string): string {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
 
@@ -296,7 +296,7 @@ async function startServer() {
   }
 
   const DEFAULT_SERVER_FEEDS: ServerRssFeedConfig[] = [
-    { id: 'rtvslo', url: 'https://www.rtvslo.si/feeds/00.xml', name: 'RTV Slovenija', active: true },
+    { id: 'rtvslo', url: 'https://img.rtvslo.si/feeds/00.xml', name: 'RTV Slovenija', active: true },
     { id: '24ur', url: 'https://www.24ur.com/rss', name: '24ur.com', active: true },
     { id: 'delo', url: 'https://www.delo.si/rss', name: 'Delo.si', active: true },
     { id: 'n1info', url: 'https://n1info.si/feed/', name: 'N1 Slovenija', active: true }
@@ -549,6 +549,59 @@ async function startServer() {
 
   app.get("/api/rss/news", handleRssNewsRequest);
   app.post("/api/rss/news", handleRssNewsRequest);
+
+  // Background pre-warming and automatic periodic cache refresher for production
+  async function warmServerRssCache(): Promise<void> {
+    try {
+      const feedPromises = DEFAULT_SERVER_FEEDS.map(feed => fetchRssFeedFromSource(feed, 6000));
+      const feedResults = await Promise.allSettled(feedPromises);
+
+      const allItems: ServerNewsItem[] = [];
+      feedResults.forEach(result => {
+        if (result.status === "fulfilled" && Array.isArray(result.value)) {
+          allItems.push(...result.value);
+        }
+      });
+
+      if (allItems.length > 0) {
+        const seenLinks = new Set<string>();
+        const seenTitles = new Set<string>();
+        const uniqueItems: ServerNewsItem[] = [];
+
+        for (const item of allItems) {
+          const normLink = item.link.toLowerCase().replace(/\/+$/, "");
+          const normTitle = item.title.toLowerCase().trim();
+          if (!seenLinks.has(normLink) && !seenTitles.has(normTitle)) {
+            seenLinks.add(normLink);
+            seenTitles.add(normTitle);
+            uniqueItems.push(item);
+          }
+        }
+
+        uniqueItems.sort((a, b) => {
+          const timeA = new Date(a.pubDate).getTime();
+          const timeB = new Date(b.pubDate).getTime();
+          if (isNaN(timeA) || isNaN(timeB)) return 0;
+          return timeB - timeA;
+        });
+
+        serverRssCache = {
+          timestamp: Date.now(),
+          items: uniqueItems
+        };
+        emergencyRssFallbackItems = uniqueItems;
+      }
+    } catch (err: any) {
+      console.warn("[RSS Server] Error warming RSS cache:", err.message);
+    }
+  }
+
+  // Pre-warm on startup so first production request gets instant response
+  warmServerRssCache().catch(() => {});
+  // Periodically refresh RSS cache in background every 2.5 minutes
+  setInterval(() => {
+    warmServerRssCache().catch(() => {});
+  }, 2.5 * 60 * 1000);
 
   // General-purpose XML RSS Proxy with CORS & redirect support
   app.get("/api/rss/proxy", async (req, res) => {

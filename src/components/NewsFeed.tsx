@@ -34,11 +34,11 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
       const configuredFeeds = getAdminRssFeeds();
       setActiveFeeds(configuredFeeds.filter(f => f.active));
 
-      // Automated retry mechanism (up to 2 retries with backoff delay)
+      // Automated fast retry mechanism (1 retry with 800ms delay)
       const result = await fetchRealRssNewsWithRetry({
         forceRefresh: force,
-        maxRetries: 2,
-        retryDelayMs: 1200,
+        maxRetries: 1,
+        retryDelayMs: 800,
         onRetry: (attempt) => {
           setRetryAttempt(attempt);
         }
@@ -202,7 +202,7 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
 
       {/* 10 Real News Cards initially */}
       <div className="flex flex-col gap-space-md">
-        {(!hasLoaded && isRefreshing) || (isRefreshing && rssItems.length === 0) ? (
+        {rssItems.length === 0 && (isRefreshing || !hasLoaded) ? (
           <NewsFeedSkeletonList count={5} retryAttempt={retryAttempt} />
         ) : visibleNews.length === 0 ? (
           <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50 flex flex-col items-center gap-3">
