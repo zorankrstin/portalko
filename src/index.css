@@ -133,8 +133,19 @@
 
 html, body {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   position: relative;
+}
+
+/* Fixed/sticky sidebars: remain pinned in place when main container feed content scrolls */
+.sidebar-scrollable {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 5rem;
+  align-self: flex-start;
+  max-height: calc(100vh - 5.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Tiptap Placeholder Extension */

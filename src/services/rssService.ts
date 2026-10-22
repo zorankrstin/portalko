@@ -1,3 +1,6 @@
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+
 export interface RssFeedConfig {
   id: string;
   url: string;
@@ -21,98 +24,10 @@ export const DEFAULT_RSS_FEEDS: RssFeedConfig[] = [
   { id: 'rtvslo', url: 'https://img.rtvslo.si/feeds/00.xml', name: 'RTV Slovenija', active: true },
   { id: '24ur', url: 'https://www.24ur.com/rss', name: '24ur.com', active: true },
   { id: 'delo', url: 'https://www.delo.si/rss', name: 'Delo.si', active: true },
-  { id: 'n1info', url: 'https://n1info.si/feed/', name: 'N1 Slovenija', active: true }
-];
-
-export const INITIAL_BASELINE_NEWS: RealNewsItem[] = [
-  {
-    id: "rss-n1info-0-aXNuaS1rYW5kaWQv",
-    title: "Rakovec ga je razrešil s funkcije podžupana, zdaj kandidira za županski stolček",
-    link: "https://n1info.si/novice/slovenija/v-boj-za-zupanski-stolcek-v-kranju-se-podaja-tudi-edini-neodvisni-kandid/",
-    description: "Janez Černe bo v Mestni občini Kranj, kjer je bil do poletja lani, ko ga je aktualni župan Matjaž Rakovec razrešil s položaja, tudi podžupan, na prihajajočih volitvah kandidiral kot neodvisni kandidat.",
-    pubDate: "Wed, 21 Oct 2026 17:42:56 +0200",
-    sourceName: "N1 Slovenija",
-    thumbnail: "https://n1info.si/media/images/2026/10/21/1792596925_profimedia-1144061529.width-1200.jpg",
-    category: "Slovenija",
-    feedId: "n1info"
-  },
-  {
-    id: "rss-rtvslo-0-cm92Lzc5NzY2NQ",
-    title: "Ljubljanska veterinarska fakulteta ima novo stavbo, vredno 81 milijonov evrov",
-    link: "https://www.rtvslo.si/slovenija/ljubljanska-veterinarska-fakulteta-ima-novo-stavbo-vredno-81-milijonov-evrov/797665",
-    description: "V Ljubljani so slavnostno odprli novogradnjo veterinarske fakultete. Sogovorniki so poudarili, da nova fakulteta, vredna 81 milijonov evrov, predstavlja pomembno pridobitev za razvoj sodobne visokošolske ter raziskovalne infrastrukture.",
-    pubDate: "Wed, 21 Oct 2026 17:41:42 +0200",
-    sourceName: "RTV Slovenija",
-    thumbnail: "https://img.rtvcdn.si/_up/upload/2026/10/21/67115326.jpg",
-    category: "Slovenija",
-    feedId: "rtvslo"
-  },
-  {
-    id: "rss-delo-0-YWxjZS1uYXNpbGph",
-    title: "Srbska policija pred volitvami prijela domnevne načrtovalce nasilja",
-    link: "https://www.delo.si/novice/svet/srbska-policija-pred-volitvami-prijela-domnevne-nacrtovalce-nasilja",
-    description: "Dva osumljenca naj bi imela hrvaško državljanstvo, Zagreb zanika vpletenost Hrvaške.",
-    pubDate: "Wed, 21 Oct 2026 17:34:05 +0200",
-    sourceName: "Delo.si",
-    thumbnail: "https://www.delo.si/media/images/20261021/3754819.width-660.format-webp.webp",
-    category: "Slovenija",
-    feedId: "delo"
-  },
-  {
-    id: "rss-rtvslo-1-ZXNlY2UvNzk3NjU5",
-    title: "Pri Manchester Unitedu se bojijo, da bi Šeško lahko manjkal še štiri mesece",
-    link: "https://www.rtvslo.si/sport/nogomet/pri-manchester-unitedu-se-bojijo-da-bi-sesko-lahko-manjkal-se-stiri-mesece/797659",
-    description: "Pri Manchester Unitedu se bojijo, da bo Benjamin Šeško odsoten do novega leta, potem ko je pri okrevanju po poškodbi doživel nazadovanje.",
-    pubDate: "Wed, 21 Oct 2026 17:32:25 +0200",
-    sourceName: "RTV Slovenija",
-    thumbnail: "https://img.rtvcdn.si/_up/upload/2026/09/17/67105010.jpg",
-    category: "Šport",
-    feedId: "rtvslo"
-  },
-  {
-    id: "rss-24ur-2-YmUtbm9naS5odG1s",
-    title: "Moški namerno trčil v poslanko, amputirali so ji obe nogi",
-    link: "https://www.24ur.com/novice/tujina/moski-namerno-trcil-v-poslanko-amputirali-so-ji-obe-nogi.html",
-    description: "Avstralska poslanka je v kritičnem stanju, potem ko jo je pred njeno pisarno zbil 43-letni voznik. Policija dogodek obravnava kot naklepno dejanje.",
-    pubDate: "Wed, 21 Oct 2026 17:30:20 +0200",
-    sourceName: "24ur.com",
-    thumbnail: "https://images.24ur.com/media/images/213xX/Oct2026/77f7ccc39e9eb2d1f0a1_63667109.jpg?v=073b",
-    category: "Tujina",
-    feedId: "24ur"
-  },
-  {
-    id: "rss-24ur-16-dGF2bm8uaHRtbA",
-    title: "Lansko izplačilo božičnice neustavno, pravica ostaja",
-    link: "https://www.24ur.com/novice/slovenija/lansko-izplacilo-bozicnice-neustavno.html",
-    description: "Lansko izplačilo božičnice zaposlenim, ki niso javni uslužbenci, je zaradi retroaktivnega učinka neskladno z ustavo, meni ustavno sodišče, ki pa ukrepa kljub temu ni razveljavilo.",
-    pubDate: "Wed, 21 Oct 2026 17:30:04 +0200",
-    sourceName: "24ur.com",
-    thumbnail: "https://images.24ur.com/media/images/213xX/Dec2025/354f9aaf2b1f8e3216af_63516278.jpg?v=8c88",
-    category: "Slovenija",
-    feedId: "24ur"
-  },
-  {
-    id: "rss-rtvslo-2-a2FsY2kvNzk3NjY2",
-    title: "V Klingenthal z vsemi najboljšimi skakalkami in skakalci",
-    link: "https://www.rtvslo.si/sport/zimski-sporti/v-klingenthal-z-vsemi-najboljsimi-skakalkami-in-skakalci/797666",
-    description: "Konec tedna bo Klingenthal tradicionalno gostil finale poletne velike nagrade v skokih. V Nemčiji bodo nastopili vsi najboljši slovenski skakalci in skakalke.",
-    pubDate: "Wed, 21 Oct 2026 17:29:57 +0200",
-    sourceName: "RTV Slovenija",
-    thumbnail: "https://img.rtvcdn.si/_up/upload/2026/08/01/67065139.jpg",
-    category: "Šport",
-    feedId: "rtvslo"
-  },
-  {
-    id: "rss-n1info-1-YS1uYS1nbGF2by8",
-    title: "Zaradi napihnjenosti obiskala zdravnika, nato pa se ji je življenje obrnilo na glavo",
-    link: "https://n1info.si/zdravje/zdravniki-so-menili-da-gre-za-okuzbo-secil-nato-pa-odkrili-redko-motnjo-ki-ji-je-zivljenje-obrnila-na-glavo/",
-    description: "Tridesetletna Evan Francis je zaradi bolečin v hrbtu in napihnjenosti večkrat poiskala zdravniško pomoč, a so njene težave sprva pripisovali okužbi.",
-    pubDate: "Wed, 21 Oct 2026 17:29:25 +0200",
-    sourceName: "N1 Slovenija",
-    thumbnail: "https://n1info.si/media/images/2026/10/21/1792575183_profimedia-1144563301.width-1200.jpg",
-    category: "Zdravje",
-    feedId: "n1info"
-  }
+  { id: 'n1info', url: 'https://n1info.si/feed/', name: 'N1 Slovenija', active: true },
+  { id: 'siol', url: 'https://siol.net/feeds/latest', name: 'Siol.net', active: true },
+  { id: 'slovenskenovice', url: 'https://slovenskenovice.delo.si/rss', name: 'Slovenske novice', active: true },
+  { id: 'maribor24', url: 'https://maribor24.si/feed/', name: 'Maribor24', active: true }
 ];
 
 const STORAGE_KEY = 'admin_rss_feeds';
@@ -123,16 +38,58 @@ const CACHE_EXPIRY_MS = 2.5 * 60 * 1000; // 2.5 minutes cache for real-time fres
 // In-memory cache for instantaneous synchronous retrieval
 let inMemoryNewsCache: RealNewsItem[] | null = null;
 let inMemoryCacheTime = 0;
+let inMemoryFeeds: RssFeedConfig[] | null = null;
+let isFirestoreSynced = false;
 
 /**
- * Get all configured RSS feeds from admin storage, or default to preset sources
+ * Initialize real-time synchronization of RSS feed configurations with Firestore.
+ * This guarantees that sources added, edited or toggled in the Admin dashboard
+ * are instantly available across all clients (both in development and in production).
+ */
+export function initAdminRssFeedsSync(): void {
+  if (isFirestoreSynced || typeof window === 'undefined') return;
+  isFirestoreSynced = true;
+
+  try {
+    const feedsRef = doc(db, 'settings', 'rss_feeds');
+    onSnapshot(feedsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data && Array.isArray(data.feeds) && data.feeds.length > 0) {
+          inMemoryFeeds = data.feeds;
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.feeds));
+          } catch {}
+          window.dispatchEvent(new Event('rss_feeds_updated'));
+        }
+      }
+    }, (err) => {
+      console.warn('[RSS Service] Firestore sync listener warning:', err.message);
+    });
+  } catch (err) {
+    console.warn('[RSS Service] Could not attach Firestore rss_feeds listener:', err);
+  }
+}
+
+// Auto-initialize Firestore sync on client mount
+if (typeof window !== 'undefined') {
+  initAdminRssFeedsSync();
+}
+
+/**
+ * Get all configured RSS feeds from Firestore / admin storage, or default to preset sources
  */
 export function getAdminRssFeeds(): RssFeedConfig[] {
+  if (inMemoryFeeds && inMemoryFeeds.length > 0) {
+    return inMemoryFeeds;
+  }
+
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryFeeds = parsed;
         return parsed;
       }
     }
@@ -143,21 +100,34 @@ export function getAdminRssFeeds(): RssFeedConfig[] {
 }
 
 /**
- * Save RSS feeds to storage and notify listeners
+ * Save RSS feeds to storage, sync with Firestore, and notify all active listeners
  */
 export function saveAdminRssFeeds(feeds: RssFeedConfig[]): void {
+  inMemoryFeeds = feeds;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(feeds));
     window.dispatchEvent(new Event('rss_feeds_updated'));
   } catch (e) {
-    console.error('Error saving admin_rss_feeds:', e);
+    console.error('Error saving admin_rss_feeds to localStorage:', e);
+  }
+
+  // Persist to Firestore settings collection so production mode loads all admin sources
+  try {
+    const feedsRef = doc(db, 'settings', 'rss_feeds');
+    setDoc(feedsRef, {
+      feeds,
+      updatedAt: Date.now()
+    }, { merge: true }).catch(err => {
+      console.warn('[RSS Service] Error saving feeds to Firestore:', err);
+    });
+  } catch (err) {
+    console.warn('[RSS Service] Failed to write feeds to Firestore:', err);
   }
 }
 
 /**
  * Synchronous getter: Retrieves cached news immediately on component mount,
- * ensuring UI news cards NEVER flicker or render empty while fresh news loads.
- * Falls back to INITIAL_BASELINE_NEWS on brand new sessions.
+ * ensuring UI news cards display immediately if previously fetched.
  */
 export function getCachedRssNews(): RealNewsItem[] {
   if (inMemoryNewsCache && inMemoryNewsCache.length > 0) {
@@ -187,11 +157,7 @@ export function getCachedRssNews(): RealNewsItem[] {
     // Ignore storage read errors
   }
 
-  // Pre-seed baseline news so new users in production never see a blank screen
-  if (!inMemoryNewsCache || inMemoryNewsCache.length === 0) {
-    inMemoryNewsCache = INITIAL_BASELINE_NEWS;
-  }
-  return INITIAL_BASELINE_NEWS;
+  return [];
 }
 
 /**

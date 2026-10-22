@@ -7,6 +7,16 @@
   directory = "netlify/functions"
 
 [[redirects]]
+  from = "/api/rss/news"
+  to = "/.netlify/functions/rss-news"
+  status = 200
+
+[[redirects]]
+  from = "/api/rss/proxy"
+  to = "/.netlify/functions/rss-proxy"
+  status = 200
+
+[[redirects]]
   from = "/api/auth/send-verification-email"
   to = "/.netlify/functions/send-verification-email"
   status = 200
@@ -18,7 +28,7 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "/.netlify/functions/api"
   status = 200
 
 # SPA Fallback: Rewrite all paths to index.html for React client-side routing

@@ -299,7 +299,10 @@ async function startServer() {
     { id: 'rtvslo', url: 'https://img.rtvslo.si/feeds/00.xml', name: 'RTV Slovenija', active: true },
     { id: '24ur', url: 'https://www.24ur.com/rss', name: '24ur.com', active: true },
     { id: 'delo', url: 'https://www.delo.si/rss', name: 'Delo.si', active: true },
-    { id: 'n1info', url: 'https://n1info.si/feed/', name: 'N1 Slovenija', active: true }
+    { id: 'n1info', url: 'https://n1info.si/feed/', name: 'N1 Slovenija', active: true },
+    { id: 'siol', url: 'https://siol.net/feeds/latest', name: 'Siol.net', active: true },
+    { id: 'slovenskenovice', url: 'https://slovenskenovice.delo.si/rss', name: 'Slovenske novice', active: true },
+    { id: 'maribor24', url: 'https://maribor24.si/feed/', name: 'Maribor24', active: true }
   ];
 
   function cleanServerHtmlText(raw: string): string {
@@ -395,14 +398,8 @@ async function startServer() {
     return items;
   }
 
-  // Server-side RSS Cache & Fallback storage
-  let serverRssCache: {
-    timestamp: number;
-    items: ServerNewsItem[];
-  } = {
-    timestamp: 0,
-    items: []
-  };
+  // Server-side RSS Cache keyed by requested feed configurations
+  const serverRssCaches = new Map<string, { timestamp: number; items: ServerNewsItem[] }>();
   let emergencyRssFallbackItems: ServerNewsItem[] = [];
 
   async function fetchRssFeedFromSource(feed: ServerRssFeedConfig, timeoutMs = 8000): Promise<ServerNewsItem[]> {
@@ -450,16 +447,18 @@ async function startServer() {
     }
 
     const now = Date.now();
-    const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes cache
+    const CACHE_TTL_MS = 2.5 * 60 * 1000; // 2.5 minutes cache for real-time freshness
+    const cacheKey = requestedFeeds.map(f => f.id || f.name).sort().join(",");
+    const cached = serverRssCaches.get(cacheKey);
 
-    // If cache is still fresh and not forcing refresh, return immediately
-    if (!force && serverRssCache.items.length > 0 && (now - serverRssCache.timestamp) < CACHE_TTL_MS) {
+    // If cache for these exact requested feeds is fresh and not forcing refresh, return immediately
+    if (!force && cached && cached.items.length > 0 && (now - cached.timestamp) < CACHE_TTL_MS) {
       return res.json({
         success: true,
-        count: serverRssCache.items.length,
-        items: serverRssCache.items,
+        count: cached.items.length,
+        items: cached.items,
         cached: true,
-        fetchedAt: new Date(serverRssCache.timestamp).toISOString()
+        fetchedAt: new Date(cached.timestamp).toISOString()
       });
     }
 
@@ -498,11 +497,11 @@ async function startServer() {
           return timeB - timeA;
         });
 
-        // Update in-memory caches
-        serverRssCache = {
+        // Update in-memory caches by cacheKey
+        serverRssCaches.set(cacheKey, {
           timestamp: now,
           items: uniqueItems
-        };
+        });
         emergencyRssFallbackItems = uniqueItems;
 
         return res.json({
@@ -522,7 +521,7 @@ async function startServer() {
           items: emergencyRssFallbackItems,
           cached: true,
           fallback: true,
-          fetchedAt: new Date(serverRssCache.timestamp || now).toISOString()
+          fetchedAt: new Date(now).toISOString()
         });
       }
 
@@ -585,10 +584,11 @@ async function startServer() {
           return timeB - timeA;
         });
 
-        serverRssCache = {
+        const defaultKey = DEFAULT_SERVER_FEEDS.map(f => f.id || f.name).sort().join(",");
+        serverRssCaches.set(defaultKey, {
           timestamp: Date.now(),
           items: uniqueItems
-        };
+        });
         emergencyRssFallbackItems = uniqueItems;
       }
     } catch (err: any) {

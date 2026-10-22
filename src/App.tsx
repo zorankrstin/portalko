@@ -668,7 +668,7 @@ export default function App() {
   };
 
   return (
-    <div className="pb-20 lg:pb-0 min-h-screen w-full max-w-full overflow-x-hidden">
+    <div className="pb-20 lg:pb-0 min-h-screen w-full max-w-full overflow-x-clip">
       <Header 
         onProfileClick={() => {
           setSelectedAuthorProfile(null);
