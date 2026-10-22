@@ -267,22 +267,31 @@ function parseXmlDocument(xmlText: string, feed: RssFeedConfig): RealNewsItem[] 
  * 3. External CORS proxy (codetabs)
  */
 export async function fetchSingleFeed(feed: RssFeedConfig): Promise<RealNewsItem[]> {
-  // 1. First priority: Internal server-side proxy with strict 3.5s timeout
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const proxyUrl = `/api/rss/proxy?url=${encodeURIComponent(feed.url)}`;
-    const response = await fetch(proxyUrl, { signal: controller.signal, cache: 'no-store' });
-    clearTimeout(timer);
-    if (response.ok) {
-      const text = await response.text();
-      if (text && (text.includes('<rss') || text.includes('<feed') || text.includes('<item') || text.includes('<entry'))) {
-        const items = parseXmlDocument(text, feed);
-        if (items.length > 0) return items;
+  // 1. First priority: Server-side proxy (Express /api/rss/proxy or Netlify function /.netlify/functions/rss-proxy)
+  const proxyEndpoints = [
+    `/api/rss/proxy?url=${encodeURIComponent(feed.url)}`,
+    `/.netlify/functions/rss-proxy?url=${encodeURIComponent(feed.url)}`
+  ];
+
+  for (const proxyUrl of proxyEndpoints) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+      const response = await fetch(proxyUrl, { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timer);
+      if (response.ok) {
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('text/html') || feed.url.includes('.html')) {
+          const text = await response.text();
+          if (text && (text.includes('<rss') || text.includes('<feed') || text.includes('<item') || text.includes('<entry'))) {
+            const items = parseXmlDocument(text, feed);
+            if (items.length > 0) return items;
+          }
+        }
       }
+    } catch (e) {
+      // Proceed to next proxy endpoint
     }
-  } catch (e) {
-    // Proceed to fallbacks
   }
 
   // 2. High-speed global CORS proxy: corsproxy.io
@@ -476,59 +485,67 @@ export async function fetchRealRssNews(forceRefresh: boolean = false): Promise<R
     return [];
   }
 
-  // 3. Primary: High-speed server endpoint (/api/rss/news) with fast 5s timeout
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+  // 3. Primary: High-speed server endpoint with automatic Netlify function fallback
+  const endpointsToTry = [
+    '/api/rss/news',
+    '/.netlify/functions/rss-news'
+  ];
 
-    let res: Response | null = null;
+  for (const endpoint of endpointsToTry) {
     try {
-      res = await fetch('/api/rss/news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          force: forceRefresh,
-          feeds: activeFeeds
-        }),
-        signal: controller.signal
-      });
-    } catch (postErr) {
-      // If POST was blocked or unsupported, fallback to GET
-      res = await fetch(`/api/rss/news?force=${forceRefresh ? 'true' : 'false'}`, {
-        method: 'GET',
-        signal: controller.signal
-      });
-    }
-    clearTimeout(timer);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
 
-    if (res && res.ok) {
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data && Array.isArray(data.items) && data.items.length > 0) {
-          // Save to in-memory & persistent cache
-          inMemoryNewsCache = data.items;
-          inMemoryCacheTime = now;
+      let res: Response | null = null;
+      try {
+        res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            force: forceRefresh,
+            feeds: activeFeeds
+          }),
+          signal: controller.signal
+        });
+      } catch (postErr) {
+        // If POST failed or was refused, try GET fallback
+        res = await fetch(`${endpoint}?force=${forceRefresh ? 'true' : 'false'}`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+      }
+      clearTimeout(timer);
 
-          try {
-            localStorage.setItem(
-              CACHE_KEY,
-              JSON.stringify({
-                timestamp: now,
-                items: data.items
-              })
-            );
-            localStorage.setItem(LAST_KNOWN_GOOD_KEY, JSON.stringify(data.items));
-          } catch (e) {
-            // Ignore quota errors
+      if (res && res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        // Ensure response is actually JSON, not an HTML SPA fallback page
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data && Array.isArray(data.items) && data.items.length > 0) {
+            // Save to in-memory & persistent cache
+            inMemoryNewsCache = data.items;
+            inMemoryCacheTime = now;
+
+            try {
+              localStorage.setItem(
+                CACHE_KEY,
+                JSON.stringify({
+                  timestamp: now,
+                  items: data.items
+                })
+              );
+              localStorage.setItem(LAST_KNOWN_GOOD_KEY, JSON.stringify(data.items));
+            } catch (e) {
+              // Ignore quota errors
+            }
+
+            return data.items;
           }
-
-          return data.items;
         }
       }
+    } catch (err) {
+      console.warn(`[RSS Service] ${endpoint} fetch error:`, err);
     }
-  } catch (err) {
-    console.warn('[RSS Service] /api/rss/news fetch error, attempting client-side fallback:', err);
   }
 
   // 4. Client-side fallback: Fetch active feeds in parallel via /api/rss/proxy

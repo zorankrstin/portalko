@@ -1,2 +1,9 @@
+# Netlify function proxy redirects (force = 200!)
+/api/rss/news    /.netlify/functions/rss-news    200!
+/api/rss/proxy   /.netlify/functions/rss-proxy   200!
+/api/auth/send-verification-email    /.netlify/functions/send-verification-email    200!
+/api/send-verification-email         /.netlify/functions/send-verification-email    200!
+/api/*          /.netlify/functions/api         200!
+
 # SPA redirect rules for client-side routing on Netlify, Cloudflare Pages, etc.
 /*    /index.html   200
