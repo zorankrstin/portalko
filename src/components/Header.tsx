@@ -145,7 +145,7 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-surface-container shadow-sm w-full max-w-full overflow-x-clip">
-      <div className="h-14 sm:h-16 w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-margin-desktop flex items-center justify-between gap-1.5 sm:gap-space-md">
+      <div className="h-14 sm:h-16 w-full max-w-7xl 2xl:max-w-[1400px] mx-auto px-2 sm:px-4 lg:px-6 xl:px-margin-desktop flex items-center justify-between gap-1.5 sm:gap-space-md">
         <a
           href="/"
           onClick={(e) => {

@@ -1,10 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Rss, Globe, RefreshCw } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { Weather } from './Weather';
 import { AdSense } from './ads/AdSense';
 import { PromotionBannerZone } from './common/PromotionBannerZone';
-import { fetchRealRssNews, getCachedRssNews, RealNewsItem } from '../services/rssService';
-import { formatSlovenianDate } from '../utils/dateUtils';
 import type { PostDetailTarget } from '../types';
 
 export interface RightSidebarProps {
@@ -12,94 +9,17 @@ export interface RightSidebarProps {
 }
 
 export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
-  const [latestNews, setLatestNews] = useState<RealNewsItem[]>(() => getCachedRssNews().slice(0, 4));
-  const [newsLoading, setNewsLoading] = useState(false);
-
-  useEffect(() => {
-    const loadSidebarNews = async () => {
-      try {
-        if (latestNews.length === 0) {
-          setNewsLoading(true);
-        }
-        const news = await fetchRealRssNews();
-        if (news && news.length > 0) {
-          setLatestNews(news.slice(0, 4));
-        }
-      } catch (e) {
-        console.error('Failed to load sidebar news', e);
-      } finally {
-        setNewsLoading(false);
-      }
-    };
-
-    loadSidebarNews();
-
-    const handleUpdate = () => {
-      loadSidebarNews();
-    };
-
-    window.addEventListener('rss_feeds_updated', handleUpdate);
-    return () => window.removeEventListener('rss_feeds_updated', handleUpdate);
-  }, []);
-
   return (
     <aside 
       id="right-sidebar" 
       data-sidebar="right" 
-      className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
+      className="sidebar-scrollable hidden lg:flex w-full lg:w-[336px] xl:w-[340px] flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
       <PromotionBannerZone position="right_sidebar" />
       <AdSense />
       
       {/* VREME WIDGET */}
       <Weather />
-
-      {/* RSS NOVICE WIDGET */}
-      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
-        <div className="flex items-center justify-between pb-1 border-b border-surface-container-low">
-          <div className="flex items-center gap-2">
-            <Rss className="w-[1em] h-[1em] text-primary text-xl" />
-            <h3 className="font-headline-sm text-sm font-bold text-on-surface">Zadnje novice v živo</h3>
-          </div>
-          <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
-        </div>
-        
-        <div className="flex flex-col gap-3">
-          {newsLoading && latestNews.length === 0 ? (
-            <div className="py-4 flex items-center justify-center gap-2 text-xs text-outline">
-              <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-              <span>Nalaganje novic...</span>
-            </div>
-          ) : latestNews.length === 0 ? (
-            <p className="text-xs text-outline py-2 text-center">Trenutno ni svežih RSS novic.</p>
-          ) : (
-            latestNews.map((item, idx) => (
-              <a 
-                key={`news-rs-${item.id}-${idx}`} 
-                className="group flex flex-col gap-1 hover:bg-surface-container-low p-2 rounded-xl transition-colors" 
-                href={item.link} 
-                target="_blank" 
-                rel="noopener noreferrer"
-              >
-                <div className="flex items-center justify-between text-[11px] text-outline">
-                  <span className="font-bold text-primary truncate max-w-[120px]">{item.sourceName}</span>
-                  <span className="shrink-0">{formatSlovenianDate(item.pubDate)}</span>
-                </div>
-                <p className="font-label-md text-xs text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">
-                  {item.title}
-                </p>
-              </a>
-            ))
-          )}
-        </div>
-        
-        <div className="pt-2 border-t border-surface-container-low flex items-center justify-between text-[11px] text-outline">
-          <div className="flex items-center gap-1.5">
-            <RefreshCw className={`w-3.5 h-3.5 text-secondary ${newsLoading ? 'animate-spin' : ''}`} />
-            <span>Resnične novice iz uradnih virov</span>
-          </div>
-        </div>
-      </div>
       
       {/* IMENIK PRILJUBLJENIH POVEZAV */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">

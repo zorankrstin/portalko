@@ -712,14 +712,20 @@ export default function App() {
         </div>
       )}
       
-      <div className="max-w-7xl w-full mx-auto px-4 lg:px-margin-desktop py-space-md" id="main-content-container">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
+      <div className="max-w-7xl 2xl:max-w-[1400px] w-full mx-auto px-4 lg:px-6 xl:px-margin-desktop py-space-md" id="main-content-container">
+        <div 
+          className={`grid grid-cols-1 ${
+            currentView === 'admin' 
+              ? 'lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)]' 
+              : 'lg:grid-cols-[210px_minmax(0,1fr)_336px] xl:grid-cols-[220px_minmax(0,1fr)_340px]'
+          } gap-space-lg items-start`}
+        >
           <LeftSidebar currentView={activeNavView} onViewChange={handleViewChange} />
 
           {/* Main central content with unified Breadcrumbs */}
           <main 
             id="main-content-area"
-            className={`${currentView === 'admin' ? 'lg:col-span-10' : 'lg:col-span-7'} flex flex-col gap-space-md min-w-0 w-full`}
+            className="flex flex-col gap-space-md min-w-0 w-full"
           >
             <Breadcrumbs 
               currentView={currentView}

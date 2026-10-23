@@ -401,6 +401,38 @@ async function startServer() {
   // Server-side RSS Cache keyed by requested feed configurations
   const serverRssCaches = new Map<string, { timestamp: number; items: ServerNewsItem[] }>();
   let emergencyRssFallbackItems: ServerNewsItem[] = [];
+  const articleThumbnailCache = new Map<string, string>();
+
+  async function fetchArticleOgImage(url: string, timeoutMs = 3000): Promise<string | null> {
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) return null;
+    const cached = articleThumbnailCache.get(url);
+    if (cached) return cached;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 PortalkoNews/2.0',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      const html = await res.text();
+      const match = html.match(/<meta[^>]+property=["\x27]og:image["\x27][^>]+content=["\x27]([^"\x27]+)["\x27]/i)
+                 || html.match(/<meta[^>]+content=["\x27]([^"\x27]+)["\x27][^>]+property=["\x27]og:image["\x27]/i);
+      if (match && match[1] && match[1].startsWith('http')) {
+        const img = match[1].trim();
+        articleThumbnailCache.set(url, img);
+        return img;
+      }
+    } catch {
+      // Ignore errors / timeouts
+    }
+    return null;
+  }
 
   async function fetchRssFeedFromSource(feed: ServerRssFeedConfig, timeoutMs = 8000): Promise<ServerNewsItem[]> {
     try {
@@ -424,7 +456,25 @@ async function startServer() {
       }
 
       const xml = await response.text();
-      return parseServerRssXml(xml, feed.name, feed.id);
+      const parsed = parseServerRssXml(xml, feed.name, feed.id);
+
+      // Sources like Maribor24 don't provide enclosures in their RSS feed.
+      // Automatically enrich the newest items with their real featured og:image.
+      if (feed.id === 'maribor24' || parsed.some(it => !it.thumbnail && it.link.includes('maribor24.si'))) {
+        const enrichLimit = Math.min(parsed.length, 35);
+        await Promise.allSettled(
+          parsed.slice(0, enrichLimit).map(async (item) => {
+            if (!item.thumbnail && item.link) {
+              const ogImg = await fetchArticleOgImage(item.link);
+              if (ogImg) {
+                item.thumbnail = ogImg;
+              }
+            }
+          })
+        );
+      }
+
+      return parsed;
     } catch (err: any) {
       console.warn(`[RSS Server] Error fetching ${feed.name} (${feed.url}):`, err.message);
       return [];
@@ -637,6 +687,18 @@ async function startServer() {
       console.warn("[RSS Proxy] Error proxying:", targetUrl, err.message);
       return res.status(502).send("Could not reach upstream RSS feed: " + err.message);
     }
+  });
+
+  // Extract article featured image endpoint (for sources like Maribor24)
+  app.get(["/api/rss/image", "/api/rss/article-image"], async (req, res) => {
+    const targetUrl = req.query.url as string;
+    if (!targetUrl || (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://"))) {
+      return res.status(400).json({ error: "Parameter 'url' is required and must start with http:// or https://" });
+    }
+    const img = await fetchArticleOgImage(targetUrl);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.json({ url: targetUrl, image: img });
   });
 
   // Background proactive warmup of RSS feeds

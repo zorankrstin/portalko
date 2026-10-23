@@ -34,7 +34,7 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
     <aside 
       id="right-sidebar" 
       data-sidebar="right" 
-      className="sidebar-scrollable hidden lg:flex lg:col-span-3 flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
+      className="sidebar-scrollable hidden lg:flex w-full lg:w-[336px] xl:w-[340px] flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
       <PromotionBannerZone position="right_sidebar" />
       

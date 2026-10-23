@@ -51,7 +51,7 @@ function CodeBannerEmbed({ code, className = '' }: { code: string; className?: s
   return (
     <div
       ref={containerRef}
-      className={`third-party-banner-container overflow-hidden rounded-2xl ${className}`}
+      className={`third-party-banner-container w-full min-w-0 flex justify-center items-center overflow-visible rounded-xl ${className}`}
     />
   );
 }
@@ -98,10 +98,10 @@ export function PromotionBannerZone({
           return (
             <div
               key={banner.id}
-              className="bg-surface-container-lowest border border-surface-container/60 rounded-2xl p-2.5 shadow-xs transition-shadow hover:shadow-sm"
+              className="bg-surface-container-lowest border border-surface-container/60 rounded-2xl p-2 sm:p-2.5 shadow-xs transition-shadow hover:shadow-sm flex flex-col items-center justify-center overflow-visible w-full"
             >
               {showSponsoredLabel && (
-                <div className="flex items-center justify-between px-1.5 pb-1.5 border-b border-surface-container-low mb-2 text-[10px] text-outline font-semibold uppercase tracking-wider">
+                <div className="flex items-center justify-between px-1.5 pb-1.5 border-b border-surface-container-low mb-2 text-[10px] text-outline font-semibold uppercase tracking-wider w-full">
                   <span className="flex items-center gap-1">
                     <Megaphone className="w-3 h-3 text-primary" />
                     <span>Oglasno sporočilo</span>
@@ -132,7 +132,7 @@ export function PromotionBannerZone({
                     ? 'h-36 sm:h-44 md:h-52'
                     : isLeftSidebar
                     ? 'h-32'
-                    : 'h-40'
+                    : 'h-[250px] min-h-[250px]'
                 }`}
               >
                 <img

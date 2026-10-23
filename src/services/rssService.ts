@@ -31,7 +31,7 @@ export const DEFAULT_RSS_FEEDS: RssFeedConfig[] = [
 ];
 
 const STORAGE_KEY = 'admin_rss_feeds';
-const CACHE_KEY = 'cached_real_rss_news_v3';
+const CACHE_KEY = 'cached_real_rss_news_v4';
 const LAST_KNOWN_GOOD_KEY = 'last_known_good_rss_news';
 const CACHE_EXPIRY_MS = 2.5 * 60 * 1000; // 2.5 minutes cache for real-time freshness
 

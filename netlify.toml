@@ -19,6 +19,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/rss/image"
+  to = "/.netlify/functions/rss-image"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/auth/send-verification-email"
   to = "/.netlify/functions/send-verification-email"
   status = 200

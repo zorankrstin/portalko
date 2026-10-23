@@ -40,6 +40,57 @@ export const RssPost: React.FC<RssPostProps> = ({
   const cleanDescription = description.replace(/<\/?[^>]+(>|$)/g, "");
 
   const [imgError, setImgError] = React.useState(false);
+  const [resolvedThumbnail, setResolvedThumbnail] = React.useState<string | undefined>(thumbnail);
+
+  React.useEffect(() => {
+    if (thumbnail) {
+      setResolvedThumbnail(thumbnail);
+      return;
+    }
+
+    if (!thumbnail && link && (link.includes('maribor24.si') || (sourceName && sourceName.toLowerCase().includes('maribor')))) {
+      const cacheKey = `cached_og_${link}`;
+      try {
+        const stored = sessionStorage.getItem(cacheKey);
+        if (stored) {
+          setResolvedThumbnail(stored);
+          return;
+        }
+      } catch {}
+
+      let isMounted = true;
+      const fetchOg = async () => {
+        const endpoints = [
+          `/api/rss/image?url=${encodeURIComponent(link)}`,
+          `/.netlify/functions/rss-image?url=${encodeURIComponent(link)}`
+        ];
+
+        for (const ep of endpoints) {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 4000);
+            const res = await fetch(ep, { signal: controller.signal });
+            clearTimeout(timer);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.image) {
+                if (isMounted) {
+                  setResolvedThumbnail(data.image);
+                  try {
+                    sessionStorage.setItem(cacheKey, data.image);
+                  } catch {}
+                }
+                break;
+              }
+            }
+          } catch {}
+        }
+      };
+
+      fetchOg();
+      return () => { isMounted = false; };
+    }
+  }, [thumbnail, link, sourceName]);
 
   const sourceInitial = sourceName ? sourceName.substring(0, 3).toUpperCase() : "RSS";
 
@@ -73,14 +124,14 @@ export const RssPost: React.FC<RssPostProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <BookmarkButton id={id} data={{ title, link, description, sourceName, pubDate, thumbnail, type: 'news', category: 'news' }} />
+          <BookmarkButton id={id} data={{ title, link, description, sourceName, pubDate, thumbnail: resolvedThumbnail || thumbnail, type: 'news', category: 'news' }} />
           <ShareMenu 
             id={id} 
             url={link} 
             type="news" 
             title={title} 
             description={description}
-            imageUrl={thumbnail}
+            imageUrl={resolvedThumbnail || thumbnail}
             category="Novice"
             author={sourceName}
             date={displayDate}
@@ -89,7 +140,7 @@ export const RssPost: React.FC<RssPostProps> = ({
       </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-space-md items-center">
-        <div className={`flex flex-col gap-2 ${thumbnail ? 'sm:col-span-8' : 'sm:col-span-12'}`}>
+        <div className={`flex flex-col gap-2 ${resolvedThumbnail ? 'sm:col-span-8' : 'sm:col-span-12'}`}>
           <h4 className="font-headline-sm text-headline-sm text-on-surface leading-tight hover:text-primary transition-colors">
             <a className="hover:underline" href={link} rel="noopener noreferrer" target="_blank">
               {title}
@@ -107,11 +158,11 @@ export const RssPost: React.FC<RssPostProps> = ({
           </div>
         </div>
         
-        {(thumbnail || getActiveFallbackImage(true, 'news')) && (
+        {(resolvedThumbnail || getActiveFallbackImage(true, 'news')) && (
           <div className="sm:col-span-4 rounded-xl overflow-hidden h-32 bg-surface-container">
             <img 
               className="w-full h-full object-cover" 
-              src={thumbnail || getActiveFallbackImage(true, 'news')!} 
+              src={resolvedThumbnail || getActiveFallbackImage(true, 'news')!} 
               alt={title} 
               onError={handleImageFallbackError} 
             />
