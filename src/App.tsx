@@ -338,9 +338,12 @@ export default function App() {
     }
   }, [currentView, selectedAuthorProfile, currentUser, postDetailTitle, selectedPostTarget, postDetailMeta]);
 
-  // Global capture-phase click handler for any internal links across the portal
+  // Global click handler for internal links across the portal
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
+      // If click was already handled or prevented by an inner component, do nothing
+      if (e.defaultPrevented) return;
+
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
@@ -476,8 +479,8 @@ export default function App() {
       }
     };
 
-    document.addEventListener('click', handleDocumentClick, true);
-    return () => document.removeEventListener('click', handleDocumentClick, true);
+    document.addEventListener('click', handleDocumentClick, false);
+    return () => document.removeEventListener('click', handleDocumentClick, false);
   }, [currentView, previousView]);
 
   // Ensure scroll is at top whenever single post page is active or target changes
@@ -716,8 +719,8 @@ export default function App() {
         <div 
           className={`grid grid-cols-1 ${
             currentView === 'admin' 
-              ? 'lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)]' 
-              : 'lg:grid-cols-[210px_minmax(0,1fr)_336px] xl:grid-cols-[220px_minmax(0,1fr)_340px]'
+              ? 'lg:grid-cols-[176px_minmax(0,1fr)] xl:grid-cols-[188px_minmax(0,1fr)]' 
+              : 'lg:grid-cols-[176px_minmax(0,1fr)_336px] xl:grid-cols-[188px_minmax(0,1fr)_340px]'
           } gap-space-lg items-start`}
         >
           <LeftSidebar currentView={activeNavView} onViewChange={handleViewChange} />

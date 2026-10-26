@@ -184,6 +184,7 @@ export function generateVerificationEmailHtml({ name, confirmationUrl }: { name:
  * Triggers the noreply email dispatch via server endpoint.
  */
 export async function sendNoreplyConfirmationEmail(params: SendVerificationEmailParams): Promise<SendVerificationEmailResult> {
+  const safeName = params.name ? params.name.trim() : 'Uporabnik';
   const candidateEndpoints = [
     '/api/auth/send-verification-email',
     '/.netlify/functions/send-verification-email',
@@ -206,6 +207,25 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
           const data = await res.json().catch(() => ({}));
           const isSent = Boolean(data.sent);
           const isBlocked = Boolean(data.smtpBlocked || (!isSent && data.simulated));
+          const status: EmailDeliveryStatus = isSent ? 'dostavljena' : 'zavrnjena';
+          const errorReason = isSent 
+            ? undefined 
+            : (data.message || (isBlocked ? 'E-poštni strežnik ni konfiguriran (manjka BREVO_API_KEY/RESEND_API_KEY/SMTP v .env) ali pa je bila povezava zavrnjena.' : 'Zavrnjeno s strani poštnega strežnika.'));
+
+          recordEmailDeliveryLog({
+            recipientEmail: params.email,
+            recipientName: safeName,
+            subject: 'Potrdite svoj račun na Portalko.net',
+            type: 'registration_confirmation',
+            status,
+            provider: data.provider || (isSent ? 'smtp' : 'brez_ponudnika'),
+            messageId: data.messageId,
+            errorReason,
+            sentAt: new Date().toISOString(),
+            confirmationUrl: data.confirmationUrl || params.confirmationUrl,
+            token: params.token,
+          });
+
           return {
             success: true,
             sent: isSent,
@@ -223,6 +243,20 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
     // If all endpoints returned non-200 or 404 (e.g. static host without serverless functions active):
     // Fall back to direct confirmation mode so user is never blocked or presented with a 404 error
     console.log('E-mail API endpoints returned non-200; falling back to direct confirmation mode.');
+    recordEmailDeliveryLog({
+      recipientEmail: params.email,
+      recipientName: safeName,
+      subject: 'Potrdite svoj račun na Portalko.net',
+      type: 'registration_confirmation',
+      status: 'zavrnjena',
+      provider: 'brez_ponudnika',
+      messageId: `direct_${Date.now()}`,
+      errorReason: 'Okoljske spremenljivke ponudnika e-pošte (BREVO_API_KEY / RESEND_API_KEY / SMTP) niso nastavljene.',
+      sentAt: new Date().toISOString(),
+      confirmationUrl: params.confirmationUrl,
+      token: params.token,
+    });
+
     return {
       success: true,
       sent: false,
@@ -232,6 +266,20 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
     };
   } catch (err: any) {
     console.log('Opozorilo pri klicu API za pošiljanje potrditvene e-pošte (uporabljena neposredna potrditev):', err);
+    recordEmailDeliveryLog({
+      recipientEmail: params.email,
+      recipientName: safeName,
+      subject: 'Potrdite svoj račun na Portalko.net',
+      type: 'registration_confirmation',
+      status: 'zavrnjena',
+      provider: 'brez_ponudnika',
+      messageId: `offline_${Date.now()}`,
+      errorReason: 'Napaka omrežne povezave pri dostavi e-poštnega sporočila.',
+      sentAt: new Date().toISOString(),
+      confirmationUrl: params.confirmationUrl,
+      token: params.token,
+    });
+
     return {
       success: true,
       sent: false,
@@ -475,4 +523,66 @@ export async function sendNoreplyPasswordResetEmail(params: SendPasswordResetEma
       previewUrl: params.resetUrl,
     };
   }
+}
+
+export type EmailDeliveryStatus = 'poslana' | 'dostavljena' | 'zavrnjena';
+
+export interface EmailDeliveryRecord {
+  id: string;
+  recipientEmail: string;
+  recipientName: string;
+  subject: string;
+  type: 'registration_confirmation' | 'password_reset';
+  status: EmailDeliveryStatus;
+  provider: string;
+  messageId?: string;
+  errorReason?: string;
+  sentAt: string;
+  confirmationUrl?: string;
+  token?: string;
+  userActivated?: boolean;
+}
+
+export function recordEmailDeliveryLog(entry: Omit<EmailDeliveryRecord, 'id'>): EmailDeliveryRecord {
+  const newRecord: EmailDeliveryRecord = {
+    id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    ...entry,
+  };
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('portalko_email_delivery_logs') : null;
+    const existing: EmailDeliveryRecord[] = raw ? JSON.parse(raw) : [];
+    const updated = [newRecord, ...existing.filter(r => r.recipientEmail !== entry.recipientEmail || r.sentAt !== entry.sentAt)].slice(0, 30);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('portalko_email_delivery_logs', JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('email_delivery_logs_updated', { detail: updated }));
+    }
+  } catch {}
+  return newRecord;
+}
+
+export function getStoredEmailDeliveryLogs(): EmailDeliveryRecord[] {
+  try {
+    if (typeof window === 'undefined') return [];
+    const raw = localStorage.getItem('portalko_email_delivery_logs');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+export async function fetchServerEmailDeliveryLogs(limit: number = 5): Promise<{ logs: EmailDeliveryRecord[]; providersConfigured?: any }> {
+  try {
+    const res = await fetch(`/api/admin/email-delivery-logs?limit=${limit}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.logs)) {
+        return { logs: data.logs, providersConfigured: data.providersConfigured };
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
+  return { logs: getStoredEmailDeliveryLogs().slice(0, limit) };
 }

@@ -1481,7 +1481,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
       }
     }
     // Case-insensitive fallback search and title slug search
-    const q = query(collection(db, 'events'), limit(100));
+    const q = query(collection(db, 'events'), limit(300));
     const allSnaps = await getDocs(q);
     const targetSlug = slugify(eventId);
     const cleanSlug = slugify(cleanId);
@@ -1494,6 +1494,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
       if (itemTitleSlug) {
         if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === eventId.toLowerCase()) return true;
         if (targetSlug && (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug))) return true;
+        if (targetSlug && itemTitleSlug && (targetSlug.includes(itemTitleSlug) || itemTitleSlug.includes(targetSlug))) return true;
       }
       return false;
     });
@@ -1541,7 +1542,7 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
         };
       }
     }
-    const q = query(collection(db, 'posts'), limit(100));
+    const q = query(collection(db, 'posts'), limit(300));
     const allSnaps = await getDocs(q);
     const targetSlug = slugify(postId);
     const cleanSlug = slugify(cleanId);
@@ -1554,6 +1555,7 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
       if (itemTitleSlug) {
         if (itemTitleSlug === targetSlug || itemTitleSlug === cleanSlug || itemTitleSlug === postId.toLowerCase()) return true;
         if (targetSlug && (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug))) return true;
+        if (targetSlug && itemTitleSlug && (targetSlug.includes(itemTitleSlug) || itemTitleSlug.includes(targetSlug))) return true;
       }
       return false;
     });
@@ -1636,23 +1638,32 @@ export async function fetchDocumentById(
     if (post && (post.title || post.content || (post as any).description)) {
       const catLower = (post.category || '').toLowerCase();
       const catNameLower = (post.categoryName || '').toLowerCase();
+      const isEvent = catLower === 'event' || 
+                      catLower === 'dogodki' || 
+                      catLower.startsWith('event') || 
+                      catNameLower.includes('dogod') || 
+                      post.type === 'event' || 
+                      preferredType === 'event';
+      if (isEvent) {
+        return { type: 'event' as const, data: post };
+      }
       const isDeal = catLower === 'deal' || 
                      catLower === 'ugodnosti' || 
                      catLower.startsWith('deal') || 
                      catNameLower.includes('ugodnost') || 
-                     catNameLower.includes('akcij') ||
-                     catNameLower.includes('popust') ||
-                     catNameLower.includes('trgovin') ||
-                     catNameLower.includes('tehnik') ||
-                     catNameLower.includes('moda') ||
-                     catNameLower.includes('wellness') ||
-                     catNameLower.includes('storitv') ||
-                     post.type === 'deal' ||
-                     Boolean(post.discount) ||
-                     Boolean(post.promoCode) ||
-                     Boolean(post.dealLink) ||
-                     post.id.startsWith('deal-') ||
-                     post.id.startsWith('hero-bento-') ||
+                     catNameLower.includes('akcij') || 
+                     catNameLower.includes('popust') || 
+                     catNameLower.includes('trgovin') || 
+                     catNameLower.includes('tehnik') || 
+                     catNameLower.includes('moda') || 
+                     catNameLower.includes('wellness') || 
+                     catNameLower.includes('storitv') || 
+                     post.type === 'deal' || 
+                     Boolean(post.discount) || 
+                     Boolean(post.promoCode) || 
+                     Boolean(post.dealLink) || 
+                     post.id.startsWith('deal-') || 
+                     post.id.startsWith('hero-bento-') || 
                      preferredType === 'deal';
       return { type: (isDeal ? 'deal' : 'blog') as ('deal' | 'blog'), data: post };
     }

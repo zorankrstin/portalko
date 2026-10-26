@@ -8,6 +8,7 @@ import { EventCalendarWidget } from './common/EventCalendarWidget';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { getUpcomingEvents, getTodayYmd } from '../utils/eventFilterUtils';
 import { PromotionBannerZone } from './common/PromotionBannerZone';
+import { buildPostUrl, slugify } from '../utils/urlUtils';
 
 interface RightSidebarEventsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -41,12 +42,19 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
     return getUpcomingEvents(allEvents, todayYmd).slice(0, 5);
   }, [allEvents, todayYmd]);
 
-  const handleOpenEvent = (id: string, e?: React.MouseEvent) => {
+  const handleOpenEvent = (ev: FirestoreEvent, e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (onNavigatePost) {
-      onNavigatePost({ type: 'event', id });
+      onNavigatePost({
+        type: 'event',
+        id: ev.id,
+        titleSlug: slugify(ev.title),
+        categorySlug: slugify(ev.categoryName || ev.category || 'dogodki'),
+        subcategorySlug: ev.subcategoryName || ev.subcategory ? slugify(ev.subcategoryName || ev.subcategory) : undefined,
+        initialData: ev,
+      });
     } else {
-      window.location.hash = `event-${id}`;
+      window.location.hash = `event-${ev.id}`;
     }
     scrollToPageTop();
   };
@@ -90,8 +98,16 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
                 <a 
                   key={`ev-${ev.id}-${idx}`}
                   className="group flex flex-col gap-1 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer" 
-                  href={`#event-${ev.id}`}
-                  onClick={(e) => handleOpenEvent(ev.id, e)}
+                  href={buildPostUrl({
+                    type: 'event',
+                    id: ev.id,
+                    title: ev.title,
+                    category: ev.category,
+                    categoryName: ev.categoryName,
+                    subcategory: ev.subcategory,
+                    subcategoryName: ev.subcategoryName,
+                  })}
+                  onClick={(e) => handleOpenEvent(ev, e)}
                   title={`Odpri dogodek: ${ev.title}`}
                 >
                   <div className="flex items-center justify-between text-[11px] text-outline">

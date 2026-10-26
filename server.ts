@@ -827,6 +827,30 @@ async function startServer() {
     }
   });
 
+  interface ServerEmailDeliveryRecord {
+    id: string;
+    recipientEmail: string;
+    recipientName: string;
+    subject: string;
+    type: 'registration_confirmation' | 'password_reset';
+    status: 'poslana' | 'dostavljena' | 'zavrnjena';
+    provider: string;
+    messageId?: string;
+    errorReason?: string;
+    sentAt: string;
+    confirmationUrl?: string;
+    token?: string;
+  }
+
+  const serverEmailDeliveryLogs: ServerEmailDeliveryRecord[] = [];
+
+  function recordServerEmailLog(entry: ServerEmailDeliveryRecord) {
+    serverEmailDeliveryLogs.unshift(entry);
+    if (serverEmailDeliveryLogs.length > 50) {
+      serverEmailDeliveryLogs.pop();
+    }
+  }
+
   // Noreply Email Verification Dispatch Endpoint (supports both routes)
   app.post(["/api/auth/send-verification-email", "/api/send-verification-email"], async (req, res) => {
     try {
@@ -912,6 +936,19 @@ async function startServer() {
           if (resendResponse.ok) {
             const resendData = await resendResponse.json();
             console.log(`[NOREPLY EMAIL RESEND SENT] Confirmation sent to ${email}, id: ${resendData.id}`);
+            recordServerEmailLog({
+              id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              recipientEmail: email,
+              recipientName: safeName,
+              subject: "Potrdite svoj račun na Portalko.net",
+              type: "registration_confirmation",
+              status: "dostavljena",
+              provider: "resend",
+              messageId: resendData.id,
+              sentAt: new Date().toISOString(),
+              confirmationUrl,
+              token,
+            });
             return res.json({
               success: true,
               sent: true,
@@ -952,6 +989,19 @@ async function startServer() {
           if (brevoResponse.ok) {
             const brevoData = await brevoResponse.json().catch(() => ({}));
             console.log(`[NOREPLY EMAIL BREVO SENT] Confirmation sent to ${email}`);
+            recordServerEmailLog({
+              id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              recipientEmail: email,
+              recipientName: safeName,
+              subject: "Potrdite svoj račun na Portalko.net",
+              type: "registration_confirmation",
+              status: "dostavljena",
+              provider: "brevo",
+              messageId: brevoData.messageId,
+              sentAt: new Date().toISOString(),
+              confirmationUrl,
+              token,
+            });
             return res.json({
               success: true,
               sent: true,
@@ -991,6 +1041,18 @@ async function startServer() {
 
           if (sgResponse.ok) {
             console.log(`[NOREPLY EMAIL SENDGRID SENT] Confirmation sent to ${email}`);
+            recordServerEmailLog({
+              id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              recipientEmail: email,
+              recipientName: safeName,
+              subject: "Potrdite svoj račun na Portalko.net",
+              type: "registration_confirmation",
+              status: "dostavljena",
+              provider: "sendgrid",
+              sentAt: new Date().toISOString(),
+              confirmationUrl,
+              token,
+            });
             return res.json({
               success: true,
               sent: true,
@@ -1034,6 +1096,19 @@ async function startServer() {
           });
 
           console.log(`[NOREPLY EMAIL SENT] Confirmation sent to ${email}, messageId: ${info.messageId}`);
+          recordServerEmailLog({
+            id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            recipientEmail: email,
+            recipientName: safeName,
+            subject: "Potrdite svoj račun na Portalko.net",
+            type: "registration_confirmation",
+            status: "dostavljena",
+            provider: "smtp",
+            messageId: info.messageId,
+            sentAt: new Date().toISOString(),
+            confirmationUrl,
+            token,
+          });
           return res.json({
             success: true,
             sent: true,
@@ -1044,14 +1119,38 @@ async function startServer() {
           });
         } catch (mailErr: any) {
           console.log("[NOREPLY EMAIL SMTP NOTICE - SMTP unavailable, falling back to simulated dispatch]:", mailErr.message);
-          if (mailErr.message?.includes("Country") || mailErr.message?.includes("IntCode") || mailErr.message?.includes("550")) {
-            console.log("[SMTP COUNTRY FILTER NOTICE] Hitrost.net cPanel country protection blocked outbound connection from cloud host. Disable country filter in cPanel or use Resend/Brevo API.");
-          }
+          recordServerEmailLog({
+            id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            recipientEmail: email,
+            recipientName: safeName,
+            subject: "Potrdite svoj račun na Portalko.net",
+            type: "registration_confirmation",
+            status: "zavrnjena",
+            provider: "smtp",
+            errorReason: `SMTP strežnik je zavrnil povezavo ali pa je potekla časovna omejitev (${mailErr.message || 'Napaka'}).`,
+            sentAt: new Date().toISOString(),
+            confirmationUrl,
+            token,
+          });
         }
       }
 
       // If SMTP is not configured or in dev/preview environment
       console.log(`[NOREPLY EMAIL READY] From: ${noreplyFrom} To: ${email} Confirmation link: ${confirmationUrl}`);
+      recordServerEmailLog({
+        id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        recipientEmail: email,
+        recipientName: safeName,
+        subject: "Potrdite svoj račun na Portalko.net",
+        type: "registration_confirmation",
+        status: "zavrnjena",
+        provider: "brez_ponudnika",
+        errorReason: "V strežniškem okolju ni nastavljen BREVO_API_KEY, RESEND_API_KEY ali SMTP_HOST. Pošta ni mogla biti oddana v poštni predal.",
+        sentAt: new Date().toISOString(),
+        confirmationUrl,
+        token,
+      });
+
       return res.json({
         success: true,
         sent: false,
@@ -1065,6 +1164,28 @@ async function startServer() {
       console.error("Napaka pri pošiljanju potrditvene e-pošte:", err);
       res.status(500).json({ error: err.message || "Napaka pri obdelavi potrditvenega sporočila." });
     }
+  });
+
+  // Admin endpoint: Get delivery status of confirmation emails
+  app.get("/api/admin/email-delivery-logs", (req, res) => {
+    const limit = parseInt(req.query.limit as string) || 5;
+    const configured = {
+      brevo: Boolean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY),
+      resend: Boolean(process.env.RESEND_API_KEY),
+      sendgrid: Boolean(process.env.SENDGRID_API_KEY),
+      smtp: Boolean(process.env.SMTP_HOST),
+      activeProvider: (process.env.RESEND_API_KEY ? "Resend API" :
+                       (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY) ? "Brevo API" :
+                       process.env.SENDGRID_API_KEY ? "SendGrid API" :
+                       process.env.SMTP_HOST ? "SMTP" : "Ni nastavljen (Simulacija / Ročna aktivacija)")
+    };
+
+    return res.json({
+      success: true,
+      count: serverEmailDeliveryLogs.length,
+      logs: serverEmailDeliveryLogs.slice(0, limit),
+      configured,
+    });
   });
 
   // Noreply Password Reset Email Dispatch Endpoint

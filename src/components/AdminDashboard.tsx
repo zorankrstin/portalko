@@ -4,7 +4,7 @@ import {
   CheckCircle, XCircle, MoreVertical, UserPlus, Crown, AlertCircle, 
   RefreshCw, ExternalLink, Globe, Check, Clock, Edit3, Eye, Ban, 
   Layers, Tag, Calendar, MapPin, Sparkles, MessageSquare, AlertTriangle, CheckCheck,
-  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck, Megaphone, History, Share2
+  UserCheck, X, Flag, ImageIcon, Loader2, TrendingUp, ChevronDown, ChevronUp, ShieldCheck, Megaphone, History, Share2, Mail
 } from 'lucide-react';
 import { UserGrowthChart } from './admin/UserGrowthChart';
 import { ReportsManager } from './admin/ReportsManager';
@@ -12,6 +12,7 @@ import { PortalSettingsManager } from './admin/PortalSettingsManager';
 import { SocialLinksManager } from './admin/SocialLinksManager';
 import { BannerManager } from './admin/BannerManager';
 import { AdminActivityLog } from './admin/AdminActivityLog';
+import { EmailDeliveryTracker } from './admin/EmailDeliveryTracker';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { subscribeToReports } from '../services/reportService';
 import { useAuth, Role, User, isDummyUser } from '../contexts/AuthContext';
@@ -90,7 +91,7 @@ const MOCK_POSTS: AdminPost[] = [
 
 export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: AdminDashboardProps = {}) {
   const { users, currentUser, updateUser, deleteUser, register, resendVerificationEmail } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings' | 'social'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings' | 'social' | 'emails'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -1152,6 +1153,16 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         <History className="w-4 h-4" />
         <span>Dnevnik aktivnosti</span>
       </button>
+      <button 
+        onClick={() => setActiveTab('emails')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'emails' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+        title="Nadzor dostave zadnjih 5 potrditvenih e-pošt ob registraciji"
+      >
+        <Mail className="w-4 h-4" />
+        <span>Status e-pošt (5)</span>
+      </button>
     </div>
   );
 
@@ -1200,6 +1211,16 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                 >
                   <TrendingUp className="w-4 h-4 text-primary" />
                   <span>{showUserGrowthChart ? 'Skrij rast' : 'Rast uporabnikov'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('emails')}
+                  className="px-3 py-2 rounded-xl font-label-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer border bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20 hover:bg-amber-500/20"
+                  title="Pregled dostave zadnjih 5 potrditvenih e-pošt (poslana, dostavljena, zavrnjena)"
+                >
+                  <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span>Status e-pošt (5)</span>
                 </button>
 
                 {(currentUser?.role === 'superadmin' || currentUser?.role === 'admin') && (
@@ -2460,6 +2481,13 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                 role: currentUser.role
               } : null}
             />
+          </div>
+        )}
+
+        {/* Tab Content: Email Delivery Status (Last 5 confirmation emails) */}
+        {activeTab === 'emails' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <EmailDeliveryTracker users={users} />
           </div>
         )}
       </div>

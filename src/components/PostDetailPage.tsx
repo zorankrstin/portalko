@@ -277,32 +277,22 @@ export function PostDetailPage({
   // Real-time views counter state and live Firestore subscription
   const [realtimeViews, setRealtimeViews] = useState<number | null>(null);
 
-  const [hasCollectionsLoaded, setHasCollectionsLoaded] = useState(false);
+  const [hasPostsLoaded, setHasPostsLoaded] = useState(false);
+  const [hasEventsLoaded, setHasEventsLoaded] = useState(false);
+  const [hasAdsLoaded, setHasAdsLoaded] = useState(false);
 
   useEffect(() => {
-    let postsDone = false;
-    let eventsDone = false;
-    let adsDone = false;
-    const checkReady = () => {
-      if (eventsDone || postsDone || adsDone) {
-        setHasCollectionsLoaded(true);
-      }
-    };
-
     const unsubPosts = subscribeToPosts((posts) => {
       setFirestorePosts(posts);
-      postsDone = true;
-      checkReady();
+      setHasPostsLoaded(true);
     });
     const unsubEvents = subscribeToEvents((events) => {
       setFirestoreEvents(events);
-      eventsDone = true;
-      checkReady();
+      setHasEventsLoaded(true);
     });
     const unsubAds = subscribeToAds((ads) => {
       setFirestoreAds(ads);
-      adsDone = true;
-      checkReady();
+      setHasAdsLoaded(true);
     });
     return () => {
       unsubPosts();
@@ -322,15 +312,15 @@ export function PostDetailPage({
     const { type, id, initialData } = target;
 
     // Helper to format event object
-    const formatEventData = (fs: FirestoreEvent) => {
+    const formatEventData = (fs: FirestoreEvent | any) => {
       const resolvedDate = resolveEventDisplayDate(fs);
       return {
         id: fs.id,
         type: 'event' as const,
         title: fs.title,
         subtitle: fs.subtitle,
-        description: fs.description,
-        location: resolvedDate.location || fs.location,
+        description: fs.description || fs.content || fs.title,
+        location: resolvedDate.location || fs.location || fs.region || 'Slovenija',
         date: resolvedDate.dateInfo.fullDate,
         eventDate: resolvedDate.dateYmd || fs.eventDate,
         eventTime: resolvedDate.eventTime || fs.eventTime,
@@ -341,11 +331,11 @@ export function PostDetailPage({
         month: resolvedDate.dateInfo.month,
         day: resolvedDate.dateInfo.day,
         price: fs.price || 'Vstop prost',
-        organizer: fs.authorName,
-        authorName: fs.authorName,
+        organizer: fs.authorName || fs.organizer || 'Organizator',
+        authorName: fs.authorName || fs.organizer || 'Organizator',
         authorId: fs.authorId,
         authorAvatar: fs.authorAvatar,
-        authorRole: fs.authorRole,
+        authorRole: fs.authorRole || 'Organizator',
         status: fs.status,
         tags: fs.tags,
         category: fs.category || 'event',
@@ -353,7 +343,7 @@ export function PostDetailPage({
         subcategory: fs.subcategory,
         subcategoryName: fs.subcategoryName,
         thirdLevelCategory: fs.thirdLevelCategory,
-        image: fs.imageUrl || (getActiveFallbackImage(true) || ''),
+        image: fs.imageUrl || fs.image || (getActiveFallbackImage(true) || ''),
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
         interestedCount: fs.interestedCount || 42,
         likesCount: fs.likesCount || 0,
@@ -362,23 +352,23 @@ export function PostDetailPage({
     };
 
     // Helper to format deal object
-    const formatDealData = (fs: FirestorePost) => {
+    const formatDealData = (fs: FirestorePost | any) => {
       return {
         id: fs.id,
         type: 'deal' as const,
-        title: fs.title,
+        title: (fs.title || '').replace(/^\[Ugodnost\]\s*/i, '').trim(),
         subtitle: fs.subtitle,
-        description: fs.content,
+        description: fs.content || fs.description || fs.title,
         discount: fs.discount || fs.price || 'Ugodnost',
         oldPrice: fs.oldPrice,
         newPrice: fs.newPrice,
         startDate: fs.startDate,
         expirationDate: fs.expirationDate,
-        partner: fs.authorName,
-        authorName: fs.authorName,
+        partner: fs.authorName || fs.partner || 'Portalko partner',
+        authorName: fs.authorName || fs.partner || 'Portalko partner',
         authorId: fs.authorId,
         status: fs.status,
-        partnerRole: fs.authorRole,
+        partnerRole: fs.authorRole || 'Partner',
         partnerAvatar: fs.authorAvatar,
         tags: fs.tags,
         category: fs.category || 'deal',
@@ -387,14 +377,14 @@ export function PostDetailPage({
         subcategoryName: fs.subcategoryName,
         thirdLevelCategory: fs.thirdLevelCategory || (fs as any).make,
         date: fs.expirationDate ? `Velja do ${fs.expirationDate}` : (fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes'),
-        image: fs.imageUrl || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
+        image: fs.imageUrl || fs.image || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
-        region: fs.location || 'Vsa Slovenija',
-        votes: fs.likesCount ?? 0,
-        likesCount: fs.likesCount ?? 0,
+        region: fs.location || fs.region || 'Vsa Slovenija',
+        votes: fs.likesCount ?? (fs as any).votes ?? 0,
+        likesCount: fs.likesCount ?? (fs as any).votes ?? 0,
         viewsCount: fs.viewsCount ?? 0,
-        code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : undefined,
-        link: fs.dealLink || 'https://www.portalko.net',
+        code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : (fs.code ? fs.code.trim() : undefined),
+        link: fs.dealLink || fs.link || 'https://www.portalko.net',
       };
     };
 
@@ -526,6 +516,16 @@ export function PostDetailPage({
       if (itemTitleSlug) {
         if (itemTitleSlug === targetSlug) return true;
         if (targetSlug.startsWith(itemTitleSlug) || itemTitleSlug.startsWith(targetSlug)) return true;
+        if (targetSlug.includes(itemTitleSlug) || itemTitleSlug.includes(targetSlug)) return true;
+      }
+
+      // Check title without category or bracket prefixes (e.g. [Ugodnost], [Akcija])
+      const cleanItemTitle = (item.title || '').replace(/^\[[^\]]+\]\s*/i, '').trim();
+      const cleanItemSlug = slugify(cleanItemTitle);
+      if (cleanItemSlug) {
+        if (cleanItemSlug === targetSlug) return true;
+        if (targetSlug.startsWith(cleanItemSlug) || cleanItemSlug.startsWith(targetSlug)) return true;
+        if (targetSlug.includes(cleanItemSlug) || cleanItemSlug.includes(targetSlug)) return true;
       }
 
       // Fuzzy check: if key slug parts match
@@ -558,7 +558,7 @@ export function PostDetailPage({
 
         // Cross-collection fallback
         const fsEvt = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
-        if (fsEvt) return formatEventData(fsEvt);
+        if (fsEvt) return formatDealData(fsEvt as any);
 
         // Look in Mock Deals
         const allDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
@@ -581,9 +581,9 @@ export function PostDetailPage({
         const fs = firestoreEvents.find(e => itemMatches(e, id, titleSlug));
         if (fs) return formatEventData(fs);
 
-        // Cross-collection fallback: check posts
+        // Cross-collection fallback: check posts (format as event)
         const fsPost = firestorePosts.find(p => itemMatches(p, id, titleSlug));
-        if (fsPost) return formatBlogData(fsPost);
+        if (fsPost) return formatEventData(fsPost as any);
 
         // Cross-collection fallback: check ads
         const fsAd = firestoreAds.find(a => itemMatches(a, id, titleSlug));
@@ -1670,7 +1670,13 @@ export function PostDetailPage({
     return results.slice(0, 4);
   }, [itemData, target.id, firestorePosts, firestoreAds, firestoreEvents]);
 
-  const isPageLoading = (isDirectLoading || !hasCollectionsLoaded) && !itemData;
+  const isTargetCollectionLoaded =
+    target.type === 'event' ? hasEventsLoaded :
+    target.type === 'deal' ? (hasPostsLoaded || hasEventsLoaded) :
+    target.type === 'ad' ? hasAdsLoaded :
+    hasPostsLoaded;
+
+  const isPageLoading = (isDirectLoading || !isTargetCollectionLoaded) && !itemData;
 
   if (isPageLoading) {
     return (

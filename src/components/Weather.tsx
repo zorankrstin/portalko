@@ -304,7 +304,7 @@ export function Weather() {
 
           {/* 4-Day Forecast Grid */}
           <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-surface-container-low">
-            {weather.forecast.map((day, i) => {
+            {(weather.forecast || []).map((day, i) => {
               const dayInfo = getWeatherInfo(day.weatherCode);
               return (
                 <div 

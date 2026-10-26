@@ -6,8 +6,11 @@ import { ViewMode, PostDetailTarget, PostDetailType, AuthorProfileTarget } from 
  */
 export function slugify(text?: string | null): string {
   if (!text) return '';
-  return text
-    .toString()
+  let str = text.toString();
+  try {
+    str = decodeURIComponent(str);
+  } catch {}
+  return str
     .toLowerCase()
     .trim()
     // Transliterate Slovenian & Central European characters

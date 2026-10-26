@@ -47,7 +47,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, createPostInFirestore } from '../services/firestoreService';
 import { PostDetailTarget } from '../types';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
-import { slugify } from '../utils/urlUtils';
+import { slugify, buildPostUrl } from '../utils/urlUtils';
 import { getPlainTextSnippet } from '../utils/textUtils';
 import { useCategories } from '../hooks/useCategories';
 import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categoryService';
@@ -777,6 +777,60 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             );
             const badgeType: PromotionBadgeType = (deal as any).promotionBadgeType || (deal as any).promotion?.badgeType || 'PROMO';
 
+            const dealUrl = buildPostUrl({
+              type: 'deal',
+              id: deal.id,
+              title: cleanTitle,
+              category: deal.category,
+              categoryName: deal.categoryName,
+              subcategory: (deal as any).subcategory,
+              subcategoryName: (deal as any).subcategoryName,
+            });
+
+            const handleOpenDeal = (e?: React.MouseEvent) => {
+              if (e) e.preventDefault();
+              if (onNavigatePost) {
+                onNavigatePost({
+                  type: 'deal',
+                  id: deal.id,
+                  titleSlug: slugify(cleanTitle),
+                  categorySlug: slugify(deal.categoryName || deal.category || 'akcije'),
+                  subcategorySlug: (deal as any).subcategoryName || (deal as any).subcategory ? slugify((deal as any).subcategoryName || (deal as any).subcategory) : undefined,
+                  initialData: {
+                    id: deal.id,
+                    title: cleanTitle,
+                    category: deal.category || 'akcije',
+                    categoryName: deal.categoryName || 'Akcije',
+                    subcategory: (deal as any).subcategory,
+                    subcategoryName: (deal as any).subcategoryName,
+                    partner: deal.partner,
+                    author: deal.partner,
+                    authorName: deal.partner,
+                    authorAvatar: deal.partnerAvatar,
+                    authorRole: deal.partnerRole || 'Trgovec',
+                    image: dealImg,
+                    images: (deal as any).images || (dealImg ? [dealImg] : []),
+                    discount: deal.discount,
+                    newPrice: deal.newPrice,
+                    oldPrice: deal.oldPrice,
+                    price: deal.newPrice || deal.discount || deal.oldPrice,
+                    code: deal.code,
+                    link: deal.link,
+                    expires: (deal as any).expires,
+                    location: deal.location,
+                    region: deal.region,
+                    description: deal.description || cleanDescription,
+                    verified: (deal as any).verified,
+                    isPromoted,
+                    likesCount: (deal as any).likesCount || (deal as any).votes || 0,
+                    dealType: deal.dealType,
+                  }
+                });
+              } else {
+                window.location.hash = `deal-${deal.id}`;
+              }
+            };
+
             return (
               <article 
                 key={`deal-${deal.id}-${idx}`}
@@ -786,11 +840,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
               >
                 {/* PHOTO CONTAINER */}
                 <a 
-                  href={`#deal-${deal.id}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.location.hash = `deal-${deal.id}`;
-                  }}
+                  href={dealUrl}
+                  onClick={handleOpenDeal}
                   className="sm:w-52 md:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden block cursor-pointer"
                   title="Odpri samostojno stran te ugodnosti"
                 >
@@ -905,11 +956,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
                     {/* Title */}
                     <a
-                      href={`#deal-${deal.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.hash = `deal-${deal.id}`;
-                      }}
+                      href={dealUrl}
+                      onClick={handleOpenDeal}
                       className="block group/title cursor-pointer"
                     >
                       <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover/title:text-primary transition-colors leading-snug">

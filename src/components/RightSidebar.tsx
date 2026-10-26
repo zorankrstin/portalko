@@ -1,5 +1,5 @@
 import { Globe } from 'lucide-react';
-import { Weather } from './Weather';
+import { WeatherWidget } from './WeatherWidget';
 import { AdSense } from './ads/AdSense';
 import { PromotionBannerZone } from './common/PromotionBannerZone';
 import type { PostDetailTarget } from '../types';
@@ -19,7 +19,7 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
       <AdSense />
       
       {/* VREME WIDGET */}
-      <Weather />
+      <WeatherWidget />
       
       {/* IMENIK PRILJUBLJENIH POVEZAV */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">

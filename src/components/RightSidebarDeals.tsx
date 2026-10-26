@@ -7,6 +7,7 @@ import { CATALOGUES_DATA } from '../data/mockDealsData';
 import { PostDetailTarget } from '../types';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
+import { buildPostUrl, slugify } from '../utils/urlUtils';
 
 interface RightSidebarDealsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -28,12 +29,19 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
     return () => unsub();
   }, []);
 
-  const handleOpenDeal = (id: string, e?: React.MouseEvent) => {
+  const handleOpenDeal = (deal: FirestorePost, e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (onNavigatePost) {
-      onNavigatePost({ type: 'deal', id });
+      onNavigatePost({
+        type: 'deal',
+        id: deal.id,
+        titleSlug: slugify(deal.title),
+        categorySlug: slugify(deal.categoryName || deal.category || 'akcije'),
+        subcategorySlug: deal.subcategoryName || deal.subcategory ? slugify(deal.subcategoryName || deal.subcategory) : undefined,
+        initialData: deal,
+      });
     } else {
-      window.location.hash = `deal-${id}`;
+      window.location.hash = `deal-${deal.id}`;
     }
     scrollToPageTop();
   };
@@ -71,8 +79,14 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
             userDeals.slice(0, 3).map((deal, idx) => (
               <a
                 key={`deal-${deal.id}-${idx}`}
-                href={`#deal-${deal.id}`}
-                onClick={(e) => handleOpenDeal(deal.id, e)}
+                href={buildPostUrl({
+                  type: 'deal',
+                  id: deal.id,
+                  title: deal.title,
+                  category: deal.category,
+                  categoryName: deal.categoryName,
+                })}
+                onClick={(e) => handleOpenDeal(deal, e)}
                 className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center gap-3 group border border-surface-container/50 cursor-pointer"
                 title={`Odpri ugodnost: ${deal.title}`}
               >
