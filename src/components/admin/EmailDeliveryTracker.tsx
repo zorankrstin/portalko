@@ -40,6 +40,9 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
   const [activatingUserId, setActivatingUserId] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [providersStatus, setProvidersStatus] = useState<any>(null);
+  const [testEmailInput, setTestEmailInput] = useState<string>('zoran.krstin@gmail.com');
+  const [isTestingBrevo, setIsTestingBrevo] = useState(false);
+  const [testBrevoResult, setTestBrevoResult] = useState<{ success: boolean; message: string; hint?: string } | null>(null);
 
   // Derives the latest 5 confirmation email delivery records combining server logs, local storage, and recent users
   const refreshLogs = useCallback(async () => {
@@ -212,6 +215,45 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
     setTimeout(() => setCopiedId(null), 2500);
   };
 
+  // Test Brevo API Dispatch
+  const handleTestBrevo = async () => {
+    if (!testEmailInput || !testEmailInput.includes('@')) {
+      setFeedbackMsg({ type: 'error', text: 'Vnesite veljaven e-poštni naslov za preizkus Brevo API.' });
+      return;
+    }
+    setIsTestingBrevo(true);
+    setTestBrevoResult(null);
+    try {
+      const res = await fetch('/api/admin/test-brevo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testEmail: testEmailInput.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setTestBrevoResult({
+          success: true,
+          message: data.message || `Testno sporočilo uspešno oddano prek Brevo API na ${testEmailInput}!`,
+        });
+        await refreshLogs();
+      } else {
+        setTestBrevoResult({
+          success: false,
+          message: data.error || 'Preizkus Brevo API ni uspel.',
+          hint: data.hint,
+        });
+        await refreshLogs();
+      }
+    } catch (err: any) {
+      setTestBrevoResult({
+        success: false,
+        message: `Napaka pri klicu strežnika: ${err.message}`,
+      });
+    } finally {
+      setIsTestingBrevo(false);
+    }
+  };
+
   const counts = {
     total: logs.length,
     dostavljena: logs.filter(l => l.status === 'dostavljena').length,
@@ -321,6 +363,87 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
           </button>
         </div>
       )}
+
+      {/* Brevo API Integration & Tester Card */}
+      <div className="p-4 rounded-xl border border-primary/20 bg-primary/[0.03] flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-primary/10">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span className="text-xs font-bold text-on-surface">
+              Ponudnik pošiljanja e-pošte za registracije: <span className="text-primary font-black">Brevo API</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            {providersStatus?.brevo ? (
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                <span>BREVO_API_KEY je aktiven</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                <span>BREVO_API_KEY še ni nastavljen v .env</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-on-surface-variant leading-relaxed">
+          Nove registracije uporabnikov samodejno pošiljajo potrditveno e-pošto prek varnega <strong>Brevo HTTPS REST API</strong> (port 443), ki ponuja 300 brezplačnih sporočil/dan in ni podvržen SMTP blokadam gostiteljev.
+          {providersStatus?.brevoSender && (
+            <span className="ml-1 text-outline">
+              Pošiljatelj: <code className="px-1.5 py-0.5 rounded bg-surface-container text-[11px] font-mono">{providersStatus.brevoSender}</code>
+            </span>
+          )}
+        </p>
+
+        {/* Interactive Brevo Test Box */}
+        <div className="p-3 rounded-lg bg-surface-container-low border border-surface-container flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="flex-1 flex items-center gap-2">
+            <Mail className="w-3.5 h-3.5 text-outline shrink-0" />
+            <input
+              type="email"
+              value={testEmailInput}
+              onChange={(e) => setTestEmailInput(e.target.value)}
+              placeholder="Vnesite e-poštni naslov za preizkus (npr. zoran.krstin@gmail.com)..."
+              className="w-full bg-transparent text-xs text-on-surface outline-none placeholder:text-outline"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleTestBrevo}
+            disabled={isTestingBrevo}
+            className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-on-primary font-label-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50 shrink-0"
+            title="Pošlji testno potrditveno e-pošto prek Brevo API"
+          >
+            <Send className={`w-3.5 h-3.5 ${isTestingBrevo ? 'animate-pulse' : ''}`} />
+            <span>{isTestingBrevo ? 'Pošiljanje prek Brevo...' : 'Preizkusi Brevo pošiljanje'}</span>
+          </button>
+        </div>
+
+        {/* Test Result Banner */}
+        {testBrevoResult && (
+          <div className={`p-3 rounded-lg border text-xs flex flex-col gap-1 ${
+            testBrevoResult.success
+              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-900 dark:text-emerald-200'
+              : 'bg-rose-500/10 border-rose-500/25 text-rose-900 dark:text-rose-200'
+          }`}>
+            <div className="flex items-center gap-1.5 font-bold">
+              {testBrevoResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>{testBrevoResult.message}</span>
+            </div>
+            {testBrevoResult.hint && (
+              <p className="text-[11px] opacity-90 pl-5">
+                <strong>Namig:</strong> {testBrevoResult.hint}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* List of the Last 5 Confirmation Emails */}
       <div className="flex flex-col gap-2.5">

@@ -915,7 +915,96 @@ async function startServer() {
 
       const plainText = `Pozdravljeni, ${safeName}!\n\nHvala za registracijo na Portalko.net.\nZa dokončanje registracije in potrditev vašega računa kliknite na povezavo:\n${confirmationUrl}\n\nPovezava je veljavna 24 ur.\nTo sporočilo je bilo samodejno poslano iz naslova ${process.env.NOREPLY_EMAIL || "noreply@portalko.net"}.`;
 
-      // 1. Check if Resend API key is configured (preferred for modern cloud delivery)
+      // 1. PRIMARY: Brevo API (https://api.brevo.com/v3/smtp/email - 300 free emails/day, EU GDPR compliant, REST API HTTPS port 443)
+      const brevoKey = (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY || "").trim();
+      const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim();
+      const brevoSenderName = (process.env.BREVO_SENDER_NAME || process.env.NOREPLY_NAME || "Portalko.net").trim();
+
+      if (brevoKey) {
+        try {
+          const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: {
+              "api-key": brevoKey,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({
+              sender: { name: brevoSenderName, email: brevoSenderEmail },
+              to: [{ email: email.trim(), name: safeName }],
+              subject: "Potrdite svoj račun na Portalko.net",
+              htmlContent: emailHtml,
+              textContent: plainText,
+            }),
+          });
+
+          if (brevoResponse.ok) {
+            const brevoData = await brevoResponse.json().catch(() => ({}));
+            const msgId = brevoData.messageId || `brevo_${Date.now()}`;
+            console.log(`[NOREPLY EMAIL BREVO SENT] Confirmation sent to ${email}, id: ${msgId}`);
+            recordServerEmailLog({
+              id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              recipientEmail: email,
+              recipientName: safeName,
+              subject: "Potrdite svoj račun na Portalko.net",
+              type: "registration_confirmation",
+              status: "dostavljena",
+              provider: "brevo",
+              messageId: msgId,
+              sentAt: new Date().toISOString(),
+              confirmationUrl,
+              token,
+            });
+            return res.json({
+              success: true,
+              sent: true,
+              provider: "brevo",
+              messageId: msgId,
+              confirmationUrl,
+              message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno poslano prek Brevo API.",
+            });
+          } else {
+            let brevoError = "";
+            try {
+              const errJson = await brevoResponse.json();
+              brevoError = errJson.message || errJson.code || JSON.stringify(errJson);
+            } catch {
+              brevoError = await brevoResponse.text();
+            }
+            console.warn(`[NOREPLY EMAIL BREVO FAILED ${brevoResponse.status}]:`, brevoError);
+            recordServerEmailLog({
+              id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              recipientEmail: email,
+              recipientName: safeName,
+              subject: "Potrdite svoj račun na Portalko.net",
+              type: "registration_confirmation",
+              status: "zavrnjena",
+              provider: "brevo",
+              errorReason: `Brevo API klic zavrnjen (HTTP ${brevoResponse.status}): ${brevoError}`,
+              sentAt: new Date().toISOString(),
+              confirmationUrl,
+              token,
+            });
+          }
+        } catch (brevoErr: any) {
+          console.warn("[NOREPLY EMAIL BREVO EXCEPTION]:", brevoErr.message);
+          recordServerEmailLog({
+            id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            recipientEmail: email,
+            recipientName: safeName,
+            subject: "Potrdite svoj račun na Portalko.net",
+            type: "registration_confirmation",
+            status: "zavrnjena",
+            provider: "brevo",
+            errorReason: `Napaka pri povezavi z Brevo API: ${brevoErr.message}`,
+            sentAt: new Date().toISOString(),
+            confirmationUrl,
+            token,
+          });
+        }
+      }
+
+      // 2. Fallback: Check if Resend API key is configured
       if (process.env.RESEND_API_KEY) {
         try {
           const resendResponse = await fetch("https://api.resend.com/emails", {
@@ -963,59 +1052,6 @@ async function startServer() {
           }
         } catch (resendErr: any) {
           console.warn("[NOREPLY EMAIL RESEND EXCEPTION]:", resendErr.message);
-        }
-      }
-
-      // 2. Check if Brevo API is configured (Free 300 emails/day, EU GDPR compliant, REST API HTTPS port 443)
-      const brevoKey = process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY;
-      if (brevoKey) {
-        try {
-          const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
-            method: "POST",
-            headers: {
-              "api-key": brevoKey,
-              "Content-Type": "application/json",
-              "Accept": "application/json",
-            },
-            body: JSON.stringify({
-              sender: { name: process.env.NOREPLY_NAME || "Portalko.net", email: process.env.NOREPLY_EMAIL || "noreply@portalko.net" },
-              to: [{ email, name: safeName }],
-              subject: "Potrdite svoj račun na Portalko.net",
-              htmlContent: emailHtml,
-              textContent: plainText,
-            }),
-          });
-
-          if (brevoResponse.ok) {
-            const brevoData = await brevoResponse.json().catch(() => ({}));
-            console.log(`[NOREPLY EMAIL BREVO SENT] Confirmation sent to ${email}`);
-            recordServerEmailLog({
-              id: `eml_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              recipientEmail: email,
-              recipientName: safeName,
-              subject: "Potrdite svoj račun na Portalko.net",
-              type: "registration_confirmation",
-              status: "dostavljena",
-              provider: "brevo",
-              messageId: brevoData.messageId,
-              sentAt: new Date().toISOString(),
-              confirmationUrl,
-              token,
-            });
-            return res.json({
-              success: true,
-              sent: true,
-              provider: "brevo",
-              messageId: brevoData.messageId,
-              confirmationUrl,
-              message: "Potrditveno sporočilo iz noreply@portalko.net je bilo uspešno poslano.",
-            });
-          } else {
-            const errText = await brevoResponse.text();
-            console.warn("[NOREPLY EMAIL BREVO ERROR]:", errText);
-          }
-        } catch (brevoErr: any) {
-          console.warn("[NOREPLY EMAIL BREVO EXCEPTION]:", brevoErr.message);
         }
       }
 
@@ -1171,11 +1207,12 @@ async function startServer() {
     const limit = parseInt(req.query.limit as string) || 5;
     const configured = {
       brevo: Boolean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY),
+      brevoSender: (process.env.BREVO_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim(),
       resend: Boolean(process.env.RESEND_API_KEY),
       sendgrid: Boolean(process.env.SENDGRID_API_KEY),
       smtp: Boolean(process.env.SMTP_HOST),
-      activeProvider: (process.env.RESEND_API_KEY ? "Resend API" :
-                       (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY) ? "Brevo API" :
+      activeProvider: ((process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY) ? "Brevo API" :
+                       process.env.RESEND_API_KEY ? "Resend API" :
                        process.env.SENDGRID_API_KEY ? "SendGrid API" :
                        process.env.SMTP_HOST ? "SMTP" : "Ni nastavljen (Simulacija / Ročna aktivacija)")
     };
@@ -1186,6 +1223,118 @@ async function startServer() {
       logs: serverEmailDeliveryLogs.slice(0, limit),
       configured,
     });
+  });
+
+  // Admin endpoint: Test Brevo API dispatch
+  app.post("/api/admin/test-brevo", async (req, res) => {
+    try {
+      const { testEmail } = req.body || {};
+      const targetEmail = (testEmail || "zoran.krstin@gmail.com").trim();
+      const brevoKey = (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY || "").trim();
+
+      if (!brevoKey) {
+        return res.status(400).json({
+          success: false,
+          error: "BREVO_API_KEY ni nastavljen v okoljskih spremenljivkah (.env). Za neposredno pošiljanje prek Brevo API prosimo dodajte BREVO_API_KEY.",
+          configured: false,
+        });
+      }
+
+      const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim();
+      const brevoSenderName = (process.env.BREVO_SENDER_NAME || process.env.NOREPLY_NAME || "Portalko.net").trim();
+      const testConfirmationUrl = `https://portalko.net/?verify-email=test_brevo_${Date.now()}&email=${encodeURIComponent(targetEmail)}`;
+
+      const testHtml = `<!DOCTYPE html>
+<html lang="sl">
+<head><meta charset="UTF-8"><title>Brevo Testno Sporočilo</title></head>
+<body style="font-family:sans-serif;padding:24px;background:#f8fafc;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;border:1px solid #e2e8f0;">
+    <h2 style="color:#7c3aed;margin-top:0;">Brevo API Testno sporočilo – Portalko.net</h2>
+    <p>To je potrditev, da je <strong>Brevo API</strong> uspešno povezan in pripravljen za pošiljanje potrditvenih e-pošt ob registracijah uporabnikov.</p>
+    <div style="background:#f1f5f9;padding:12px;border-radius:8px;font-size:13px;margin:20px 0;">
+      <strong>Pošiljatelj:</strong> ${brevoSenderName} &lt;${brevoSenderEmail}&gt;<br/>
+      <strong>Prejemnik:</strong> ${targetEmail}<br/>
+      <strong>Čas:</strong> ${new Date().toLocaleString("sl-SI")}
+    </div>
+    <p style="text-align:center;"><a href="${testConfirmationUrl}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Preizkus potrditvene povezave</a></p>
+  </div>
+</body>
+</html>`;
+
+      const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": brevoKey,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: brevoSenderName, email: brevoSenderEmail },
+          to: [{ email: targetEmail, name: "Administrator" }],
+          subject: "Brevo API Preizkus – Potrditvena e-pošta Portalko.net",
+          htmlContent: testHtml,
+          textContent: `Brevo API Preizkus za Portalko.net. Povezava: ${testConfirmationUrl}`,
+        }),
+      });
+
+      if (brevoResponse.ok) {
+        const brevoData = await brevoResponse.json().catch(() => ({}));
+        const msgId = brevoData.messageId || `brevo_test_${Date.now()}`;
+        recordServerEmailLog({
+          id: `eml_${Date.now()}_test`,
+          recipientEmail: targetEmail,
+          recipientName: "Administrator (Test Brevo)",
+          subject: "Brevo API Preizkus – Potrditvena e-pošta Portalko.net",
+          type: "registration_confirmation",
+          status: "dostavljena",
+          provider: "brevo",
+          messageId: msgId,
+          sentAt: new Date().toISOString(),
+          confirmationUrl: testConfirmationUrl,
+        });
+
+        return res.json({
+          success: true,
+          message: `Testno e-poštno sporočilo je bilo uspešno poslano prek Brevo API na ${targetEmail}!`,
+          messageId: msgId,
+          provider: "brevo",
+          sender: `${brevoSenderName} <${brevoSenderEmail}>`,
+        });
+      } else {
+        let brevoError = "";
+        try {
+          const errJson = await brevoResponse.json();
+          brevoError = errJson.message || errJson.code || JSON.stringify(errJson);
+        } catch {
+          brevoError = await brevoResponse.text();
+        }
+
+        recordServerEmailLog({
+          id: `eml_${Date.now()}_test_err`,
+          recipientEmail: targetEmail,
+          recipientName: "Administrator (Test Brevo)",
+          subject: "Brevo API Preizkus – Napaka",
+          type: "registration_confirmation",
+          status: "zavrnjena",
+          provider: "brevo",
+          errorReason: `Brevo API (HTTP ${brevoResponse.status}): ${brevoError}`,
+          sentAt: new Date().toISOString(),
+          confirmationUrl: testConfirmationUrl,
+        });
+
+        return res.status(400).json({
+          success: false,
+          error: `Brevo API klic ni uspel (HTTP ${brevoResponse.status}): ${brevoError}`,
+          code: brevoResponse.status,
+          hint: "Preverite, ali je vaš pošiljatelj (email) potrjen v Brevo računu pod 'Senders & IP', in ali je BREVO_API_KEY pravilen.",
+        });
+      }
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: `Izjema pri klicu Brevo API: ${err.message}`,
+      });
+    }
   });
 
   // Noreply Password Reset Email Dispatch Endpoint
@@ -1252,7 +1401,45 @@ async function startServer() {
 
       const plainText = `Pozdravljeni, ${safeName}!\n\nPrejeli smo zahtevek za ponastavitev gesla na Portalko.net.\nZa nastavitev novega gesla kliknite na povezavo:\n${resetUrl}\n\nPovezava je veljavna 24 ur.\nČe zahtevka niste oddali vi, lahko to sporočilo prezrete.`;
 
-      // 1. Resend API
+      // 1. PRIMARY: Brevo API
+      const brevoKey = (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY || "").trim();
+      const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim();
+      const brevoSenderName = (process.env.BREVO_SENDER_NAME || process.env.NOREPLY_NAME || "Portalko.net").trim();
+
+      if (brevoKey) {
+        try {
+          const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: {
+              "api-key": brevoKey,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({
+              sender: { name: brevoSenderName, email: brevoSenderEmail },
+              to: [{ email, name: safeName }],
+              subject: "Ponastavitev vašega gesla na Portalko.net",
+              htmlContent: emailHtml,
+              textContent: plainText,
+            }),
+          });
+          if (brevoResponse.ok) {
+            const brevoData = await brevoResponse.json().catch(() => ({}));
+            return res.json({
+              success: true,
+              sent: true,
+              provider: "brevo",
+              messageId: brevoData.messageId,
+              resetUrl,
+              message: "Navodila za ponastavitev gesla so bila uspešno poslana na vaš e-poštni naslov prek Brevo API.",
+            });
+          }
+        } catch (brevoErr: any) {
+          console.warn("[PASSWORD RESET BREVO ERROR]:", brevoErr.message);
+        }
+      }
+
+      // 2. Fallback: Resend API
       if (process.env.RESEND_API_KEY) {
         try {
           const resendResponse = await fetch("https://api.resend.com/emails", {
@@ -1282,41 +1469,6 @@ async function startServer() {
           }
         } catch (resendErr: any) {
           console.warn("[PASSWORD RESET RESEND EXCEPTION]:", resendErr.message);
-        }
-      }
-
-      // 2. Brevo API
-      const brevoKey = process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY;
-      if (brevoKey) {
-        try {
-          const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
-            method: "POST",
-            headers: {
-              "api-key": brevoKey,
-              "Content-Type": "application/json",
-              "Accept": "application/json",
-            },
-            body: JSON.stringify({
-              sender: { name: process.env.NOREPLY_NAME || "Portalko.net", email: process.env.NOREPLY_EMAIL || "noreply@portalko.net" },
-              to: [{ email, name: safeName }],
-              subject: "Ponastavitev vašega gesla na Portalko.net",
-              htmlContent: emailHtml,
-              textContent: plainText,
-            }),
-          });
-          if (brevoResponse.ok) {
-            const brevoData = await brevoResponse.json().catch(() => ({}));
-            return res.json({
-              success: true,
-              sent: true,
-              provider: "brevo",
-              messageId: brevoData.messageId,
-              resetUrl,
-              message: "Navodila za ponastavitev gesla so bila uspešno poslana na vaš e-poštni naslov.",
-            });
-          }
-        } catch (brevoErr: any) {
-          console.warn("[PASSWORD RESET BREVO ERROR]:", brevoErr.message);
         }
       }
 
