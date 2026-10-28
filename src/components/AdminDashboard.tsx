@@ -39,8 +39,10 @@ import {
   deleteEventInFirestore,
   updatePostInFirestore,
   updateAdInFirestore,
-  updateEventInFirestore
+  updateEventInFirestore,
+  verifyUserEmailInFirestore
 } from '../services/firestoreService';
+import { recordEmailDeliveryLog } from '../services/emailService';
 import { EditPostModal, EditablePostItem, EditableItemType } from './posts/EditPostModal';
 import { PromotionModal, PromotableItemData } from './common/PromotionModal';
 import { PromotedBadge } from './common/PromotedBadge';
@@ -97,6 +99,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [showUserGrowthChart, setShowUserGrowthChart] = useState(true);
   const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
+  const [confirmingUserId, setConfirmingUserId] = useState<string | null>(null);
 
   // New user form state
   const [newUserName, setNewUserName] = useState('');
@@ -293,12 +296,32 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
     }
   };
 
-  const handleConfirmUserRegistration = async (userId: string, userName: string) => {
+  const handleConfirmUserRegistration = async (userId: string, userName: string, userEmail?: string) => {
+    setConfirmingUserId(userId);
     try {
       await updateUser(userId, {
         emailVerified: true,
+        verificationToken: undefined,
         verificationConfirmedAt: new Date().toISOString()
       });
+
+      // Synchronize in Firestore by user document and across all documents matching email
+      await verifyUserEmailInFirestore(userId, userEmail);
+
+      // Record in local email delivery tracker as delivered/activated
+      if (userEmail) {
+        recordEmailDeliveryLog({
+          recipientEmail: userEmail,
+          recipientName: userName,
+          subject: 'Potrdite svoj račun na Portalko.net (Potrdil administrator)',
+          type: 'registration_confirmation',
+          status: 'dostavljena',
+          provider: 'administrator',
+          sentAt: new Date().toISOString(),
+          confirmationUrl: `${window.location.origin}/`,
+          userActivated: true,
+        });
+      }
 
       // Record in Admin Activity Log
       logAdminActivity({
@@ -310,16 +333,17 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         category: 'users',
         targetId: userId,
         targetTitle: userName,
-        details: `Ročno potrjena registracija in veljavnost računa za uporabnika »${userName}«.`,
+        details: `Ročno potrjena registracija in veljavnost računa za uporabnika »${userName}« (${userEmail || userId}).`,
         metadata: {
           targetUserId: userId,
-          targetUserName: userName
+          targetUserName: userName,
+          targetUserEmail: userEmail
         }
       }).catch(() => {});
 
       setActionFeedback({
         id: `confirm-reg-${userId}-${Date.now()}`,
-        message: `Registracija za uporabnika »${userName}« je bila uspešno ročno potrjena.`,
+        message: `Registracija za uporabnika »${userName}« je bila uspešno potrjena. Račun je aktiven!`,
         type: 'success'
       });
       setTimeout(() => setActionFeedback(null), 3500);
@@ -331,6 +355,8 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         type: 'error'
       });
       setTimeout(() => setActionFeedback(null), 3500);
+    } finally {
+      setConfirmingUserId(null);
     }
   };
 
@@ -1791,12 +1817,22 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                     <div className="flex flex-wrap items-center gap-1 mt-0.5">
                                       <button
                                         type="button"
-                                        onClick={() => handleConfirmUserRegistration(user.id, user.name)}
-                                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-2xs cursor-pointer"
+                                        disabled={confirmingUserId === user.id}
+                                        onClick={() => handleConfirmUserRegistration(user.id, user.name, user.email)}
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-2xs cursor-pointer disabled:opacity-60"
                                         title="Admin lahko ročno potrdi registracijo uporabnika"
                                       >
-                                        <Check className="w-2.5 h-2.5" />
-                                        Potrdi reg.
+                                        {confirmingUserId === user.id ? (
+                                          <>
+                                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                            Potrjevanje...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Check className="w-2.5 h-2.5" />
+                                            Potrdi reg.
+                                          </>
+                                        )}
                                       </button>
                                       <button
                                         type="button"

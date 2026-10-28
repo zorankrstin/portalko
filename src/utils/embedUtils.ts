@@ -22,25 +22,47 @@ export function isIframeOrHtmlVertical(htmlOrUrl: string): boolean {
   if (!htmlOrUrl) return false;
   const lower = htmlOrUrl.toLowerCase();
 
+  // Explicit horizontal markers or attributes
+  if (
+    lower.includes("data-vertical=\"false\"") ||
+    lower.includes("data-orientation=\"horizontal\"") ||
+    lower.includes("data-aspect=\"16:9\"") ||
+    lower.includes("aspect-video")
+  ) {
+    return false;
+  }
+
   // Explicit vertical markers or attributes
   if (
-    lower.includes('data-vertical="true"') ||
-    lower.includes("data-vertical='true'") ||
-    lower.includes('data-orientation="vertical"') ||
-    lower.includes('/shorts/') ||
-    lower.includes('shorts?v=') ||
-    lower.includes('/reel/') ||
-    lower.includes('/reels/') ||
-    lower.includes('tiktok.com') ||
-    lower.includes('tiktok-embed') ||
-    lower.includes('vertical') ||
-    lower.includes('portrait') ||
-    lower.includes('aspect-[9/16]') ||
-    lower.includes('aspect-ratio: 9/16') ||
-    lower.includes('aspect-ratio: 9 / 16') ||
-    lower.includes('youtube shorts')
+    lower.includes("data-vertical=\"true\"") ||
+    lower.includes("data-orientation=\"vertical\"") ||
+    lower.includes("/shorts/") ||
+    lower.includes("shorts?v=") ||
+    lower.includes("/reel/") ||
+    lower.includes("/reels/") ||
+    lower.includes("tiktok.com") ||
+    lower.includes("tiktok-embed") ||
+    lower.includes("aspect-[9/16]") ||
+    lower.includes("aspect-ratio: 9/16") ||
+    lower.includes("aspect-ratio: 9 / 16") ||
+    lower.includes("youtube shorts")
   ) {
     return true;
+  }
+
+  // Facebook post plugins and page plugins are desktop social cards, NOT vertical 9:16 video reels
+  if (
+    lower.includes('facebook.com/plugins/post.php') ||
+    lower.includes('facebook.com/plugins/page.php') ||
+    lower.includes('facebook.com/plugins/share_button.php') ||
+    lower.includes('plugins/post.php')
+  ) {
+    return false;
+  }
+
+  // Twitter/X embeds are desktop post cards
+  if (lower.includes('twitter-tweet') || lower.includes('platform.twitter.com')) {
+    return false;
   }
 
   // Instagram embeds without explicit horizontal class are portrait / vertical cards
@@ -115,12 +137,34 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
 
         // Ensure data-vertical="true" is on the iframe tag
         if (!cleanedIframe.includes('data-vertical')) {
-          cleanedIframe = cleanedIframe.replace(/<iframe/i, '<iframe data-vertical="true"');
+          cleanedIframe = cleanedIframe.replace(/<iframe/i, '<iframe data-vertical="true" data-orientation="vertical"');
         }
 
         formatted = `<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] min-h-[580px] aspect-[9/16] max-h-[740px] rounded-2xl overflow-hidden border border-surface-container shadow-md bg-surface-container-lowest relative flex justify-center" style="aspect-ratio: 9/16; min-height: 580px;">${cleanedIframe}</div></div>`;
       } else {
-        formatted = `<div class="embed-horizontal-container responsive-embed my-3 w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden border border-surface-container shadow-xs" style="aspect-ratio: 16/9;">${input}</div>`;
+        // Horizontal embed
+        const isFacebookPost = input.includes('plugins/post.php') || input.includes('facebook.com');
+
+        let cleanedIframe = input;
+        if (!cleanedIframe.includes('data-orientation=')) {
+          cleanedIframe = cleanedIframe.replace(/<iframe/i, '<iframe data-orientation="horizontal" data-vertical="false"');
+        }
+
+        if (isFacebookPost) {
+          // Render as desktop/responsive post card container, centering and expanding up to max-w-2xl
+          formatted = `<div class="embed-horizontal-container embed-post-container my-4 w-full max-w-2xl mx-auto flex justify-center overflow-hidden rounded-2xl border border-surface-container bg-surface-container-lowest p-2 sm:p-4 shadow-xs"><div class="w-full flex justify-center overflow-hidden">${cleanedIframe}</div></div>`;
+        } else {
+          // Standard responsive 16:9 horizontal video container
+          let videoIframe = cleanedIframe
+            .replace(/width=["'][^"']*["']/gi, 'width="100%"')
+            .replace(/height=["'][^"']*["']/gi, 'height="100%"');
+          if (!videoIframe.includes('class=')) {
+            videoIframe = videoIframe.replace(/<iframe/i, '<iframe class="w-full h-full border-0"');
+          } else {
+            videoIframe = videoIframe.replace(/class=["'][^"']*["']/i, 'class="w-full h-full border-0"');
+          }
+          formatted = `<div class="embed-horizontal-container responsive-embed my-4 w-full max-w-4xl mx-auto aspect-video rounded-2xl overflow-hidden border border-surface-container shadow-xs bg-black/5" style="aspect-ratio: 16/9;">${videoIframe}</div>`;
+        }
       }
     }
 
@@ -221,9 +265,9 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
 
     let embedHtml = '';
     if (isVertical) {
-      embedHtml = `<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="min-height: 580px;"><div class="flex items-center justify-between"><span class="font-bold text-xs text-blue-600 flex items-center gap-1.5">🎬 Facebook Reel (navpični format)</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Facebooku ↗</a></div><iframe src="${pluginUrl}" data-vertical="true" class="w-full min-h-[620px] border-0 rounded-xl overflow-hidden bg-surface-container-lowest" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div></div>`;
+      embedHtml = `<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="min-height: 580px;"><div class="flex items-center justify-between"><span class="font-bold text-xs text-blue-600 flex items-center gap-1.5">🎬 Facebook Reel (navpični format)</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Facebooku ↗</a></div><iframe src="${pluginUrl}" data-vertical="true" data-orientation="vertical" class="w-full min-h-[620px] border-0 rounded-xl overflow-hidden bg-surface-container-lowest" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div></div>`;
     } else {
-      embedHtml = `<div class="embed-post-container my-3 p-3.5 rounded-xl border border-surface-container bg-surface-container-low max-w-lg mx-auto shadow-xs"><div class="flex items-center justify-between mb-2"><span class="font-bold text-xs text-blue-600 flex items-center gap-1.5">📘 Facebook objava</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Facebooku ↗</a></div><iframe src="${pluginUrl}" data-vertical="false" class="w-full min-h-[380px] border-0 rounded-lg overflow-hidden" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div>`;
+      embedHtml = `<div class="embed-horizontal-container embed-post-container my-4 w-full max-w-2xl mx-auto p-3.5 rounded-2xl border border-surface-container bg-surface-container-low shadow-xs"><div class="flex items-center justify-between mb-2"><span class="font-bold text-xs text-blue-600 flex items-center gap-1.5">📘 Facebook objava</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Facebooku ↗</a></div><div class="w-full flex justify-center overflow-hidden"><iframe src="${pluginUrl}" data-vertical="false" data-orientation="horizontal" class="w-full min-h-[480px] sm:min-h-[620px] border-0 rounded-lg overflow-hidden" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div></div>`;
     }
 
     return {

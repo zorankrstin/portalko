@@ -328,6 +328,8 @@ export function PostDetailPage({
         eventTimes: fs.eventTimes,
         eventSchedule: fs.eventSchedule,
         ticketUrl: fs.ticketUrl,
+        embedCode: fs.embedCode,
+        embedOrientation: fs.embedOrientation,
         month: resolvedDate.dateInfo.month,
         day: resolvedDate.dateInfo.day,
         price: fs.price || 'Vstop prost',
@@ -343,8 +345,12 @@ export function PostDetailPage({
         subcategory: fs.subcategory,
         subcategoryName: fs.subcategoryName,
         thirdLevelCategory: fs.thirdLevelCategory,
-        image: fs.imageUrl || fs.image || (getActiveFallbackImage(true) || ''),
-        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
+        image: fs.imageUrl || fs.image || (fs.images && fs.images[0]) || (getActiveFallbackImage(true) || ''),
+        images: (fs.images && fs.images.length > 0)
+          ? fs.images
+          : (fs.imageUrls && fs.imageUrls.length > 0)
+          ? fs.imageUrls
+          : (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
         interestedCount: fs.interestedCount || 42,
         likesCount: fs.likesCount || 0,
         viewsCount: fs.viewsCount ?? 0,
@@ -385,6 +391,8 @@ export function PostDetailPage({
         viewsCount: fs.viewsCount ?? 0,
         code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : (fs.code ? fs.code.trim() : undefined),
         link: fs.dealLink || fs.link || 'https://www.portalko.net',
+        embedCode: fs.embedCode,
+        embedOrientation: fs.embedOrientation,
       };
     };
 
@@ -414,6 +422,8 @@ export function PostDetailPage({
         authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
         likesCount: fs.likesCount || 0,
         viewsCount: fs.viewsCount ?? 0,
+        embedCode: fs.embedCode,
+        embedOrientation: fs.embedOrientation,
       };
     };
 
@@ -468,9 +478,10 @@ export function PostDetailPage({
         status: fs.status,
         authorRole: fs.authorRole || 'Član skupnosti',
         authorAvatar: fs.authorAvatar,
-        date: fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Ravno objavljeno',
-        image: fs.imageUrl,
-        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        embedCode: fs.embedCode,
+        embedOrientation: fs.embedOrientation,
+        image: fs.imageUrl || (fs as any).image || (fs.images && fs.images[0]),
+        images: (fs.images && fs.images.length > 0) ? fs.images : (fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined)),
         category: fs.category,
         categoryName: resolvedCat.name,
         categoryId: resolvedCat.id,
@@ -1814,6 +1825,8 @@ export function PostDetailPage({
     eventDates: itemData.eventDates,
     eventSchedule: itemData.eventSchedule,
     ticketUrl: itemData.ticketUrl,
+    embedCode: itemData.embedCode,
+    embedOrientation: itemData.embedOrientation,
     tags: itemData.tags,
     authorName: itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor',
     authorId: itemData.authorId,
@@ -2594,7 +2607,7 @@ export function PostDetailPage({
               </h3>
               <div 
                 className="tiptap rounded-xl overflow-hidden"
-                dangerouslySetInnerHTML={{ __html: getCleanHtml(parseSocialEmbed(itemData.embedCode)?.embedHtml || itemData.embedCode) }}
+                dangerouslySetInnerHTML={{ __html: getCleanHtml(parseSocialEmbed(itemData.embedCode, itemData.embedOrientation === 'auto' ? undefined : itemData.embedOrientation)?.embedHtml || itemData.embedCode) }}
               />
             </div>
           )}

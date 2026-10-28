@@ -38,6 +38,8 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
 
   // Verification pending state
   const [verificationPending, setVerificationPending] = useState<{
@@ -66,6 +68,8 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
       setResendFeedback('');
       setForgotSuccess(null);
       setForgotCopiedLink(false);
+      setRegConfirmPassword('');
+      setShowRegConfirmPassword(false);
       if (loginEmail) {
         setForgotEmail(loginEmail);
       }
@@ -113,6 +117,17 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+
+    if (regPassword.length < 6) {
+      setErrorMsg('Geslo mora vsebovati vsaj 6 znakov.');
+      return;
+    }
+
+    if (regPassword !== regConfirmPassword) {
+      setErrorMsg('Gesli se ne ujemata. Za uspešno registracijo ponovno vnesite enako geslo v obe polji.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -141,6 +156,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
           smtpBlocked: res.smtpBlocked,
         });
         setRegPassword('');
+        setRegConfirmPassword('');
       } else {
         setSuccessMsg(`Račun za ${res.user?.name} uspešno ustvarjen! Prijavljeni ste.`);
         setTimeout(() => {
@@ -148,6 +164,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
           setRegName('');
           setRegEmail('');
           setRegPassword('');
+          setRegConfirmPassword('');
           setSuccessMsg('');
         }, 800);
       }
@@ -851,7 +868,7 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                   <button
                     type="button"
                     onClick={() => setShowRegPassword(!showRegPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface cursor-pointer"
                     tabIndex={-1}
                   >
                     {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -859,10 +876,62 @@ export function LoginModal({ isOpen, onClose, initialMode = 'login' }: LoginModa
                 </div>
               </div>
 
+              {/* Second Password Field for Confirmation */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-label-md text-xs font-semibold text-on-surface">
+                    Ponovite geslo <span className="text-error">*</span>
+                  </label>
+                  {regConfirmPassword.length > 0 && (
+                    regPassword === regConfirmPassword ? (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>Gesli se ujemata</span>
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-error flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-error" />
+                        <span>Gesli se ne ujemata</span>
+                      </span>
+                    )
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type={showRegConfirmPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Ponovno vnesite enako geslo"
+                    value={regConfirmPassword}
+                    onChange={e => setRegConfirmPassword(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 pr-10 rounded-xl bg-surface-container-low border outline-none text-sm text-on-surface transition-all ${
+                      regConfirmPassword.length > 0
+                        ? regPassword === regConfirmPassword
+                          ? 'border-emerald-500 focus:border-emerald-600'
+                          : 'border-error focus:border-error'
+                        : 'border-surface-container focus:border-primary focus:bg-surface-container-lowest'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showRegConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {regConfirmPassword.length > 0 && regPassword !== regConfirmPassword && (
+                  <p className="text-[11px] text-error">
+                    Za nadaljevanje se morata obe vneseni gesli natanko ujemati.
+                  </p>
+                )}
+              </div>
+
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full mt-2 py-3 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                disabled={isSubmitting || !regPassword || !regConfirmPassword || regPassword !== regConfirmPassword || regPassword.length < 6}
+                className="w-full mt-2 py-3 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isSubmitting ? (
                   <>

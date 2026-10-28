@@ -244,12 +244,16 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
         ? u.avatar 
         : ((existing.avatar && !isDummyAvatar(existing.avatar)) ? existing.avatar : undefined);
 
+      const isVerified = existing.emailVerified === true || u.emailVerified === true;
       const merged: User = {
         ...existing,
         ...u,
         id: canonicalId,
         avatar: cleanAvatar,
         role: (u.role === 'superadmin' || existing.role === 'superadmin') ? 'superadmin' : (u.role || existing.role),
+        emailVerified: isVerified ? true : (u.emailVerified === false || existing.emailVerified === false ? false : true),
+        verificationToken: isVerified ? undefined : (u.verificationToken || existing.verificationToken),
+        verificationConfirmedAt: existing.verificationConfirmedAt || u.verificationConfirmedAt,
       };
 
       // Remove previous keys if ID changed
@@ -462,14 +466,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateUser = async (id: string, data: Partial<User>) => {
     const targetUser = users.find(u => u.id === id) || DEFAULT_USERS.find(u => u.id === id);
+    const targetEmail = (targetUser?.email || data.email || '').toLowerCase().trim();
+
     setUsers(prev => {
       const newUsers = prev.map(u => {
-        if (u.id === id) return { ...u, ...data };
+        const matchesId = u.id === id;
+        const matchesEmail = Boolean(targetEmail && (u.email || '').toLowerCase().trim() === targetEmail);
+        if (matchesId || matchesEmail) {
+          const isVerified = data.emailVerified !== undefined ? data.emailVerified : u.emailVerified;
+          return {
+            ...u,
+            ...data,
+            emailVerified: isVerified,
+            verificationToken: isVerified ? undefined : (data.verificationToken !== undefined ? data.verificationToken : u.verificationToken),
+            verificationConfirmedAt: isVerified ? (data.verificationConfirmedAt || u.verificationConfirmedAt || new Date().toISOString()) : u.verificationConfirmedAt,
+          };
+        }
         return u;
       });
       localStorage.setItem('portal_users', JSON.stringify(newUsers));
-      if (currentUser?.id === id) {
-        const updated = newUsers.find(u => u.id === id);
+      if (currentUser?.id === id || (targetEmail && currentUser?.email?.toLowerCase().trim() === targetEmail)) {
+        const updated = newUsers.find(u => u.id === id || (targetEmail && u.email.toLowerCase().trim() === targetEmail));
         if (updated) {
           if (updated.status === 'banned') {
             logout();
@@ -480,7 +497,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return newUsers;
     });
+
     await updateUserInFirestore(id, data, targetUser).catch(console.error);
+
+    if (data.emailVerified === true) {
+      await verifyUserEmailInFirestore(id, targetEmail).catch(console.error);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('email_delivery_logs_updated'));
+      }
+    }
   };
 
   const deleteUser = async (userId: string, email?: string) => {

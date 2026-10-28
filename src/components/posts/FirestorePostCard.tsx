@@ -126,6 +126,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     eventSchedule: post.eventSchedule,
     ticketUrl: post.ticketUrl,
     embedCode: post.embedCode,
+    embedOrientation: post.embedOrientation,
     rejectionReason: post.rejectionReason,
   };
 
@@ -355,6 +356,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           images: post.images || post.imageUrls || (imgSrc ? [imgSrc] : []),
           description: post.content,
           embedCode: post.embedCode,
+          embedOrientation: post.embedOrientation,
           date: formatSlovenianDate(post.createdAt) || 'Nedavno',
           likesCount: post.likesCount || 0,
           votes: post.likesCount || 0,

@@ -23,6 +23,7 @@ import {
   getStoredEmailDeliveryLogs, 
   recordEmailDeliveryLog 
 } from '../../services/emailService';
+import { verifyUserEmailInFirestore } from '../../services/firestoreService';
 import { User, useAuth } from '../../contexts/AuthContext';
 import { formatSlovenianDate } from '../../utils/dateUtils';
 
@@ -41,8 +42,8 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [providersStatus, setProvidersStatus] = useState<any>(null);
   const [testEmailInput, setTestEmailInput] = useState<string>('zoran.krstin@gmail.com');
-  const [isTestingBrevo, setIsTestingBrevo] = useState(false);
-  const [testBrevoResult, setTestBrevoResult] = useState<{ success: boolean; message: string; hint?: string } | null>(null);
+  const [isTestingResend, setIsTestingResend] = useState(false);
+  const [testResendResult, setTestResendResult] = useState<{ success: boolean; message: string; hint?: string } | null>(null);
 
   // Derives the latest 5 confirmation email delivery records combining server logs, local storage, and recent users
   const refreshLogs = useCallback(async () => {
@@ -90,7 +91,7 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
           const status: EmailDeliveryStatus = u.emailVerified ? 'dostavljena' : 'zavrnjena';
           const errorReason = u.emailVerified 
             ? undefined 
-            : 'Poštni strežnik ni konfiguriran (manjka BREVO_API_KEY/RESEND_API_KEY v .env) ali pa je bila povezava zavrnjena.';
+            : 'Poštni strežnik ni konfiguriran (manjka RESEND_API_KEY v .env) ali pa je bila povezava zavrnjena.';
 
           combinedMap.set(`${u.email}_user`, {
             id: `usr_log_${u.id}`,
@@ -135,19 +136,59 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
 
   // Handle Manual Direct User Activation
   const handleDirectActivate = async (email: string) => {
-    const targetUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    let targetUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    let userId = targetUser?.id;
+    let userName = targetUser?.name || email;
+
     if (!targetUser) {
+      try {
+        const stored = localStorage.getItem('portal_users');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const found = parsed.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+          if (found) {
+            targetUser = found;
+            userId = found.id;
+            userName = found.name || email;
+          }
+        }
+      } catch (e) {
+        console.warn('Error reading portal_users for direct activation:', e);
+      }
+    }
+
+    if (!userId) {
       setFeedbackMsg({ type: 'error', text: `Uporabnik ${email} ni bil najden v bazi.` });
       return;
     }
 
-    setActivatingUserId(targetUser.id);
+    setActivatingUserId(userId);
     try {
-      await updateUser(targetUser.id, {
+      await updateUser(userId, {
         emailVerified: true,
         verificationToken: undefined,
         verificationConfirmedAt: new Date().toISOString(),
       });
+
+      // Synchronize in Firestore by user document and across all documents matching email
+      await verifyUserEmailInFirestore(userId, email);
+
+      // Also ensure localStorage is directly synced immediately
+      try {
+        const storedUsers = localStorage.getItem('portal_users');
+        if (storedUsers) {
+          const parsed = JSON.parse(storedUsers);
+          const updated = parsed.map((u: any) => {
+            if (u.id === userId || (u.email && u.email.toLowerCase() === email.toLowerCase())) {
+              return { ...u, emailVerified: true, verificationToken: undefined, verificationConfirmedAt: new Date().toISOString() };
+            }
+            return u;
+          });
+          localStorage.setItem('portal_users', JSON.stringify(updated));
+        }
+      } catch (err) {
+        console.warn('Error updating portal_users in local storage:', err);
+      }
 
       // Update log state in place
       setLogs(prev => prev.map(l => {
@@ -160,7 +201,7 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
       // Also record updated state locally
       recordEmailDeliveryLog({
         recipientEmail: email,
-        recipientName: targetUser.name,
+        recipientName: userName,
         subject: 'Potrdite svoj račun na Portalko.net (Ročna aktivacija skrbnika)',
         type: 'registration_confirmation',
         status: 'dostavljena',
@@ -172,12 +213,13 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
 
       setFeedbackMsg({ 
         type: 'success', 
-        text: `Račun uporabnika ${targetUser.name} (${email}) je bil uspešno ročno aktiviran. Uporabnik se lahko prijavi!` 
+        text: `Račun uporabnika ${userName} (${email}) je bil uspešno ročno potrjen in aktiviran. Uporabnik se lahko nemudoma prijavi!` 
       });
 
       if (onUserVerified) {
-        onUserVerified(targetUser.id);
+        onUserVerified(userId);
       }
+      refreshLogs();
     } catch (err: any) {
       setFeedbackMsg({ type: 'error', text: `Napaka pri aktivaciji: ${err.message}` });
     } finally {
@@ -215,42 +257,42 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  // Test Brevo API Dispatch
-  const handleTestBrevo = async () => {
+  // Test Resend API Dispatch
+  const handleTestResend = async () => {
     if (!testEmailInput || !testEmailInput.includes('@')) {
-      setFeedbackMsg({ type: 'error', text: 'Vnesite veljaven e-poštni naslov za preizkus Brevo API.' });
+      setFeedbackMsg({ type: 'error', text: 'Vnesite veljaven e-poštni naslov za preizkus Resend API.' });
       return;
     }
-    setIsTestingBrevo(true);
-    setTestBrevoResult(null);
+    setIsTestingResend(true);
+    setTestResendResult(null);
     try {
-      const res = await fetch('/api/admin/test-brevo', {
+      const res = await fetch('/api/admin/test-resend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ testEmail: testEmailInput.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
-        setTestBrevoResult({
+        setTestResendResult({
           success: true,
-          message: data.message || `Testno sporočilo uspešno oddano prek Brevo API na ${testEmailInput}!`,
+          message: data.message || `Testno sporočilo uspešno oddano prek Resend API na ${testEmailInput}!`,
         });
         await refreshLogs();
       } else {
-        setTestBrevoResult({
+        setTestResendResult({
           success: false,
-          message: data.error || 'Preizkus Brevo API ni uspel.',
+          message: data.error || 'Preizkus Resend API ni uspel.',
           hint: data.hint,
         });
         await refreshLogs();
       }
     } catch (err: any) {
-      setTestBrevoResult({
+      setTestResendResult({
         success: false,
         message: `Napaka pri klicu strežnika: ${err.message}`,
       });
     } finally {
-      setIsTestingBrevo(false);
+      setIsTestingResend(false);
     }
   };
 
@@ -364,40 +406,45 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
         </div>
       )}
 
-      {/* Brevo API Integration & Tester Card */}
+      {/* Resend API Integration & Tester Card */}
       <div className="p-4 rounded-xl border border-primary/20 bg-primary/[0.03] flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-primary/10">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
             <span className="text-xs font-bold text-on-surface">
-              Ponudnik pošiljanja e-pošte za registracije: <span className="text-primary font-black">Brevo API</span>
+              Ponudnik pošiljanja e-pošte za registracije: <span className="text-primary font-black">Resend API</span>
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px]">
-            {providersStatus?.brevo ? (
+          <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
+            {providersStatus?.resend ? (
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                <span>BREVO_API_KEY je aktiven</span>
+                <span>RESEND_API_KEY je aktiven</span>
               </span>
             ) : (
               <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 text-amber-600" />
-                <span>BREVO_API_KEY še ni nastavljen v .env</span>
+                <span>RESEND_API_KEY še ni nastavljen v .env</span>
+              </span>
+            )}
+            {providersStatus?.brevo && (
+              <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 font-medium text-[10px]">
+                Brevo rezervni ponudnik na voljo
               </span>
             )}
           </div>
         </div>
 
         <p className="text-xs text-on-surface-variant leading-relaxed">
-          Nove registracije uporabnikov samodejno pošiljajo potrditveno e-pošto prek varnega <strong>Brevo HTTPS REST API</strong> (port 443), ki ponuja 300 brezplačnih sporočil/dan in ni podvržen SMTP blokadam gostiteljev.
-          {providersStatus?.brevoSender && (
+          Nove registracije uporabnikov samodejno pošiljajo potrditveno e-pošto prek varnega in hitrega <strong>Resend HTTPS REST API</strong> (port 443), ki zagotavlja odlično dostavljivost v poštne predale brez SMTP blokad.
+          {providersStatus?.resendSender && (
             <span className="ml-1 text-outline">
-              Pošiljatelj: <code className="px-1.5 py-0.5 rounded bg-surface-container text-[11px] font-mono">{providersStatus.brevoSender}</code>
+              Pošiljatelj: <code className="px-1.5 py-0.5 rounded bg-surface-container text-[11px] font-mono">{providersStatus.resendSender}</code>
             </span>
           )}
         </p>
 
-        {/* Interactive Brevo Test Box */}
+        {/* Interactive Resend Test Box */}
         <div className="p-3 rounded-lg bg-surface-container-low border border-surface-container flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="flex-1 flex items-center gap-2">
             <Mail className="w-3.5 h-3.5 text-outline shrink-0" />
@@ -411,34 +458,34 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
           </div>
           <button
             type="button"
-            onClick={handleTestBrevo}
-            disabled={isTestingBrevo}
+            onClick={handleTestResend}
+            disabled={isTestingResend}
             className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-on-primary font-label-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50 shrink-0"
-            title="Pošlji testno potrditveno e-pošto prek Brevo API"
+            title="Pošlji testno potrditveno e-pošto prek Resend API"
           >
-            <Send className={`w-3.5 h-3.5 ${isTestingBrevo ? 'animate-pulse' : ''}`} />
-            <span>{isTestingBrevo ? 'Pošiljanje prek Brevo...' : 'Preizkusi Brevo pošiljanje'}</span>
+            <Send className={`w-3.5 h-3.5 ${isTestingResend ? 'animate-pulse' : ''}`} />
+            <span>{isTestingResend ? 'Pošiljanje prek Resend...' : 'Preizkusi Resend pošiljanje'}</span>
           </button>
         </div>
 
         {/* Test Result Banner */}
-        {testBrevoResult && (
+        {testResendResult && (
           <div className={`p-3 rounded-lg border text-xs flex flex-col gap-1 ${
-            testBrevoResult.success
+            testResendResult.success
               ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-900 dark:text-emerald-200'
               : 'bg-rose-500/10 border-rose-500/25 text-rose-900 dark:text-rose-200'
           }`}>
             <div className="flex items-center gap-1.5 font-bold">
-              {testBrevoResult.success ? (
+              {testResendResult.success ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               ) : (
                 <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
               )}
-              <span>{testBrevoResult.message}</span>
+              <span>{testResendResult.message}</span>
             </div>
-            {testBrevoResult.hint && (
+            {testResendResult.hint && (
               <p className="text-[11px] opacity-90 pl-5">
-                <strong>Namig:</strong> {testBrevoResult.hint}
+                <strong>Namig:</strong> {testResendResult.hint}
               </p>
             )}
           </div>
@@ -646,7 +693,7 @@ export function EmailDeliveryTracker({ users, onUserVerified }: EmailDeliveryTra
             Ko pošta dobi status <strong>»Zavrnjena«</strong>, ima administrator na voljo gumb <strong>»Potrdi račun ročno«</strong> za takojšnjo aktivacijo brez čakanja.
           </p>
           <p className="leading-relaxed text-[11px] text-outline">
-            Za 100% samodejno dostavo v Gmail in Siol predale zadostuje brezplačen ključ <strong>BREVO_API_KEY</strong> (300 brezplačnih e-pošt na dan prek varnega HTTPS protokola na portu 443) ali <strong>RESEND_API_KEY</strong> v okoljskih spremenljivkah.
+            Za 100% zanesljivo dostavo v Gmail in Siol predale zadostuje ključ <strong>RESEND_API_KEY</strong> (prek varnega HTTPS REST API na portu 443 brez blokad) ali rezervni <strong>BREVO_API_KEY</strong> v okoljskih spremenljivkah.
           </p>
         </div>
       </div>

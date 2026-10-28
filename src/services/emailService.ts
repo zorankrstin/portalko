@@ -210,7 +210,7 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
           const status: EmailDeliveryStatus = isSent ? 'dostavljena' : 'zavrnjena';
           const errorReason = isSent 
             ? undefined 
-            : (data.message || (isBlocked ? 'E-poštni strežnik ni konfiguriran (manjka BREVO_API_KEY/RESEND_API_KEY/SMTP v .env) ali pa je bila povezava zavrnjena.' : 'Zavrnjeno s strani poštnega strežnika.'));
+            : (data.message || (isBlocked ? 'E-poštni strežnik ni konfiguriran (manjka RESEND_API_KEY v .env) ali pa je bila povezava zavrnjena.' : 'Zavrnjeno s strani poštnega strežnika.'));
 
           recordEmailDeliveryLog({
             recipientEmail: params.email,
@@ -218,7 +218,7 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
             subject: 'Potrdite svoj račun na Portalko.net',
             type: 'registration_confirmation',
             status,
-            provider: data.provider || (isSent ? 'smtp' : 'brez_ponudnika'),
+            provider: data.provider || (isSent ? 'resend' : 'brez_ponudnika'),
             messageId: data.messageId,
             errorReason,
             sentAt: new Date().toISOString(),
@@ -251,7 +251,7 @@ export async function sendNoreplyConfirmationEmail(params: SendVerificationEmail
       status: 'zavrnjena',
       provider: 'brez_ponudnika',
       messageId: `direct_${Date.now()}`,
-      errorReason: 'Okoljske spremenljivke ponudnika e-pošte (BREVO_API_KEY / RESEND_API_KEY / SMTP) niso nastavljene.',
+      errorReason: 'Okoljske spremenljivke ponudnika e-pošte (RESEND_API_KEY) niso nastavljene.',
       sentAt: new Date().toISOString(),
       confirmationUrl: params.confirmationUrl,
       token: params.token,

@@ -551,6 +551,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           images: allImgs,
           imageUrls: allImgs,
           embedCode: embedCode || undefined,
+          embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
           price: postType === 'deal' ? (newPrice.trim() || discount.trim() || undefined) : undefined,
           oldPrice: postType === 'deal' ? (oldPrice.trim() || undefined) : undefined,
           newPrice: postType === 'deal' ? (newPrice.trim() || undefined) : undefined,
@@ -585,6 +586,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           imageUrl: primaryImg,
           images: allImgs,
           embedCode: embedCode || undefined,
+          embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
           status: initialAdStatus,
           tags: userTags.length > 0 ? userTags : undefined,
         });
@@ -651,6 +653,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           imageUrl: primaryImg,
           images: allImgs,
           embedCode: embedCode || undefined,
+          embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
           status: initialStatus,
           isPromoted: false,
           tags: userTags.length > 0 ? userTags : undefined,

@@ -33,8 +33,15 @@ import { isDummyAvatar } from '../utils/avatarUtils';
 export function sanitizeUpdateData(data: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) {
-      if (key === 'rejectionReason' || key === 'promotion' || key === 'promotedUntil' || key === 'promotionBadgeType') {
+    if (value === undefined || (value === null && (key === 'embedCode' || key === 'embedOrientation'))) {
+      if (
+        key === 'rejectionReason' ||
+        key === 'promotion' ||
+        key === 'promotedUntil' ||
+        key === 'promotionBadgeType' ||
+        key === 'embedCode' ||
+        key === 'embedOrientation'
+      ) {
         result[key] = deleteField();
       }
       // Omit all other undefined fields so Firestore doesn't reject them
@@ -102,6 +109,7 @@ export interface FirestorePost {
   authorRole?: string;
   imageUrl?: string;
   embedCode?: string;
+  embedOrientation?: 'horizontal' | 'vertical' | 'auto';
   images?: string[];
   imageUrls?: string[];
   price?: string;
@@ -157,6 +165,7 @@ export interface FirestoreAd {
   authorAvatar?: string;
   imageUrl?: string;
   embedCode?: string;
+  embedOrientation?: 'horizontal' | 'vertical' | 'auto';
   images?: string[];
   imageUrls?: string[];
   tags?: string[];
@@ -201,6 +210,7 @@ export interface FirestoreEvent {
   authorAvatar?: string;
   imageUrl?: string;
   embedCode?: string;
+  embedOrientation?: 'horizontal' | 'vertical' | 'auto';
   images?: string[];
   imageUrls?: string[];
   tags?: string[];
@@ -437,19 +447,37 @@ export async function findUserForPasswordReset(token: string, email?: string): P
 }
 
 /**
- * Marks user's email as verified in Firestore
+ * Marks user's email as verified in Firestore across both user document ID and email queries.
  */
-export async function verifyUserEmailInFirestore(userId: string): Promise<void> {
-  const path = `users/${userId}`;
+export async function verifyUserEmailInFirestore(userId: string, email?: string): Promise<void> {
+  const path = userId ? `users/${userId}` : 'users';
+  const confirmationPayload = {
+    emailVerified: true,
+    verificationToken: null,
+    verificationConfirmedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
   try {
-    const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, {
-      emailVerified: true,
-      verificationToken: null,
-      verificationConfirmedAt: new Date().toISOString(),
-    });
+    // 1. Direct update or merge by document ID
+    if (userId) {
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, confirmationPayload, { merge: true }).catch(() => {});
+    }
+
+    // 2. Also search and update all matching documents for this email in Firestore
+    if (email) {
+      const cleanEmail = email.toLowerCase().trim();
+      const qEmail = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const snap = await getDocs(qEmail).catch(() => null);
+      if (snap && !snap.empty) {
+        for (const d of snap.docs) {
+          await setDoc(d.ref, confirmationPayload, { merge: true }).catch(() => {});
+        }
+      }
+    }
   } catch (error) {
-    console.warn(`[Firestore verifyUserEmailInFirestore] Failed to update user ${userId}:`, error);
+    console.warn(`[Firestore verifyUserEmailInFirestore] Note while confirming user ${userId} / ${email}:`, error);
   }
 }
 
@@ -698,15 +726,33 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
 
 export async function updateUserInFirestore(userId: string, data: Partial<User>, fallbackUser?: User): Promise<void> {
   const path = `users/${userId}`;
+  const cleanEmail = (data.email || fallbackUser?.email || '').toLowerCase().trim();
+
   try {
     const userRef = doc(db, 'users', userId);
-    const snap = await getDoc(userRef);
-    if (!snap.exists()) {
+    const snap = await getDoc(userRef).catch(() => null);
+
+    const updatePayload: Record<string, any> = {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (data.emailVerified === true) {
+      updatePayload.emailVerified = true;
+      updatePayload.verificationToken = null;
+      updatePayload.verificationConfirmedAt = data.verificationConfirmedAt || new Date().toISOString();
+    }
+
+    if (data.avatar !== undefined) {
+      updatePayload.avatar = (data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : '';
+    }
+
+    if (!snap || !snap.exists()) {
       const base: Partial<User> = fallbackUser || {};
       const fullDoc = {
         id: userId,
         name: data.name || base.name || 'Uporabnik',
-        email: data.email || base.email || `${userId}@portalko.net`,
+        email: data.email || base.email || (cleanEmail ? cleanEmail : `${userId}@portalko.net`),
         role: data.role || base.role || 'registered',
         status: data.status || base.status || 'active',
         avatar: (data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : ((base.avatar && !isDummyAvatar(base.avatar)) ? base.avatar : ''),
@@ -718,22 +764,28 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
         verificationRequestedAt: data.verificationRequestedAt !== undefined ? data.verificationRequestedAt : (base.verificationRequestedAt || ''),
         verificationNote: data.verificationNote !== undefined ? data.verificationNote : (base.verificationNote || ''),
         emailVerified: data.emailVerified !== undefined ? data.emailVerified : (base.emailVerified !== undefined ? base.emailVerified : false),
-        verificationToken: data.verificationToken !== undefined ? data.verificationToken : (base.verificationToken || ''),
+        verificationToken: data.emailVerified === true ? null : (data.verificationToken !== undefined ? data.verificationToken : (base.verificationToken || '')),
         verificationSentAt: data.verificationSentAt !== undefined ? data.verificationSentAt : (base.verificationSentAt || ''),
         verificationConfirmedAt: data.verificationConfirmedAt !== undefined ? data.verificationConfirmedAt : (base.verificationConfirmedAt || ''),
         createdAt: base.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await setDoc(userRef, cleanDataForFirestore(fullDoc));
+      await setDoc(userRef, cleanDataForFirestore(fullDoc), { merge: true });
     } else {
-      const updatePayload: Record<string, any> = {
-        ...data,
-        updatedAt: new Date().toISOString(),
-      };
-      if (data.avatar !== undefined) {
-        updatePayload.avatar = (data.avatar && !isDummyAvatar(data.avatar)) ? data.avatar : '';
+      await setDoc(userRef, sanitizeUpdateData(updatePayload), { merge: true });
+    }
+
+    // Also update any other Firestore document matching the same email to prevent stale overwrites
+    if (cleanEmail) {
+      const qEmail = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const snapEmail = await getDocs(qEmail).catch(() => null);
+      if (snapEmail && !snapEmail.empty) {
+        for (const d of snapEmail.docs) {
+          if (d.id !== userId) {
+            await setDoc(d.ref, sanitizeUpdateData(updatePayload), { merge: true }).catch(() => {});
+          }
+        }
       }
-      await updateDoc(userRef, sanitizeUpdateData(updatePayload));
     }
 
     if (data.avatar !== undefined) {

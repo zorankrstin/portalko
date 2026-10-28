@@ -59,6 +59,7 @@ export interface EditablePostItem {
   eventSchedule?: EventScheduleSlot[];
   ticketUrl?: string;
   embedCode?: string;
+  embedOrientation?: 'horizontal' | 'vertical' | 'auto';
   tags?: string[];
   rejectionReason?: string;
   likesCount?: number;
@@ -352,7 +353,10 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
       setTicketUrl(item.ticketUrl || '');
       setEmbedCode(item.embedCode || '');
-      setEmbedOrientation('auto');
+      const initialOrientation = (item as any).embedOrientation || 
+        (item.embedCode && (item.embedCode.includes('data-orientation="vertical"') || item.embedCode.includes('data-vertical="true"')) ? 'vertical' :
+         item.embedCode && (item.embedCode.includes('data-orientation="horizontal"') || item.embedCode.includes('data-vertical="false"')) ? 'horizontal' : 'auto');
+      setEmbedOrientation(initialOrientation);
       const rawTags = item.tags;
       const initialTagsStr = Array.isArray(rawTags) 
         ? rawTags.join(', ') 
@@ -363,6 +367,12 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       setSuccessMsg('');
     }
   }, [isOpen, item]);
+
+  const handleClearEmbed = () => {
+    setEmbedCode('');
+    setEmbedOrientation('auto');
+    setShowEmbedPreview(false);
+  };
 
   if (!isOpen || !item) return null;
 
@@ -416,6 +426,22 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     const subObj = activeCategoryObj?.subcategories?.find(s => s.id === subcategory || s.name.toLowerCase() === subcategory.toLowerCase());
     const resolvedSubName = subObj?.name || (subcategory ? subcategory : undefined);
 
+    let finalEmbedCode: string | undefined = embedCode.trim() || undefined;
+    if (finalEmbedCode && finalEmbedCode.includes('<iframe')) {
+      if (embedOrientation === 'horizontal') {
+        finalEmbedCode = finalEmbedCode
+          .replace(/data-vertical=["'][^"']*["']/gi, '')
+          .replace(/data-orientation=["'][^"']*["']/gi, '')
+          .replace(/<iframe/i, '<iframe data-orientation="horizontal" data-vertical="false"');
+      } else if (embedOrientation === 'vertical') {
+        finalEmbedCode = finalEmbedCode
+          .replace(/data-vertical=["'][^"']*["']/gi, '')
+          .replace(/data-orientation=["'][^"']*["']/gi, '')
+          .replace(/<iframe/i, '<iframe data-orientation="vertical" data-vertical="true"');
+      }
+    }
+    const finalEmbedOrientation = finalEmbedCode ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined;
+
     try {
       if (item.type === 'ad') {
         const adStatus = targetStatus === 'published' ? 'active' : targetStatus;
@@ -432,7 +458,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           price: price.trim() || 'Po dogovoru',
           location: location.trim() || 'Slovenija',
           imageUrl: imageUrl.trim() || '',
-          embedCode: embedCode.trim() || undefined,
+          embedCode: finalEmbedCode,
+          embedOrientation: finalEmbedOrientation,
           tags: parsedTags,
           status: adStatus as any,
           authorId: item.authorId,
@@ -493,7 +520,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           eventSchedule: cleanSchedules.length > 0 ? cleanSchedules : undefined,
           ticketUrl: ticketUrl.trim() || '',
           imageUrl: imageUrl.trim() || '',
-          embedCode: embedCode.trim() || undefined,
+          embedCode: finalEmbedCode,
+          embedOrientation: finalEmbedOrientation,
           tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
@@ -542,7 +570,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           dealLink: isDeal ? (dealLink.trim() || undefined) : undefined,
           location: isDeal ? location.trim() : (location.trim() || item.location || ''),
           imageUrl: imageUrl.trim() || item.imageUrl || '',
-          embedCode: embedCode.trim() || undefined,
+          embedCode: finalEmbedCode,
+          embedOrientation: finalEmbedOrientation,
           tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
@@ -1426,9 +1455,22 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                 <Share2 className="w-3.5 h-3.5 text-secondary" />
                 <span>Vdelana vsebina z družbenih omrežij ali video</span>
               </span>
-              <span className="text-[10px] bg-secondary/10 text-secondary font-medium px-2 py-0.5 rounded">
-                YouTube, Shorts, Reels, TikTok ali &lt;iframe&gt;
-              </span>
+              <div className="flex items-center gap-2">
+                {embedCode.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleClearEmbed}
+                    className="text-[11px] text-error hover:bg-error/15 font-bold flex items-center gap-1 cursor-pointer bg-error/10 px-2.5 py-0.5 rounded-md transition-colors"
+                    title="Popolnoma odstrani in izbriši vdelano vsebino (embed)"
+                  >
+                    <Trash2 className="w-3 h-3 text-error" />
+                    <span>Izbriši embed</span>
+                  </button>
+                )}
+                <span className="text-[10px] bg-secondary/10 text-secondary font-medium px-2 py-0.5 rounded">
+                  YouTube, Shorts, Reels, TikTok ali &lt;iframe&gt;
+                </span>
+              </div>
             </label>
             <textarea
               rows={2}
@@ -1472,13 +1514,24 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                       </button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowEmbedPreview(!showEmbedPreview)}
-                    className="text-xs text-secondary hover:underline font-semibold cursor-pointer shrink-0"
-                  >
-                    {showEmbedPreview ? 'Skrij predogled' : 'Pokaži predogled'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleClearEmbed}
+                      className="px-2 py-0.5 rounded-md text-[10px] font-bold text-error bg-error/10 hover:bg-error/20 transition-all flex items-center gap-1 cursor-pointer"
+                      title="Popolnoma odstrani vdelano vsebino iz te objave"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Izbriši embed</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowEmbedPreview(!showEmbedPreview)}
+                      className="text-xs text-secondary hover:underline font-semibold cursor-pointer shrink-0"
+                    >
+                      {showEmbedPreview ? 'Skrij predogled' : 'Pokaži predogled'}
+                    </button>
+                  </div>
                 </div>
 
                 {showEmbedPreview && (
