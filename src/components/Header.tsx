@@ -277,7 +277,11 @@ export function Header({
               </span>
             )}
           </button>
-          <NotificationCenter onNavigatePost={onNavigatePost} />
+
+          {/* Real-time notifications bell */}
+          <div className="relative flex items-center shrink-0" id="header-notifications-container">
+            <NotificationCenter onNavigatePost={onNavigatePost} />
+          </div>
 
           {currentUser ? (
             <div className="relative" ref={userMenuRef}>

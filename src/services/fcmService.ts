@@ -1,6 +1,6 @@
 import { getMessaging, getToken, onMessage, isSupported, Messaging } from 'firebase/messaging';
 import { app, db } from '../lib/firebase';
-import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 
 let messagingInstance: Messaging | null = null;
 let isMessagingSupportedChecked = false;
@@ -157,7 +157,8 @@ export async function sendTargetAuthorNotification(params: {
   senderId?: string;
   senderName: string;
   senderAvatar?: string;
-  type: 'comment' | 'like';
+  type: 'comment' | 'reply' | 'like' | 'interaction' | 'system' | 'deal' | 'event' | 'ad';
+  title?: string;
   postTitle?: string;
   targetId: string;
   targetType: 'post' | 'ad' | 'event' | 'deal' | 'blog' | 'news' | string;
@@ -185,19 +186,37 @@ export async function sendTargetAuthorNotification(params: {
   // Don't notify if no targetAuthorId or if user likes/comments on their own post
   if (!targetAuthorId || (senderId && senderId === targetAuthorId)) return;
 
-  const title = type === 'comment'
-    ? `💬 Nov komentar od ${senderName}`
-    : `❤️ Všeček od ${senderName}`;
-
+  let title = params.title || '';
   let body = '';
-  if (type === 'comment') {
+
+  if (!title) {
+    if (type === 'reply') {
+      title = `💬 Odgovor od ${senderName}`;
+    } else if (type === 'comment') {
+      title = `💬 Nov komentar od ${senderName}`;
+    } else if (type === 'like' || type === 'interaction') {
+      title = `❤️ Všeček od ${senderName}`;
+    } else {
+      title = `🔔 Obvestilo: ${senderName}`;
+    }
+  }
+
+  if (type === 'reply') {
+    body = postTitle
+      ? `${senderName} je odgovoril na vaš komentar pri objavi »${postTitle}«: "${commentSnippet || ''}"`
+      : `${senderName} je odgovoril na vaš komentar: "${commentSnippet || ''}"`;
+  } else if (type === 'comment') {
     body = postTitle
       ? `${senderName} je komentiral vašo objavo »${postTitle}«: "${commentSnippet || ''}"`
       : `${senderName} je komentiral vašo vsebino: "${commentSnippet || ''}"`;
-  } else {
+  } else if (type === 'like' || type === 'interaction') {
     body = postTitle
       ? `${senderName} je všečkal vašo objavo »${postTitle}«.`
       : `${senderName} je všečkal vašo vsebino na Portalko.net.`;
+  } else {
+    body = postTitle
+      ? `Aktivnost ob objavi »${postTitle}«: ${commentSnippet || ''}`
+      : `Novo obvestilo na Portalko.net.`;
   }
 
   const notificationData = {
@@ -251,21 +270,28 @@ export function listenForForegroundFcm(onMessageReceived: (payload: any) => void
 
 /**
  * Subscribes to real-time notification events in Firestore for the current logged-in user.
- * Whenever a new notification is created for them (comment or like on their post),
- * triggers a browser system notification and updates in-app notification center.
+ * Loads all notifications from Firestore and listens for newly added documents.
  */
 export function subscribeToUserNotifications(
   userId: string,
-  onNewNotification: (notif: any) => void
+  onNotificationsChanged: (notifications: any[]) => void,
+  onNewNotification?: (notif: any) => void
 ): () => void {
   if (!userId) return () => {};
 
   try {
     const notifsCol = collection(db, 'users', userId, 'notifications');
-    const q = query(notifsCol, orderBy('timestamp', 'desc'), limit(20));
+    const q = query(notifsCol, orderBy('timestamp', 'desc'), limit(50));
 
     let isInitialLoad = true;
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }));
+
+      onNotificationsChanged(items);
+
       if (isInitialLoad) {
         isInitialLoad = false;
         return;
@@ -274,7 +300,10 @@ export function subscribeToUserNotifications(
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const data = change.doc.data();
-          onNewNotification({ id: change.doc.id, ...data });
+          const notif = { id: change.doc.id, ...data };
+          if (onNewNotification) {
+            onNewNotification(notif);
+          }
 
           // Fire native browser push notification
           showBrowserNotification(data.title || 'Portalko.net Novo obvestilo', {
@@ -296,5 +325,59 @@ export function subscribeToUserNotifications(
   } catch (err) {
     console.warn('[FCM] subscribeToUserNotifications init failed:', err);
     return () => {};
+  }
+}
+
+/**
+ * Updates a notification document to read: true in Firestore
+ */
+export async function markNotificationAsReadInFirestore(userId: string, notificationId: string): Promise<void> {
+  try {
+    const notifRef = doc(db, 'users', userId, 'notifications', notificationId);
+    await updateDoc(notifRef, { read: true });
+  } catch (err) {
+    console.warn('[FCM] markNotificationAsReadInFirestore error:', err);
+  }
+}
+
+/**
+ * Marks all given notifications as read in Firestore
+ */
+export async function markAllNotificationsAsReadInFirestore(userId: string, notificationIds: string[]): Promise<void> {
+  try {
+    const batchPromises = notificationIds.map(id => {
+      const notifRef = doc(db, 'users', userId, 'notifications', id);
+      return updateDoc(notifRef, { read: true });
+    });
+    await Promise.allSettled(batchPromises);
+  } catch (err) {
+    console.warn('[FCM] markAllNotificationsAsReadInFirestore error:', err);
+  }
+}
+
+/**
+ * Deletes a single notification document from Firestore
+ */
+export async function deleteNotificationFromFirestore(userId: string, notificationId: string): Promise<void> {
+  try {
+    const notifRef = doc(db, 'users', userId, 'notifications', notificationId);
+    await deleteDoc(notifRef);
+  } catch (err) {
+    console.warn('[FCM] deleteNotificationFromFirestore error:', err);
+  }
+}
+
+/**
+ * Deletes all notifications for the user from Firestore
+ */
+export async function clearAllNotificationsFromFirestore(userId: string, notificationIds: string[]): Promise<void> {
+  try {
+    const batchPromises = notificationIds.map(id => {
+      const notifRef = doc(db, 'users', userId, 'notifications', id);
+      return deleteDoc(notifRef);
+    });
+    await Promise.allSettled(batchPromises);
+  } catch (err) {
+    console.warn('[FCM] clearAllNotificationsFromFirestore error:', err);
   }
 }

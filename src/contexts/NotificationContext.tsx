@@ -7,9 +7,15 @@ import {
   subscribeToUserNotifications,
   listenForForegroundFcm,
   isFcmSupported,
+  markNotificationAsReadInFirestore,
+  markAllNotificationsAsReadInFirestore,
+  deleteNotificationFromFirestore,
+  clearAllNotificationsFromFirestore,
+  sendTargetAuthorNotification,
 } from '../services/fcmService';
+import { formatRelativeTime } from '../utils/dateUtils';
 
-export type NotificationType = 'comment' | 'interaction' | 'system' | 'like' | 'deal' | 'event' | 'ad';
+export type NotificationType = 'comment' | 'reply' | 'interaction' | 'system' | 'like' | 'deal' | 'event' | 'ad';
 
 export interface AppNotification {
   id: string;
@@ -140,36 +146,70 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Real-time Firestore subscription for notifications directed to currentUser
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!currentUser?.id) {
+      // Load saved notifications or fallback defaults for guests
+      try {
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved) {
+          setNotifications(JSON.parse(saved));
+        } else {
+          setNotifications(INITIAL_NOTIFICATIONS);
+        }
+      } catch {
+        setNotifications(INITIAL_NOTIFICATIONS);
+      }
+      return;
+    }
 
-    const unsubscribe = subscribeToUserNotifications(currentUser.id, (newNotif) => {
-      // Add incoming real-time notification to local list if not already present
-      setNotifications(prev => {
-        if (prev.some(n => n.id === newNotif.id)) return prev;
-        const mapped: AppNotification = {
-          id: newNotif.id || `notif-${Date.now()}`,
-          type: newNotif.type || 'interaction',
-          title: newNotif.title || 'Novo obvestilo',
-          description: newNotif.body || 'Imate novo interakcijo.',
-          time: 'Pravkar',
-          timestamp: newNotif.timestamp || Date.now(),
-          read: false,
-          target: newNotif.targetId ? {
-            type: newNotif.targetType || 'post',
-            id: newNotif.targetId,
-          } : undefined,
-          authorName: newNotif.senderName,
-          authorAvatar: newNotif.senderAvatar,
-        };
-        return [mapped, ...prev];
-      });
-      playNotificationSound();
-    });
+    const unsubscribe = subscribeToUserNotifications(
+      currentUser.id,
+      (firestoreNotifs) => {
+        // Map firestore notifications to AppNotification
+        const mappedList: AppNotification[] = firestoreNotifs.map((item: any) => {
+          const rawTime = item.timestamp || (item.createdAt ? new Date(item.createdAt).getTime() : Date.now());
+          return {
+            id: item.id || `notif-${Date.now()}`,
+            type: (item.type || 'comment') as NotificationType,
+            title: item.title || 'Novo obvestilo',
+            description: item.body || item.description || '',
+            time: formatRelativeTime(rawTime),
+            timestamp: rawTime,
+            read: Boolean(item.read),
+            target: item.targetId ? {
+              type: item.targetType || 'post',
+              id: item.targetId,
+            } : undefined,
+            authorName: item.senderName,
+            authorAvatar: item.senderAvatar,
+          };
+        });
+
+        if (mappedList.length > 0) {
+          setNotifications(mappedList);
+        } else {
+          // If no notifications yet, keep welcome message
+          setNotifications([
+            {
+              id: 'notif-welcome',
+              type: 'system',
+              title: `Dobrodošli, ${currentUser.name}!`,
+              description: 'Tukaj boste v realnem času prejemali obvestila, ko nekdo odgovori na vašo objavo ali komentar.',
+              time: 'Pravkar',
+              timestamp: Date.now(),
+              read: false,
+            }
+          ]);
+        }
+      },
+      (newNotif) => {
+        playNotificationSound();
+      }
+    );
 
     return () => {
       unsubscribe();
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.name]);
 
   // Listen for FCM foreground messages
   useEffect(() => {
@@ -226,6 +266,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications(prev => [newNotif, ...prev]);
     playNotificationSound();
 
+    // If logged in, also persist to user's Firestore notifications
+    if (currentUser?.id) {
+      sendTargetAuthorNotification({
+        targetAuthorId: currentUser.id,
+        senderId: 'system',
+        senderName: 'Portalko.net',
+        type: notif.type,
+        title: notif.title,
+        postTitle: '',
+        targetId: notif.target?.id || '',
+        targetType: notif.target?.type || 'post',
+        commentSnippet: notif.description,
+      }).catch(() => {});
+    }
+
     // Trigger browser native push if granted
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       showBrowserNotification(newNotif.title, {
@@ -241,7 +296,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setPushPermission(res.permission);
       if (res.permission === 'granted') {
         showBrowserNotification('🎉 Obvestila Portalko.net so vklopljena!', {
-          body: 'Prejemali boste takojšnja obvestila v brskalniku ob novih komentarjih in všečkih.',
+          body: 'Prejemali boste takojšnja obvestila v brskalniku ob novih komentarjih in odgovorih.',
         });
         return true;
       }
@@ -254,18 +309,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    if (currentUser?.id) {
+      markNotificationAsReadInFirestore(currentUser.id, id).catch(() => {});
+    }
   };
 
   const markAllAsRead = () => {
+    const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    if (currentUser?.id && unreadIds.length > 0) {
+      markAllNotificationsAsReadInFirestore(currentUser.id, unreadIds).catch(() => {});
+    }
   };
 
   const clearNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
+    if (currentUser?.id) {
+      deleteNotificationFromFirestore(currentUser.id, id).catch(() => {});
+    }
   };
 
   const clearAll = () => {
+    const allIds = notifications.map(n => n.id);
     setNotifications([]);
+    if (currentUser?.id && allIds.length > 0) {
+      clearAllNotificationsFromFirestore(currentUser.id, allIds).catch(() => {});
+    }
   };
 
   return (

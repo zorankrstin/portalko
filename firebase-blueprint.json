@@ -250,6 +250,28 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "adminName", "actionType", "category", "details", "createdAt"]
+    },
+    "Notification": {
+      "title": "User Notification",
+      "description": "Real-time notification for post and comment replies, comments, and likes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderAvatar": { "type": "string", "maxLength": 500000 },
+        "type": { "type": "string", "enum": ["comment", "reply", "like", "interaction", "system", "deal", "event", "ad"] },
+        "title": { "type": "string", "maxLength": 200 },
+        "body": { "type": "string", "maxLength": 1000 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "maxLength": 50 },
+        "postTitle": { "type": "string", "maxLength": 200 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["userId", "type", "title", "body"]
     }
   },
   "firestore": {
@@ -288,6 +310,10 @@
     "/users/{userId}/reactions/{reactionId}": {
       "schema": "Reaction",
       "description": "User specific reactions (like, love, dislike) on posts, ads, events and blog"
+    },
+    "/users/{userId}/notifications/{notifId}": {
+      "schema": "Notification",
+      "description": "User specific real-time notifications for post and comment replies, comments, and likes"
     },
     "/comments/{commentId}": {
       "schema": "Comment",

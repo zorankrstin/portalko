@@ -20,6 +20,7 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
   const { 
     notifications, 
     unreadCount, 
+    addNotification,
     markAsRead, 
     markAllAsRead, 
     clearNotification, 
@@ -49,9 +50,22 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
     }
   };
 
+  const handleTriggerTest = () => {
+    addNotification({
+      type: 'reply',
+      title: '💬 Odgovor na vaš komentar',
+      description: 'Uporabnik Maja K. je pravkar odgovoril na vaš komentar pri objavi.',
+      target: {
+        type: 'post',
+        id: 'test-reply-target',
+      },
+      authorName: 'Maja K.',
+    });
+  };
+
   const filteredNotifications = notifications.filter(n => {
     if (activeFilter === 'all') return true;
-    if (activeFilter === 'comment') return n.type === 'comment';
+    if (activeFilter === 'comment') return n.type === 'comment' || n.type === 'reply';
     if (activeFilter === 'post') return ['deal', 'event', 'ad', 'like', 'interaction'].includes(n.type);
     if (activeFilter === 'system') return n.type === 'system';
     return true;
@@ -60,6 +74,7 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
   const getIcon = (type: NotificationType) => {
     switch (type) {
       case 'comment':
+      case 'reply':
         return <MessageSquare className="w-4 h-4 text-secondary" />;
       case 'deal':
         return <Tag className="w-4 h-4 text-primary" />;
@@ -87,19 +102,21 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
   return (
     <div className="relative" ref={dropdownRef}>
       <button 
+        id="header-notification-bell"
         onClick={() => setIsOpen(!isOpen)}
-        className={`relative p-1.5 sm:p-2 rounded-xl transition-colors cursor-pointer ${
+        className={`relative p-1.5 sm:p-2 rounded-xl transition-all cursor-pointer ${
           isOpen 
-            ? 'bg-surface-container-high text-on-surface' 
+            ? 'bg-primary/10 text-primary ring-2 ring-primary/20' 
             : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
         }`} 
         type="button"
-        title="Center obvestil (komentarji, interakcije, sistem)"
+        title="Obvestila v realnem času (odgovori na objave in komentarje)"
         aria-label="Center obvestil"
+        aria-expanded={isOpen}
       >
-        <Bell className={`w-4.5 h-4.5 sm:w-5 sm:h-5 ${unreadCount > 0 ? 'animate-pulse' : ''}`} />
+        <Bell className={`w-4.5 h-4.5 sm:w-5 sm:h-5 transition-transform duration-200 ${unreadCount > 0 ? 'text-primary animate-pulse' : ''}`} />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 flex items-center justify-center min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] px-1 rounded-full bg-error text-white text-[9px] sm:text-[10px] font-extrabold border-2 border-surface-container-lowest animate-pulse">
+          <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 flex items-center justify-center min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] px-1 rounded-full bg-error text-white text-[9px] sm:text-[10px] font-black border-2 border-surface-container-lowest shadow-xs animate-bounce">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -118,7 +135,16 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={handleTriggerTest}
+                className="flex items-center gap-1 text-[11px] font-semibold text-outline hover:text-primary transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-surface-container"
+                title="Sproži preizkusno obvestilo o odgovoru v realnem času"
+              >
+                <Sparkles className="w-3 h-3 text-amber-500" />
+                <span className="hidden xs:inline">Preizkusi</span>
+              </button>
               {unreadCount > 0 && (
                 <button 
                   onClick={markAllAsRead}
@@ -188,7 +214,7 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
               }`}
             >
               <div className="w-1.5 h-1.5 rounded-full bg-secondary"></div>
-              Komentarji ({notifications.filter(n => n.type === 'comment').length})
+              Komentarji in odgovori ({notifications.filter(n => n.type === 'comment' || n.type === 'reply').length})
             </button>
             <button
               onClick={() => setActiveFilter('post')}

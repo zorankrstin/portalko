@@ -344,23 +344,63 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
         // ignore
       }
 
+      // Save replyTo reference before resetting state
+      const currentReplyTarget = replyTo;
       setNewCommentText('');
       setReplyTo(null);
       setFeedbackMsg({ text: 'Komentar je bil uspešno objavljen!', type: 'success' });
       setTimeout(() => setFeedbackMsg(null), 3500);
 
-      if (!targetAuthorId || !currentUser?.id || currentUser.id !== targetAuthorId) {
-        sendTargetAuthorNotification({
-          targetAuthorId,
-          senderId: currentUser?.id,
-          senderName: authorName,
-          senderAvatar: authorAvatar,
-          type: 'comment',
-          postTitle: targetTitle,
-          targetId,
-          targetType,
-          commentSnippet: cleanContent.slice(0, 100),
-        }).catch((e) => console.warn('[FCM comment notify error]:', e));
+      // 1. Notify the author of the comment being replied to
+      if (currentReplyTarget) {
+        const repliedUser = currentReplyTarget.authorId 
+          ? users.find(u => u.id === currentReplyTarget.authorId)
+          : users.find(u => u.name.toLowerCase() === currentReplyTarget.authorName.toLowerCase());
+        const repliedAuthorId = currentReplyTarget.authorId || repliedUser?.id;
+
+        if (repliedAuthorId && (!currentUser?.id || currentUser.id !== repliedAuthorId)) {
+          sendTargetAuthorNotification({
+            targetAuthorId: repliedAuthorId,
+            senderId: currentUser?.id,
+            senderName: authorName,
+            senderAvatar: authorAvatar,
+            type: 'reply',
+            postTitle: targetTitle,
+            targetId,
+            targetType,
+            commentSnippet: cleanContent.slice(0, 120),
+          }).catch((e) => console.warn('[FCM reply notify error]:', e));
+        }
+
+        // 2. Also notify the post author if they are different from the replied author
+        if ((!targetAuthorId || targetAuthorId !== repliedAuthorId) && (!currentUser?.id || currentUser.id !== targetAuthorId)) {
+          sendTargetAuthorNotification({
+            targetAuthorId,
+            senderId: currentUser?.id,
+            senderName: authorName,
+            senderAvatar: authorAvatar,
+            type: 'comment',
+            postTitle: targetTitle,
+            targetId,
+            targetType,
+            commentSnippet: cleanContent.slice(0, 120),
+          }).catch((e) => console.warn('[FCM post author comment notify error]:', e));
+        }
+      } else {
+        // Direct comment on post - notify the author of the post
+        if (!targetAuthorId || !currentUser?.id || currentUser.id !== targetAuthorId) {
+          sendTargetAuthorNotification({
+            targetAuthorId,
+            senderId: currentUser?.id,
+            senderName: authorName,
+            senderAvatar: authorAvatar,
+            type: 'comment',
+            postTitle: targetTitle,
+            targetId,
+            targetType,
+            commentSnippet: cleanContent.slice(0, 120),
+          }).catch((e) => console.warn('[FCM post comment notify error]:', e));
+        }
       }
     } catch (err: any) {
       console.error('Error adding comment to Firestore:', err);
