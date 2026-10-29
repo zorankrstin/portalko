@@ -119,7 +119,7 @@ export function AdSense({
     return (
       <div 
         ref={containerRef} 
-        className={`adsense-container my-3 ${className}`}
+        className={`adsense-container w-full ${className}`}
         style={style}
       >
         <div className="w-full py-3.5 px-4 rounded-2xl bg-surface-container-low/60 border border-dashed border-surface-container-high hover:border-primary/40 transition-colors flex flex-col items-center justify-center text-center gap-1">
@@ -140,7 +140,7 @@ export function AdSense({
   return (
     <div 
       ref={containerRef} 
-      className={`adsense-container my-3 overflow-hidden ${className}`}
+      className={`adsense-container w-full overflow-hidden ${className}`}
       style={style}
     >
       <ins

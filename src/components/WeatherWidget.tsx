@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Cloud, 
   Sun, 
@@ -262,9 +262,24 @@ export function WeatherWidget() {
     }
   }, []);
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     fetchLiveWeather(selectedCity);
   }, [selectedCity, fetchLiveWeather]);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isDropdownOpen]);
 
   const handleSelectCity = (cityName: string) => {
     setSelectedCityName(cityName);
@@ -280,14 +295,14 @@ export function WeatherWidget() {
     : generateFallbackWeather(selectedCity).forecast;
 
   return (
-    <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-surface-container/50 flex flex-col gap-3 relative overflow-hidden transition-all duration-200">
+    <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-surface-container/50 flex flex-col gap-3 relative transition-all duration-200">
       {/* Background soft ambient gradient */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full blur-2xl pointer-events-none" />
+      <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full blur-2xl pointer-events-none overflow-hidden" />
 
       {/* Header Row: City Selector Dropdown & Refresh Button */}
       <div className="flex items-center justify-between pb-2 border-b border-surface-container-low gap-2 relative z-20">
         {/* City selection trigger */}
-        <div className="relative">
+        <div className="relative" ref={dropdownRef}>
           <button
             type="button"
             onClick={() => setIsDropdownOpen(prev => !prev)}
@@ -302,7 +317,7 @@ export function WeatherWidget() {
           {/* Dropdown Menu */}
           {isDropdownOpen && (
             <div 
-              className="absolute left-0 top-full mt-1.5 w-48 bg-surface-container-lowest rounded-xl shadow-lg border border-surface-container/70 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto no-scrollbar"
+              className="absolute left-0 top-full mt-1.5 w-52 bg-surface-container-lowest rounded-xl shadow-xl border border-surface-container py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto no-scrollbar"
             >
               <div className="px-3 py-1 text-[10px] uppercase font-bold tracking-wider text-outline border-b border-surface-container-low">
                 Slovenska mesta
@@ -325,7 +340,7 @@ export function WeatherWidget() {
         </div>
 
         {/* Refresh & live indicator */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <span className="font-label-caps text-[10px] text-outline uppercase font-semibold">
             {weatherData.updatedAt}
           </span>
@@ -342,53 +357,56 @@ export function WeatherWidget() {
       </div>
 
       {/* Main Temp & Description Hero */}
-      <div className="flex items-center justify-between gap-3 pt-0.5">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-surface-container-low border border-surface-container/60 shrink-0">
+      <div className="flex items-center justify-between gap-2.5 pt-0.5">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="p-2 sm:p-2.5 rounded-2xl bg-surface-container-low border border-surface-container/60 shrink-0">
             {weatherInfo.icon}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-1">
-              <span className="font-headline-lg text-3xl font-black text-on-surface tracking-tight">
+              <span className="font-headline-lg text-2xl sm:text-3xl font-black text-on-surface tracking-tight">
                 {weatherData.currentTemp}°
               </span>
               <span className="text-xs text-outline font-semibold">C</span>
             </div>
-            <p className="font-label-md text-xs font-semibold text-on-surface-variant leading-tight">
+            <p 
+              className="font-label-md text-xs font-semibold text-on-surface-variant leading-tight truncate"
+              title={weatherInfo.description}
+            >
               {weatherInfo.description}
             </p>
           </div>
         </div>
 
         {/* Humidity & Wind details */}
-        <div className="flex flex-col gap-1 text-[11px] text-on-surface-variant font-medium text-right shrink-0">
-          <div className="flex items-center justify-end gap-1.5">
-            <Droplets className="w-3.5 h-3.5 text-sky-500" />
+        <div className="flex flex-col gap-1 text-[11px] text-on-surface-variant font-medium text-right shrink-0 pl-1 border-l border-surface-container-low/70">
+          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+            <Droplets className="w-3.5 h-3.5 text-sky-500 shrink-0" />
             <span>{weatherData.humidity} % vlaga</span>
           </div>
-          <div className="flex items-center justify-end gap-1.5">
-            <Wind className="w-3.5 h-3.5 text-teal-500" />
+          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+            <Wind className="w-3.5 h-3.5 text-teal-500 shrink-0" />
             <span>{weatherData.windSpeed} km/h</span>
           </div>
         </div>
       </div>
 
       {/* 3-Day Mini Forecast */}
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-surface-container-low">
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-2 border-t border-surface-container-low">
         {safeForecast.map((fc, i) => {
           const info = getWeatherInfo(fc.weatherCode);
           return (
             <div 
               key={fc.date || i}
-              className="flex flex-col items-center justify-center p-2 rounded-xl bg-surface-container-low/60 border border-surface-container/40 text-center gap-1"
+              className="flex flex-col items-center justify-center p-2 rounded-xl bg-surface-container-low/60 border border-surface-container/40 text-center gap-1 min-w-0"
             >
-              <span className="text-[11px] font-bold text-on-surface">
+              <span className="text-[11px] font-bold text-on-surface truncate w-full">
                 {fc.dayLabel}
               </span>
               <div className="my-0.5 scale-90">
                 {info.icon}
               </div>
-              <div className="flex items-center gap-1 text-[11px]">
+              <div className="flex items-center justify-center gap-1 text-[11px]">
                 <span className="font-bold text-on-surface">{fc.tempMax}°</span>
                 <span className="text-outline text-[10px]">{fc.tempMin}°</span>
               </div>

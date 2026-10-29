@@ -95,6 +95,8 @@ export interface User {
   createdAt?: string;
   passwordResetToken?: string;
   passwordResetSentAt?: string;
+  firstLogin?: boolean;
+  welcomeNotificationSent?: boolean;
 }
 
 export const DEFAULT_USERS: User[] = [
@@ -369,7 +371,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             avatar: resolvedUploadedAvatar,
             authProvider: 'google',
             googleId: fbUser.uid,
+            firstLogin: !isSuper,
+            welcomeNotificationSent: isSuper,
           };
+          if (!isSuper) {
+            try {
+              localStorage.setItem(`portalko_new_user_${activeProfile.id}`, 'true');
+            } catch {}
+          }
           setCurrentUser(activeProfile);
           localStorage.setItem('portal_current_user_id', activeProfile.id);
           syncUserProfile(activeProfile).catch(console.error);
@@ -591,7 +600,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verificationToken,
       verificationSentAt: isAutoVerified ? undefined : new Date().toISOString(),
       createdAt: new Date().toISOString(),
+      firstLogin: true,
+      welcomeNotificationSent: false,
     };
+
+    try {
+      localStorage.setItem(`portalko_new_user_${newUser.id}`, 'true');
+    } catch {}
 
     const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);

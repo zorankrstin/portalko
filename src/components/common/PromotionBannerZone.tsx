@@ -90,7 +90,7 @@ export function PromotionBannerZone({
 
   return (
     <div
-      className={`promotion-banner-zone flex flex-col gap-3.5 my-2 w-full ${className}`}
+      className={`promotion-banner-zone flex flex-col gap-3.5 w-full ${className}`}
       data-zone-position={position}
     >
       {activeBanners.map((banner) => {

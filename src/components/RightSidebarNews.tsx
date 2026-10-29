@@ -24,10 +24,7 @@ export function RightSidebarNews({ onNavigatePost }: RightSidebarNewsProps = {})
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex w-full lg:w-[336px] xl:w-[340px] flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
-      <PromotionBannerZone position="right_sidebar" />
-      <AdSense />
-      
-      {/* VREME WIDGET */}
+      {/* VREME WIDGET - Top prominent utility */}
       <WeatherWidget />
 
       {/* VODILNI MEDIJSKI VIRI */}
@@ -56,6 +53,12 @@ export function RightSidebarNews({ onNavigatePost }: RightSidebarNewsProps = {})
         </div>
       </div>
       
+      {/* Promocijska pasica */}
+      <PromotionBannerZone position="right_sidebar" />
+
+      {/* Oglasni prostor */}
+      <AdSense />
+
       {/* IMENIK PRILJUBLJENIH POVEZAV */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">
         <div className="flex items-center justify-between pb-1 border-b border-surface-container-low">

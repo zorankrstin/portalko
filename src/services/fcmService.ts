@@ -1,6 +1,6 @@
 import { getMessaging, getToken, onMessage, isSupported, Messaging } from 'firebase/messaging';
 import { app, db } from '../lib/firebase';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, addDoc, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 
 let messagingInstance: Messaging | null = null;
 let isMessagingSupportedChecked = false;
@@ -216,7 +216,7 @@ export async function sendTargetAuthorNotification(params: {
   } else {
     body = postTitle
       ? `Aktivnost ob objavi »${postTitle}«: ${commentSnippet || ''}`
-      : `Novo obvestilo na Portalko.net.`;
+      : (commentSnippet || `Novo obvestilo na Portalko.net.`);
   }
 
   const notificationData = {
@@ -381,3 +381,42 @@ export async function clearAllNotificationsFromFirestore(userId: string, notific
     console.warn('[FCM] clearAllNotificationsFromFirestore error:', err);
   }
 }
+
+/**
+ * Sends a persistent welcome notification to a new user's Firestore subcollection.
+ * Can only be written once per user account.
+ */
+export async function sendWelcomeNotificationForNewUser(user: { id: string; name: string }): Promise<void> {
+  if (!user?.id) return;
+  try {
+    const notifsCol = collection(db, 'users', user.id, 'notifications');
+    // Ensure we don't duplicate: check if a welcome notification already exists
+    const q = query(notifsCol, limit(20));
+    const snap = await getDocs(q);
+    const alreadyHasWelcome = snap.docs.some(d => {
+      const data = d.data();
+      return data.type === 'system' && (data.title?.includes('Dobrodošli') || data.isWelcome);
+    });
+    if (alreadyHasWelcome) return;
+
+    await addDoc(notifsCol, {
+      userId: user.id,
+      senderId: 'system',
+      senderName: 'Portalko.net',
+      senderAvatar: '',
+      type: 'system',
+      title: `Dobrodošli, ${user.name}!`,
+      body: 'Tukaj boste v realnem času prejemali obvestila, ko nekdo odgovori na vašo objavo ali komentar.',
+      targetId: '',
+      targetType: 'system',
+      postTitle: '',
+      isWelcome: true,
+      read: false,
+      createdAt: new Date().toISOString(),
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.warn('[FCM] sendWelcomeNotificationForNewUser error:', err);
+  }
+}
+

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bell, Heart, Calendar, MessageSquare, Tag, Check, Bookmark, 
   Sparkles, CheckCheck, Trash2, ChevronRight, Info, ShieldCheck, X 
@@ -15,6 +16,7 @@ interface NotificationCenterProps {
 export function NotificationCenter({ onNavigatePost, onViewChange }: NotificationCenterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'comment' | 'post' | 'system'>('all');
+  const [isRinging, setIsRinging] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { 
@@ -30,6 +32,28 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
     enablePushNotifications,
   } = useNotifications();
   const [isEnablingPush, setIsEnablingPush] = useState(false);
+
+  const prevCountRef = useRef(unreadCount);
+  const prevLatestTimestampRef = useRef<number>(notifications[0]?.timestamp || 0);
+
+  // Detect when a new real-time notification arrives and trigger the bell shake & pulse animation
+  useEffect(() => {
+    const currentLatest = notifications[0]?.timestamp || 0;
+    const isNewNotification = 
+      (unreadCount > prevCountRef.current && prevCountRef.current !== undefined) ||
+      (currentLatest > prevLatestTimestampRef.current && prevLatestTimestampRef.current !== 0);
+
+    if (isNewNotification) {
+      setIsRinging(true);
+      const timer = setTimeout(() => {
+        setIsRinging(false);
+      }, 1800);
+      return () => clearTimeout(timer);
+    }
+
+    prevCountRef.current = unreadCount;
+    prevLatestTimestampRef.current = currentLatest;
+  }, [unreadCount, notifications]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -51,6 +75,8 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
   };
 
   const handleTriggerTest = () => {
+    setIsRinging(true);
+    setTimeout(() => setIsRinging(false), 1800);
     addNotification({
       type: 'reply',
       title: '💬 Odgovor na vaš komentar',
@@ -101,10 +127,11 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button 
+      <motion.button 
         id="header-notification-bell"
         onClick={() => setIsOpen(!isOpen)}
-        className={`relative p-1.5 sm:p-2 rounded-xl transition-all cursor-pointer ${
+        whileTap={{ scale: 0.92 }}
+        className={`relative p-1.5 sm:p-2 rounded-xl transition-colors cursor-pointer select-none ${
           isOpen 
             ? 'bg-primary/10 text-primary ring-2 ring-primary/20' 
             : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
@@ -114,16 +141,83 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
         aria-label="Center obvestil"
         aria-expanded={isOpen}
       >
-        <Bell className={`w-4.5 h-4.5 sm:w-5 sm:h-5 transition-transform duration-200 ${unreadCount > 0 ? 'text-primary animate-pulse' : ''}`} />
-        {unreadCount > 0 && (
-          <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 flex items-center justify-center min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] px-1 rounded-full bg-error text-white text-[9px] sm:text-[10px] font-black border-2 border-surface-container-lowest shadow-xs animate-bounce">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
-      </button>
+        {/* Subtle radial expanding wave/pulse on new notification */}
+        <AnimatePresence>
+          {isRinging && (
+            <motion.span
+              key="bell-pulse-wave"
+              initial={{ scale: 0.8, opacity: 0.85 }}
+              animate={{ scale: [0.8, 1.7, 2.2], opacity: [0.85, 0.35, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.1, ease: "easeOut", repeat: 1 }}
+              className="absolute inset-0 rounded-xl bg-primary/30 pointer-events-none"
+            />
+          )}
+        </AnimatePresence>
 
-      {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-1rem)] max-w-[340px] sm:w-[410px] bg-surface-container-lowest rounded-2xl shadow-2xl border border-surface-container/80 flex flex-col z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Framer motion animated bell icon: shakes & pulses on new real-time alert */}
+        <motion.div
+          animate={
+            isRinging
+              ? {
+                  rotate: [0, -20, 20, -15, 15, -9, 9, -4, 4, 0],
+                  scale: [1, 1.25, 1.25, 1.16, 1.16, 1.08, 1.08, 1, 1, 1],
+                  color: ['#6366f1', '#4f46e5', '#7c3aed', '#4f46e5'],
+                }
+              : unreadCount > 0
+              ? {
+                  rotate: [0, -4, 4, -2, 2, 0],
+                  scale: [1, 1.06, 1],
+                }
+              : { rotate: 0, scale: 1 }
+          }
+          transition={
+            isRinging
+              ? {
+                  duration: 1.2,
+                  ease: "easeInOut",
+                }
+              : unreadCount > 0
+              ? {
+                  duration: 2.8,
+                  repeat: Infinity,
+                  repeatDelay: 3.5,
+                  ease: "easeInOut",
+                }
+              : { duration: 0.2 }
+          }
+          style={{ transformOrigin: 'top center' }}
+          className="flex items-center justify-center"
+        >
+          <Bell className={`w-4.5 h-4.5 sm:w-5 sm:h-5 transition-colors ${unreadCount > 0 ? 'text-primary' : ''}`} />
+        </motion.div>
+
+        {/* Animated unread count badge */}
+        <AnimatePresence>
+          {unreadCount > 0 && (
+            <motion.span
+              key="unread-count-badge"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 500, damping: 22 }}
+              className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 flex items-center justify-center min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] px-1 rounded-full bg-error text-white text-[9px] sm:text-[10px] font-black border-2 border-surface-container-lowest shadow-xs"
+            >
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </motion.button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -6 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            className="absolute right-0 top-full mt-2 w-[calc(100vw-1rem)] max-w-[340px] sm:w-[410px] bg-surface-container-lowest rounded-2xl shadow-2xl border border-surface-container/80 flex flex-col z-50 overflow-hidden"
+          >
           {/* Header */}
           <div className="flex items-center justify-between p-3.5 border-b border-surface-container-low bg-surface-container/30">
             <div className="flex items-center gap-2">
@@ -312,8 +406,9 @@ export function NotificationCenter({ onNavigatePost, onViewChange }: Notificatio
               Vse objave
             </button>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

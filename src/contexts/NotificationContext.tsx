@@ -12,6 +12,7 @@ import {
   deleteNotificationFromFirestore,
   clearAllNotificationsFromFirestore,
   sendTargetAuthorNotification,
+  sendWelcomeNotificationForNewUser,
 } from '../services/fcmService';
 import { formatRelativeTime } from '../utils/dateUtils';
 
@@ -104,12 +105,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed: AppNotification[] = JSON.parse(saved);
+        return parsed.filter(n => n.id !== 'notif-welcome');
       }
     } catch {
       // ignore
     }
-    return INITIAL_NOTIFICATIONS;
+    return [];
   });
 
   const [isPushSupported, setIsPushSupported] = useState(false);
@@ -128,10 +130,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Save in localStorage on change
+  // Save in localStorage on change (filtering out any phantom welcome items)
   useEffect(() => {
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(notifications));
+      const sanitized = notifications.filter(n => n.id !== 'notif-welcome');
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(sanitized));
     } catch {
       // ignore
     }
@@ -147,61 +150,72 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Real-time Firestore subscription for notifications directed to currentUser
   useEffect(() => {
     if (!currentUser?.id) {
-      // Load saved notifications or fallback defaults for guests
+      // Load saved notifications for guests
       try {
         const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (saved) {
-          setNotifications(JSON.parse(saved));
+          const parsed: AppNotification[] = JSON.parse(saved);
+          setNotifications(parsed.filter(n => n.id !== 'notif-welcome'));
         } else {
-          setNotifications(INITIAL_NOTIFICATIONS);
+          setNotifications([]);
         }
       } catch {
-        setNotifications(INITIAL_NOTIFICATIONS);
+        setNotifications([]);
       }
       return;
+    }
+
+    // One-time welcome notification dispatch: ONLY for newly registered users upon their first login
+    const welcomeKey = `portalko_welcome_notif_sent_${currentUser.id}`;
+    const isNewUserFlag = 
+      (typeof window !== 'undefined' && localStorage.getItem(`portalko_new_user_${currentUser.id}`) === 'true') ||
+      currentUser.firstLogin === true;
+
+    if (isNewUserFlag && typeof window !== 'undefined' && localStorage.getItem(welcomeKey) !== 'true') {
+      localStorage.setItem(welcomeKey, 'true');
+      try {
+        localStorage.removeItem(`portalko_new_user_${currentUser.id}`);
+      } catch {}
+      sendWelcomeNotificationForNewUser({
+        id: currentUser.id,
+        name: currentUser.name,
+      }).catch((e) => console.warn('sendWelcomeNotificationForNewUser failed:', e));
+    } else {
+      // Existing user: mark welcomeKey so they are never treated as new users
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(welcomeKey, 'true');
+      }
     }
 
     const unsubscribe = subscribeToUserNotifications(
       currentUser.id,
       (firestoreNotifs) => {
         // Map firestore notifications to AppNotification
-        const mappedList: AppNotification[] = firestoreNotifs.map((item: any) => {
-          const rawTime = item.timestamp || (item.createdAt ? new Date(item.createdAt).getTime() : Date.now());
-          return {
-            id: item.id || `notif-${Date.now()}`,
-            type: (item.type || 'comment') as NotificationType,
-            title: item.title || 'Novo obvestilo',
-            description: item.body || item.description || '',
-            time: formatRelativeTime(rawTime),
-            timestamp: rawTime,
-            read: Boolean(item.read),
-            target: item.targetId ? {
-              type: item.targetType || 'post',
-              id: item.targetId,
-            } : undefined,
-            authorName: item.senderName,
-            authorAvatar: item.senderAvatar,
-          };
-        });
+        const mappedList: AppNotification[] = firestoreNotifs
+          .filter((item: any) => item.id !== 'notif-welcome')
+          .map((item: any) => {
+            const rawTime = item.timestamp || (item.createdAt ? new Date(item.createdAt).getTime() : Date.now());
+            return {
+              id: item.id || `notif-${Date.now()}`,
+              type: (item.type || 'comment') as NotificationType,
+              title: item.title || 'Novo obvestilo',
+              description: item.body || item.description || '',
+              time: formatRelativeTime(rawTime),
+              timestamp: rawTime,
+              read: Boolean(item.read),
+              target: item.targetId ? {
+                type: item.targetType || 'post',
+                id: item.targetId,
+              } : undefined,
+              authorName: item.senderName,
+              authorAvatar: item.senderAvatar,
+            };
+          });
 
-        if (mappedList.length > 0) {
-          setNotifications(mappedList);
-        } else {
-          // If no notifications yet, keep welcome message
-          setNotifications([
-            {
-              id: 'notif-welcome',
-              type: 'system',
-              title: `Dobrodošli, ${currentUser.name}!`,
-              description: 'Tukaj boste v realnem času prejemali obvestila, ko nekdo odgovori na vašo objavo ali komentar.',
-              time: 'Pravkar',
-              timestamp: Date.now(),
-              read: false,
-            }
-          ]);
-        }
+        // Set notifications directly from Firestore. When empty, stays empty (never re-injects hardcoded welcome)
+        setNotifications(mappedList);
       },
-      (newNotif) => {
+      (_newNotif) => {
         playNotificationSound();
       }
     );
@@ -209,7 +223,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => {
       unsubscribe();
     };
-  }, [currentUser?.id, currentUser?.name]);
+  }, [currentUser?.id, currentUser?.name, currentUser?.firstLogin]);
 
   // Listen for FCM foreground messages
   useEffect(() => {
@@ -309,13 +323,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    if (currentUser?.id) {
+    if (currentUser?.id && id !== 'notif-welcome') {
       markNotificationAsReadInFirestore(currentUser.id, id).catch(() => {});
     }
   };
 
   const markAllAsRead = () => {
-    const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+    const unreadIds = notifications.filter(n => !n.read && n.id !== 'notif-welcome').map(n => n.id);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     if (currentUser?.id && unreadIds.length > 0) {
       markAllNotificationsAsReadInFirestore(currentUser.id, unreadIds).catch(() => {});
@@ -324,16 +338,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const clearNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
-    if (currentUser?.id) {
+    if (currentUser?.id && id !== 'notif-welcome') {
       deleteNotificationFromFirestore(currentUser.id, id).catch(() => {});
     }
   };
 
   const clearAll = () => {
-    const allIds = notifications.map(n => n.id);
+    const realIds = notifications.filter(n => n.id !== 'notif-welcome').map(n => n.id);
     setNotifications([]);
-    if (currentUser?.id && allIds.length > 0) {
-      clearAllNotificationsFromFirestore(currentUser.id, allIds).catch(() => {});
+    if (currentUser?.id && realIds.length > 0) {
+      clearAllNotificationsFromFirestore(currentUser.id, realIds).catch(() => {});
     }
   };
 
