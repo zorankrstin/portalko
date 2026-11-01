@@ -855,6 +855,78 @@ async function startServer() {
     }
   }
 
+  interface ServerEmailConfig {
+    resendApiKey: string;
+    resendSenderEmail: string;
+    resendSenderName: string;
+    brevoApiKey: string;
+    brevoSenderEmail: string;
+    brevoSenderName: string;
+    smtpHost?: string;
+    smtpPort?: number;
+    smtpUser?: string;
+    smtpPass?: string;
+  }
+
+  let serverEmailConfigCache: ServerEmailConfig | null = null;
+  let serverEmailConfigCacheTime = 0;
+
+  async function getServerEmailConfig(): Promise<ServerEmailConfig> {
+    const now = Date.now();
+    if (serverEmailConfigCache && now - serverEmailConfigCacheTime < 60000) {
+      return serverEmailConfigCache;
+    }
+
+    let resendApiKey = (process.env.RESEND_API_KEY || "").trim();
+    let brevoApiKey = (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY || "").trim();
+    let smtpHost = (process.env.SMTP_HOST || "").trim();
+    let smtpPort = Number(process.env.SMTP_PORT || 587);
+    let smtpUser = (process.env.SMTP_USER || "").trim();
+    let smtpPass = (process.env.SMTP_PASS || "").trim();
+    let senderEmail = (process.env.NOREPLY_EMAIL || process.env.RESEND_SENDER_EMAIL || "noreply@portalko.net").trim();
+    let senderName = (process.env.NOREPLY_NAME || process.env.RESEND_SENDER_NAME || "Portalko.net").trim();
+
+    if (!resendApiKey) {
+      try {
+        const firestoreUrl = "https://firestore.googleapis.com/v1/projects/thinking-asset-2lcf1/databases/ai-studio-portalko-7159d16f-86b5-4482-beb4-819bb59cd9dd/documents/settings/email_config";
+        const resp = await fetch(firestoreUrl, { signal: AbortSignal.timeout(4000) });
+        if (resp.ok) {
+          const json = await resp.json();
+          const fields = json.fields || {};
+          if (fields.resendApiKey?.stringValue) {
+            resendApiKey = fields.resendApiKey.stringValue.trim();
+          }
+          if (fields.brevoApiKey?.stringValue && !brevoApiKey) {
+            brevoApiKey = fields.brevoApiKey.stringValue.trim();
+          }
+          if (fields.resendSenderEmail?.stringValue) {
+            senderEmail = fields.resendSenderEmail.stringValue.trim();
+          }
+          if (fields.resendSenderName?.stringValue) {
+            senderName = fields.resendSenderName.stringValue.trim();
+          }
+        }
+      } catch (e: any) {
+        console.warn("[SERVER EMAIL CONFIG FIRESTORE NOTE]:", e.message);
+      }
+    }
+
+    serverEmailConfigCache = {
+      resendApiKey,
+      resendSenderEmail: senderEmail,
+      resendSenderName: senderName,
+      brevoApiKey,
+      brevoSenderEmail: senderEmail,
+      brevoSenderName: senderName,
+      smtpHost,
+      smtpPort,
+      smtpUser,
+      smtpPass,
+    };
+    serverEmailConfigCacheTime = now;
+    return serverEmailConfigCache;
+  }
+
   // Noreply Email Verification Dispatch Endpoint (supports both routes)
   app.post(["/api/auth/send-verification-email", "/api/send-verification-email"], async (req, res) => {
     try {
@@ -864,7 +936,8 @@ async function startServer() {
       }
 
       const safeName = (name || "").trim() || "Uporabnik";
-      const noreplyFrom = `"${process.env.NOREPLY_NAME || "Portalko.net"}" <${process.env.NOREPLY_EMAIL || "noreply@portalko.net"}>`;
+      const config = await getServerEmailConfig();
+      const noreplyFrom = `"${config.resendSenderName}" <${config.resendSenderEmail}>`;
 
       const emailHtml = `<!DOCTYPE html>
 <html lang="sl">
@@ -917,15 +990,11 @@ async function startServer() {
 </body>
 </html>`;
 
-      const plainText = `Pozdravljeni, ${safeName}!\n\nHvala za registracijo na Portalko.net.\nZa dokončanje registracije in potrditev vašega računa kliknite na povezavo:\n${confirmationUrl}\n\nPovezava je veljavna 24 ur.\nTo sporočilo je bilo samodejno poslano iz naslova ${process.env.NOREPLY_EMAIL || "noreply@portalko.net"}.`;
+      const plainText = `Pozdravljeni, ${safeName}!\n\nHvala za registracijo na Portalko.net.\nZa dokončanje registracije in potrditev vašega računa kliknite na povezavo:\n${confirmationUrl}\n\nPovezava je veljavna 24 ur.\nTo sporočilo je bilo samodejno poslano iz naslova ${config.resendSenderEmail}.`;
 
       // 1. PRIMARY: Resend API (https://resend.com - modern REST API HTTPS, reliable inbox delivery)
-      const resendKey = (process.env.RESEND_API_KEY || "").trim();
-      const resendSenderEmail = (process.env.RESEND_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim();
-      const resendSenderName = (process.env.RESEND_SENDER_NAME || process.env.NOREPLY_NAME || "Portalko.net").trim();
-      const resendFrom = resendSenderEmail.includes("@") && !resendSenderEmail.endsWith("resend.dev")
-        ? `${resendSenderName} <${resendSenderEmail}>`
-        : (resendSenderEmail || "Portalko.net <onboarding@resend.dev>");
+      const resendKey = config.resendApiKey;
+      const resendFrom = noreplyFrom;
 
       if (resendKey) {
         try {
@@ -1247,18 +1316,19 @@ async function startServer() {
   });
 
   // Admin endpoint: Get delivery status of confirmation emails
-  app.get("/api/admin/email-delivery-logs", (req, res) => {
+  app.get("/api/admin/email-delivery-logs", async (req, res) => {
     const limit = parseInt(req.query.limit as string) || 5;
+    const config = await getServerEmailConfig();
     const configured = {
-      resend: Boolean(process.env.RESEND_API_KEY),
-      resendSender: (process.env.RESEND_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim(),
-      brevo: Boolean(process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY),
+      resend: Boolean(config.resendApiKey),
+      resendSender: config.resendSenderEmail,
+      brevo: Boolean(config.brevoApiKey),
       sendgrid: Boolean(process.env.SENDGRID_API_KEY),
-      smtp: Boolean(process.env.SMTP_HOST),
-      activeProvider: (process.env.RESEND_API_KEY ? "Resend API" :
-                       (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY) ? "Brevo API" :
+      smtp: Boolean(config.smtpHost),
+      activeProvider: (config.resendApiKey ? "Resend API" :
+                       config.brevoApiKey ? "Brevo API" :
                        process.env.SENDGRID_API_KEY ? "SendGrid API" :
-                       process.env.SMTP_HOST ? "SMTP" : "Ni nastavljen (Simulacija / Ročna aktivacija)")
+                       config.smtpHost ? "SMTP" : "Ni nastavljen (Simulacija / Ročna aktivacija)")
     };
 
     return res.json({
@@ -1274,13 +1344,11 @@ async function startServer() {
     try {
       const { testEmail } = req.body || {};
       const targetEmail = (testEmail || "zoran.krstin@gmail.com").trim();
-      const resendKey = (process.env.RESEND_API_KEY || "").trim();
-
-      const resendSenderEmail = (process.env.RESEND_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim();
-      const resendSenderName = (process.env.RESEND_SENDER_NAME || process.env.NOREPLY_NAME || "Portalko.net").trim();
-      const resendFrom = resendSenderEmail.includes("@") && !resendSenderEmail.endsWith("resend.dev")
-        ? `${resendSenderName} <${resendSenderEmail}>`
-        : (resendSenderEmail || "Portalko.net <onboarding@resend.dev>");
+      const config = await getServerEmailConfig();
+      const resendKey = config.resendApiKey;
+      const resendSenderEmail = config.resendSenderEmail;
+      const resendSenderName = config.resendSenderName;
+      const resendFrom = `"${resendSenderName}" <${resendSenderEmail}>`;
 
       const testConfirmationUrl = `https://portalko.net/?verify-email=test_resend_${Date.now()}&email=${encodeURIComponent(targetEmail)}`;
 
@@ -1413,7 +1481,7 @@ async function startServer() {
         success: false,
         error: "RESEND_API_KEY ni nastavljen v okoljskih spremenljivkah (.env). Za pošiljanje prek Resend API dodajte RESEND_API_KEY.",
         configured: false,
-        hint: "Brezplačni ključ lahko pridobite na https://resend.com/api-keys in ga vnesete v .env datoteko pod RESEND_API_KEY=re_...",
+        hint: "Brezplačni ključ lahko pridobite na https://resend.com/api-keys in ga vnesete v nastavitve ali .env datoteko pod RESEND_API_KEY.",
       });
     } catch (err: any) {
       return res.status(500).json({
@@ -1432,7 +1500,8 @@ async function startServer() {
       }
 
       const safeName = (name || "").trim() || "Uporabnik";
-      const noreplyFrom = `"${process.env.NOREPLY_NAME || "Portalko.net"}" <${process.env.NOREPLY_EMAIL || "noreply@portalko.net"}>`;
+      const config = await getServerEmailConfig();
+      const noreplyFrom = `"${config.resendSenderName}" <${config.resendSenderEmail}>`;
 
       const emailHtml = `<!DOCTYPE html>
 <html lang="sl">
@@ -1488,12 +1557,8 @@ async function startServer() {
       const plainText = `Pozdravljeni, ${safeName}!\n\nPrejeli smo zahtevek za ponastavitev gesla na Portalko.net.\nZa nastavitev novega gesla kliknite na povezavo:\n${resetUrl}\n\nPovezava je veljavna 24 ur.\nČe zahtevka niste oddali vi, lahko to sporočilo prezrete.`;
 
       // 1. PRIMARY: Resend API
-      const resendKey = (process.env.RESEND_API_KEY || "").trim();
-      const resendSenderEmail = (process.env.RESEND_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim();
-      const resendSenderName = (process.env.RESEND_SENDER_NAME || process.env.NOREPLY_NAME || "Portalko.net").trim();
-      const resendFrom = resendSenderEmail.includes("@") && !resendSenderEmail.endsWith("resend.dev")
-        ? `${resendSenderName} <${resendSenderEmail}>`
-        : (resendSenderEmail || "Portalko.net <onboarding@resend.dev>");
+      const resendKey = config.resendApiKey;
+      const resendFrom = noreplyFrom;
 
       if (resendKey) {
         try {
@@ -1528,9 +1593,9 @@ async function startServer() {
       }
 
       // 2. Fallback: Brevo API
-      const brevoKey = (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY || "").trim();
-      const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.NOREPLY_EMAIL || "noreply@portalko.net").trim();
-      const brevoSenderName = (process.env.BREVO_SENDER_NAME || process.env.NOREPLY_NAME || "Portalko.net").trim();
+      const brevoKey = config.brevoApiKey;
+      const brevoSenderEmail = config.brevoSenderEmail;
+      const brevoSenderName = config.brevoSenderName;
 
       if (brevoKey) {
         try {

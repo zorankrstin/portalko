@@ -147,8 +147,8 @@ async function fetchFeed(feed: ServerRssFeedConfig, timeoutMs = 6000): Promise<S
 export const handler: Handler = async (event: HandlerEvent, context: any) => {
   const path = event.path.replace(/\/\.netlify\/functions\/api\/?/, "");
 
-  // Verification email handling
-  if (path.includes("send-verification-email")) {
+  // Verification and password reset email handling
+  if (path.includes("send-verification-email") || path.includes("send-password-reset-email")) {
     const res = await sendEmailHandler(event, context);
     return res || { statusCode: 200, body: "" };
   }

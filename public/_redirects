@@ -4,6 +4,8 @@
 /api/rss/image   /.netlify/functions/rss-image   200!
 /api/auth/send-verification-email    /.netlify/functions/send-verification-email    200!
 /api/send-verification-email         /.netlify/functions/send-verification-email    200!
+/api/auth/send-password-reset-email  /.netlify/functions/send-verification-email    200!
+/api/send-password-reset-email       /.netlify/functions/send-verification-email    200!
 /api/*          /.netlify/functions/api         200!
 
 # SPA redirect rules for client-side routing on Netlify, Cloudflare Pages, etc.

@@ -37,6 +37,18 @@
   force = true
 
 [[redirects]]
+  from = "/api/auth/send-password-reset-email"
+  to = "/.netlify/functions/send-verification-email"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/send-password-reset-email"
+  to = "/.netlify/functions/send-verification-email"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api"
   status = 200
