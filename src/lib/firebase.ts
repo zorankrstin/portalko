@@ -1,7 +1,29 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
 import firebaseProjectConfig from '../../firebase-applet-config.json';
+
+// Silence internal Firestore SDK diagnostic logs
+try {
+  setLogLevel('silent');
+} catch {}
+
+// Filter benign internal Firestore SDK stream disconnect messages from triggering application error overlays
+if (typeof window !== 'undefined' && window.console && window.console.error) {
+  const origConsoleError = window.console.error;
+  window.console.error = function (...args: any[]) {
+    const fullText = args.map(a => (typeof a === 'string' ? a : (a instanceof Error ? a.message : ''))).join(' ');
+    if (
+      fullText.includes('Disconnecting idle stream') ||
+      fullText.includes('Timed out waiting for new targets') ||
+      (fullText.includes('@firebase/firestore') && fullText.includes('CANCELLED'))
+    ) {
+      // Benign Firestore internal connection cleanup when all listeners unmount
+      return;
+    }
+    origConsoleError.apply(window.console, args);
+  };
+}
 
 const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : (typeof process !== 'undefined' ? process.env : {});
 

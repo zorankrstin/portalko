@@ -91,6 +91,60 @@ export function cleanDataForFirestore<T extends Record<string, any>>(obj: T): Re
   return cleaned;
 }
 
+/**
+ * Deduplicates Firestore real-time onSnapshot listeners across multiple mounted components.
+ * Only ONE real-time connection to Firestore is opened per collection, preventing quota exhaustion.
+ */
+function createSharedSubscription<T>(
+  fetcher: (callback: (data: T) => void) => () => void,
+  initialFallback?: () => T
+): (callback: (data: T) => void) => () => void {
+  const subscribers = new Set<(data: T) => void>();
+  let currentData: T | null = null;
+  let unsubscribeFirestore: (() => void) | null = null;
+  let teardownTimeout: any = null;
+
+  return (callback: (data: T) => void): (() => void) => {
+    subscribers.add(callback);
+
+    if (teardownTimeout) {
+      clearTimeout(teardownTimeout);
+      teardownTimeout = null;
+    }
+
+    if (currentData !== null) {
+      callback(currentData);
+    } else if (initialFallback) {
+      try {
+        const fb = initialFallback();
+        if (fb) callback(fb);
+      } catch {}
+    }
+
+    if (!unsubscribeFirestore) {
+      unsubscribeFirestore = fetcher((data: T) => {
+        currentData = data;
+        subscribers.forEach(cb => {
+          try { cb(data); } catch (e) { console.warn(e); }
+        });
+      });
+    }
+
+    return () => {
+      subscribers.delete(callback);
+      if (subscribers.size === 0 && unsubscribeFirestore) {
+        teardownTimeout = setTimeout(() => {
+          if (subscribers.size === 0 && unsubscribeFirestore) {
+            unsubscribeFirestore();
+            unsubscribeFirestore = null;
+            teardownTimeout = null;
+          }
+        }, 30000);
+      }
+    };
+  };
+}
+
 export interface FirestorePost {
   id: string;
   type?: 'post' | 'blog' | 'deal' | 'news' | string;
@@ -672,19 +726,19 @@ export async function fetchUsersList(): Promise<User[]> {
   }
 }
 
-export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
-  const path = 'users';
-  const getCachedUsers = (): User[] => {
-    try {
-      const raw = localStorage.getItem('cached_firestore_users');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return [];
-  };
+const getCachedUsers = (): User[] => {
+  try {
+    const raw = localStorage.getItem('cached_firestore_users');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [];
+};
 
+function rawSubscribeToUsers(onUsers: (users: User[]) => void): () => void {
+  const path = 'users';
   try {
     syncDeletedUsersFromFirestore().catch(() => {});
     const q = query(collection(db, path), limit(100));
@@ -745,6 +799,8 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
     return () => {};
   }
 }
+
+export const subscribeToUsers = createSharedSubscription(rawSubscribeToUsers, getCachedUsers);
 
 export async function updateUserInFirestore(userId: string, data: Partial<User>, fallbackUser?: User): Promise<void> {
   const path = `users/${userId}`;
@@ -878,62 +934,62 @@ export function isUserAdminIdentity(id?: string, name?: string, role?: string): 
   return false;
 }
 
-export function subscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () => void {
-  const path = 'posts';
-  const getCachedPosts = (): FirestorePost[] => {
-    try {
-      const raw = localStorage.getItem('cached_firestore_posts');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    // Build initial fallback posts from mock data
-    const allMockDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
-    const fallbackDeals: FirestorePost[] = allMockDeals.map(d => ({
-      id: d.id,
-      title: d.title,
-      subtitle: d.subtitle,
-      content: d.description,
-      category: 'deal',
-      categoryName: d.categoryName || 'Ugodnosti',
-      authorId: `partner-${d.partner.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-      authorName: d.partner,
-      authorRole: d.partnerRole || 'Preverjen trgovec',
-      authorAvatar: d.partnerAvatar || '',
-      price: d.newPrice || d.discount,
-      oldPrice: d.oldPrice,
-      newPrice: d.newPrice,
-      discount: d.discount,
-      promoCode: d.code,
-      status: 'published',
-      imageUrl: d.image,
-      images: d.images,
-      region: d.region,
-      location: d.location,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
-    const fallbackBlogs: FirestorePost[] = INITIAL_BLOG_POSTS.map(b => ({
-      id: b.id,
-      title: b.title,
-      subtitle: b.subtitle,
-      content: b.description,
-      category: 'blog',
-      categoryName: 'Blog',
-      authorId: b.authorId || `author-${b.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-      authorName: b.author,
-      authorRole: b.authorRole || 'Avtor',
-      authorAvatar: b.authorAvatar || '',
-      status: 'published',
-      imageUrl: b.image,
-      location: b.location,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
-    return [...fallbackDeals, ...fallbackBlogs];
-  };
+const getCachedPosts = (): FirestorePost[] => {
+  try {
+    const raw = localStorage.getItem('cached_firestore_posts');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  // Build initial fallback posts from mock data
+  const allMockDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
+  const fallbackDeals: FirestorePost[] = allMockDeals.map(d => ({
+    id: d.id,
+    title: d.title,
+    subtitle: d.subtitle,
+    content: d.description,
+    category: 'deal',
+    categoryName: d.categoryName || 'Ugodnosti',
+    authorId: `partner-${d.partner.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    authorName: d.partner,
+    authorRole: d.partnerRole || 'Preverjen trgovec',
+    authorAvatar: d.partnerAvatar || '',
+    price: d.newPrice || d.discount,
+    oldPrice: d.oldPrice,
+    newPrice: d.newPrice,
+    discount: d.discount,
+    promoCode: d.code,
+    status: 'published',
+    imageUrl: d.image,
+    images: d.images,
+    region: d.region,
+    location: d.location,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+  const fallbackBlogs: FirestorePost[] = INITIAL_BLOG_POSTS.map(b => ({
+    id: b.id,
+    title: b.title,
+    subtitle: b.subtitle,
+    content: b.description,
+    category: 'blog',
+    categoryName: 'Blog',
+    authorId: b.authorId || `author-${b.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    authorName: b.author,
+    authorRole: b.authorRole || 'Avtor',
+    authorAvatar: b.authorAvatar || '',
+    status: 'published',
+    imageUrl: b.image,
+    location: b.location,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+  return [...fallbackDeals, ...fallbackBlogs];
+};
 
+function rawSubscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () => void {
+  const path = 'posts';
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
     return onSnapshot(q, (snapshot) => {
@@ -983,6 +1039,8 @@ export function subscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () 
     return () => {};
   }
 }
+
+export const subscribeToPosts = createSharedSubscription(rawSubscribeToPosts, getCachedPosts);
 
 export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { id?: string }): Promise<string> {
   const path = 'posts';
@@ -1418,36 +1476,37 @@ export async function togglePostLikeInFirestore(postId: string, increment: boole
 
 // ---------------- ADS (MALI OGLASI) OPERATIONS ----------------
 
-export function subscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void {
+export const getCachedAds = (): FirestoreAd[] => {
+  try {
+    const raw = localStorage.getItem('cached_firestore_ads');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  // Fallback to mock ads
+  return INITIAL_ADS.map(a => ({
+    id: a.id,
+    title: a.title,
+    description: a.description,
+    category: a.category || 'ostalo',
+    categoryName: a.categoryName || 'Mali oglasi',
+    price: a.price,
+    location: a.location,
+    authorId: a.authorId || `author-${a.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    authorName: a.author,
+    authorRole: a.authorRole || 'Uporabnik',
+    authorAvatar: (a.authorAvatar && !isDummyAvatar(a.authorAvatar)) ? a.authorAvatar : undefined,
+    imageUrl: a.image,
+    images: a.images,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+};
+
+function rawSubscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void {
   const path = 'ads';
-  const getCachedAds = (): FirestoreAd[] => {
-    try {
-      const raw = localStorage.getItem('cached_firestore_ads');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    // Fallback to mock ads
-    return INITIAL_ADS.map(a => ({
-      id: a.id,
-      title: a.title,
-      description: a.description,
-      category: a.category || 'ostalo',
-      categoryName: a.categoryName || 'Mali oglasi',
-      price: a.price,
-      location: a.location,
-      authorId: a.authorId || `author-${a.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-      authorName: a.author,
-      authorRole: a.authorRole || 'Uporabnik',
-      authorAvatar: (a.authorAvatar && !isDummyAvatar(a.authorAvatar)) ? a.authorAvatar : undefined,
-      imageUrl: a.image,
-      images: a.images,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
-  };
 
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
@@ -1480,6 +1539,8 @@ export function subscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void 
     return () => {};
   }
 }
+
+export const subscribeToAds = createSharedSubscription(rawSubscribeToAds, getCachedAds);
 
 export async function createAdInFirestore(ad: Omit<FirestoreAd, 'id'> & { id?: string }): Promise<string> {
   const path = 'ads';
@@ -1590,37 +1651,38 @@ export async function deleteAdInFirestore(adId: string): Promise<void> {
 
 // ---------------- EVENTS (DOGODKI) OPERATIONS ----------------
 
-export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void): () => void {
+export const getCachedEvents = (): FirestoreEvent[] => {
+  try {
+    const raw = localStorage.getItem('cached_firestore_events');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  // Fallback to mock events
+  return INITIAL_EVENTS.map(e => ({
+    id: e.id,
+    title: e.title,
+    description: e.description,
+    category: e.category || 'kultura',
+    categoryName: e.categoryName || 'Kultura',
+    location: e.location,
+    region: e.city || 'Slovenija',
+    eventDate: e.date,
+    authorId: e.authorId || e.organizerId || `organizer-${e.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    authorName: e.organizer,
+    authorRole: e.authorRole || 'Organizator',
+    authorAvatar: (e.authorAvatar && !isDummyAvatar(e.authorAvatar)) ? e.authorAvatar : undefined,
+    imageUrl: e.image,
+    images: e.image ? [e.image] : undefined,
+    status: 'published',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+};
+
+function rawSubscribeToEvents(onEvents: (events: FirestoreEvent[]) => void): () => void {
   const path = 'events';
-  const getCachedEvents = (): FirestoreEvent[] => {
-    try {
-      const raw = localStorage.getItem('cached_firestore_events');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    // Fallback to mock events
-    return INITIAL_EVENTS.map(e => ({
-      id: e.id,
-      title: e.title,
-      description: e.description,
-      category: e.category || 'kultura',
-      categoryName: e.categoryName || 'Kultura',
-      location: e.location,
-      region: e.city || 'Slovenija',
-      eventDate: e.date,
-      authorId: e.authorId || e.organizerId || `organizer-${e.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-      authorName: e.organizer,
-      authorRole: e.authorRole || 'Organizator',
-      authorAvatar: (e.authorAvatar && !isDummyAvatar(e.authorAvatar)) ? e.authorAvatar : undefined,
-      imageUrl: e.image,
-      images: e.image ? [e.image] : undefined,
-      status: 'published',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
-  };
 
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
@@ -1653,6 +1715,8 @@ export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void):
     return () => {};
   }
 }
+
+export const subscribeToEvents = createSharedSubscription(rawSubscribeToEvents, getCachedEvents);
 
 export async function getEventById(eventId: string): Promise<FirestoreEvent | null> {
   if (!eventId) return null;
