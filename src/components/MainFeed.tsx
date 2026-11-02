@@ -256,7 +256,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
         <div className="flex items-center gap-3">
           <img alt={`Avatar ${firstName}`} className="w-10 h-10 rounded-full object-cover ring-1 ring-black/5" src={userAvatar} />
           <div 
-            onClick={() => openCompose('post')}
+            onClick={() => openCompose(currentUser?.role === 'registered' ? 'ad' : 'post')}
             className="flex-1 bg-surface-container-low hover:bg-surface-container rounded-xl px-4 py-2.5 text-outline text-body-md font-body-md cursor-pointer transition-colors flex items-center justify-between"
           >
             <span>{currentUser ? `Kaj bi želeli deliti danes, ${firstName}?` : 'Kaj bi želeli deliti danes? (Delite novico, oglas ali dogodek)...'}</span>

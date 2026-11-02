@@ -59,9 +59,23 @@ export interface FirestoreErrorInfo {
   };
 }
 
+export function isQuotaExceededError(error: unknown): boolean {
+  const errStr = error instanceof Error ? error.message : String(error);
+  return (
+    errStr.includes('Quota limit exceeded') || 
+    errStr.includes('Quota exceeded') ||
+    errStr.includes('free tier database') ||
+    errStr.includes('resource-exhausted') ||
+    errStr.includes('RESOURCE_EXHAUSTED')
+  );
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errStr = error instanceof Error ? error.message : String(error);
+  const isQuota = isQuotaExceededError(error);
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errStr,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -76,6 +90,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+
+  if (isQuota) {
+    console.warn(`[Firestore Quota] Read limit reached on '${path}'. Serving cached local data.`);
+    return;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }

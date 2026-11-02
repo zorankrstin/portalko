@@ -674,6 +674,17 @@ export async function fetchUsersList(): Promise<User[]> {
 
 export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
   const path = 'users';
+  const getCachedUsers = (): User[] => {
+    try {
+      const raw = localStorage.getItem('cached_firestore_users');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  };
+
   try {
     syncDeletedUsersFromFirestore().catch(() => {});
     const q = query(collection(db, path), limit(100));
@@ -714,12 +725,23 @@ export function subscribeToUsers(onUsers: (users: User[]) => void): () => void {
           passwordResetSentAt: data.passwordResetSentAt || undefined,
         });
       });
+      try {
+        localStorage.setItem('cached_firestore_users', JSON.stringify(users));
+      } catch {}
       onUsers(users);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, path);
+      const cached = getCachedUsers();
+      if (cached.length > 0) {
+        onUsers(cached);
+      }
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+    const cached = getCachedUsers();
+    if (cached.length > 0) {
+      onUsers(cached);
+    }
     return () => {};
   }
 }
@@ -858,6 +880,60 @@ export function isUserAdminIdentity(id?: string, name?: string, role?: string): 
 
 export function subscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () => void {
   const path = 'posts';
+  const getCachedPosts = (): FirestorePost[] => {
+    try {
+      const raw = localStorage.getItem('cached_firestore_posts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    // Build initial fallback posts from mock data
+    const allMockDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
+    const fallbackDeals: FirestorePost[] = allMockDeals.map(d => ({
+      id: d.id,
+      title: d.title,
+      subtitle: d.subtitle,
+      content: d.description,
+      category: 'deal',
+      categoryName: d.categoryName || 'Ugodnosti',
+      authorId: `partner-${d.partner.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      authorName: d.partner,
+      authorRole: d.partnerRole || 'Preverjen trgovec',
+      authorAvatar: d.partnerAvatar || '',
+      price: d.newPrice || d.discount,
+      oldPrice: d.oldPrice,
+      newPrice: d.newPrice,
+      discount: d.discount,
+      promoCode: d.code,
+      status: 'published',
+      imageUrl: d.image,
+      images: d.images,
+      region: d.region,
+      location: d.location,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    const fallbackBlogs: FirestorePost[] = INITIAL_BLOG_POSTS.map(b => ({
+      id: b.id,
+      title: b.title,
+      subtitle: b.subtitle,
+      content: b.description,
+      category: 'blog',
+      categoryName: 'Blog',
+      authorId: b.authorId || `author-${b.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      authorName: b.author,
+      authorRole: b.authorRole || 'Avtor',
+      authorAvatar: b.authorAvatar || '',
+      status: 'published',
+      imageUrl: b.image,
+      location: b.location,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    return [...fallbackDeals, ...fallbackBlogs];
+  };
+
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
     return onSnapshot(q, (snapshot) => {
@@ -893,12 +969,17 @@ export function subscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () 
         }
         return item;
       });
+      try {
+        localStorage.setItem('cached_firestore_posts', JSON.stringify(posts));
+      } catch {}
       onPosts(posts);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
+      onPosts(getCachedPosts());
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
+    onPosts(getCachedPosts());
     return () => {};
   }
 }
@@ -1339,6 +1420,35 @@ export async function togglePostLikeInFirestore(postId: string, increment: boole
 
 export function subscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void {
   const path = 'ads';
+  const getCachedAds = (): FirestoreAd[] => {
+    try {
+      const raw = localStorage.getItem('cached_firestore_ads');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    // Fallback to mock ads
+    return INITIAL_ADS.map(a => ({
+      id: a.id,
+      title: a.title,
+      description: a.description,
+      category: a.category || 'ostalo',
+      categoryName: a.categoryName || 'Mali oglasi',
+      price: a.price,
+      location: a.location,
+      authorId: a.authorId || `author-${a.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      authorName: a.author,
+      authorRole: a.authorRole || 'Uporabnik',
+      authorAvatar: (a.authorAvatar && !isDummyAvatar(a.authorAvatar)) ? a.authorAvatar : undefined,
+      imageUrl: a.image,
+      images: a.images,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
@@ -1356,12 +1466,17 @@ export function subscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void 
         }
         return item;
       });
+      try {
+        localStorage.setItem('cached_firestore_ads', JSON.stringify(ads));
+      } catch {}
       onAds(ads);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
+      onAds(getCachedAds());
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
+    onAds(getCachedAds());
     return () => {};
   }
 }
@@ -1477,6 +1592,36 @@ export async function deleteAdInFirestore(adId: string): Promise<void> {
 
 export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void): () => void {
   const path = 'events';
+  const getCachedEvents = (): FirestoreEvent[] => {
+    try {
+      const raw = localStorage.getItem('cached_firestore_events');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    // Fallback to mock events
+    return INITIAL_EVENTS.map(e => ({
+      id: e.id,
+      title: e.title,
+      description: e.description,
+      category: e.category || 'kultura',
+      categoryName: e.categoryName || 'Kultura',
+      location: e.location,
+      region: e.city || 'Slovenija',
+      eventDate: e.date,
+      authorId: e.authorId || e.organizerId || `organizer-${e.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      authorName: e.organizer,
+      authorRole: e.authorRole || 'Organizator',
+      authorAvatar: (e.authorAvatar && !isDummyAvatar(e.authorAvatar)) ? e.authorAvatar : undefined,
+      imageUrl: e.image,
+      images: e.image ? [e.image] : undefined,
+      status: 'published',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
     return onSnapshot(q, (snapshot) => {
@@ -1494,12 +1639,17 @@ export function subscribeToEvents(onEvents: (events: FirestoreEvent[]) => void):
         }
         return item;
       });
+      try {
+        localStorage.setItem('cached_firestore_events', JSON.stringify(events));
+      } catch {}
       onEvents(events);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
+      onEvents(getCachedEvents());
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
+    onEvents(getCachedEvents());
     return () => {};
   }
 }
@@ -1564,9 +1714,34 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
       }
       return item;
     }
+    // Cache fallback
+    try {
+      const raw = localStorage.getItem('cached_firestore_events');
+      if (raw) {
+        const cached: FirestoreEvent[] = JSON.parse(raw);
+        const found = cached.find(e => {
+          const docClean = e.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+          return e.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId || slugify(e.title || '') === targetSlug;
+        });
+        if (found) return found;
+      }
+    } catch {}
     return null;
   } catch (error) {
     console.warn(`Could not get event ${eventId}:`, error);
+    try {
+      const raw = localStorage.getItem('cached_firestore_events');
+      if (raw) {
+        const cached: FirestoreEvent[] = JSON.parse(raw);
+        const targetSlug = slugify(eventId);
+        const cleanSlug = slugify(cleanId);
+        const found = cached.find(e => {
+          const docClean = e.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+          return e.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId || slugify(e.title || '') === targetSlug || slugify(e.title || '') === cleanSlug;
+        });
+        if (found) return found;
+      }
+    } catch {}
     return null;
   }
 }
@@ -1574,6 +1749,8 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
 export async function getPostById(postId: string): Promise<FirestorePost | null> {
   if (!postId) return null;
   const cleanId = postId.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+  const targetSlug = slugify(postId);
+  const cleanSlug = slugify(cleanId);
   try {
     let snap = await getDoc(doc(db, 'posts', postId));
     if (!snap.exists() && cleanId !== postId) {
@@ -1596,8 +1773,6 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
     }
     const q = query(collection(db, 'posts'), limit(300));
     const allSnaps = await getDocs(q);
-    const targetSlug = slugify(postId);
-    const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
       const data = d.data();
       if (!data || (!data.title && !data.content && !data.description)) return false;
@@ -1617,9 +1792,32 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
         ...(match.data() as Omit<FirestorePost, 'id'>),
       };
     }
+    // Local cache fallback
+    try {
+      const raw = localStorage.getItem('cached_firestore_posts');
+      if (raw) {
+        const cached: FirestorePost[] = JSON.parse(raw);
+        const found = cached.find(p => {
+          const docClean = p.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+          return p.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId || slugify(p.title || '') === targetSlug || slugify(p.title || '') === cleanSlug;
+        });
+        if (found) return found;
+      }
+    } catch {}
     return null;
   } catch (error) {
     console.warn(`Could not get post ${postId}:`, error);
+    try {
+      const raw = localStorage.getItem('cached_firestore_posts');
+      if (raw) {
+        const cached: FirestorePost[] = JSON.parse(raw);
+        const found = cached.find(p => {
+          const docClean = p.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+          return p.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId || slugify(p.title || '') === targetSlug || slugify(p.title || '') === cleanSlug;
+        });
+        if (found) return found;
+      }
+    } catch {}
     return null;
   }
 }
@@ -1627,6 +1825,8 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
 export async function getAdById(adId: string): Promise<FirestoreAd | null> {
   if (!adId) return null;
   const cleanId = adId.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+  const targetSlug = slugify(adId);
+  const cleanSlug = slugify(cleanId);
   try {
     let snap = await getDoc(doc(db, 'ads', adId));
     if (!snap.exists() && cleanId !== adId) {
@@ -1646,8 +1846,6 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
     }
     const q = query(collection(db, 'ads'), limit(100));
     const allSnaps = await getDocs(q);
-    const targetSlug = slugify(adId);
-    const cleanSlug = slugify(cleanId);
     const match = allSnaps.docs.find(d => {
       const data = d.data();
       if (!data || (!data.title && !data.description)) return false;
@@ -1666,9 +1864,32 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
         ...(match.data() as Omit<FirestoreAd, 'id'>),
       };
     }
+    // Local cache fallback
+    try {
+      const raw = localStorage.getItem('cached_firestore_ads');
+      if (raw) {
+        const cached: FirestoreAd[] = JSON.parse(raw);
+        const found = cached.find(a => {
+          const docClean = a.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+          return a.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId || slugify(a.title || '') === targetSlug || slugify(a.title || '') === cleanSlug;
+        });
+        if (found) return found;
+      }
+    } catch {}
     return null;
   } catch (error) {
     console.warn(`Could not get ad ${adId}:`, error);
+    try {
+      const raw = localStorage.getItem('cached_firestore_ads');
+      if (raw) {
+        const cached: FirestoreAd[] = JSON.parse(raw);
+        const found = cached.find(a => {
+          const docClean = a.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
+          return a.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId || slugify(a.title || '') === targetSlug || slugify(a.title || '') === cleanSlug;
+        });
+        if (found) return found;
+      }
+    } catch {}
     return null;
   }
 }

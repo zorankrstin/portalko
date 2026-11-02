@@ -36,8 +36,27 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isAllowedPoster(data) {
-      return (data.authorRole in ['superadmin', 'admin', 'moderator', 'verified', 'registered']) || isSignedIn();
+    // Posting permissions:
+    // Blog posts and Deals (Akcije) in /posts collection: ONLY superadmin, admin, moderator, and verified users.
+    function canPostBlogOrDeals(data) {
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['superadmin', 'admin', 'moderator', 'verified']) ||
+        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         data.authorRole in ['superadmin', 'admin', 'moderator', 'verified']) ||
+        request.auth.token.email == 'zoran.krstin@gmail.com'
+      );
+    }
+
+    // Classifieds (Mali oglasi) and Events: superadmin, admin, moderator, verified, and registered users.
+    function canPostClassifiedsOrEvents(data) {
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['superadmin', 'admin', 'moderator', 'verified', 'registered']) ||
+        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         data.authorRole in ['superadmin', 'admin', 'moderator', 'verified', 'registered']) ||
+        request.auth.token.email == 'zoran.krstin@gmail.com'
+      );
     }
 
     // Users Collection
@@ -71,10 +90,10 @@ service cloud.firestore {
       }
     }
 
-    // Posts Collection
+    // Posts Collection (Blog posts & Deals - Akcije)
     match /posts/{postId} {
       allow read: if true;
-      allow create: if isAllowedPoster(request.resource.data);
+      allow create: if canPostBlogOrDeals(request.resource.data);
       allow update: if true;
       allow delete: if true;
     }
@@ -82,7 +101,7 @@ service cloud.firestore {
     // Ads (Mali Oglasi) Collection
     match /ads/{adId} {
       allow read: if true;
-      allow create: if isAllowedPoster(request.resource.data);
+      allow create: if canPostClassifiedsOrEvents(request.resource.data);
       allow update: if true;
       allow delete: if true;
     }
@@ -90,7 +109,7 @@ service cloud.firestore {
     // Events Collection
     match /events/{eventId} {
       allow read: if true;
-      allow create: if isAllowedPoster(request.resource.data);
+      allow create: if canPostClassifiedsOrEvents(request.resource.data);
       allow update: if true;
       allow delete: if true;
     }

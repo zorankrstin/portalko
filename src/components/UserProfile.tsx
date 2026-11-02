@@ -1365,7 +1365,7 @@ export function UserProfile({
       <ComposeModal
         isOpen={isComposeModalOpen}
         onClose={() => setIsComposeModalOpen(false)}
-        initialType="post"
+        initialType={currentUser?.role === 'registered' ? 'ad' : 'post'}
       />
 
       {/* Verification Request Modal */}

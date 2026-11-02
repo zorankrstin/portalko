@@ -27,7 +27,11 @@ import {
   Link as LinkIcon,
   Share2,
   Loader2,
-  Trash2
+  Trash2,
+  AlertTriangle,
+  Lock,
+  Shield,
+  UserCheck
 } from 'lucide-react';
 import { RichTextEditor, RichTextEditorRef } from './RichTextEditor';
 import { compressImageFileToDataUrl } from '../utils/imageUtils';
@@ -43,6 +47,7 @@ import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
 import { ReportButton } from './ReportButton';
 import { LikeButton } from './LikeButton';
+import { LoginModal } from './LoginModal';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, createPostInFirestore } from '../services/firestoreService';
 import { PostDetailTarget } from '../types';
@@ -56,6 +61,7 @@ import { UserDisplayName } from './common/UserDisplayName';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { PromotionConfig, PromotionBadgeType } from '../types';
 import { DealsCategoryLocationFilter } from './deals/DealsCategoryLocationFilter';
+import { canUserPostContentType } from '../utils/permissionUtils';
 
 interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -98,6 +104,22 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
   // Modal State
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const [showAuthWarning, setShowAuthWarning] = useState<null | 'guest' | 'registered'>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const canUserPostDeals = canUserPostContentType(currentUser?.role, 'deal');
+
+  const handleOpenSubmitDeal = () => {
+    if (!currentUser || currentUser.role === 'guest') {
+      setShowAuthWarning('guest');
+      return;
+    }
+    if (!canUserPostDeals) {
+      setShowAuthWarning('registered');
+      return;
+    }
+    setIsSubmitModalOpen(true);
+  };
+
   const [modalForm, setModalForm] = useState({
     store: '',
     title: '',
@@ -529,6 +551,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
   const handleModalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalForm.title || !modalForm.store) return;
+    if (!canUserPostDeals) {
+      setShowAuthWarning(!currentUser || currentUser.role === 'guest' ? 'guest' : 'registered');
+      return;
+    }
 
     const fallbackImg = CATEGORY_IMAGE_FALLBACKS[modalForm.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
     const primaryImg = modalForm.images[0] || modalForm.image || fallbackImg;
@@ -675,7 +701,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             </p>
           </div>
           <button 
-            onClick={() => setIsSubmitModalOpen(true)}
+            onClick={handleOpenSubmitDeal}
             id="btn-submit-deal"
             className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
           >
@@ -1693,6 +1719,69 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         </div>
       )}
 
+      {/* Role permission notice modal for guests / registered users */}
+      {showAuthWarning && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-surface-container-lowest p-6 shadow-2xl border border-surface-container space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-headline-sm text-base font-bold text-on-surface">
+                  {showAuthWarning === 'guest' ? 'Prijava je obvezna' : 'Zahteva preverjen profil'}
+                </h3>
+                <p className="font-body-sm text-xs text-on-surface-variant leading-relaxed">
+                  {showAuthWarning === 'guest' ? (
+                    'Za objavljanje akcij in ugodnosti morate biti prijavljeni s preverjenim uporabniškim računom ali skrbniško vlogo.'
+                  ) : (
+                    'Objavljanje ugodnosti in akcij je omogočeno preverjenim uporabnikom (Verified), moderatorjem ter skrbnikom. Kot registrirani uporabnik lahko brezplačno objavljate male oglase.'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAuthWarning(null)}
+                className="px-4 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-xs transition-colors cursor-pointer"
+              >
+                Zapri
+              </button>
+              {showAuthWarning === 'guest' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAuthWarning(null);
+                    setIsLoginModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Prijava / Registracija
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAuthWarning(null);
+                    onViewChange('main');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Na prvo stran
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        initialMode="login"
+      />
     </div>
   );
 }

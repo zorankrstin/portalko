@@ -31,7 +31,8 @@ import {
   Copy,
   CalendarDays,
   SlidersHorizontal,
-  Sparkles
+  Sparkles,
+  Lock
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { RichTextEditor } from './RichTextEditor';
@@ -46,6 +47,7 @@ import { isDummyAvatar } from '../utils/avatarUtils';
 import { getTodayYmd } from '../utils/eventFilterUtils';
 import { EventScheduleSlot } from '../types';
 import { parseSocialEmbed } from '../utils/embedUtils';
+import { canUserPostContentType, canUserPostBlogOrDeals, ROLES_BLOG_AND_DEALS, ROLES_CLASSIFIEDS } from '../utils/permissionUtils';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
 
@@ -467,8 +469,10 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   if (!isOpen) return null;
 
   const isGuestOrUnauth = !currentUser || currentUser.role === 'guest';
-  const canPost = !isGuestOrUnauth && ['superadmin', 'admin', 'verified', 'registered'].includes(currentUser?.role || '');
-  const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+  const userRole = currentUser?.role;
+  const canPostCurrentType = canUserPostContentType(userRole, postType);
+  const canPostAny = !isGuestOrUnauth && ['superadmin', 'admin', 'moderator', 'verified', 'registered'].includes(userRole || '');
+  const isAdminOrSuper = userRole === 'superadmin' || userRole === 'admin';
 
   const authorName = currentUser ? currentUser.name : 'Gost';
   const authorAvatar = (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : '';
@@ -476,8 +480,14 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const authorId = currentUser?.id || 'guest_user';
 
   const handleSubmit = async () => {
-    if (!canPost) {
-      setErrorMsg('Za objavljanje morate biti prijavljeni z vlogo: Registriran uporabnik, Preverjen uporabnik ali Skrbnik.');
+    if (!canPostCurrentType) {
+      if (isGuestOrUnauth) {
+        setErrorMsg('Za objavljanje morate biti prijavljeni.');
+      } else if (postType === 'post' || postType === 'deal') {
+        setErrorMsg('Objavljanje blog člankov in ugodnosti je omogočeno le preverjenim uporabnikom (Verified), moderatorjem ter skrbnikom.');
+      } else {
+        setErrorMsg('Za objavo v tej kategoriji nimate ustreznih pravic.');
+      }
       return;
     }
 
@@ -699,14 +709,14 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         </div>
 
         {/* Warning banner for guests / unauthenticated users */}
-        {!canPost && (
+        {isGuestOrUnauth && (
           <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-on-surface">
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold text-amber-800 dark:text-amber-300">Prijava je obvezna za objavo vsebin</p>
                 <p className="text-on-surface-variant text-[11px] mt-0.5">
-                  Objavljanje je omogočeno članom skupnosti: <strong>registrirani</strong>, <strong>preverjeni</strong> uporabniki ter <strong>skrbniki</strong>.
+                  Objavljanje je omogočeno članom skupnosti: <strong>registrirani</strong> in <strong>preverjeni</strong> uporabniki ter <strong>skrbniki</strong>.
                 </p>
               </div>
             </div>
@@ -717,6 +727,33 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             >
               <LogIn className="w-3.5 h-3.5" />
               <span>Prijava / Registracija</span>
+            </button>
+          </div>
+        )}
+
+        {/* Warning banner for registered users trying to post restricted types (blog / deal) */}
+        {!isGuestOrUnauth && !canPostCurrentType && (
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-on-surface">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-800 dark:text-amber-300">
+                  {postType === 'deal' 
+                    ? 'Objavljanje ugodnosti zahteva preverjen profil ali skrbniško vlogo' 
+                    : 'Objavljanje blog člankov zahteva preverjen profil ali skrbniško vlogo'}
+                </p>
+                <p className="text-on-surface-variant text-[11px] mt-0.5">
+                  Objavljanje blogov in akcij je dovoljeno <strong>preverjenim uporabnikom (Verified)</strong>, <strong>moderatorjem</strong> ter <strong>skrbnikom</strong>. Kot registrirani uporabnik lahko objavljate med <strong>Malimi oglasi</strong>.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPostType('ad')}
+              className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              <span>Preklopi na Mali oglas</span>
             </button>
           </div>
         )}
@@ -752,6 +789,10 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                   <span className="inline-flex items-center gap-1 text-red-700 bg-red-100 dark:bg-red-950/40 dark:text-red-300 px-2 py-0.5 rounded font-bold">
                     <Shield className="w-3 h-3" /> Skrbnik
                   </span>
+                ) : authorRole === 'moderator' ? (
+                  <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5 rounded font-bold">
+                    <Shield className="w-3 h-3" /> Moderator
+                  </span>
                 ) : authorRole === 'verified' ? (
                   <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 px-2 py-0.5 rounded font-bold">
                     <UserCheck className="w-3 h-3" /> Preverjen uporabnik
@@ -771,16 +812,27 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
           {/* Section / Post Type selector */}
           <div className="flex flex-col gap-1.5">
-            <label className="font-label-caps text-xs text-outline uppercase tracking-wider">Vrsta objave</label>
+            <div className="flex items-center justify-between">
+              <label className="font-label-caps text-xs text-outline uppercase tracking-wider">Vrsta objave</label>
+              {!canPostCurrentType && !isGuestOrUnauth && (
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Zahteva status Preverjen uporabnik
+                </span>
+              )}
+            </div>
             <select 
               value={postType}
               onChange={(e) => setPostType(e.target.value as PostType)}
               className="bg-surface-container-low text-on-surface font-label-md text-sm px-3 py-2.5 rounded-lg border border-transparent focus:outline-none focus:border-primary cursor-pointer"
             >
-              <option value="ad">🛍️ Mali oglas (Mali oglasi)</option>
-              <option value="event">📅 Dogodek (Dogodki & Prireditve)</option>
-              <option value="post">📝 Blog / Članek (Blog & Članki)</option>
-              <option value="deal">🏷️ Ugodnost / Popust (Ugodnosti & Kuponi)</option>
+              <option value="ad">🛍️ Mali oglas (Mali oglasi) — Vsi člani</option>
+              <option value="event">📅 Dogodek (Dogodki & Prireditve) — Vsi člani</option>
+              <option value="post" disabled={!canUserPostContentType(userRole, 'post')}>
+                📝 Blog / Članek {!canUserPostContentType(userRole, 'post') ? '🔒 (Preverjeni & Skrbniki)' : '— Preverjeni & Skrbniki'}
+              </option>
+              <option value="deal" disabled={!canUserPostContentType(userRole, 'deal')}>
+                🏷️ Ugodnost / Popust {!canUserPostContentType(userRole, 'deal') ? '🔒 (Preverjeni & Skrbniki)' : '— Preverjeni & Skrbniki'}
+              </option>
             </select>
           </div>
 
@@ -1759,13 +1811,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             </div>
             <button 
               onClick={handleSubmit}
-              disabled={isSubmitting || !canPost}
+              disabled={isSubmitting || !canPostCurrentType}
               className={`px-6 py-2.5 rounded-xl font-label-md text-sm font-semibold shadow-md transition-all flex items-center gap-2 ${
-                canPost 
+                canPostCurrentType 
                   ? 'bg-primary hover:bg-primary-container text-on-primary cursor-pointer' 
                   : 'bg-surface-container-high text-outline cursor-not-allowed opacity-60'
               } disabled:opacity-50`}
-              title={!canPost ? 'Prijavite se za objavljanje' : 'Oddaj objavo'}
+              title={!canPostCurrentType ? (isGuestOrUnauth ? 'Prijavite se za objavljanje' : 'Za objavo v tej kategoriji potrebujete status Preverjen uporabnik ali Skrbnik') : 'Oddaj objavo'}
             >
               {isSubmitting ? (
                 <>
