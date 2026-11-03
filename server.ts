@@ -11,6 +11,7 @@ import {
   SitemapEntry, 
   SITE_URL 
 } from "./src/utils/sitemapGenerator";
+import { isMaliciousSecurityPath, verifyIncomingRequestSecurity } from "./src/utils/securityGuard";
 
 dotenv.config();
 
@@ -215,6 +216,17 @@ function preparePageHtml(rawHtml: string, reqUrl: string): string {
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  // 1. ENTRY-LEVEL SECURITY MIDDLEWARE: Reject known malicious scanner paths & bot User-Agents before any route handling
+  app.use((req, res, next) => {
+    const userAgent = req.headers["user-agent"] || "";
+    const check = verifyIncomingRequestSecurity(req.path, req.originalUrl || req.url, userAgent);
+    if (!check.allowed) {
+      const status = check.status || 403;
+      return res.status(status).type("text/plain").send(status === 404 ? "Not Found" : "Forbidden: Non-human automated client rejected");
+    }
+    next();
+  });
 
   app.use(express.json());
 
@@ -1681,6 +1693,27 @@ async function startServer() {
       console.error("Napaka pri pošiljanju ponastavitve gesla:", err);
       res.status(500).json({ error: err.message || "Napaka pri obdelavi ponastavitve gesla." });
     }
+  });
+
+  // Security filter: drop vulnerability probes & scanner targets with 404
+  app.use((req, res, next) => {
+    const p = req.path.toLowerCase();
+    if (
+      p.includes("__vite_rsc_findsourcemapurl") ||
+      p.includes(".env") ||
+      p.includes("/wp-") ||
+      p.includes("/xmlrpc") ||
+      p.includes("/.git") ||
+      p.includes("phpmyadmin") ||
+      p.endsWith(".php") ||
+      p.endsWith(".sql") ||
+      p.endsWith(".bak") ||
+      p.endsWith(".config") ||
+      p.endsWith(".ini")
+    ) {
+      return res.status(404).type("text/plain").send("Not Found");
+    }
+    next();
   });
 
   // Page serving & Vite middleware

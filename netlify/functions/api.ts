@@ -1,5 +1,6 @@
 import type { Handler, HandlerEvent } from "@netlify/functions";
 import { handler as sendEmailHandler } from "./send-verification-email";
+import { isMaliciousSecurityPath, verifyIncomingRequestSecurity } from "../../src/utils/securityGuard";
 
 interface ServerRssFeedConfig {
   id: string;
@@ -145,6 +146,18 @@ async function fetchFeed(feed: ServerRssFeedConfig, timeoutMs = 6000): Promise<S
 }
 
 export const handler: Handler = async (event: HandlerEvent, context: any) => {
+  // Reject scanner probes, malicious paths, and bot User-Agents immediately
+  const userAgent = event.headers["user-agent"] || event.headers["User-Agent"] || "";
+  const check = verifyIncomingRequestSecurity(event.path, event.rawUrl || event.rawQuery, userAgent);
+  if (!check.allowed) {
+    const status = check.status || 403;
+    return {
+      statusCode: status,
+      headers: { "Content-Type": "text/plain" },
+      body: status === 404 ? "Not Found" : "Forbidden: Non-human automated client rejected",
+    };
+  }
+
   const path = event.path.replace(/\/\.netlify\/functions\/api\/?/, "");
 
   // Verification and password reset email handling

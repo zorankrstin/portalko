@@ -24,6 +24,7 @@ import { INITIAL_BLOG_POSTS, INITIAL_ADS, INITIAL_EVENTS } from '../data/mockFee
 import { PromotionConfig, PromotionTargetSection, PromotionBadgeType, EventScheduleSlot } from '../types';
 import { slugify } from '../utils/urlUtils';
 import { isDummyAvatar } from '../utils/avatarUtils';
+import { isLikelyBot } from '../utils/botUtils';
 
 /**
  * Sanitizes an object before calling Firestore updateDoc:
@@ -105,6 +106,19 @@ function createSharedSubscription<T>(
   let teardownTimeout: any = null;
 
   return (callback: (data: T) => void): (() => void) => {
+    // If visitor is an automated bot/crawler, serve cached/initial data without opening persistent Firestore streams
+    if (isLikelyBot()) {
+      if (currentData !== null) {
+        callback(currentData);
+      } else if (initialFallback) {
+        try {
+          const fb = initialFallback();
+          if (fb) callback(fb);
+        } catch {}
+      }
+      return () => {};
+    }
+
     subscribers.add(callback);
 
     if (teardownTimeout) {

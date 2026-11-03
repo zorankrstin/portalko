@@ -6,6 +6,9 @@
 [functions]
   directory = "netlify/functions"
 
+# ==============================================================================
+# API Endpoints & Proxies
+# ==============================================================================
 [[redirects]]
   from = "/api/rss/news"
   to = "/.netlify/functions/rss-news"
@@ -54,11 +57,258 @@
   status = 200
   force = true
 
-# SPA Fallback: Rewrite all paths to index.html for React client-side routing
+# ==============================================================================
+# Security Blocks: Drop Bot Probes & Vulnerability Scanners at Netlify Edge (404)
+# MUST be placed before the SPA /* fallback to prevent unwanted pageviews in Analytics.
+# ==============================================================================
+
+# 1. Vite RSC and SourceMap probes
+[[redirects]]
+  from = "/__vite_rsc_findSourceMapURL*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.map"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# 2. Environment and sensitive credential files
+[[redirects]]
+  from = "/.env*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/admin/.env*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*/.env*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/backend/.env*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# 3. WordPress / CMS scanners & exploits (Portalko is React SPA, not WordPress)
+[[redirects]]
+  from = "/wp-admin*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/wp-login*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/wp-content*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/wp-includes*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/wp-json*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/xmlrpc.php*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# 4. Version control repositories
+[[redirects]]
+  from = "/.git*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*/.git*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.svn*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.hg*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# 5. PHP scripts and admin tools
+[[redirects]]
+  from = "/*.php"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*/*.php"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/phpmyadmin*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/pma*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/adminer*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/mysql*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# 6. Database dumps, backups & configs
+[[redirects]]
+  from = "/*.sql"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.bak"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.config"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.conf"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.ini"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.yml"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.yaml"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.log"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# 7. Common IoT & framework exploit paths
+[[redirects]]
+  from = "/boaform*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/cgi-bin*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/actuator*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/solr*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/telescope*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/vendor/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/autodiscover*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# ==============================================================================
+# SPA Fallback: Rewrite all legitimate application paths to index.html
+# ==============================================================================
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ==============================================================================
+# HTTP Security Headers
+# ==============================================================================
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
 
 [build.environment]
   # Firebase browser keys are public client identifiers (not secrets).

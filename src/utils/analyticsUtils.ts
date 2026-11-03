@@ -76,6 +76,7 @@ export function ensureGoogleAnalyticsTag(): void {
 }
 
 import { getStoredCookieConsent } from '../services/cookieConsentService';
+import { isLikelyBot } from './botUtils';
 
 /**
  * Tracks a page view for Google Analytics across every feed, post, and page.
@@ -83,6 +84,11 @@ import { getStoredCookieConsent } from '../services/cookieConsentService';
  */
 export function trackPageView(title?: string, path?: string, location?: string): void {
   if (typeof window === 'undefined') return;
+
+  // Do not record pageviews for automated bots or web scrapers
+  if (isLikelyBot()) {
+    return;
+  }
 
   const consent = getStoredCookieConsent();
   if (consent && !consent.analytics) {
@@ -118,6 +124,10 @@ export function trackPageView(title?: string, path?: string, location?: string):
  */
 export function trackEvent(eventName: string, eventParams: Record<string, any> = {}): void {
   if (typeof window === 'undefined') return;
+
+  if (isLikelyBot()) {
+    return;
+  }
 
   const consent = getStoredCookieConsent();
   if (consent && !consent.analytics) {

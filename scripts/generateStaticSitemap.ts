@@ -103,9 +103,71 @@ async function buildStaticSitemap() {
   console.log(`Successfully generated ${sitemapPath} with ${entries.length} URLs.`);
 
   // Generate robots.txt
-  const robotsTxt = `# https://www.robotstxt.org/robotstxt.html
+  const robotsTxt = `# ==============================================================================
+# Portalko.net Robots Configuration
+# https://www.robotstxt.org/robotstxt.html
+# ==============================================================================
+
+# Block aggressive AI scrapers and automated content harvesters
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Scrapy
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
+
+# General rules for all other crawlers and search engines
 User-agent: *
 Allow: /
+
+# Disallow API endpoints and scanner probe targets
+Disallow: /api/
+Disallow: /admin
+Disallow: /.env*
+Disallow: /wp-admin*
+Disallow: /wp-login*
+Disallow: /*.php
+Disallow: /*.sql
+Disallow: /*.bak
+Disallow: /*.config
+Disallow: /*.ini
+Disallow: /*?*spa_route=
+Crawl-delay: 5
 
 # Sitemaps
 Sitemap: ${SITE_URL}/sitemap.xml

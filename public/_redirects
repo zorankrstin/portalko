@@ -1,12 +1,73 @@
-# Netlify function proxy redirects (force = 200!)
-/api/rss/news    /.netlify/functions/rss-news    200!
-/api/rss/proxy   /.netlify/functions/rss-proxy   200!
-/api/rss/image   /.netlify/functions/rss-image   200!
-/api/auth/send-verification-email    /.netlify/functions/send-verification-email    200!
-/api/send-verification-email         /.netlify/functions/send-verification-email    200!
-/api/auth/send-password-reset-email  /.netlify/functions/send-verification-email    200!
-/api/send-password-reset-email       /.netlify/functions/send-verification-email    200!
-/api/*          /.netlify/functions/api         200!
+# ==============================================================================
+# 1. Netlify function proxy redirects (force = 200!)
+# ==============================================================================
+/api/rss/news                       /.netlify/functions/rss-news              200!
+/api/rss/proxy                      /.netlify/functions/rss-proxy             200!
+/api/rss/image                      /.netlify/functions/rss-image             200!
+/api/auth/send-verification-email   /.netlify/functions/send-verification-email 200!
+/api/send-verification-email        /.netlify/functions/send-verification-email 200!
+/api/auth/send-password-reset-email /.netlify/functions/send-verification-email 200!
+/api/send-password-reset-email      /.netlify/functions/send-verification-email 200!
+/api/*                              /.netlify/functions/api                   200!
 
-# SPA redirect rules for client-side routing on Netlify, Cloudflare Pages, etc.
-/*    /index.html   200
+# ==============================================================================
+# 2. Security Blocks: Drop bot & scanner probes at Netlify edge with HTTP 404!
+# These MUST be before the SPA /* fallback so they never serve index.html,
+# preventing fake pageviews in Netlify Analytics and blocking vulnerability probes.
+# ==============================================================================
+
+# Vite RSC and sourcemap probes
+/__vite_rsc_findSourceMapURL*       /404.html    404!
+/*.map                              /404.html    404!
+
+# Environment and sensitive credential files
+/.env*                              /404.html    404!
+/*/.env*                            /404.html    404!
+/admin/.env*                        /404.html    404!
+/backend/.env*                      /404.html    404!
+
+# WordPress / CMS vulnerability scanners (Portalko is React, not WordPress)
+/wp-admin*                          /404.html    404!
+/wp-login*                          /404.html    404!
+/wp-content*                        /404.html    404!
+/wp-includes*                       /404.html    404!
+/wp-json*                           /404.html    404!
+/xmlrpc.php*                        /404.html    404!
+
+# Version control repositories
+/.git*                              /404.html    404!
+/*/.git*                            /404.html    404!
+/.svn*                              /404.html    404!
+/.hg*                               /404.html    404!
+
+# PHP execution probes and database admin panels
+/*.php                              /404.html    404!
+/*/*.php                            /404.html    404!
+/phpmyadmin*                        /404.html    404!
+/pma*                               /404.html    404!
+/adminer*                           /404.html    404!
+/mysql*                             /404.html    404!
+
+# Database dumps, backups and configuration probes
+/*.sql                              /404.html    404!
+/*.bak                              /404.html    404!
+/*.config                           /404.html    404!
+/*.conf                             /404.html    404!
+/*.ini                              /404.html    404!
+/*.yml                              /404.html    404!
+/*.yaml                             /404.html    404!
+/*.log                              /404.html    404!
+
+# Common framework and router exploit paths
+/boaform*                           /404.html    404!
+/cgi-bin*                           /404.html    404!
+/actuator*                          /404.html    404!
+/solr*                              /404.html    404!
+/telescope*                         /404.html    404!
+/vendor/*                           /404.html    404!
+/autodiscover*                      /404.html    404!
+
+# ==============================================================================
+# 3. SPA Fallback: Rewrite valid application paths to index.html for React SPA
+# ==============================================================================
+/*                                  /index.html  200
