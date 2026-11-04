@@ -261,7 +261,7 @@ export default function App() {
     } else if (currentView === 'news') {
       updatePageSeo({
         title: 'Aktualne novice v Sloveniji – RSS viri v živo | Portalko',
-        description: 'Zadnje novice iz osrednjih slovenskih medijev in RSS virov v živo. Preverite dogajanja v Sloveniji in po svetu.',
+        description: 'Zadnje novice iz osrednjih slovenskih medijev in RSS virov v živo. Preverite aktualna dogajanja v Sloveniji in po svetu na portalu Portalko.',
         url: `${window.location.origin}/novice`,
         canonicalUrl: `${window.location.origin}/novice`,
         type: 'website',
@@ -269,7 +269,7 @@ export default function App() {
     } else if (currentView === 'ads') {
       updatePageSeo({
         title: 'Mali oglasi Slovenija – Brezplačni spletni oglasi | Portalko',
-        description: 'Brezplačni mali oglasi v Sloveniji. Rabljena in nova vozila, nepremičnine, elektronika, dom in storitve po slovenskih regijah.',
+        description: 'Brezplačni mali oglasi v Sloveniji. Poiščite rabljena in nova vozila, nepremičnine, elektroniko, dom in storitve po slovenskih regijah.',
         url: `${window.location.origin}/mali-oglasi`,
         canonicalUrl: `${window.location.origin}/mali-oglasi`,
         type: 'website',
@@ -277,7 +277,7 @@ export default function App() {
     } else if (currentView === 'events') {
       updatePageSeo({
         title: 'Dogodki in prireditve v Sloveniji – Koledar dogodkov | Portalko',
-        description: 'Koledar prireditev, koncertov, festivalov, športnih in kulturnih dogodkov po celotni Sloveniji.',
+        description: 'Koledar prireditev, koncertov, festivalov, športnih in kulturnih dogodkov po celotni Sloveniji na enem mestu na portalu Portalko.',
         url: `${window.location.origin}/dogodki`,
         canonicalUrl: `${window.location.origin}/dogodki`,
         type: 'website',
@@ -285,7 +285,7 @@ export default function App() {
     } else if (currentView === 'deals') {
       updatePageSeo({
         title: 'Akcije, popusti in ugodnosti v Sloveniji | Portalko',
-        description: 'Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu.',
+        description: 'Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu. Prihranite z vsakodnevnimi popusti na Portalko.',
         url: `${window.location.origin}/akcije`,
         canonicalUrl: `${window.location.origin}/akcije`,
         type: 'website',
@@ -293,7 +293,7 @@ export default function App() {
     } else if (currentView === 'blog') {
       updatePageSeo({
         title: 'Blog & Zgodbe slovenske skupnosti | Portalko',
-        description: 'Avtorske zgodbe, potopisi, lokalni vodiči in razmišljanja članov slovenske spletne skupnosti Portalko.',
+        description: 'Avtorske zgodbe, potopisi, lokalni vodiči in razmišljanja članov slovenske spletne skupnosti na uradnem blogu portala Portalko.',
         url: `${window.location.origin}/blog`,
         canonicalUrl: `${window.location.origin}/blog`,
         type: 'website',
@@ -301,7 +301,7 @@ export default function App() {
     } else if (currentView === 'saved') {
       updatePageSeo({
         title: 'Shranjene objave in zaznamki | Portalko',
-        description: 'Vaše shranjene novice, mali oglasi, dogodki in ugodnosti na enem mestu za hiter dostop.',
+        description: 'Vaše shranjene novice, mali oglasi, dogodki in ugodnosti na enem mestu za hiter in enostaven dostop na slovenskem portalu Portalko.',
         url: `${window.location.origin}/shranjeno`,
         canonicalUrl: `${window.location.origin}/shranjeno`,
         type: 'website',
@@ -319,24 +319,15 @@ export default function App() {
       const authorUrl = selectedAuthorProfile ? `${window.location.origin}/avtor/${slugify(name)}` : `${window.location.origin}/profil`;
       updatePageSeo({
         title: `Profil uporabnika: ${name} | Portalko`,
-        description: `Oglejte si profil, objave in aktivnosti uporabnika ${name} na portalu Portalko.`,
+        description: `Oglejte si profil, objave, male oglase, dogodke in aktivnosti uporabnika ${name} na slovenskem portalu Portalko.`,
         url: authorUrl,
         canonicalUrl: authorUrl,
         type: 'profile',
       });
-    } else if (currentView === 'post-detail') {
-      const title = postDetailTitle || selectedPostTarget?.initialData?.title;
-      const cleanTitle = title ? `${title} | Portalko` : 'Objava | Portalko';
-      const cleanUrl = postDetailMeta.cleanUrl || (typeof window !== 'undefined' ? window.location.href : 'https://portalko.net');
-      updatePageSeo({
-        title: cleanTitle,
-        description: `Oglejte si podrobnosti objave na portalu Portalko.`,
-        url: cleanUrl,
-        canonicalUrl: cleanUrl,
-        type: selectedPostTarget?.type === 'event' ? 'event' : (selectedPostTarget?.type === 'ad' || selectedPostTarget?.type === 'deal') ? 'product' : 'article',
-      });
     }
-  }, [currentView, selectedAuthorProfile, currentUser, postDetailTitle, selectedPostTarget, postDetailMeta]);
+    // When currentView === 'post-detail', PostDetailPage manages its own rich SEO metadata
+    // (exact post title, unique clean excerpt from content, schema.org JSON-LD, images, etc.)
+  }, [currentView, selectedAuthorProfile, currentUser]);
 
   // Global click handler for internal links across the portal
   useEffect(() => {

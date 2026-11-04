@@ -327,11 +327,11 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <PartyPopper className="w-[1em] h-[1em] text-tertiary-container shrink-0" />
-              <span>Dogodki in prireditve</span>
+              <span>Dogodki in prireditve v Sloveniji</span>
             </h1>
-            <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Koncerti, festivali, gledališke predstave, športne prireditve in kulinarična doživetja po vsej Sloveniji.
-            </p>
+            <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
+              Koledar prireditev, koncerti, festivali, športni in kulturni dogodki po vsej Sloveniji
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             {/* Mobile Calendar Toggle Button (for screens where right sidebar is hidden) */}

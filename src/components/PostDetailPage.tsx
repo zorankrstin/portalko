@@ -888,7 +888,30 @@ export function PostDetailPage({
       });
 
       let jsonLd: Record<string, any> | undefined;
-      const cleanDesc = (itemData.description || itemData.content || itemData.title).replace(/\s+/g, ' ').trim();
+      
+      // Clean HTML tags and decode spaces from description/content
+      let rawText = (itemData.description || itemData.content || itemData.title || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Ensure unique, informative 120-160 character description
+      let cleanDesc = rawText;
+      if (cleanDesc.length < 90) {
+        if (target.type === 'event') {
+          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Oglejte si podrobnosti dogodka ${itemData.title}, datum (${itemData.eventDate || itemData.date || 'kmalu'}), lokacijo (${itemData.location || 'Slovenija'}) in vstopnice na portalu Portalko.`;
+        } else if (target.type === 'deal') {
+          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Preverite ugodnost in popust za ${itemData.title}${itemData.partner ? ` v trgovini ${itemData.partner}` : ''}. Oglejte si pogoje in prihranite na portalu Portalko.`;
+        } else if (target.type === 'ad') {
+          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Preverite mali oglas ${itemData.title}, ceno (${itemData.price || 'po dogovoru'}), fotografije in kontakt prodajalca (${itemData.location || 'Slovenija'}) na Portalko.`;
+        } else {
+          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Preberite blog članek ${itemData.title}, izkušnje in praktične nasvete slovenske spletne skupnosti na portalu Portalko.`;
+        }
+      }
+      if (cleanDesc.length > 160) {
+        cleanDesc = cleanDesc.slice(0, 157).trim() + '...';
+      }
 
       if (target.type === 'event') {
         jsonLd = {
@@ -984,7 +1007,7 @@ export function PostDetailPage({
 
       updatePageSeo({
         title: `${itemData.title} – ${itemData.categoryName || typeLabel} | Portalko`,
-        description: cleanDesc.slice(0, 160),
+        description: cleanDesc,
         image: itemData.image,
         location: itemData.location || itemData.region,
         url: fullUrl,
@@ -2021,12 +2044,18 @@ export function PostDetailPage({
               </h1>
             </div>
 
-            {/* Subtitle component (H2) positioned below the title (optional) */}
-            {itemData.subtitle && itemData.subtitle.trim() && (
-              <h2 className="font-headline-sm text-base sm:text-lg md:text-xl font-medium text-on-surface-variant leading-snug">
-                {itemData.subtitle.trim()}
-              </h2>
-            )}
+            {/* Subtitle component (H2) positioned below the title */}
+            <h2 className="font-headline-sm text-base sm:text-lg md:text-xl font-medium text-on-surface-variant leading-snug">
+              {itemData.subtitle && itemData.subtitle.trim()
+                ? itemData.subtitle.trim()
+                : target.type === 'event'
+                ? `Prireditev v kategoriji ${itemData.categoryName || 'Dogodki'}${itemData.location ? ` • ${itemData.location}` : ''}${itemData.date || itemData.eventDate ? ` • ${itemData.date || itemData.eventDate}` : ''}`
+                : target.type === 'deal'
+                ? `Preverjena ugodnost v kategoriji ${itemData.categoryName || 'Akcije'}${itemData.partner ? ` • ${itemData.partner}` : ''}${itemData.discount ? ` (${itemData.discount})` : ''}`
+                : target.type === 'ad'
+                ? `Mali oglas v kategoriji ${itemData.categoryName || 'Mali oglasi'}${itemData.location ? ` • ${itemData.location}` : ''}${itemData.price ? ` (${itemData.price})` : ''}`
+                : `Zgodbe, nasveti in izkušnje v kategoriji ${itemData.categoryName || 'Blog'}${itemData.location ? ` • ${itemData.location}` : ''}`}
+            </h2>
 
             {/* Post Metadata Row */}
             <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-on-surface-variant pt-0.5">

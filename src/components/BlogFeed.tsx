@@ -282,11 +282,11 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <BookOpen className="w-[1em] h-[1em] text-primary shrink-0" />
-              <span>Blog članki in mnenja skupnosti</span>
+              <span>Blog & Zgodbe slovenske skupnosti</span>
             </h1>
-            <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Poglobljeni zapisi, potopisi, praktični vodniki za dom ter izkušnje slovenskih ustvarjalcev in strokovnjakov.
-            </p>
+            <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
+              Poglobljeni zapisi, potopisi, praktični vodniki za dom ter izkušnje slovenskih ustvarjalcev in strokovnjakov
+            </h2>
           </div>
           <button 
             onClick={() => setIsComposeOpen(true)}

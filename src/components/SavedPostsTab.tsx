@@ -86,10 +86,10 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
           <Bookmark className="w-8 h-8" />
         </div>
         <div className="flex flex-col gap-1">
-          <h3 className="font-headline-sm text-lg font-bold text-on-surface">Nimate še shranjenih objav</h3>
-          <p className="font-body-md text-on-surface-variant max-w-sm">
-            Kliknite na ikono zaznamka ob poljubni objavi, novici, malem oglasu ali dogodku, da si jo shranite za kasnejši ogled.
-          </p>
+          <h1 className="font-headline-sm text-xl font-bold text-on-surface">Shranjene objave</h1>
+          <h2 className="font-body-md text-on-surface-variant max-w-sm mt-1">
+            Nimate še shranjenih zaznamkov. Kliknite na ikono zaznamka ob poljubni objavi, novici, malem oglasu ali dogodku, da si jo shranite za kasnejši ogled.
+          </h2>
         </div>
       </div>
     );
@@ -134,11 +134,11 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
         <div>
           <h1 className="font-headline-sm text-xl font-bold text-on-surface flex items-center gap-2">
             <Bookmark className="w-5 h-5 text-primary" />
-            Shranjene objave ({savedIds.length})
+            <span>Shranjene objave ({savedIds.length})</span>
           </h1>
-          <p className="font-body-sm text-xs text-outline">
-            Vse vaše zaznamovane novice, oglasi, dogodki in blog zapisi na enem mestu.
-          </p>
+          <h2 className="font-body-sm text-xs text-outline mt-0.5">
+            Vse vaše zaznamovane novice, mali oglasi, dogodki in blog zapisi na enem mestu
+          </h2>
         </div>
       </div>
 

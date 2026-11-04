@@ -553,9 +553,11 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                 </h1>
               </div>
 
-              <div className="flex items-center gap-3 text-xs text-outline font-medium">
-                <span>{authorProfile.username}</span>
-              </div>
+              <h2 className="font-headline-sm text-xs sm:text-sm font-semibold text-on-surface-variant flex items-center gap-1.5">
+                <span>{authorProfile.roleTitle}</span>
+                <span>•</span>
+                <span className="text-outline font-normal">{authorProfile.username}</span>
+              </h2>
 
               <p className="font-body-md text-on-surface-variant text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
                 {authorProfile.bio}

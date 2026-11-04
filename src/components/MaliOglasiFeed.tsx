@@ -318,11 +318,11 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <ShoppingBag className="w-[1em] h-[1em] text-primary shrink-0" />
-              <span>Mali oglasi</span>
+              <span>Mali oglasi v Sloveniji</span>
             </h1>
-            <p className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Poiščite ali objavite rabljene in nove predmete, nepremičnine, vozila ter opremo po vsej Sloveniji.
-            </p>
+            <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
+              Brezplačni mali oglasi v Sloveniji – poiščite ali objavite rabljene in nove predmete, nepremičnine, vozila ter opremo
+            </h2>
           </div>
           <button 
             onClick={() => setIsComposeOpen(true)}

@@ -131,22 +131,22 @@ function preparePageHtml(rawHtml: string, reqUrl: string): string {
 
   if (pathname === "/novice") {
     title = "Aktualne novice v Sloveniji – RSS viri v živo | Portalko";
-    description = "Zadnje novice iz osrednjih slovenskih medijev in RSS virov v živo. Preverite dogajanja v Sloveniji in po svetu.";
+    description = "Zadnje novice iz osrednjih slovenskih medijev in RSS virov v živo. Preverite aktualna dogajanja v Sloveniji in po svetu na portalu Portalko.";
   } else if (pathname === "/mali-oglasi") {
     title = "Mali oglasi Slovenija – Brezplačni spletni oglasi | Portalko";
-    description = "Brezplačni mali oglasi v Sloveniji. Rabljena in nova vozila, nepremičnine, elektronika, dom in storitve po slovenskih regijah.";
+    description = "Brezplačni mali oglasi v Sloveniji. Poiščite rabljena in nova vozila, nepremičnine, elektroniko, dom in storitve po slovenskih regijah.";
   } else if (pathname === "/dogodki") {
     title = "Dogodki in prireditve v Sloveniji – Koledar dogodkov | Portalko";
-    description = "Koledar prireditev, koncertov, festivalov, športnih in kulturnih dogodkov po celotni Sloveniji.";
+    description = "Koledar prireditev, koncertov, festivalov, športnih in kulturnih dogodkov po celotni Sloveniji na enem mestu na portalu Portalko.";
   } else if (pathname === "/akcije") {
     title = "Akcije, popusti in ugodnosti v Sloveniji | Portalko";
-    description = "Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu.";
+    description = "Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu. Prihranite z vsakodnevnimi popusti na Portalko.";
   } else if (pathname === "/blog") {
     title = "Blog & Zgodbe slovenske skupnosti | Portalko";
-    description = "Avtorske zgodbe, potopisi, lokalni vodiči in razmišljanja članov slovenske spletne skupnosti Portalko.";
+    description = "Avtorske zgodbe, potopisi, lokalni vodiči in razmišljanja članov slovenske spletne skupnosti na uradnem blogu portala Portalko.";
   } else if (pathname === "/shranjeno") {
     title = "Shranjene objave in zaznamki | Portalko";
-    description = "Vaše shranjene novice, mali oglasi, dogodki in ugodnosti na enem mestu za hiter dostop.";
+    description = "Vaše shranjene novice, mali oglasi, dogodki in ugodnosti na enem mestu za hiter in enostaven dostop na slovenskem portalu Portalko.";
   } else if (pathname === "/o-nas") {
     title = "O portalu Portalko – Slovenski portal za novice, male oglase in dogodke | Portalko";
     description = "Spoznajte portal Portalko, osrednjo slovensko skupnost za novice, male oglase, lokalne prireditve in ugodnosti.";
@@ -178,10 +178,26 @@ function preparePageHtml(rawHtml: string, reqUrl: string): string {
     if (segments.length >= 3 || (section !== "novice" && segments.length === 2 && !["slovenija", "svet", "gospodarstvo", "sport", "kultura", "tehnologija"].includes(segments[1]))) {
       // Looks like an individual post or deep subcategory
       title = `${humanTitle} | Portalko`;
-      description = `Oglejte si podrobnosti objave ${humanTitle} na portalu Portalko.`;
-      ogType = section === "dogodki" ? "event" : (section === "mali-oglasi" || section === "akcije") ? "product" : "article";
+      if (section === "dogodki") {
+        description = `Podrobnosti, datum, lokacija in program za dogodek ${humanTitle} v Sloveniji na portalu Portalko.`;
+        ogType = "event";
+      } else if (section === "mali-oglasi") {
+        description = `Oglejte si oglas ${humanTitle}, fotografije, ceno in kontakt prodajalca na malih oglasih Portalko.`;
+        ogType = "product";
+      } else if (section === "akcije") {
+        description = `Preverite ugodnost, popust, ceno in promocijsko kodo za ${humanTitle} na portalu Portalko.`;
+        ogType = "product";
+      } else if (section === "blog") {
+        description = `Preberite celoten blog članek ${humanTitle}, zgodbe in praktične nasvete slovenske skupnosti na Portalko.`;
+        ogType = "article";
+      } else {
+        description = `Preberite podrobnosti novice ${humanTitle} in aktualno dogajanje na slovenskem portalu Portalko.`;
+        ogType = "article";
+      }
     } else {
-      title = `${humanTitle} – ${section.charAt(0).toUpperCase() + section.slice(1)} | Portalko`;
+      const sectionName = section === "mali-oglasi" ? "Mali oglasi" : section === "dogodki" ? "Dogodki" : section === "akcije" ? "Akcije" : section === "blog" ? "Blog" : "Novice";
+      title = `${humanTitle} – ${sectionName} | Portalko`;
+      description = `Pregled aktualnih objav v kategoriji ${humanTitle} na portalu Portalko v rubriki ${sectionName}.`;
     }
   }
 

@@ -251,6 +251,21 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
 
   return (
     <div className="flex flex-col gap-space-md">
+      {/* Glavna SEO glava portala */}
+      <header className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-1 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
+        <h1 className="font-headline-lg text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
+          {searchQuery 
+            ? `Rezultati iskanja: "${searchQuery}"` 
+            : 'Portalko – Slovenski portal za novice, male oglase in dogodke'}
+        </h1>
+        <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
+          {searchQuery
+            ? `Iskanje po vseh vsebinah portala Portalko: novice, mali oglasi, dogodki in ugodnosti`
+            : 'Zadnje novice, brezplačni mali oglasi, prihajajoči dogodki in ugodnosti v Sloveniji'}
+        </h2>
+      </header>
+
       {/* Hitro ustvarjanje objave (Composer Widget) */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3">
         <div className="flex items-center gap-3">
