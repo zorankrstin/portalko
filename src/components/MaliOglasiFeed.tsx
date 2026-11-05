@@ -20,6 +20,7 @@ import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { isUserVerified } from '../utils/userVerificationUtils';
+import { usePageSeo } from '../services/seoSettingsService';
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -29,6 +30,7 @@ interface MaliOglasiFeedProps {
 
 export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost }: MaliOglasiFeedProps) {
   const { users } = useAuth();
+  const { currentSeo } = usePageSeo('ads');
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [firestoreAds, setFirestoreAds] = useState<FirestoreAd[]>([]);
@@ -318,10 +320,10 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <ShoppingBag className="w-[1em] h-[1em] text-primary shrink-0" />
-              <span>Mali oglasi v Sloveniji</span>
+              <span>{currentSeo?.h1 || 'Mali oglasi v Sloveniji'}</span>
             </h1>
             <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Brezplačni mali oglasi v Sloveniji – poiščite ali objavite rabljene in nove predmete, nepremičnine, vozila ter opremo
+              {currentSeo?.h2 || 'Brezplačni mali oglasi v Sloveniji – poiščite ali objavite rabljene in nove predmete, nepremičnine, vozila ter opremo'}
             </h2>
           </div>
           <button 

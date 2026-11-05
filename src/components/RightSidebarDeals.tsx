@@ -8,6 +8,8 @@ import { PostDetailTarget } from '../types';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
 import { buildPostUrl, slugify } from '../utils/urlUtils';
+import { PromotionBannerZone } from './common/PromotionBannerZone';
+import { AdSense } from './ads/AdSense';
 
 interface RightSidebarDealsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -111,6 +113,12 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
           )}
         </div>
       </div>
+
+      {/* Promocijska pasica */}
+      <PromotionBannerZone position="right_sidebar" />
+
+      {/* Oglasni prostor */}
+      <AdSense />
 
       {/* 2. AKTUALNI KATALOGI IN LETAKI */}
       <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3">

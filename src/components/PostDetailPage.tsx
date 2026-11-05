@@ -4,7 +4,8 @@ import {
   ThumbsUp, Tag, ShieldCheck, User, Clock, MessageSquare, 
   Phone, Send, Heart, AlertTriangle, Sparkles, CheckCircle2, 
   CalendarPlus, Bookmark, Eye, ChevronRight, ChevronLeft, Store, ArrowRight,
-  Edit3, Trash2, Search, X, BookOpen, Maximize2, Minimize2, ZoomIn, Images, Ticket, CalendarDays
+  Edit3, Trash2, Search, X, BookOpen, Maximize2, Minimize2, ZoomIn, Images, Ticket, CalendarDays,
+  Zap, Smartphone, Code
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from '../types';
@@ -12,6 +13,8 @@ import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
 import { ReportButton } from './ReportButton';
 import { LikeButton } from './LikeButton';
+import { buildAmpUrl, isAmpRequested, AmpArticleData, generateAmpHtml } from '../services/ampService';
+import { AmpArticleView } from './amp/AmpArticleView';
 import { useLikes } from '../contexts/LikeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -264,6 +267,12 @@ export function PostDetailPage({
   const [imageFitMode, setImageFitMode] = useState<'contain' | 'cover'>('contain');
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isAmpActive, setIsAmpActive] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && isAmpRequested();
+  });
+  const [isAmpModalOpen, setIsAmpModalOpen] = useState(false);
+  const [copiedAmpModalUrl, setCopiedAmpModalUrl] = useState(false);
+  const [copiedAmpModalHtml, setCopiedAmpModalHtml] = useState(false);
 
   // Comments state
   const [comments, setComments] = useState<PostComment[]>([]);
@@ -1005,6 +1014,17 @@ export function PostDetailPage({
         };
       }
 
+      const isArticleForAmp = target.type === 'news' || target.type === 'blog' || target.type === 'post';
+      const ampHtmlUrl = isArticleForAmp ? buildAmpUrl({
+        id: itemData.id,
+        type: target.type,
+        title: itemData.title,
+        category: itemData.category,
+        categoryName: itemData.categoryName,
+        subcategory: itemData.subcategory,
+        subcategoryName: itemData.subcategoryName,
+      }) : undefined;
+
       updatePageSeo({
         title: `${itemData.title} – ${itemData.categoryName || typeLabel} | Portalko`,
         description: cleanDesc,
@@ -1012,6 +1032,7 @@ export function PostDetailPage({
         location: itemData.location || itemData.region,
         url: fullUrl,
         canonicalUrl: fullUrl,
+        ampHtmlUrl,
         type: target.type === 'event' ? 'event' : target.type === 'deal' || target.type === 'ad' ? 'product' : 'article',
         jsonLd,
       });
@@ -1902,6 +1923,58 @@ export function PostDetailPage({
     }
   };
 
+  // If user requested AMP mode or toggled AMP view for news/blog posts
+  const isArticleForAmpView = target.type === 'news' || target.type === 'blog' || target.type === 'post';
+  if (isAmpActive && isArticleForAmpView && itemData) {
+    const canonicalItemUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://portalko.net'}${buildPostUrl({
+      type: (target.type === 'news' ? 'news' : 'blog') as any,
+      id: itemData.id || target.id,
+      title: itemData.title,
+      category: itemData.category,
+      categoryName: itemData.categoryName || feedCategoryName,
+      subcategory: itemData.subcategory,
+      subcategoryName: itemData.subcategoryName,
+    })}`;
+
+    const ampArticleData: AmpArticleData = {
+      id: itemData.id || target.id,
+      type: (target.type === 'news' ? 'news' : 'blog'),
+      title: itemData.title,
+      subtitle: itemData.subtitle,
+      content: itemData.content || itemData.description || '',
+      description: itemData.description,
+      authorName: authorDisplayName,
+      authorRole: authorRole,
+      authorAvatar: authorAvatar,
+      category: itemData.category,
+      categoryName: itemData.categoryName || feedCategoryName,
+      subcategory: itemData.subcategory,
+      subcategoryName: itemData.subcategoryName,
+      image: itemData.image,
+      imageUrl: itemData.imageUrl,
+      publishedAt: itemData.createdAt || itemData.date,
+      updatedAt: itemData.updatedAt || itemData.createdAt,
+      location: itemData.location || itemData.region,
+      tags: itemData.tags,
+      canonicalUrl: canonicalItemUrl,
+    };
+
+    return (
+      <AmpArticleView
+        article={ampArticleData}
+        onExitAmp={() => {
+          setIsAmpActive(false);
+          if (typeof window !== 'undefined' && window.location.search.includes('amp=')) {
+            const cleanSearch = window.location.search.replace(/([?&])amp=[^&]+(&|$)/, '$1').replace(/[?&]$/, '');
+            const newUrl = `${window.location.pathname}${cleanSearch}${window.location.hash}`;
+            window.history.replaceState(null, '', newUrl);
+          }
+        }}
+        onNavigateAuthor={() => handleAuthorClick()}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-space-md animate-in fade-in duration-200">
       {/* In-page Category Search Bar (hidden for single blog posts, news, event posts, and deal/akcije posts) */}
@@ -2350,6 +2423,20 @@ export function PostDetailPage({
               <Share2 className="w-4 h-4" />
               <span>Deli</span>
             </button>
+
+            {/* AMP (Accelerated Mobile Pages) Button for News & Blog posts */}
+            {(target.type === 'news' || target.type === 'blog' || target.type === 'post') && (
+              <button
+                type="button"
+                id="btn-post-open-amp-modal"
+                onClick={() => setIsAmpModalOpen(true)}
+                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-102 active:scale-95"
+                title="Accelerated Mobile Pages (AMP) – Odpri hitro mobilno različico za Google iskalnik ali kopiraj AMP povezavo"
+              >
+                <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                <span>AMP</span>
+              </button>
+            )}
 
             {/* Prijavi */}
             <ReportButton
@@ -3357,6 +3444,119 @@ export function PostDetailPage({
           discount={itemData.discount}
           date={itemData.date || itemData.eventDate}
         />
+      )}
+
+      {/* AMP Info & Quick Share Modal */}
+      {isAmpModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setIsAmpModalOpen(false)}
+        >
+          <div 
+            className="bg-surface-container-lowest rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-surface-container flex flex-col gap-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-surface-container">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                  <Zap className="w-5 h-5 fill-amber-500" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-base text-on-surface">Accelerated Mobile Pages (AMP)</h3>
+                  <p className="text-xs text-outline">Optimizacija za hitro nalaganje med Googlovimi mobilnimi zadetki</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsAmpModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-surface-container text-outline hover:text-on-surface transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-on-surface flex flex-col gap-2">
+              <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>AMP oznaka je aktivna v HTML glavi (&lt;link rel="amphtml"&gt;)</span>
+              </div>
+              <p className="text-on-surface-variant text-[11px] leading-relaxed">
+                Ta članek je pripravljen za Googlovo mobilno predpomnjenje (AMP Cache). Iskalnik Google mobilnim uporabnikom samodejno ponudi bliskovito hitro različico z značko strele ⚡.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-on-surface">Neposredna AMP povezava:</label>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={buildAmpUrl({
+                    id: itemData.id,
+                    type: target.type,
+                    title: itemData.title,
+                    category: itemData.category,
+                    categoryName: itemData.categoryName,
+                    subcategory: itemData.subcategory,
+                    subcategoryName: itemData.subcategoryName,
+                  })}
+                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-surface-container bg-surface-container-low text-on-surface font-mono select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const url = buildAmpUrl({
+                      id: itemData.id,
+                      type: target.type,
+                      title: itemData.title,
+                      category: itemData.category,
+                      categoryName: itemData.categoryName,
+                      subcategory: itemData.subcategory,
+                      subcategoryName: itemData.subcategoryName,
+                    });
+                    await navigator.clipboard.writeText(url);
+                    setCopiedAmpModalUrl(true);
+                    setTimeout(() => setCopiedAmpModalUrl(false), 2000);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold flex items-center gap-1.5 hover:bg-primary-dim transition-colors cursor-pointer shrink-0"
+                >
+                  {copiedAmpModalUrl ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedAmpModalUrl ? 'Kopirano' : 'Kopiraj'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-surface-container">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAmpModalOpen(false);
+                  setIsAmpActive(true);
+                }}
+                className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <Zap className="w-4 h-4 fill-slate-950" />
+                <span>Ogled AMP mobilne strani</span>
+              </button>
+              <a
+                href={`https://validator.ampproject.org/#url=${encodeURIComponent(buildAmpUrl({
+                  id: itemData.id,
+                  type: target.type,
+                  title: itemData.title,
+                  category: itemData.category,
+                  categoryName: itemData.categoryName,
+                  subcategory: itemData.subcategory,
+                  subcategoryName: itemData.subcategoryName,
+                }))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto py-2.5 px-3 rounded-xl bg-surface-container-high hover:bg-surface-container text-on-surface font-semibold text-xs flex items-center justify-center gap-1.5 border border-surface-container/60 transition-colors"
+              >
+                <span>Google Validator</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1058,19 +1058,44 @@ export const subscribeToPosts = createSharedSubscription(rawSubscribeToPosts, ge
 
 export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { id?: string }): Promise<string> {
   const path = 'posts';
+  console.group('🔥 [Firestore createPostInFirestore] Starting post creation');
   try {
     const postRef = doc(collection(db, path));
+    const now = new Date().toISOString();
     const newPost: FirestorePost = {
       ...post,
       id: postRef.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      status: post.status || 'published',
+      createdAt: now,
+      updatedAt: now,
       likesCount: post.likesCount || 0,
       commentsCount: post.commentsCount || 0,
     };
-    await setDoc(postRef, cleanDataForFirestore(newPost));
+
+    const cleanedPayload = cleanDataForFirestore(newPost);
+    console.log('📦 [Firestore:createPost] Payload prepared for collection "posts" (ID: ' + postRef.id + '):', cleanedPayload);
+    console.log('🔍 [Firestore:createPost] Verifying post metadata: status="' + cleanedPayload.status + '", authorRole="' + cleanedPayload.authorRole + '", category="' + cleanedPayload.category + '"');
+
+    await setDoc(postRef, cleanedPayload);
+    console.log('✅ [Firestore:createPost] Document successfully persisted in Firestore with ID:', postRef.id, 'status: published');
+
+    // Optimistically update local cache so the newly created post is instantly visible
+    try {
+      const cached = getCachedPosts();
+      const updated = [newPost, ...cached.filter(p => p.id !== newPost.id)];
+      localStorage.setItem('cached_firestore_posts', JSON.stringify(updated));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('portal_posts_updated', { detail: newPost }));
+      }
+    } catch (cacheErr) {
+      console.warn('Note: Could not update local posts cache:', cacheErr);
+    }
+
+    console.groupEnd();
     return postRef.id;
   } catch (error) {
+    console.error('❌ [Firestore:createPost] Error caught while writing post document:', error);
+    console.groupEnd();
     handleFirestoreError(error, OperationType.CREATE, path);
     return '';
   }

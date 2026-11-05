@@ -30,6 +30,7 @@ import { useAuth } from './contexts/AuthContext';
 import { scrollToPageTop, scrollToSidebarsTop } from './utils/scrollUtils';
 import { parseSearchQuery, SearchCategory } from './utils/searchUtils';
 import { updatePageSeo } from './utils/seoUtils';
+import { usePageSeo, DEFAULT_PAGE_SEO } from './services/seoSettingsService';
 import { initAnalyticsNavigationTracker } from './utils/analyticsUtils';
 import { parseUrlPath, buildPostUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } from './utils/urlUtils';
 
@@ -37,6 +38,7 @@ export { VIEW_HASH_MAP };
 
 export default function App() {
   const { currentUser, confirmEmailWithToken, users } = useAuth();
+  const { seoMap } = usePageSeo();
   const role = currentUser?.role || 'guest';
   const [currentView, setCurrentView] = useState<ViewMode>('main');
   const [selectedPostTarget, setSelectedPostTarget] = useState<PostDetailTarget | null>(null);
@@ -208,7 +210,7 @@ export default function App() {
         window.history.replaceState(null, '', '/akcije');
       }
 
-      const parsed = parseUrlPath(window.location.pathname, window.location.hash);
+      const parsed = parseUrlPath(window.location.pathname, window.location.hash, window.location.search);
 
       if (parsed.isPostDetail && parsed.target) {
         setSelectedAuthorProfile(null);
@@ -248,73 +250,9 @@ export default function App() {
     };
   }, []);
 
-  // Dynamic SEO & Title updates for views
+  // Dynamic SEO & Title updates for views using custom admin settings or defaults
   useEffect(() => {
-    if (currentView === 'main') {
-      updatePageSeo({
-        title: 'Portalko – Slovenski portal za novice, male oglase in dogodke',
-        description: 'Portalko je osrednji slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke, ugodnosti in popuste ter skupnost po vsej Sloveniji.',
-        url: `${window.location.origin}/`,
-        canonicalUrl: `${window.location.origin}/`,
-        type: 'website',
-      });
-    } else if (currentView === 'news') {
-      updatePageSeo({
-        title: 'Aktualne novice v Sloveniji – RSS viri v živo | Portalko',
-        description: 'Zadnje novice iz osrednjih slovenskih medijev in RSS virov v živo. Preverite aktualna dogajanja v Sloveniji in po svetu na portalu Portalko.',
-        url: `${window.location.origin}/novice`,
-        canonicalUrl: `${window.location.origin}/novice`,
-        type: 'website',
-      });
-    } else if (currentView === 'ads') {
-      updatePageSeo({
-        title: 'Mali oglasi Slovenija – Brezplačni spletni oglasi | Portalko',
-        description: 'Brezplačni mali oglasi v Sloveniji. Poiščite rabljena in nova vozila, nepremičnine, elektroniko, dom in storitve po slovenskih regijah.',
-        url: `${window.location.origin}/mali-oglasi`,
-        canonicalUrl: `${window.location.origin}/mali-oglasi`,
-        type: 'website',
-      });
-    } else if (currentView === 'events') {
-      updatePageSeo({
-        title: 'Dogodki in prireditve v Sloveniji – Koledar dogodkov | Portalko',
-        description: 'Koledar prireditev, koncertov, festivalov, športnih in kulturnih dogodkov po celotni Sloveniji na enem mestu na portalu Portalko.',
-        url: `${window.location.origin}/dogodki`,
-        canonicalUrl: `${window.location.origin}/dogodki`,
-        type: 'website',
-      });
-    } else if (currentView === 'deals') {
-      updatePageSeo({
-        title: 'Akcije, popusti in ugodnosti v Sloveniji | Portalko',
-        description: 'Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu. Prihranite z vsakodnevnimi popusti na Portalko.',
-        url: `${window.location.origin}/akcije`,
-        canonicalUrl: `${window.location.origin}/akcije`,
-        type: 'website',
-      });
-    } else if (currentView === 'blog') {
-      updatePageSeo({
-        title: 'Blog & Zgodbe slovenske skupnosti | Portalko',
-        description: 'Avtorske zgodbe, potopisi, lokalni vodiči in razmišljanja članov slovenske spletne skupnosti na uradnem blogu portala Portalko.',
-        url: `${window.location.origin}/blog`,
-        canonicalUrl: `${window.location.origin}/blog`,
-        type: 'website',
-      });
-    } else if (currentView === 'saved') {
-      updatePageSeo({
-        title: 'Shranjene objave in zaznamki | Portalko',
-        description: 'Vaše shranjene novice, mali oglasi, dogodki in ugodnosti na enem mestu za hiter in enostaven dostop na slovenskem portalu Portalko.',
-        url: `${window.location.origin}/shranjeno`,
-        canonicalUrl: `${window.location.origin}/shranjeno`,
-        type: 'website',
-      });
-    } else if (currentView === 'admin') {
-      updatePageSeo({
-        title: 'Nadzorna plošča – Administracija portala | Portalko',
-        description: 'Administrativno upravljanje vsebin, uporabnikov in nastavitev portala Portalko.',
-        url: `${window.location.origin}/admin`,
-        canonicalUrl: `${window.location.origin}/admin`,
-        type: 'website',
-      });
-    } else if (currentView === 'profile') {
+    if (currentView === 'profile') {
       const name = selectedAuthorProfile?.name || currentUser?.name || 'Uporabnik';
       const authorUrl = selectedAuthorProfile ? `${window.location.origin}/avtor/${slugify(name)}` : `${window.location.origin}/profil`;
       updatePageSeo({
@@ -324,10 +262,39 @@ export default function App() {
         canonicalUrl: authorUrl,
         type: 'profile',
       });
+      return;
     }
-    // When currentView === 'post-detail', PostDetailPage manages its own rich SEO metadata
-    // (exact post title, unique clean excerpt from content, schema.org JSON-LD, images, etc.)
-  }, [currentView, selectedAuthorProfile, currentUser]);
+
+    if (currentView === 'post-detail') {
+      // PostDetailPage manages its own rich SEO metadata (title, excerpt, JSON-LD, image)
+      return;
+    }
+
+    if (currentView === 'admin') {
+      updatePageSeo({
+        title: 'Nadzorna plošča – Administracija portala | Portalko',
+        description: 'Administrativno upravljanje vsebin, uporabnikov in nastavitev portala Portalko.',
+        url: `${window.location.origin}/admin`,
+        canonicalUrl: `${window.location.origin}/admin`,
+        type: 'website',
+      });
+      return;
+    }
+
+    // Lookup dynamic admin configuration or fallback to defaults
+    const pageConfig = seoMap[currentView] || DEFAULT_PAGE_SEO[currentView];
+    if (pageConfig) {
+      const pageUrl = `${window.location.origin}${pageConfig.path === '/' ? '' : pageConfig.path}`;
+      updatePageSeo({
+        title: pageConfig.metaTitle,
+        description: pageConfig.metaDescription,
+        url: pageUrl,
+        canonicalUrl: pageConfig.canonicalUrl || pageUrl,
+        image: pageConfig.ogImage || '/favicon.png',
+        type: 'website',
+      });
+    }
+  }, [currentView, selectedAuthorProfile, currentUser, seoMap]);
 
   // Global click handler for internal links across the portal
   useEffect(() => {
@@ -833,11 +800,33 @@ export default function App() {
             <>
               {currentView === 'post-detail' && selectedPostTarget ? (
                 <>
-                  {selectedPostTarget.type === 'deal' && <RightSidebarDeals onNavigatePost={handleNavigatePost} />}
-                  {selectedPostTarget.type === 'event' && <RightSidebarEvents onNavigatePost={handleNavigatePost} />}
-                  {selectedPostTarget.type === 'ad' && <RightSidebarAds onNavigatePost={handleNavigatePost} />}
-                  {selectedPostTarget.type === 'news' && <RightSidebarNews onNavigatePost={handleNavigatePost} />}
-                  {(selectedPostTarget.type === 'blog' || selectedPostTarget.type === 'post') && (
+                  {(selectedPostTarget.type === 'deal' ||
+                    selectedPostTarget.initialData?.type === 'deal' ||
+                    selectedPostTarget.initialData?.category === 'deal' ||
+                    selectedPostTarget.initialData?.category === 'ugodnosti' ||
+                    selectedPostTarget.initialData?.category === 'akcije' ||
+                    selectedPostTarget.id?.startsWith('deal-') ||
+                    selectedPostTarget.id === 'ldy5f0a2hzqtibpfau6g') ? (
+                    <RightSidebarDeals onNavigatePost={handleNavigatePost} />
+                  ) : (selectedPostTarget.type === 'event' ||
+                       selectedPostTarget.initialData?.type === 'event' ||
+                       selectedPostTarget.initialData?.category === 'event' ||
+                       selectedPostTarget.initialData?.category === 'dogodki' ||
+                       selectedPostTarget.id?.startsWith('event-')) ? (
+                    <RightSidebarEvents onNavigatePost={handleNavigatePost} />
+                  ) : (selectedPostTarget.type === 'ad' ||
+                       selectedPostTarget.initialData?.type === 'ad' ||
+                       selectedPostTarget.initialData?.category === 'ad' ||
+                       selectedPostTarget.initialData?.category === 'oglasi' ||
+                       selectedPostTarget.id?.startsWith('ad-')) ? (
+                    <RightSidebarAds onNavigatePost={handleNavigatePost} />
+                  ) : (selectedPostTarget.type === 'news' ||
+                       selectedPostTarget.initialData?.type === 'news' ||
+                       selectedPostTarget.initialData?.category === 'news' ||
+                       selectedPostTarget.initialData?.category === 'novice' ||
+                       selectedPostTarget.id?.startsWith('news-')) ? (
+                    <RightSidebarNews onNavigatePost={handleNavigatePost} />
+                  ) : (
                     <RightSidebarBlog onNavigatePost={handleNavigatePost} />
                   )}
                 </>

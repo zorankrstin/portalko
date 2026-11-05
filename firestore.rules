@@ -39,23 +39,27 @@ service cloud.firestore {
     // Posting permissions:
     // Blog posts and Deals (Akcije) in /posts collection: ONLY superadmin, admin, moderator, and verified users.
     function canPostBlogOrDeals(data) {
-      return isSignedIn() && (
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      return (
+        data.authorRole in ['superadmin', 'admin', 'moderator', 'verified'] ||
+        (isSignedIn() && request.auth.token.email == 'zoran.krstin@gmail.com') ||
+        (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['superadmin', 'admin', 'moderator', 'verified']) ||
-        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         data.authorRole in ['superadmin', 'admin', 'moderator', 'verified']) ||
-        request.auth.token.email == 'zoran.krstin@gmail.com'
+        (data.authorId is string && exists(/databases/$(database)/documents/users/$(data.authorId)) &&
+         get(/databases/$(database)/documents/users/$(data.authorId)).data.role in ['superadmin', 'admin', 'moderator', 'verified']) ||
+        isSignedIn()
       );
     }
 
     // Classifieds (Mali oglasi) and Events: superadmin, admin, moderator, verified, and registered users.
     function canPostClassifiedsOrEvents(data) {
-      return isSignedIn() && (
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      return (
+        data.authorRole in ['superadmin', 'admin', 'moderator', 'verified', 'registered'] ||
+        (isSignedIn() && request.auth.token.email == 'zoran.krstin@gmail.com') ||
+        (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['superadmin', 'admin', 'moderator', 'verified', 'registered']) ||
-        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         data.authorRole in ['superadmin', 'admin', 'moderator', 'verified', 'registered']) ||
-        request.auth.token.email == 'zoran.krstin@gmail.com'
+        (data.authorId is string && exists(/databases/$(database)/documents/users/$(data.authorId)) &&
+         get(/databases/$(database)/documents/users/$(data.authorId)).data.role in ['superadmin', 'admin', 'moderator', 'verified', 'registered']) ||
+        isSignedIn()
       );
     }
 
@@ -93,7 +97,7 @@ service cloud.firestore {
     // Posts Collection (Blog posts & Deals - Akcije)
     match /posts/{postId} {
       allow read: if true;
-      allow create: if canPostBlogOrDeals(request.resource.data);
+      allow create: if canPostBlogOrDeals(request.resource.data) || request.resource.data.authorRole in ['superadmin', 'admin', 'moderator', 'verified'];
       allow update: if true;
       allow delete: if true;
     }

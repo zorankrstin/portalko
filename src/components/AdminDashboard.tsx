@@ -13,6 +13,7 @@ import { SocialLinksManager } from './admin/SocialLinksManager';
 import { BannerManager } from './admin/BannerManager';
 import { AdminActivityLog } from './admin/AdminActivityLog';
 import { EmailDeliveryTracker } from './admin/EmailDeliveryTracker';
+import { SeoManager } from './admin/SeoManager';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { subscribeToReports } from '../services/reportService';
 import { useAuth, Role, User, isDummyUser } from '../contexts/AuthContext';
@@ -93,7 +94,7 @@ const MOCK_POSTS: AdminPost[] = [
 
 export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: AdminDashboardProps = {}) {
   const { users, currentUser, updateUser, deleteUser, register, resendVerificationEmail } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings' | 'social' | 'emails'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings' | 'social' | 'emails' | 'seo'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -1188,6 +1189,16 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
       >
         <Mail className="w-4 h-4" />
         <span>Status e-pošt (5)</span>
+      </button>
+      <button 
+        onClick={() => setActiveTab('seo')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'seo' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+        title="Upravljanje H1, H2, meta naslovov in opisov za posamezne strani"
+      >
+        <Sparkles className="w-4 h-4" />
+        <span>SEO & Meta oznake</span>
       </button>
     </div>
   );
@@ -2524,6 +2535,13 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         {activeTab === 'emails' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <EmailDeliveryTracker users={users} />
+          </div>
+        )}
+
+        {/* Tab Content: SEO & Meta Tags Management */}
+        {activeTab === 'seo' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <SeoManager currentUserId={currentUser?.id} />
           </div>
         )}
       </div>

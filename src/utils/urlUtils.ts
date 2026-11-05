@@ -241,18 +241,33 @@ export interface ParsedRouteResult {
   subcategorySlug?: string;
   titleSlug?: string;
   isPostDetail: boolean;
+  isAmp?: boolean;
 }
 
 /**
  * Parses current window.location.pathname and hash to determine view and post target.
  * Supports:
+ * - AMP routes: /amp/novice/..., /amp/blog/..., or ?amp=1
  * - 3-level clean paths: /category/subcategory/title
  * - 2-level clean paths: /category/title or /section/subcategory
  * - 1-level paths: /mali-oglasi, /dogodki, /ugodnosti, /blog, /novice, /profil, /admin
  * - Author profiles: /avtor/:authorName or /profil/:authorName
  * - Legacy hash compatibility: #blog-123, #ad-123, #deal-123, #event-123, #profil, #author-...
  */
-export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteResult {
+export function parseUrlPath(pathname: string, hash: string = '', search: string = ''): ParsedRouteResult {
+  // Check if AMP mode was requested
+  const isAmpSearch = typeof window !== 'undefined' && (
+    (search || window.location.search).includes('amp=1') || 
+    (search || window.location.search).includes('amp=true')
+  );
+  let isAmpRoute = isAmpSearch;
+  let effectivePathname = pathname || '/';
+
+  if (effectivePathname.startsWith('/amp/') || effectivePathname === '/amp') {
+    isAmpRoute = true;
+    effectivePathname = effectivePathname.replace(/^\/amp/, '') || '/';
+  }
+
   // 1. First check if there is an explicit legacy hash that takes precedence
   const rawHash = (hash || '').replace(/^#\/?/, '').trim();
   if (rawHash) {
@@ -260,7 +275,7 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
 
     // Profile hash
     if (lowerHash === 'profil' || lowerHash === 'profile') {
-      return { view: 'profile', isPostDetail: false };
+      return { view: 'profile', isPostDetail: false, isAmp: isAmpRoute };
     }
     const authorHashMatch = rawHash.match(/^author-(.+)$/i);
     if (authorHashMatch) {
@@ -268,7 +283,8 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
       return { 
         view: 'profile', 
         author: { name: decodedName }, 
-        isPostDetail: false 
+        isPostDetail: false,
+        isAmp: isAmpRoute,
       };
     }
 
@@ -282,21 +298,22 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
       return {
         view: 'post-detail',
         isPostDetail: true,
-        target: { type, id }
+        target: { type, id },
+        isAmp: isAmpRoute,
       };
     }
 
     // Standard view hash
     if (SLUG_TO_VIEW[lowerHash]) {
-      return { view: SLUG_TO_VIEW[lowerHash], isPostDetail: false };
+      return { view: SLUG_TO_VIEW[lowerHash], isPostDetail: false, isAmp: isAmpRoute };
     }
   }
 
   // 2. Parse clean URL pathname: /category/subcategory/title
   // Remove leading/trailing slashes and split by '/'
-  const cleanPath = (pathname || '/').replace(/^\/+|\/+$/g, '').trim();
+  const cleanPath = effectivePathname.replace(/^\/+|\/+$/g, '').trim();
   if (!cleanPath) {
-    return { view: 'main', isPostDetail: false };
+    return { view: 'main', isPostDetail: false, isAmp: isAmpRoute };
   }
 
   const segments = cleanPath.split('/').map(s => decodeURIComponent(s).trim());
@@ -354,6 +371,7 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
       categorySlug: categoryPart,
       subcategorySlug: subcategoryPart || undefined,
       titleSlug: titlePart,
+      isAmp: isAmpRoute,
       target: {
         type,
         id: titlePart, // initial search term (can match id or title slug)
@@ -370,7 +388,7 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
     const seg1 = segments[1];
 
     if (['potrdi-racun', 'potrditev-racuna', 'verify-email', 'confirm-email'].includes(seg0)) {
-      return { view: 'main', isPostDetail: false };
+      return { view: 'main', isPostDetail: false, isAmp: isAmpRoute };
     }
 
     if (SLUG_TO_VIEW[seg0]) {
@@ -381,6 +399,7 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
         isPostDetail: true,
         categorySlug: seg0,
         titleSlug: seg1,
+        isAmp: isAmpRoute,
         target: {
           type,
           id: seg1,
@@ -392,7 +411,7 @@ export function parseUrlPath(pathname: string, hash: string = ''): ParsedRouteRe
   }
 
   // Default fallback to main
-  return { view: 'main', isPostDetail: false };
+  return { view: 'main', isPostDetail: false, isAmp: isAmpRoute };
 }
 
 /**

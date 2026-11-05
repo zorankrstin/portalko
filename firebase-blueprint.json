@@ -198,6 +198,7 @@
         "fallbackImageUrl": { "type": "string" },
         "useFallbackForMissingImages": { "type": "boolean" },
         "useFallbackForBrokenImages": { "type": "boolean" },
+        "pageSeo": { "type": "object", "description": "Custom per-page SEO titles, H1, H2, descriptions, and keywords" },
         "updatedAt": { "type": "string" },
         "updatedBy": { "type": "string", "maxLength": 128 }
       },

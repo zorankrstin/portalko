@@ -11,6 +11,7 @@ import { useCategories } from '../hooks/useCategories';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { BlogCategoryLocationFilter } from './blog/BlogCategoryLocationFilter';
 import { slugify } from '../utils/urlUtils';
+import { usePageSeo } from '../services/seoSettingsService';
 
 interface BlogFeedProps {
   onViewChange: (view: 'main') => void;
@@ -19,6 +20,7 @@ interface BlogFeedProps {
 }
 
 export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: BlogFeedProps) {
+  const { currentSeo } = usePageSeo('blog');
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -38,7 +40,20 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
       const blogFirestorePosts = posts.filter(p => p.category !== 'deal');
       setFirestorePosts(blogFirestorePosts);
     });
-    return () => unsub();
+
+    const handleLocalUpdate = (e: Event) => {
+      const customEvt = e as CustomEvent<FirestorePost>;
+      const newPost = customEvt.detail;
+      if (newPost && newPost.category !== 'deal') {
+        setFirestorePosts(prev => [newPost, ...prev.filter(p => p.id !== newPost.id)]);
+      }
+    };
+
+    window.addEventListener('portal_posts_updated', handleLocalUpdate);
+    return () => {
+      unsub();
+      window.removeEventListener('portal_posts_updated', handleLocalUpdate);
+    };
   }, []);
 
   // Active Category Object
@@ -282,10 +297,10 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <BookOpen className="w-[1em] h-[1em] text-primary shrink-0" />
-              <span>Blog & Zgodbe slovenske skupnosti</span>
+              <span>{currentSeo?.h1 || 'Blog & Zgodbe slovenske skupnosti'}</span>
             </h1>
             <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Poglobljeni zapisi, potopisi, praktični vodniki za dom ter izkušnje slovenskih ustvarjalcev in strokovnjakov
+              {currentSeo?.h2 || 'Poglobljeni zapisi, potopisi, praktični vodniki za dom ter izkušnje slovenskih ustvarjalcev in strokovnjakov'}
             </h2>
           </div>
           <button 

@@ -62,6 +62,7 @@ import { isItemActivelyPromoted } from '../services/promotionService';
 import { PromotionConfig, PromotionBadgeType } from '../types';
 import { DealsCategoryLocationFilter } from './deals/DealsCategoryLocationFilter';
 import { canUserPostContentType } from '../utils/permissionUtils';
+import { usePageSeo } from '../services/seoSettingsService';
 
 interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -80,6 +81,7 @@ const CATEGORY_IMAGE_FALLBACKS: Record<string, string> = {
 
 export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: DealsFeedProps) {
   const { currentUser } = useAuth();
+  const { currentSeo } = usePageSeo('deals');
   
   // State
   const [localSearch, setLocalSearch] = useState('');
@@ -694,10 +696,10 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           <div className="flex flex-col gap-1 flex-1 min-w-[240px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <Percent className="w-[1em] h-[1em] text-secondary shrink-0" />
-              <span>Akcije, popusti in ugodnosti v Sloveniji</span>
+              <span>{currentSeo?.h1 || 'Akcije, popusti in ugodnosti v Sloveniji'}</span>
             </h1>
             <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu
+              {currentSeo?.h2 || 'Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu'}
             </h2>
           </div>
           <button 

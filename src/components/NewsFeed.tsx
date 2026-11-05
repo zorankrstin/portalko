@@ -10,6 +10,7 @@ import {
   RealNewsItem, 
   RssFeedConfig 
 } from '../services/rssService';
+import { usePageSeo } from '../services/seoSettingsService';
 
 interface NewsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -17,6 +18,7 @@ interface NewsFeedProps {
 }
 
 export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
+  const { currentSeo } = usePageSeo('news');
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [rssItems, setRssItems] = useState<RealNewsItem[]>(() => getCachedRssNews());
@@ -126,7 +128,7 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
             <div className="flex items-center gap-2">
               <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
                 <Rss className="w-[1em] h-[1em] text-primary shrink-0" />
-                <span>Aktualne novice v Sloveniji</span>
+                <span>{currentSeo?.h1 || 'Aktualne novice v Sloveniji'}</span>
               </h1>
               <span className="flex items-center gap-1 text-[11px] bg-secondary/10 text-secondary px-2 py-0.5 rounded-full font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
@@ -134,7 +136,7 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
               </span>
             </div>
             <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Sveže novice iz osrednjih slovenskih medijev in preverjenih RSS virov v živo po kategorijah
+              {currentSeo?.h2 || 'Sveže novice iz osrednjih slovenskih medijev in preverjenih RSS virov v živo po kategorijah'}
             </h2>
           </div>
           <button 

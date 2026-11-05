@@ -18,6 +18,7 @@ import { isItemActivelyPromoted } from '../services/promotionService';
 import { parseEventDateInfo, resolveEventDisplayDate, resolveItemEntryTimestamp, formatSlovenianDate } from '../utils/dateUtils';
 import { slugify } from '../utils/urlUtils';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
+import { usePageSeo } from '../services/seoSettingsService';
 
 type FeedItemKind = 
   | { type: 'firestore'; data: FirestorePost }
@@ -38,6 +39,7 @@ interface MainFeedProps {
 
 export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAuthorClick }: MainFeedProps) {
   const { currentUser, users } = useAuth();
+  const { currentSeo } = usePageSeo('main');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeType, setComposeType] = useState<'post' | 'ad' | 'deal' | 'event'>('post');
   const [page, setPage] = useState(1);
@@ -257,12 +259,12 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
         <h1 className="font-headline-lg text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
           {searchQuery 
             ? `Rezultati iskanja: "${searchQuery}"` 
-            : 'Portalko – Slovenski portal za novice, male oglase in dogodke'}
+            : (currentSeo?.h1 || 'Portalko – Slovenski portal za novice, male oglase in dogodke')}
         </h1>
         <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
           {searchQuery
             ? `Iskanje po vseh vsebinah portala Portalko: novice, mali oglasi, dogodki in ugodnosti`
-            : 'Zadnje novice, brezplačni mali oglasi, prihajajoči dogodki in ugodnosti v Sloveniji'}
+            : (currentSeo?.h2 || 'Zadnje novice, brezplačni mali oglasi, prihajajoči dogodki in ugodnosti v Sloveniji')}
         </h2>
       </header>
 

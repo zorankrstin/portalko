@@ -338,11 +338,12 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
   const handleOpenDetail = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (onNavigatePost) {
+      const targetType = isDeal ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog';
       onNavigatePost({
-        type: 'blog',
+        type: targetType,
         id: post.id,
         titleSlug: slugify(post.title),
-        categorySlug: slugify(post.categoryName || post.category || 'blog'),
+        categorySlug: slugify(post.categoryName || post.category || (isDeal ? 'akcije' : 'blog')),
         subcategorySlug: post.subcategoryName || post.subcategory ? slugify(post.subcategoryName || post.subcategory) : undefined,
         initialData: {
           id: post.id,

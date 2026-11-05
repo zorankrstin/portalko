@@ -21,6 +21,7 @@ import { EventsCategoryLocationFilter } from './events/EventsCategoryLocationFil
 import { useAuth } from '../contexts/AuthContext';
 import { slugify } from '../utils/urlUtils';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
+import { usePageSeo } from '../services/seoSettingsService';
 
 interface DogodkiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -31,6 +32,7 @@ interface DogodkiFeedProps {
 
 export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, onAuthorClick }: DogodkiFeedProps) {
   const { users, currentUser } = useAuth();
+  const { currentSeo } = usePageSeo('events');
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
@@ -327,10 +329,10 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
           <div className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <h1 className="font-headline-lg text-2xl font-bold text-on-surface flex items-center gap-2.5">
               <PartyPopper className="w-[1em] h-[1em] text-tertiary-container shrink-0" />
-              <span>Dogodki in prireditve v Sloveniji</span>
+              <span>{currentSeo?.h1 || 'Dogodki in prireditve v Sloveniji'}</span>
             </h1>
             <h2 className="font-body-md text-xs sm:text-sm text-on-surface-variant">
-              Koledar prireditev, koncerti, festivali, športni in kulturni dogodki po vsej Sloveniji
+              {currentSeo?.h2 || 'Koledar prireditev, koncerti, festivali, športni in kulturni dogodki po vsej Sloveniji'}
             </h2>
           </div>
           <div className="flex items-center gap-2">

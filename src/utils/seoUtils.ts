@@ -14,6 +14,7 @@ export interface SeoMetadataOptions {
   description?: string;
   url?: string;
   canonicalUrl?: string;
+  ampHtmlUrl?: string;
   image?: string;
   type?: 'website' | 'article' | 'product' | 'event' | 'profile';
   location?: string;
@@ -103,6 +104,19 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
     document.head.appendChild(canonicalLink);
   }
   canonicalLink.setAttribute('href', canonicalUrl);
+
+  // 6b. AMP HTML Discovery Link (<link rel="amphtml" href="...">)
+  let ampLink = document.querySelector('link[rel="amphtml"]') as HTMLLinkElement | null;
+  if (options.ampHtmlUrl) {
+    if (!ampLink) {
+      ampLink = document.createElement('link');
+      ampLink.setAttribute('rel', 'amphtml');
+      document.head.appendChild(ampLink);
+    }
+    ampLink.setAttribute('href', options.ampHtmlUrl);
+  } else if (ampLink) {
+    ampLink.remove();
+  }
 
   // 7. Dynamic JSON-LD Structured Data
   let jsonLdScript = document.getElementById('seo-dynamic-jsonld') as HTMLScriptElement | null;

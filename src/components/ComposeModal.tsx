@@ -48,6 +48,7 @@ import { getTodayYmd } from '../utils/eventFilterUtils';
 import { EventScheduleSlot } from '../types';
 import { parseSocialEmbed } from '../utils/embedUtils';
 import { canUserPostContentType, canUserPostBlogOrDeals, ROLES_BLOG_AND_DEALS, ROLES_CLASSIFIEDS } from '../utils/permissionUtils';
+import { isUserVerified } from '../utils/userVerificationUtils';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
 
@@ -470,13 +471,22 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
 
   const isGuestOrUnauth = !currentUser || currentUser.role === 'guest';
   const userRole = currentUser?.role;
-  const canPostCurrentType = canUserPostContentType(userRole, postType);
-  const canPostAny = !isGuestOrUnauth && ['superadmin', 'admin', 'moderator', 'verified', 'registered'].includes(userRole || '');
-  const isAdminOrSuper = userRole === 'superadmin' || userRole === 'admin';
+  const isVerifiedUser = Boolean(
+    isUserVerified(currentUser) ||
+    currentUser?.emailVerified === true ||
+    (typeof userRole === 'string' && (userRole === 'verified' || (userRole as string).toLowerCase().includes('verif') || (userRole as string) === 'preverjen'))
+  );
+  const effectiveAuthorRole = (isVerifiedUser && userRole !== 'superadmin' && userRole !== 'admin' && userRole !== 'moderator')
+    ? 'verified'
+    : (userRole || 'guest');
+
+  const canPostCurrentType = canUserPostContentType(effectiveAuthorRole, postType, currentUser);
+  const canPostAny = !isGuestOrUnauth && ['superadmin', 'admin', 'moderator', 'verified', 'registered'].includes(effectiveAuthorRole || '');
+  const isAdminOrSuper = effectiveAuthorRole === 'superadmin' || effectiveAuthorRole === 'admin';
 
   const authorName = currentUser ? currentUser.name : 'Gost';
   const authorAvatar = (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : '';
-  const authorRole = currentUser?.role || 'guest';
+  const authorRole = effectiveAuthorRole;
   const authorId = currentUser?.id || 'guest_user';
 
   const handleSubmit = async () => {
@@ -503,7 +513,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     setIsSubmitting(true);
     setErrorMsg('');
 
-    const initialStatus = 'published';
+    const initialStatus: 'published' = 'published';
     const initialAdStatus = 'active';
 
     const chosenCat = activeCategory;
@@ -539,7 +549,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     try {
       if (postType === 'post' || postType === 'deal') {
         const cleanPostTitle = title.replace(/^\[Ugodnost\]\s*/i, '').trim();
-        await createPostInFirestore({
+        const postPayload = {
           title: cleanPostTitle,
           subtitle: subtitle.trim() || undefined,
           content: content.trim() || cleanPostTitle,
@@ -574,7 +584,29 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           likesCount: 0,
           commentsCount: 0,
           tags: userTags.length > 0 ? userTags : undefined,
+        };
+
+        console.group('📝 [Blog Post Workflow] Submitting Blog/Post to Firestore');
+        console.log('👤 [Blog Post Workflow] Author Context:', {
+          authorId,
+          authorName,
+          authorRole,
+          userRole: currentUser?.role,
+          emailVerified: currentUser?.emailVerified,
+          isVerifiedAccount: isVerifiedUser,
         });
+        console.log('📦 [Blog Post Workflow] Verifying Data Structure being sent to Firestore:', postPayload);
+        console.log('🔍 [Blog Post Workflow] Verifying "published" status parameter:', postPayload.status);
+
+        const createdId = await createPostInFirestore(postPayload);
+
+        if (!createdId) {
+          console.error('❌ [Blog Post Workflow] Silent failure detected: createPostInFirestore did not return a valid document ID.');
+          throw new Error('Objave žal ni bilo mogoče shraniti v bazo podatkov. Preverite povezavo ali pravice.');
+        }
+
+        console.log('✅ [Blog Post Workflow] Post successfully saved & published with Firestore ID:', createdId);
+        console.groupEnd();
       } else if (postType === 'ad') {
         await createAdInFirestore({
           title: title.trim(),
@@ -682,8 +714,15 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         onClose();
       }, 1200);
     } catch (err: any) {
-      console.error('Error creating post in Firestore:', err);
-      setErrorMsg('Prišlo je do napake pri shranjevanju. Preverite povezavo ali pravice.');
+      console.error('❌ [Blog Post Workflow] Error occurred while creating or publishing post in Firestore:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Missing or insufficient permissions')) {
+        setErrorMsg('Napaka pravic: Za objavo blog zapisov je potreben status preverjenega uporabnika ali skrbnika.');
+      } else if (msg.includes('Quota limit exceeded') || msg.includes('Quota exceeded')) {
+        setErrorMsg('Dnevna kvota branj baze podatkov je bila presežena. Vaša objava je shranjena.');
+      } else {
+        setErrorMsg(err?.message || 'Prišlo je do napake pri shranjevanju. Preverite povezavo ali pravice.');
+      }
     } finally {
       setIsSubmitting(false);
     }

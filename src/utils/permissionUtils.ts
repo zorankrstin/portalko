@@ -24,8 +24,19 @@ export const ROLES_EVENTS: Role[] = ['superadmin', 'admin', 'moderator', 'verifi
  */
 export function canUserPostContentType(
   role: Role | string | undefined | null,
-  type: PostContentType
+  type: PostContentType,
+  user?: any
 ): boolean {
+  if (user) {
+    if (user.role === 'superadmin' || user.role === 'admin' || user.role === 'moderator' || user.role === 'verified') {
+      return true;
+    }
+    // Any user with verified email or verified status can publish blog posts, deals, ads, and events
+    if (user.emailVerified === true || user.isVerified === true || (typeof user.role === 'string' && user.role.toLowerCase().includes('verif'))) {
+      return true;
+    }
+  }
+
   if (!role || role === 'guest') return false;
   const normalizedRole = role.toLowerCase().trim() as Role;
 
@@ -33,7 +44,7 @@ export function canUserPostContentType(
     case 'post':
     case 'blog':
     case 'deal':
-      return ROLES_BLOG_AND_DEALS.includes(normalizedRole);
+      return ROLES_BLOG_AND_DEALS.includes(normalizedRole) || normalizedRole === 'verified' || normalizedRole.includes('preverjen');
     case 'ad':
       return ROLES_CLASSIFIEDS.includes(normalizedRole);
     case 'event':

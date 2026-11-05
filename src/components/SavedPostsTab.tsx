@@ -8,9 +8,11 @@ import { NewsPost } from './posts/NewsPost';
 import { RssPost } from './posts/RssPost';
 import { Bookmark, ShoppingBag, Newspaper, Calendar, FileText, Percent, Inbox } from 'lucide-react';
 import { matchesSearchAndCategory, parseSearchQuery } from '../utils/searchUtils';
+import { usePageSeo } from '../services/seoSettingsService';
 
 export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
   const { savedIds, savedItems, getItemData } = useBookmarks();
+  const { currentSeo } = usePageSeo('saved');
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('all');
 
   const parsedSearch = parseSearchQuery(searchQuery);
@@ -134,10 +136,10 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
         <div>
           <h1 className="font-headline-sm text-xl font-bold text-on-surface flex items-center gap-2">
             <Bookmark className="w-5 h-5 text-primary" />
-            <span>Shranjene objave ({savedIds.length})</span>
+            <span>{currentSeo?.h1 || 'Shranjene objave'} ({savedIds.length})</span>
           </h1>
           <h2 className="font-body-sm text-xs text-outline mt-0.5">
-            Vse vaše zaznamovane novice, mali oglasi, dogodki in blog zapisi na enem mestu
+            {currentSeo?.h2 || 'Vse vaše zaznamovane novice, mali oglasi, dogodki in blog zapisi na enem mestu'}
           </h2>
         </div>
       </div>
