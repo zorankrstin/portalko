@@ -7,28 +7,41 @@ service firebase.storage {
       allow write: if false;
     }
 
-    // Blog, Deals, Classifieds, Events & Inline editor uploads (max 25 MB per file)
+    // Authenticated users can upload images to the 'blog' path (max 25 MB)
+    match /blog/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+                      request.resource != null &&
+                      request.resource.size <= 25 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/.*');
+    }
+
+    // Authenticated users can upload media & attachments to posts, ads, events (max 25 MB)
     match /posts/{allPaths=**} {
       allow read: if true;
-      allow write: if request.resource != null &&
+      allow write: if request.auth != null &&
+                      request.resource != null &&
                       request.resource.size <= 25 * 1024 * 1024;
     }
 
     match /ads/{allPaths=**} {
       allow read: if true;
-      allow write: if request.resource != null &&
+      allow write: if request.auth != null &&
+                      request.resource != null &&
                       request.resource.size <= 25 * 1024 * 1024;
     }
 
     match /events/{allPaths=**} {
       allow read: if true;
-      allow write: if request.resource != null &&
+      allow write: if request.auth != null &&
+                      request.resource != null &&
                       request.resource.size <= 25 * 1024 * 1024;
     }
 
     match /avatars/{allPaths=**} {
       allow read: if true;
-      allow write: if request.resource != null &&
+      allow write: if request.auth != null &&
+                      request.resource != null &&
                       request.resource.size <= 10 * 1024 * 1024 &&
                       request.resource.contentType.matches('image/.*');
     }

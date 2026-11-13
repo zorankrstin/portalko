@@ -186,7 +186,7 @@ export const AmpArticleView: React.FC<AmpArticleViewProps> = ({
 
           {/* Sanitized Article Body */}
           <div 
-            className="prose prose-slate dark:prose-invert max-w-none text-base leading-relaxed text-slate-800 dark:text-slate-200"
+            className="prose prose-slate dark:prose-invert max-w-none text-base leading-relaxed text-slate-800 dark:text-slate-200 tiptap"
             dangerouslySetInnerHTML={{ __html: article.content }}
           />
 

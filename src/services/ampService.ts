@@ -359,6 +359,12 @@ ${JSON.stringify(schemaJsonLd, null, 2)}
         margin: 20px 0 8px 0;
         color: var(--text);
       }
+      .amp-body h4 {
+        font-size: 15px;
+        font-weight: 700;
+        margin: 16px 0 6px 0;
+        color: var(--text);
+      }
       .amp-body blockquote {
         margin: 16px 0;
         padding: 12px 16px;
