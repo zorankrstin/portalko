@@ -13,12 +13,13 @@ import {
   updateEventInFirestore,
   deletePostInFirestore,
   deleteAdInFirestore,
-  deleteEventInFirestore
+  deleteEventInFirestore,
+  MAX_ALLOWED_POST_BYTES
 } from '../../services/firestoreService';
 import { PromotionConfig, PromotionBadgeType, EventScheduleSlot } from '../../types';
 import { PromotedBadge } from '../common/PromotedBadge';
 import { RichTextEditor } from '../RichTextEditor';
-import { compressImageFileToDataUrl } from '../../utils/imageUtils';
+import { compressImageFileToDataUrl, estimatePayloadUtf8Bytes, formatBytesSlovenian } from '../../utils/imageUtils';
 import { useCategories } from '../../hooks/useCategories';
 import { CategorySection, getTertiaryCategories } from '../../services/categoryService';
 import { getTodayYmd } from '../../utils/eventFilterUtils';
@@ -409,6 +410,20 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       return;
     }
 
+    const currentBytes = estimatePayloadUtf8Bytes({
+      title: title.trim(),
+      subtitle: subtitle.trim(),
+      content: content.trim(),
+      imageUrl: imageUrl.trim(),
+      embedCode: embedCode.trim(),
+    });
+    if (currentBytes > MAX_ALLOWED_POST_BYTES) {
+      setErrorMsg(
+        `Objava presega največjo dovoljeno velikost ${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} (${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Prosimo, zmanjšajte velikost slik ali vsebine.`
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMsg('');
     setSuccessMsg('');
@@ -589,7 +604,14 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       }, 700);
     } catch (err: any) {
       console.error('Error updating post in Firestore:', err);
-      setErrorMsg(err?.message || 'Napaka pri shranjevanju v bazo.');
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('exceeds the maximum allowed size') || msg.includes('največjo dovoljeno velikost')) {
+        setErrorMsg(
+          `Velikost objave presega dovoljeno mejo (${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} / ${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Prosimo, zmanjšajte velikost slik.`
+        );
+      } else {
+        setErrorMsg(err?.message || 'Napaka pri shranjevanju v bazo.');
+      }
     } finally {
       setIsSubmitting(false);
     }

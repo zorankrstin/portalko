@@ -37,12 +37,12 @@ import {
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { RichTextEditor } from './RichTextEditor';
 import { useAuth } from '../contexts/AuthContext';
-import { createPostInFirestore, createAdInFirestore, createEventInFirestore } from '../services/firestoreService';
+import { createPostInFirestore, createAdInFirestore, createEventInFirestore, MAX_ALLOWED_POST_BYTES } from '../services/firestoreService';
 import { trackEvent } from '../utils/analyticsUtils';
 import { LoginModal } from './LoginModal';
 import { useCategories } from '../hooks/useCategories';
 import { CategorySection, SLOVENIA_REGIONS, getAllSloveniaCities, getTertiaryCategories } from '../services/categoryService';
-import { compressImageFileToDataUrl } from '../utils/imageUtils';
+import { compressImageFileToDataUrl, estimatePayloadUtf8Bytes, formatBytesSlovenian } from '../utils/imageUtils';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { getTodayYmd } from '../utils/eventFilterUtils';
 import { EventScheduleSlot } from '../types';
@@ -107,6 +107,23 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
+  const estimatedPayloadBytes = useMemo(() => {
+    const primaryImg = images[0] || imageUrl || undefined;
+    const allImgs = images.length > 0 ? images : (imageUrl ? [imageUrl] : undefined);
+    return estimatePayloadUtf8Bytes({
+      title: title.trim(),
+      subtitle: subtitle.trim(),
+      content: content.trim(),
+      imageUrl: allImgs ? undefined : primaryImg,
+      images: allImgs,
+      embedCode: embedCode.trim() || undefined,
+      tagsString,
+      location: location.trim() || undefined,
+    });
+  }, [title, subtitle, content, images, imageUrl, embedCode, tagsString, location]);
+
+  const isPayloadOverLimit = estimatedPayloadBytes > MAX_ALLOWED_POST_BYTES;
+
   // Map post type to taxonomy section
   const sectionMap: Record<PostType, CategorySection> = useMemo(() => ({
     post: 'blog',
@@ -143,7 +160,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         setCompressingProgress(`Optimiziram sliko ${i + 1} od ${total}...`);
         const file = files[i];
         if (!file.type.startsWith('image/')) continue;
-        const dataUrl = await compressImageFileToDataUrl(file, 1200);
+        const dataUrl = await compressImageFileToDataUrl(file, 1200, 550_000);
         newUrls.push(dataUrl);
       }
       setImages(prev => {
@@ -509,6 +526,12 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setErrorMsg('Prosimo, vnesite vsebino objave.');
       return;
     }
+    if (estimatedPayloadBytes > MAX_ALLOWED_POST_BYTES) {
+      setErrorMsg(
+        `Objava presega največjo dovoljeno velikost ${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} (${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Trenutna velikost: ${formatBytesSlovenian(estimatedPayloadBytes)}. Prosimo, zmanjšajte število ali velikost slik.`
+      );
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMsg('');
@@ -567,9 +590,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorName,
           authorRole,
           authorAvatar,
-          imageUrl: primaryImg,
+          imageUrl: allImgs && allImgs.length > 0 ? undefined : primaryImg,
           images: allImgs,
-          imageUrls: allImgs,
           embedCode: embedCode || undefined,
           embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
           price: postType === 'deal' ? (newPrice.trim() || discount.trim() || undefined) : undefined,
@@ -596,6 +618,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           isVerifiedAccount: isVerifiedUser,
         });
         console.log('📦 [Blog Post Workflow] Verifying Data Structure being sent to Firestore:', postPayload);
+        console.log('📏 [Blog Post Workflow] Estimated UTF-8 payload size:', estimatePayloadUtf8Bytes(postPayload), 'bytes (limit:', MAX_ALLOWED_POST_BYTES, 'bytes)');
         console.log('🔍 [Blog Post Workflow] Verifying "published" status parameter:', postPayload.status);
 
         const createdId = await createPostInFirestore(postPayload);
@@ -720,6 +743,10 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         setErrorMsg('Napaka pravic: Za objavo blog zapisov je potreben status preverjenega uporabnika ali skrbnika.');
       } else if (msg.includes('Quota limit exceeded') || msg.includes('Quota exceeded')) {
         setErrorMsg('Dnevna kvota branj baze podatkov je bila presežena. Vaša objava je shranjena.');
+      } else if (msg.includes('exceeds the maximum allowed size') || msg.includes('največjo dovoljeno velikost')) {
+        setErrorMsg(
+          `Velikost objave presega dovoljeno mejo (${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} / ${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Prosimo, odstranite ali zmanjšajte katero od slik.`
+        );
       } else {
         setErrorMsg(err?.message || 'Prišlo je do napake pri shranjevanju. Preverite povezavo ali pravice.');
       }
@@ -1739,6 +1766,32 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 </div>
               </div>
             )}
+
+            {/* Live payload size bar (supports up to 4.5 MB / 4,500,000 bytes) */}
+            {(images.length > 0 || estimatedPayloadBytes > 50_000) && (
+              <div className={`mt-1 px-2.5 py-1.5 rounded-lg border text-[11px] flex flex-col gap-1 ${
+                isPayloadOverLimit
+                  ? 'bg-error/10 border-error/30 text-error'
+                  : 'bg-surface-container-lowest border-surface-container text-on-surface-variant'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">
+                    Skupna velikost objave: {formatBytesSlovenian(estimatedPayloadBytes)} ({estimatedPayloadBytes.toLocaleString('sl-SI')} bajtov)
+                  </span>
+                  <span className="text-[10px] font-mono opacity-80">
+                    Omejitev: {formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)}
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-surface-container overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      isPayloadOverLimit ? 'bg-error' : estimatedPayloadBytes > MAX_ALLOWED_POST_BYTES * 0.8 ? 'bg-amber-500' : 'bg-primary'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.round((estimatedPayloadBytes / MAX_ALLOWED_POST_BYTES) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -1850,13 +1903,19 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             </div>
             <button 
               onClick={handleSubmit}
-              disabled={isSubmitting || !canPostCurrentType}
+              disabled={isSubmitting || !canPostCurrentType || isPayloadOverLimit}
               className={`px-6 py-2.5 rounded-xl font-label-md text-sm font-semibold shadow-md transition-all flex items-center gap-2 ${
-                canPostCurrentType 
+                canPostCurrentType && !isPayloadOverLimit
                   ? 'bg-primary hover:bg-primary-container text-on-primary cursor-pointer' 
                   : 'bg-surface-container-high text-outline cursor-not-allowed opacity-60'
               } disabled:opacity-50`}
-              title={!canPostCurrentType ? (isGuestOrUnauth ? 'Prijavite se za objavljanje' : 'Za objavo v tej kategoriji potrebujete status Preverjen uporabnik ali Skrbnik') : 'Oddaj objavo'}
+              title={
+                isPayloadOverLimit
+                  ? `Objava presega omejitev ${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)}`
+                  : !canPostCurrentType
+                    ? (isGuestOrUnauth ? 'Prijavite se za objavljanje' : 'Za objavo v tej kategoriji potrebujete status Preverjen uporabnik ali Skrbnik')
+                    : 'Oddaj objavo'
+              }
             >
               {isSubmitting ? (
                 <>

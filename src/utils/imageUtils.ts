@@ -1,16 +1,21 @@
 /**
  * Utility to process user-uploaded image files in browser:
  * Converts and scales image using an in-memory Canvas to a high-quality, lightweight
- * JPEG Base64 Data URL (max 1200x900, quality 0.82) so it permanently persists
- * in Firestore documents without requiring external bucket configuration or expiring blob URLs.
+ * JPEG Base64 Data URL (max 1200px, adaptive quality starting at 0.82) so it permanently
+ * persists in Firestore documents without requiring external bucket configuration or expiring blob URLs.
  */
-export function compressImageFileToDataUrl(file: File, maxDimension: number = 1200): Promise<string> {
+export function compressImageFileToDataUrl(
+  file: File,
+  maxDimension: number = 1200,
+  maxTargetChars: number = 550_000
+): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       return reject(new Error('Izbrana datoteka ni veljavna slika.'));
     }
     const reader = new FileReader();
     reader.onload = (e) => {
+      const rawDataUrl = e.target?.result as string;
       const img = new Image();
       img.onload = () => {
         try {
@@ -32,21 +37,62 @@ export function compressImageFileToDataUrl(file: File, maxDimension: number = 12
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           if (!ctx) {
-            return resolve(e.target?.result as string);
+            return resolve(rawDataUrl);
           }
           ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+          const qualities = [0.82, 0.72, 0.62, 0.5];
+          let dataUrl = canvas.toDataURL('image/jpeg', qualities[0]);
+          for (let i = 1; i < qualities.length && dataUrl.length > maxTargetChars; i++) {
+            dataUrl = canvas.toDataURL('image/jpeg', qualities[i]);
+          }
+
+          // If still oversized for huge panoramas, downscale once more
+          if (dataUrl.length > maxTargetChars && (width > 900 || height > 900)) {
+            const scale = 900 / Math.max(width, height);
+            canvas.width = Math.round(width * scale);
+            canvas.height = Math.round(height * scale);
+            const ctx2 = canvas.getContext('2d');
+            if (ctx2) {
+              ctx2.drawImage(img, 0, 0, canvas.width, canvas.height);
+              dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            }
+          }
+
           resolve(dataUrl);
         } catch {
-          resolve(e.target?.result as string);
+          resolve(rawDataUrl);
         }
       };
       img.onerror = () => reject(new Error('Napaka pri nalaganju slike.'));
-      img.src = e.target?.result as string;
+      img.src = rawDataUrl;
     };
     reader.onerror = () => reject(new Error('Napaka pri branju datoteke.'));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Estimates the UTF-8 byte size of a Firestore document payload including
+ * conservative document field metadata overhead.
+ */
+export function estimatePayloadUtf8Bytes(data: unknown): number {
+  try {
+    const json = JSON.stringify(data) || '';
+    const utf8Bytes = typeof TextEncoder !== 'undefined'
+      ? new TextEncoder().encode(json).length
+      : unescape(encodeURIComponent(json)).length;
+    const fieldCount = data && typeof data === 'object' ? Object.keys(data as Record<string, unknown>).length : 0;
+    return utf8Bytes + 128 + fieldCount * 32;
+  } catch {
+    return 0;
+  }
+}
+
+export function formatBytesSlovenian(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2).replace('.', ',')} MB`;
 }
 
 /**

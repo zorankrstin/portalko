@@ -25,6 +25,17 @@ import { PromotionConfig, PromotionTargetSection, PromotionBadgeType, EventSched
 import { slugify } from '../utils/urlUtils';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { isLikelyBot } from '../utils/botUtils';
+import { estimatePayloadUtf8Bytes } from '../utils/imageUtils';
+
+/**
+ * Maximum logical payload size supported by Portalko (at least 4,000,000 bytes / 4.5 MB).
+ * Cloud Firestore enforces a hard 1,048,576 byte (1 MiB) per-document server limit;
+ * payloads larger than FIRESTORE_SAFE_DOC_BYTES are automatically deduplicated and sharded
+ * into subcollection chunks (`/{collection}/{id}/chunks/chunk_{i}`) on write and rehydrated on read.
+ */
+export const MAX_ALLOWED_POST_BYTES = 4_500_000;
+const FIRESTORE_SAFE_DOC_BYTES = 680_000;
+const CHUNK_MAX_UTF8_BYTES = 520_000;
 
 /**
  * Sanitizes an object before calling Firestore updateDoc:
@@ -90,6 +101,312 @@ export function cleanDataForFirestore<T extends Record<string, any>>(obj: T): Re
     }
   }
   return cleaned;
+}
+
+const hydratedDocCache = new Map<string, {
+  updatedAt?: string;
+  chunkCount?: number;
+  overflow: Record<string, any>;
+}>();
+
+function splitStringByUtf8Bytes(input: string, maxBytes: number): string[] {
+  if (!input) return [];
+  const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+  if (!encoder) {
+    const chunks: string[] = [];
+    for (let i = 0; i < input.length; i += Math.floor(maxBytes / 2)) {
+      chunks.push(input.slice(i, i + Math.floor(maxBytes / 2)));
+    }
+    return chunks;
+  }
+
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < input.length) {
+    // Fast path for ASCII-heavy strings like base64
+    let end = Math.min(input.length, start + maxBytes);
+    // Avoid splitting inside a UTF-16 surrogate pair
+    if (end < input.length) {
+      const code = input.charCodeAt(end - 1);
+      if (code >= 0xD800 && code <= 0xDBFF) {
+        end--;
+      }
+    }
+    let slice = input.slice(start, end);
+    while (encoder.encode(slice).length > maxBytes && end > start + 1) {
+      const ratio = maxBytes / Math.max(encoder.encode(slice).length, 1);
+      end = Math.max(start + 1, start + Math.floor((end - start) * ratio * 0.95));
+      if (end < input.length) {
+        const code = input.charCodeAt(end - 1);
+        if (code >= 0xD800 && code <= 0xDBFF) {
+          end--;
+        }
+      }
+      slice = input.slice(start, end);
+    }
+    chunks.push(slice);
+    start = end;
+  }
+  return chunks;
+}
+
+export function normalizeMediaFields<T extends Record<string, any>>(item: T): T {
+  if (!item || typeof item !== 'object') return item;
+  const normalized: any = { ...item };
+  if (Array.isArray(normalized.images) && normalized.images.length > 0) {
+    if (!normalized.imageUrl) {
+      normalized.imageUrl = normalized.images[0];
+    }
+    if (!Array.isArray(normalized.imageUrls) || normalized.imageUrls.length === 0) {
+      normalized.imageUrls = normalized.images;
+    }
+  } else if (Array.isArray(normalized.imageUrls) && normalized.imageUrls.length > 0) {
+    normalized.images = normalized.imageUrls;
+    if (!normalized.imageUrl) {
+      normalized.imageUrl = normalized.imageUrls[0];
+    }
+  } else if (normalized.imageUrl) {
+    normalized.images = [normalized.imageUrl];
+    normalized.imageUrls = [normalized.imageUrl];
+  }
+  return normalized;
+}
+
+function deduplicateMediaPayload(payload: Record<string, any>): Record<string, any> {
+  const deduped: Record<string, any> = { ...payload };
+  if (Array.isArray(deduped.images) && Array.isArray(deduped.imageUrls)) {
+    const sameLength = deduped.images.length === deduped.imageUrls.length;
+    const sameItems = sameLength && deduped.images.every((v: any, idx: number) => v === deduped.imageUrls[idx]);
+    if (sameItems) {
+      delete deduped.imageUrls;
+    }
+  }
+  // If imageUrl duplicates images[0] and the document is large, omit duplicate imageUrl
+  if (
+    deduped.imageUrl &&
+    Array.isArray(deduped.images) &&
+    deduped.images.length > 0 &&
+    deduped.imageUrl === deduped.images[0] &&
+    estimatePayloadUtf8Bytes(deduped) > FIRESTORE_SAFE_DOC_BYTES
+  ) {
+    delete deduped.imageUrl;
+  }
+  return deduped;
+}
+
+function prepareChunkedPayload(rawPayload: Record<string, any>): {
+  mainDoc: Record<string, any>;
+  chunks: string[];
+  overflow: Record<string, any>;
+  totalBytes: number;
+} {
+  const cleaned = cleanDataForFirestore(rawPayload);
+  const deduped = deduplicateMediaPayload(cleaned);
+  const totalBytes = estimatePayloadUtf8Bytes(deduped);
+
+  if (totalBytes > MAX_ALLOWED_POST_BYTES) {
+    throw new Error(
+      `Objava presega največjo dovoljeno velikost (${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Trenutna velikost: ${totalBytes.toLocaleString('sl-SI')} bajtov. Prosimo, zmanjšajte število ali velikost slik.`
+    );
+  }
+
+  if (totalBytes <= FIRESTORE_SAFE_DOC_BYTES) {
+    return {
+      mainDoc: deduped,
+      chunks: [],
+      overflow: {},
+      totalBytes,
+    };
+  }
+
+  // Shard heavy media / content fields into chunks subcollection while keeping metadata light
+  const overflow: Record<string, any> = {};
+  const lightDoc: Record<string, any> = { ...deduped };
+
+  const moveFieldIfLarge = (field: string, thresholdBytes: number, keepExcerpt = false) => {
+    const val = lightDoc[field];
+    if (val === undefined) return;
+    const fieldBytes = estimatePayloadUtf8Bytes(val);
+    if (fieldBytes > thresholdBytes) {
+      overflow[field] = val;
+      if (keepExcerpt && typeof val === 'string') {
+        lightDoc[field] = val.slice(0, 1200);
+      } else {
+        delete lightDoc[field];
+      }
+    }
+  };
+
+  moveFieldIfLarge('images', 25_000);
+  moveFieldIfLarge('imageUrls', 25_000);
+  moveFieldIfLarge('imageUrl', 25_000);
+  moveFieldIfLarge('authorAvatar', 25_000);
+  moveFieldIfLarge('embedCode', 25_000);
+  moveFieldIfLarge('content', 40_000, true);
+  moveFieldIfLarge('description', 40_000, true);
+
+  // Final safety pass: move any remaining field > 20KB until mainDoc is safely below FIRESTORE_SAFE_DOC_BYTES
+  if (estimatePayloadUtf8Bytes(lightDoc) > FIRESTORE_SAFE_DOC_BYTES) {
+    for (const key of Object.keys(lightDoc)) {
+      if (['id', 'title', 'category', 'authorId', 'authorName', 'status', 'createdAt', 'updatedAt'].includes(key)) {
+        continue;
+      }
+      if (estimatePayloadUtf8Bytes(lightDoc[key]) > 20_000) {
+        overflow[key] = lightDoc[key];
+        delete lightDoc[key];
+      }
+      if (estimatePayloadUtf8Bytes(lightDoc) <= FIRESTORE_SAFE_DOC_BYTES) break;
+    }
+  }
+
+  const overflowJson = JSON.stringify(overflow);
+  const chunks = splitStringByUtf8Bytes(overflowJson, CHUNK_MAX_UTF8_BYTES);
+
+  lightDoc.hasChunkedContent = true;
+  lightDoc.chunkCount = chunks.length;
+  lightDoc.totalPayloadBytes = totalBytes;
+
+  return {
+    mainDoc: lightDoc,
+    chunks,
+    overflow,
+    totalBytes,
+  };
+}
+
+async function writeChunksSubcollection(
+  collectionName: 'posts' | 'ads' | 'events',
+  docId: string,
+  chunks: string[],
+  previousChunkCount: number = 0
+): Promise<void> {
+  if (chunks.length > 0) {
+    const now = new Date().toISOString();
+    await Promise.all(
+      chunks.map((chunkStr, idx) =>
+        setDoc(doc(db, collectionName, docId, 'chunks', `chunk_${idx}`), {
+          index: idx,
+          data: chunkStr,
+          updatedAt: now,
+        })
+      )
+    );
+  }
+
+  // Delete any excess stale chunks from previous larger revisions
+  if (previousChunkCount > chunks.length) {
+    const cleanupPromises: Promise<void>[] = [];
+    for (let i = chunks.length; i < previousChunkCount; i++) {
+      cleanupPromises.push(
+        deleteDoc(doc(db, collectionName, docId, 'chunks', `chunk_${i}`)).catch(() => {})
+      );
+    }
+    await Promise.all(cleanupPromises);
+  }
+}
+
+async function deleteChunksSubcollection(
+  collectionName: 'posts' | 'ads' | 'events',
+  docId: string
+): Promise<void> {
+  hydratedDocCache.delete(`${collectionName}/${docId}`);
+  try {
+    const snap = await getDocs(collection(db, collectionName, docId, 'chunks'));
+    if (!snap.empty) {
+      await Promise.all(snap.docs.map(d => deleteDoc(d.ref).catch(() => {})));
+    }
+  } catch {
+    // Ignore cleanup errors if no chunks exist
+  }
+}
+
+function mergeCachedChunksSync<T extends Record<string, any>>(
+  collectionName: 'posts' | 'ads' | 'events',
+  item: T
+): { hydrated: T; needsAsyncFetch: boolean } {
+  if (!item || !item.hasChunkedContent) {
+    return { hydrated: normalizeMediaFields(item), needsAsyncFetch: false };
+  }
+  const cacheKey = `${collectionName}/${item.id}`;
+  const cached = hydratedDocCache.get(cacheKey);
+  if (
+    cached &&
+    (!item.updatedAt || cached.updatedAt === item.updatedAt) &&
+    (!item.chunkCount || cached.chunkCount === item.chunkCount)
+  ) {
+    return {
+      hydrated: normalizeMediaFields({ ...item, ...cached.overflow }),
+      needsAsyncFetch: false,
+    };
+  }
+  return { hydrated: normalizeMediaFields(item), needsAsyncFetch: true };
+}
+
+async function hydrateDocumentWithChunks<T extends Record<string, any>>(
+  collectionName: 'posts' | 'ads' | 'events',
+  item: T
+): Promise<T> {
+  if (!item || !item.hasChunkedContent) {
+    return normalizeMediaFields(item);
+  }
+  const { hydrated, needsAsyncFetch } = mergeCachedChunksSync(collectionName, item);
+  if (!needsAsyncFetch) {
+    return hydrated;
+  }
+
+  try {
+    const chunksSnap = await getDocs(collection(db, collectionName, item.id, 'chunks'));
+    if (chunksSnap.empty) {
+      return hydrated;
+    }
+    const ordered = chunksSnap.docs
+      .map(d => d.data() as { index?: number; data?: string })
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const fullJson = ordered.map(c => c.data || '').join('');
+    if (!fullJson) return hydrated;
+
+    const overflow = JSON.parse(fullJson) as Record<string, any>;
+    hydratedDocCache.set(`${collectionName}/${item.id}`, {
+      updatedAt: item.updatedAt,
+      chunkCount: item.chunkCount || ordered.length,
+      overflow,
+    });
+    return normalizeMediaFields({ ...item, ...overflow });
+  } catch (err) {
+    console.warn(`[Firestore:${collectionName}] Failed to hydrate chunks for ${item.id}:`, err);
+    return hydrated;
+  }
+}
+
+function safeSaveArrayToLocalStorage(storageKey: string, items: any[]): void {
+  try {
+    const serialized = JSON.stringify(items);
+    if (serialized.length <= 1_800_000) {
+      localStorage.setItem(storageKey, serialized);
+      return;
+    }
+    // Strip large base64 data URLs from localStorage fallback so browser quota is never exceeded
+    const lightItems = items.slice(0, 60).map(item => {
+      const copy: any = { ...item };
+      if (typeof copy.imageUrl === 'string' && copy.imageUrl.length > 50_000) {
+        delete copy.imageUrl;
+      }
+      if (Array.isArray(copy.images)) {
+        copy.images = copy.images.filter((u: any) => typeof u === 'string' && u.length <= 50_000);
+        if (copy.images.length === 0) delete copy.images;
+      }
+      if (Array.isArray(copy.imageUrls)) {
+        delete copy.imageUrls;
+      }
+      if (typeof copy.authorAvatar === 'string' && copy.authorAvatar.length > 30_000) {
+        delete copy.authorAvatar;
+      }
+      return copy;
+    });
+    localStorage.setItem(storageKey, JSON.stringify(lightItems));
+  } catch {
+    // Ignore storage quota error
+  }
 }
 
 /**
@@ -203,6 +520,10 @@ export interface FirestorePost {
   likedBy?: string[];
   commentsCount?: number;
   viewsCount?: number;
+  // Chunking metadata for >1MB payloads (up to 4.5MB)
+  hasChunkedContent?: boolean;
+  chunkCount?: number;
+  totalPayloadBytes?: number;
   // Promotion / Featured Post fields
   isPromoted?: boolean;
   promotion?: PromotionConfig;
@@ -242,6 +563,10 @@ export interface FirestoreAd {
   likesCount?: number;
   likedBy?: string[];
   viewsCount?: number;
+  // Chunking metadata for >1MB payloads (up to 4.5MB)
+  hasChunkedContent?: boolean;
+  chunkCount?: number;
+  totalPayloadBytes?: number;
   // Promotion / Featured Post fields
   isPromoted?: boolean;
   promotion?: PromotionConfig;
@@ -286,6 +611,10 @@ export interface FirestoreEvent {
   likesCount?: number;
   likedBy?: string[];
   viewsCount?: number;
+  // Chunking metadata for >1MB payloads (up to 4.5MB)
+  hasChunkedContent?: boolean;
+  chunkCount?: number;
+  totalPayloadBytes?: number;
   isPromoted?: boolean;
   promotion?: PromotionConfig;
   promotedUntil?: string;
@@ -1004,11 +1333,13 @@ const getCachedPosts = (): FirestorePost[] => {
 
 function rawSubscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () => void {
   const path = 'posts';
+  let hydrationEpoch = 0;
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
     return onSnapshot(q, (snapshot) => {
+      const epoch = ++hydrationEpoch;
       const allMockDeals = [...INITIAL_DEALS, ...HERO_BENTO_DEALS];
-      const posts: FirestorePost[] = snapshot.docs.map(d => {
+      const rawPosts: FirestorePost[] = snapshot.docs.map(d => {
         const item = {
           id: d.id,
           ...(d.data() as Omit<FirestorePost, 'id'>),
@@ -1039,10 +1370,26 @@ function rawSubscribeToPosts(onPosts: (posts: FirestorePost[]) => void): () => v
         }
         return item;
       });
-      try {
-        localStorage.setItem('cached_firestore_posts', JSON.stringify(posts));
-      } catch {}
-      onPosts(posts);
+
+      let anyNeedsAsync = false;
+      const syncPosts = rawPosts.map(p => {
+        const { hydrated, needsAsyncFetch } = mergeCachedChunksSync('posts', p);
+        if (needsAsyncFetch) anyNeedsAsync = true;
+        return hydrated;
+      });
+
+      safeSaveArrayToLocalStorage('cached_firestore_posts', syncPosts);
+      onPosts(syncPosts);
+
+      if (anyNeedsAsync) {
+        Promise.all(rawPosts.map(p => hydrateDocumentWithChunks('posts', p)))
+          .then(hydratedPosts => {
+            if (epoch !== hydrationEpoch) return;
+            safeSaveArrayToLocalStorage('cached_firestore_posts', hydratedPosts);
+            onPosts(hydratedPosts);
+          })
+          .catch(() => {});
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
       onPosts(getCachedPosts());
@@ -1059,8 +1406,10 @@ export const subscribeToPosts = createSharedSubscription(rawSubscribeToPosts, ge
 export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { id?: string }): Promise<string> {
   const path = 'posts';
   console.group('🔥 [Firestore createPostInFirestore] Starting post creation');
+  let postRefId = '';
   try {
     const postRef = doc(collection(db, path));
+    postRefId = postRef.id;
     const now = new Date().toISOString();
     const newPost: FirestorePost = {
       ...post,
@@ -1072,20 +1421,35 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
       commentsCount: post.commentsCount || 0,
     };
 
-    const cleanedPayload = cleanDataForFirestore(newPost);
-    console.log('📦 [Firestore:createPost] Payload prepared for collection "posts" (ID: ' + postRef.id + '):', cleanedPayload);
-    console.log('🔍 [Firestore:createPost] Verifying post metadata: status="' + cleanedPayload.status + '", authorRole="' + cleanedPayload.authorRole + '", category="' + cleanedPayload.category + '"');
+    const prepared = prepareChunkedPayload(newPost);
+    console.log(
+      `📦 [Firestore:createPost] Payload prepared for collection "posts" (ID: ${postRef.id}, total: ${prepared.totalBytes.toLocaleString('sl-SI')} B, chunks: ${prepared.chunks.length}):`,
+      prepared.mainDoc
+    );
+    console.log('🔍 [Firestore:createPost] Verifying post metadata: status="' + prepared.mainDoc.status + '", authorRole="' + prepared.mainDoc.authorRole + '", category="' + prepared.mainDoc.category + '"');
 
-    await setDoc(postRef, cleanedPayload);
+    if (prepared.chunks.length > 0) {
+      // Cache overflow before writing parent doc so local listener hydrates instantaneously
+      hydratedDocCache.set(`posts/${postRef.id}`, {
+        updatedAt: now,
+        chunkCount: prepared.chunks.length,
+        overflow: prepared.overflow,
+      });
+      await writeChunksSubcollection('posts', postRef.id, prepared.chunks, 0);
+    }
+
+    await setDoc(postRef, prepared.mainDoc);
     console.log('✅ [Firestore:createPost] Document successfully persisted in Firestore with ID:', postRef.id, 'status: published');
+
+    const fullHydratedPost = normalizeMediaFields(cleanDataForFirestore(newPost)) as FirestorePost;
 
     // Optimistically update local cache so the newly created post is instantly visible
     try {
       const cached = getCachedPosts();
-      const updated = [newPost, ...cached.filter(p => p.id !== newPost.id)];
-      localStorage.setItem('cached_firestore_posts', JSON.stringify(updated));
+      const updated = [fullHydratedPost, ...cached.filter(p => p.id !== newPost.id)];
+      safeSaveArrayToLocalStorage('cached_firestore_posts', updated);
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('portal_posts_updated', { detail: newPost }));
+        window.dispatchEvent(new CustomEvent('portal_posts_updated', { detail: fullHydratedPost }));
       }
     } catch (cacheErr) {
       console.warn('Note: Could not update local posts cache:', cacheErr);
@@ -1096,6 +1460,13 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
   } catch (error) {
     console.error('❌ [Firestore:createPost] Error caught while writing post document:', error);
     console.groupEnd();
+    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+      throw error;
+    }
+    // Clean up orphaned chunks if main doc write failed
+    if (postRefId) {
+      deleteChunksSubcollection('posts', postRefId).catch(() => {});
+    }
     handleFirestoreError(error, OperationType.CREATE, path);
     return '';
   }
@@ -1150,7 +1521,8 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
         ? (data.categoryName || mockDeal?.categoryName || 'Ugodnosti')
         : (data.categoryName || (mockBlog as any)?.categoryName || 'Blog');
 
-      const newPostPayload = cleanDataForFirestore({
+      const now = new Date().toISOString();
+      const rawNewPost: Record<string, any> = {
         ...data,
         id: postId,
         title: data.title || mockDeal?.title || mockBlog?.title || 'Objava',
@@ -1170,22 +1542,33 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
         location: data.location || (mockDeal ? mockDeal.region : '') || '',
         likesCount: data.likesCount || (mockDeal?.votes) || 0,
         commentsCount: data.commentsCount || 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+        createdAt: now,
+        updatedAt: now,
+        authorId: originalAuthorId,
+        authorName: originalAuthorName,
+        authorRole: originalAuthorRole,
+        authorAvatar: originalAuthorAvatar,
+      };
 
-      // Strict enforcement: Original author and category cannot be overwritten
-      newPostPayload.authorId = originalAuthorId;
-      newPostPayload.authorName = originalAuthorName;
-      newPostPayload.authorRole = originalAuthorRole;
-      newPostPayload.authorAvatar = originalAuthorAvatar;
-      newPostPayload.category = finalCategory;
-      newPostPayload.categoryName = finalCategoryName;
+      const prepared = prepareChunkedPayload(rawNewPost);
+      if (prepared.chunks.length > 0) {
+        hydratedDocCache.set(`posts/${postId}`, {
+          updatedAt: now,
+          chunkCount: prepared.chunks.length,
+          overflow: prepared.overflow,
+        });
+        await writeChunksSubcollection('posts', postId, prepared.chunks, 0);
+      }
 
-      await setDoc(postRef, newPostPayload);
+      await setDoc(postRef, prepared.mainDoc);
     } else {
-      const existing = snap.data() as FirestorePost;
-      const safeData = { ...data };
+      const rawExisting = { id: snap.id, ...(snap.data() as Omit<FirestorePost, 'id'>) };
+      const prevChunkCount = rawExisting.hasChunkedContent ? (rawExisting.chunkCount || 0) : 0;
+      const existing = rawExisting.hasChunkedContent
+        ? await hydrateDocumentWithChunks('posts', rawExisting)
+        : rawExisting;
+
+      const safeData: Record<string, any> = { ...data };
 
       // STRICT REQUIREMENT: Original author MUST remain the same after post has been edited by superadmin or admin
       delete safeData.authorId;
@@ -1234,12 +1617,62 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
         safeData.authorId = `author-${mockBlog.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
 
-      await updateDoc(postRef, sanitizeUpdateData({
+      const now = new Date().toISOString();
+      const mergedDoc: Record<string, any> = {
+        ...existing,
         ...safeData,
-        updatedAt: new Date().toISOString(),
-      }));
+        id: postId,
+        updatedAt: now,
+      };
+      // Remove chunk metadata so prepareChunkedPayload recomputes cleanly
+      delete mergedDoc.hasChunkedContent;
+      delete mergedDoc.chunkCount;
+      delete mergedDoc.totalPayloadBytes;
+
+      // Sync primary imageUrl changes into images array when images isn't explicitly supplied
+      if (safeData.imageUrl !== undefined && safeData.images === undefined) {
+        const existingImgs = Array.isArray(existing.images) ? [...existing.images] : [];
+        if (safeData.imageUrl) {
+          mergedDoc.images = [safeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
+        } else {
+          mergedDoc.images = existingImgs.slice(1).filter(Boolean);
+        }
+        delete mergedDoc.imageUrls;
+      }
+
+      // Respect explicit undefined/null removals (e.g., rejectionReason, embedCode)
+      const removableKeys = ['rejectionReason', 'promotion', 'promotedUntil', 'promotionBadgeType', 'embedCode', 'embedOrientation'];
+      for (const k of removableKeys) {
+        if (k in safeData && (safeData[k] === undefined || safeData[k] === null)) {
+          delete mergedDoc[k];
+        }
+      }
+
+      const prepared = prepareChunkedPayload(mergedDoc);
+
+      if (prepared.chunks.length > 0 || prevChunkCount > 0) {
+        if (prepared.chunks.length > 0) {
+          hydratedDocCache.set(`posts/${postId}`, {
+            updatedAt: now,
+            chunkCount: prepared.chunks.length,
+            overflow: prepared.overflow,
+          });
+        } else {
+          hydratedDocCache.delete(`posts/${postId}`);
+        }
+        await writeChunksSubcollection('posts', postId, prepared.chunks, prevChunkCount);
+        await setDoc(postRef, prepared.mainDoc);
+      } else {
+        await updateDoc(postRef, sanitizeUpdateData({
+          ...safeData,
+          updatedAt: now,
+        }));
+      }
     }
   } catch (error) {
+    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
@@ -1247,6 +1680,7 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
 export async function deletePostInFirestore(postId: string): Promise<void> {
   const path = `posts/${postId}`;
   try {
+    await deleteChunksSubcollection('posts', postId);
     await deleteDoc(doc(db, 'posts', postId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
@@ -1546,11 +1980,13 @@ export const getCachedAds = (): FirestoreAd[] => {
 
 function rawSubscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void {
   const path = 'ads';
+  let hydrationEpoch = 0;
 
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
-      const ads: FirestoreAd[] = snapshot.docs.map(d => {
+      const epoch = ++hydrationEpoch;
+      const rawAds: FirestoreAd[] = snapshot.docs.map(d => {
         const item = {
           id: d.id,
           ...(d.data() as Omit<FirestoreAd, 'id'>),
@@ -1564,10 +2000,26 @@ function rawSubscribeToAds(onAds: (ads: FirestoreAd[]) => void): () => void {
         }
         return item;
       });
-      try {
-        localStorage.setItem('cached_firestore_ads', JSON.stringify(ads));
-      } catch {}
-      onAds(ads);
+
+      let anyNeedsAsync = false;
+      const syncAds = rawAds.map(a => {
+        const { hydrated, needsAsyncFetch } = mergeCachedChunksSync('ads', a);
+        if (needsAsyncFetch) anyNeedsAsync = true;
+        return hydrated;
+      });
+
+      safeSaveArrayToLocalStorage('cached_firestore_ads', syncAds);
+      onAds(syncAds);
+
+      if (anyNeedsAsync) {
+        Promise.all(rawAds.map(a => hydrateDocumentWithChunks('ads', a)))
+          .then(hydratedAds => {
+            if (epoch !== hydrationEpoch) return;
+            safeSaveArrayToLocalStorage('cached_firestore_ads', hydratedAds);
+            onAds(hydratedAds);
+          })
+          .catch(() => {});
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
       onAds(getCachedAds());
@@ -1583,18 +2035,36 @@ export const subscribeToAds = createSharedSubscription(rawSubscribeToAds, getCac
 
 export async function createAdInFirestore(ad: Omit<FirestoreAd, 'id'> & { id?: string }): Promise<string> {
   const path = 'ads';
+  let adRefId = '';
   try {
     const adRef = doc(collection(db, path));
+    adRefId = adRef.id;
+    const now = new Date().toISOString();
     const newAd: FirestoreAd = {
       ...ad,
       id: adRef.id,
       status: ad.status || 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
-    await setDoc(adRef, cleanDataForFirestore(newAd));
+    const prepared = prepareChunkedPayload(newAd);
+    if (prepared.chunks.length > 0) {
+      hydratedDocCache.set(`ads/${adRef.id}`, {
+        updatedAt: now,
+        chunkCount: prepared.chunks.length,
+        overflow: prepared.overflow,
+      });
+      await writeChunksSubcollection('ads', adRef.id, prepared.chunks, 0);
+    }
+    await setDoc(adRef, prepared.mainDoc);
     return adRef.id;
   } catch (error) {
+    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+      throw error;
+    }
+    if (adRefId) {
+      deleteChunksSubcollection('ads', adRefId).catch(() => {});
+    }
     handleFirestoreError(error, OperationType.CREATE, path);
     return '';
   }
@@ -1623,7 +2093,8 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
         : (data.authorAvatar && !isDummyAvatar(data.authorAvatar) ? data.authorAvatar : undefined);
       const finalCategory = data.category && data.category !== 'splosno' ? data.category : (mockAd?.category || data.category || 'ostalo');
 
-      const payload = cleanDataForFirestore({
+      const now = new Date().toISOString();
+      const rawPayload: Record<string, any> = {
         ...data,
         id: adId,
         title: data.title || mockAd?.title || 'Mali oglas',
@@ -1634,20 +2105,33 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
         phone: data.phone || '',
         imageUrl: data.imageUrl || mockAd?.image || '',
         status: data.status || 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+        createdAt: now,
+        updatedAt: now,
+        authorId: originalAuthorId,
+        authorName: originalAuthorName,
+        authorRole: originalAuthorRole,
+        authorAvatar: originalAuthorAvatar,
+      };
 
-      payload.authorId = originalAuthorId;
-      payload.authorName = originalAuthorName;
-      payload.authorRole = originalAuthorRole;
-      payload.authorAvatar = originalAuthorAvatar;
-      payload.category = finalCategory;
+      const prepared = prepareChunkedPayload(rawPayload);
+      if (prepared.chunks.length > 0) {
+        hydratedDocCache.set(`ads/${adId}`, {
+          updatedAt: now,
+          chunkCount: prepared.chunks.length,
+          overflow: prepared.overflow,
+        });
+        await writeChunksSubcollection('ads', adId, prepared.chunks, 0);
+      }
 
-      await setDoc(adRef, payload);
+      await setDoc(adRef, prepared.mainDoc);
     } else {
-      const existing = snap.data() as FirestoreAd;
-      const safeData = { ...data };
+      const rawExisting = { id: snap.id, ...(snap.data() as Omit<FirestoreAd, 'id'>) };
+      const prevChunkCount = rawExisting.hasChunkedContent ? (rawExisting.chunkCount || 0) : 0;
+      const existing = rawExisting.hasChunkedContent
+        ? await hydrateDocumentWithChunks('ads', rawExisting)
+        : rawExisting;
+
+      const safeData: Record<string, any> = { ...data };
 
       // Strictly preserve original author & category
       delete safeData.authorId;
@@ -1669,12 +2153,58 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
         safeData.authorId = `author-${mockAd.author.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
 
-      await updateDoc(adRef, sanitizeUpdateData({
+      const now = new Date().toISOString();
+      const mergedDoc: Record<string, any> = {
+        ...existing,
         ...safeData,
-        updatedAt: new Date().toISOString(),
-      }));
+        id: adId,
+        updatedAt: now,
+      };
+      delete mergedDoc.hasChunkedContent;
+      delete mergedDoc.chunkCount;
+      delete mergedDoc.totalPayloadBytes;
+
+      if (safeData.imageUrl !== undefined && safeData.images === undefined) {
+        const existingImgs = Array.isArray(existing.images) ? [...existing.images] : [];
+        if (safeData.imageUrl) {
+          mergedDoc.images = [safeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
+        } else {
+          mergedDoc.images = existingImgs.slice(1).filter(Boolean);
+        }
+        delete mergedDoc.imageUrls;
+      }
+
+      const removableKeys = ['rejectionReason', 'promotion', 'promotedUntil', 'promotionBadgeType', 'embedCode', 'embedOrientation'];
+      for (const k of removableKeys) {
+        if (k in safeData && (safeData[k] === undefined || safeData[k] === null)) {
+          delete mergedDoc[k];
+        }
+      }
+
+      const prepared = prepareChunkedPayload(mergedDoc);
+      if (prepared.chunks.length > 0 || prevChunkCount > 0) {
+        if (prepared.chunks.length > 0) {
+          hydratedDocCache.set(`ads/${adId}`, {
+            updatedAt: now,
+            chunkCount: prepared.chunks.length,
+            overflow: prepared.overflow,
+          });
+        } else {
+          hydratedDocCache.delete(`ads/${adId}`);
+        }
+        await writeChunksSubcollection('ads', adId, prepared.chunks, prevChunkCount);
+        await setDoc(adRef, prepared.mainDoc);
+      } else {
+        await updateDoc(adRef, sanitizeUpdateData({
+          ...safeData,
+          updatedAt: now,
+        }));
+      }
     }
   } catch (error) {
+    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
@@ -1682,6 +2212,7 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
 export async function deleteAdInFirestore(adId: string): Promise<void> {
   const path = `ads/${adId}`;
   try {
+    await deleteChunksSubcollection('ads', adId);
     await deleteDoc(doc(db, 'ads', adId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
@@ -1722,11 +2253,13 @@ export const getCachedEvents = (): FirestoreEvent[] => {
 
 function rawSubscribeToEvents(onEvents: (events: FirestoreEvent[]) => void): () => void {
   const path = 'events';
+  let hydrationEpoch = 0;
 
   try {
     const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(200));
     return onSnapshot(q, (snapshot) => {
-      const events: FirestoreEvent[] = snapshot.docs.map(d => {
+      const epoch = ++hydrationEpoch;
+      const rawEvents: FirestoreEvent[] = snapshot.docs.map(d => {
         const item = {
           id: d.id,
           ...(d.data() as Omit<FirestoreEvent, 'id'>),
@@ -1740,10 +2273,26 @@ function rawSubscribeToEvents(onEvents: (events: FirestoreEvent[]) => void): () 
         }
         return item;
       });
-      try {
-        localStorage.setItem('cached_firestore_events', JSON.stringify(events));
-      } catch {}
-      onEvents(events);
+
+      let anyNeedsAsync = false;
+      const syncEvents = rawEvents.map(e => {
+        const { hydrated, needsAsyncFetch } = mergeCachedChunksSync('events', e);
+        if (needsAsyncFetch) anyNeedsAsync = true;
+        return hydrated;
+      });
+
+      safeSaveArrayToLocalStorage('cached_firestore_events', syncEvents);
+      onEvents(syncEvents);
+
+      if (anyNeedsAsync) {
+        Promise.all(rawEvents.map(e => hydrateDocumentWithChunks('events', e)))
+          .then(hydratedEvents => {
+            if (epoch !== hydrationEpoch) return;
+            safeSaveArrayToLocalStorage('cached_firestore_events', hydratedEvents);
+            onEvents(hydratedEvents);
+          })
+          .catch(() => {});
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, path);
       onEvents(getCachedEvents());
@@ -1782,7 +2331,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
           item.authorAvatar = ((mockEvent as any).organizerAvatar && !isDummyAvatar((mockEvent as any).organizerAvatar)) ? (mockEvent as any).organizerAvatar : undefined;
           item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
         }
-        return item;
+        return await hydrateDocumentWithChunks('events', item);
       }
     }
     // Case-insensitive fallback search and title slug search
@@ -1815,7 +2364,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
         item.authorAvatar = ((mockEvent as any).organizerAvatar && !isDummyAvatar((mockEvent as any).organizerAvatar)) ? (mockEvent as any).organizerAvatar : undefined;
         item.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
-      return item;
+      return await hydrateDocumentWithChunks('events', item);
     }
     // Cache fallback
     try {
@@ -1826,7 +2375,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
           const docClean = e.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
           return e.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId || slugify(e.title || '') === targetSlug;
         });
-        if (found) return found;
+        if (found) return normalizeMediaFields(found);
       }
     } catch {}
     return null;
@@ -1842,7 +2391,7 @@ export async function getEventById(eventId: string): Promise<FirestoreEvent | nu
           const docClean = e.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
           return e.id.toLowerCase() === eventId.toLowerCase() || docClean === cleanId || slugify(e.title || '') === targetSlug || slugify(e.title || '') === cleanSlug;
         });
-        if (found) return found;
+        if (found) return normalizeMediaFields(found);
       }
     } catch {}
     return null;
@@ -1868,10 +2417,10 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
     if (snap.exists()) {
       const data = snap.data();
       if (data && (data.title || data.content || data.description)) {
-        return {
+        return await hydrateDocumentWithChunks('posts', {
           id: snap.id,
           ...(data as Omit<FirestorePost, 'id'>),
-        };
+        });
       }
     }
     const q = query(collection(db, 'posts'), limit(300));
@@ -1890,10 +2439,10 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
       return false;
     });
     if (match) {
-      return {
+      return await hydrateDocumentWithChunks('posts', {
         id: match.id,
         ...(match.data() as Omit<FirestorePost, 'id'>),
-      };
+      });
     }
     // Local cache fallback
     try {
@@ -1904,7 +2453,7 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
           const docClean = p.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
           return p.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId || slugify(p.title || '') === targetSlug || slugify(p.title || '') === cleanSlug;
         });
-        if (found) return found;
+        if (found) return normalizeMediaFields(found);
       }
     } catch {}
     return null;
@@ -1918,7 +2467,7 @@ export async function getPostById(postId: string): Promise<FirestorePost | null>
           const docClean = p.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
           return p.id.toLowerCase() === postId.toLowerCase() || docClean === cleanId || slugify(p.title || '') === targetSlug || slugify(p.title || '') === cleanSlug;
         });
-        if (found) return found;
+        if (found) return normalizeMediaFields(found);
       }
     } catch {}
     return null;
@@ -1941,10 +2490,10 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
     if (snap.exists()) {
       const data = snap.data();
       if (data && (data.title || data.description)) {
-        return {
+        return await hydrateDocumentWithChunks('ads', {
           id: snap.id,
           ...(data as Omit<FirestoreAd, 'id'>),
-        };
+        });
       }
     }
     const q = query(collection(db, 'ads'), limit(100));
@@ -1962,10 +2511,10 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
       return false;
     });
     if (match) {
-      return {
+      return await hydrateDocumentWithChunks('ads', {
         id: match.id,
         ...(match.data() as Omit<FirestoreAd, 'id'>),
-      };
+      });
     }
     // Local cache fallback
     try {
@@ -1976,7 +2525,7 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
           const docClean = a.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
           return a.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId || slugify(a.title || '') === targetSlug || slugify(a.title || '') === cleanSlug;
         });
-        if (found) return found;
+        if (found) return normalizeMediaFields(found);
       }
     } catch {}
     return null;
@@ -1990,7 +2539,7 @@ export async function getAdById(adId: string): Promise<FirestoreAd | null> {
           const docClean = a.id.toLowerCase().trim().replace(/^(event|ad|deal|blog|post)-/, '');
           return a.id.toLowerCase() === adId.toLowerCase() || docClean === cleanId || slugify(a.title || '') === targetSlug || slugify(a.title || '') === cleanSlug;
         });
-        if (found) return found;
+        if (found) return normalizeMediaFields(found);
       }
     } catch {}
     return null;
@@ -2067,18 +2616,36 @@ export async function fetchDocumentById(
 
 export async function createEventInFirestore(event: Omit<FirestoreEvent, 'id'> & { id?: string }): Promise<string> {
   const path = 'events';
+  let eventRefId = '';
   try {
     const eventRef = doc(collection(db, path));
+    eventRefId = eventRef.id;
+    const now = new Date().toISOString();
     const newEvent: FirestoreEvent = {
       ...event,
       id: eventRef.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       isPromoted: event.isPromoted || false,
     };
-    await setDoc(eventRef, cleanDataForFirestore(newEvent));
+    const prepared = prepareChunkedPayload(newEvent);
+    if (prepared.chunks.length > 0) {
+      hydratedDocCache.set(`events/${eventRef.id}`, {
+        updatedAt: now,
+        chunkCount: prepared.chunks.length,
+        overflow: prepared.overflow,
+      });
+      await writeChunksSubcollection('events', eventRef.id, prepared.chunks, 0);
+    }
+    await setDoc(eventRef, prepared.mainDoc);
     return eventRef.id;
   } catch (error) {
+    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+      throw error;
+    }
+    if (eventRefId) {
+      deleteChunksSubcollection('events', eventRefId).catch(() => {});
+    }
     handleFirestoreError(error, OperationType.CREATE, path);
     return '';
   }
@@ -2107,32 +2674,46 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
         : (data.authorAvatar && !isDummyAvatar(data.authorAvatar) ? data.authorAvatar : undefined);
       const finalCategory = data.category && data.category !== 'splosno' ? data.category : (mockEvent?.category || data.category || 'dogodki');
 
-      const payload = cleanDataForFirestore({
+      const now = new Date().toISOString();
+      const rawPayload: Record<string, any> = {
         ...data,
         id: eventId,
         title: data.title || mockEvent?.title || 'Dogodek',
         description: data.description || mockEvent?.description || '',
         category: finalCategory,
-        eventDate: data.eventDate || mockEvent?.date || new Date().toISOString().split('T')[0],
+        eventDate: data.eventDate || mockEvent?.date || now.split('T')[0],
         location: data.location || mockEvent?.location || 'Ljubljana',
         price: data.price || mockEvent?.price || 'Vstop prost',
         imageUrl: data.imageUrl || mockEvent?.image || '',
         status: data.status || 'published',
         isPromoted: data.isPromoted || false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+        createdAt: now,
+        updatedAt: now,
+        authorId: originalAuthorId,
+        authorName: originalAuthorName,
+        authorRole: originalAuthorRole,
+        authorAvatar: originalAuthorAvatar,
+      };
 
-      payload.authorId = originalAuthorId;
-      payload.authorName = originalAuthorName;
-      payload.authorRole = originalAuthorRole;
-      payload.authorAvatar = originalAuthorAvatar;
-      payload.category = finalCategory;
+      const prepared = prepareChunkedPayload(rawPayload);
+      if (prepared.chunks.length > 0) {
+        hydratedDocCache.set(`events/${eventId}`, {
+          updatedAt: now,
+          chunkCount: prepared.chunks.length,
+          overflow: prepared.overflow,
+        });
+        await writeChunksSubcollection('events', eventId, prepared.chunks, 0);
+      }
 
-      await setDoc(eventRef, payload);
+      await setDoc(eventRef, prepared.mainDoc);
     } else {
-      const existing = snap.data() as FirestoreEvent;
-      const safeData = { ...data };
+      const rawExisting = { id: snap.id, ...(snap.data() as Omit<FirestoreEvent, 'id'>) };
+      const prevChunkCount = rawExisting.hasChunkedContent ? (rawExisting.chunkCount || 0) : 0;
+      const existing = rawExisting.hasChunkedContent
+        ? await hydrateDocumentWithChunks('events', rawExisting)
+        : rawExisting;
+
+      const safeData: Record<string, any> = { ...data };
 
       // Strictly preserve original author & category
       delete safeData.authorId;
@@ -2154,12 +2735,58 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
         safeData.authorId = `organizer-${mockEvent.organizer.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
 
-      await updateDoc(eventRef, sanitizeUpdateData({
+      const now = new Date().toISOString();
+      const mergedDoc: Record<string, any> = {
+        ...existing,
         ...safeData,
-        updatedAt: new Date().toISOString(),
-      }));
+        id: eventId,
+        updatedAt: now,
+      };
+      delete mergedDoc.hasChunkedContent;
+      delete mergedDoc.chunkCount;
+      delete mergedDoc.totalPayloadBytes;
+
+      if (safeData.imageUrl !== undefined && safeData.images === undefined) {
+        const existingImgs = Array.isArray(existing.images) ? [...existing.images] : [];
+        if (safeData.imageUrl) {
+          mergedDoc.images = [safeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
+        } else {
+          mergedDoc.images = existingImgs.slice(1).filter(Boolean);
+        }
+        delete mergedDoc.imageUrls;
+      }
+
+      const removableKeys = ['rejectionReason', 'promotion', 'promotedUntil', 'promotionBadgeType', 'embedCode', 'embedOrientation'];
+      for (const k of removableKeys) {
+        if (k in safeData && (safeData[k] === undefined || safeData[k] === null)) {
+          delete mergedDoc[k];
+        }
+      }
+
+      const prepared = prepareChunkedPayload(mergedDoc);
+      if (prepared.chunks.length > 0 || prevChunkCount > 0) {
+        if (prepared.chunks.length > 0) {
+          hydratedDocCache.set(`events/${eventId}`, {
+            updatedAt: now,
+            chunkCount: prepared.chunks.length,
+            overflow: prepared.overflow,
+          });
+        } else {
+          hydratedDocCache.delete(`events/${eventId}`);
+        }
+        await writeChunksSubcollection('events', eventId, prepared.chunks, prevChunkCount);
+        await setDoc(eventRef, prepared.mainDoc);
+      } else {
+        await updateDoc(eventRef, sanitizeUpdateData({
+          ...safeData,
+          updatedAt: now,
+        }));
+      }
     }
   } catch (error) {
+    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
@@ -2167,6 +2794,7 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
 export async function deleteEventInFirestore(eventId: string): Promise<void> {
   const path = `events/${eventId}`;
   try {
+    await deleteChunksSubcollection('events', eventId);
     await deleteDoc(doc(db, 'events', eventId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
