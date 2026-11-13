@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { auth, googleProvider } from '../lib/firebase';
 import { 
   signInWithPopup, 
+  signInWithEmailAndPassword,
   signOut as fbSignOut, 
   onAuthStateChanged, 
   createUserWithEmailAndPassword, 
@@ -345,8 +346,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (fbUser && fbUser.email) {
         const email = fbUser.email.toLowerCase();
         const profile = await fetchUserProfile(fbUser.uid);
+
+        // Look up existing portal user by UID or email (check latest localStorage + Firestore too)
+        let savedLocalUsers: User[] = initialUsers;
+        try {
+          const rawSaved = localStorage.getItem('portal_users');
+          if (rawSaved) {
+            const parsed = JSON.parse(rawSaved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              savedLocalUsers = parsed;
+            }
+          }
+        } catch {}
+
+        let existingLocalUser = savedLocalUsers.find(
+          u => u.id === fbUser.uid || u.email.toLowerCase() === email
+        );
+        if (!existingLocalUser) {
+          existingLocalUser = await findUserForVerification('', email).catch(() => null) || undefined;
+        }
+
         let activeProfile: User;
-        const existingLocalUser = initialUsers.find(u => u.email.toLowerCase() === email || u.id === fbUser.uid);
         const resolvedUploadedAvatar = (profile?.avatar && !isDummyAvatar(profile.avatar))
           ? profile.avatar
           : (existingLocalUser?.avatar && !isDummyAvatar(existingLocalUser.avatar))
@@ -356,9 +376,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               : undefined;
 
         if (profile && profile.status === 'active' && !isDummyUser(profile)) {
-          activeProfile = { ...profile, avatar: resolvedUploadedAvatar };
+          // Ensure we never downgrade an existing verified/admin role matched by email
+          const preservedRole =
+            email === 'zoran.krstin@gmail.com'
+              ? 'superadmin'
+              : (profile.role === 'registered' && existingLocalUser && existingLocalUser.role !== 'registered' && existingLocalUser.role !== 'guest')
+                ? existingLocalUser.role
+                : profile.role;
+          activeProfile = {
+            ...existingLocalUser,
+            ...profile,
+            role: preservedRole,
+            avatar: resolvedUploadedAvatar,
+          };
           setCurrentUser(activeProfile);
           localStorage.setItem('portal_current_user_id', activeProfile.id);
+        } else if (existingLocalUser && existingLocalUser.status === 'active' && !isDummyUser(existingLocalUser)) {
+          // Link Firebase Auth session to the existing portal account (preserving verified/moderator/admin role & profile)
+          activeProfile = {
+            ...existingLocalUser,
+            role: email === 'zoran.krstin@gmail.com' ? 'superadmin' : existingLocalUser.role,
+            status: 'active',
+            avatar: resolvedUploadedAvatar,
+            googleId: existingLocalUser.googleId || fbUser.uid,
+            emailVerified: existingLocalUser.emailVerified !== undefined ? existingLocalUser.emailVerified : true,
+          };
+          setCurrentUser(activeProfile);
+          localStorage.setItem('portal_current_user_id', activeProfile.id);
+          syncUserProfile(activeProfile).catch(console.error);
         } else {
           const isSuper = email === 'zoran.krstin@gmail.com';
           const defaultRole: Role = isSuper ? 'superadmin' : 'registered';
@@ -439,6 +484,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentUser(user);
     localStorage.setItem('portal_current_user_id', user.id);
     syncUserProfile(user).catch(console.error);
+
+    // Silently sync Firebase Auth session if Email/Password provider is enabled
+    // (helps grant auth.currentUser for Firebase Storage rules without blocking portal login if disabled)
+    if (!auth.currentUser || auth.currentUser.email?.toLowerCase() !== trimmedEmail) {
+      const syncPass = user.password || trimmedPass;
+      signInWithEmailAndPassword(auth, trimmedEmail, syncPass).catch((err: any) => {
+        if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential') {
+          createUserWithEmailAndPassword(auth, trimmedEmail, syncPass).catch(() => {});
+        }
+      });
+    }
+
     return { success: true, user };
   };
 

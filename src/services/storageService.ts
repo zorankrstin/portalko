@@ -8,7 +8,11 @@ export interface UploadedAttachment {
   contentType: string;
 }
 
-export const MAX_STORAGE_FILE_BYTES = 25 * 1024 * 1024; // 25 MB per file
+export const MAX_STORAGE_FILE_BYTES = 25 * 1024 * 1024; // 25 MB per file in Firebase Storage
+export const MAX_FALLBACK_IMAGE_BYTES = 1_100_000; // ~1.45 MB Base64, fits cleanly inside Firestore 4.5 MB chunks
+export const MAX_FALLBACK_ATTACHMENT_BYTES = 2_500_000; // ~3.33 MB Base64, fits inside Firestore 4.5 MB chunks
+
+let loggedStorageFallbackNotice = false;
 
 function sanitizePathSegment(segment: string): string {
   return (segment || 'anon')
@@ -67,7 +71,6 @@ export async function optimizeImageFileToBlob(
         let width = img.naturalWidth || img.width;
         let height = img.naturalHeight || img.height;
 
-        // If already reasonably sized & compact (< 1.2 MB), upload original without re-encoding
         if (width <= maxDimension && height <= maxDimension && file.size <= 1_200_000) {
           URL.revokeObjectURL(objectUrl);
           resolve({
@@ -171,11 +174,122 @@ export function dataUrlToBlob(dataUrl: string): { blob: Blob; contentType: strin
   };
 }
 
+export function isStorageUnauthorizedError(error: unknown): boolean {
+  if (!error) return false;
+  const errObj = error as { code?: string; status?: number; message?: string; serverResponse?: string };
+  const code = String(errObj?.code || '');
+  const message = error instanceof Error ? error.message : String(error);
+  const serverResponse = String(errObj?.serverResponse || '');
+
+  return (
+    code === 'storage/unauthorized' ||
+    code === 'storage/unauthenticated' ||
+    errObj?.status === 403 ||
+    message.includes('storage/unauthorized') ||
+    message.includes('storage/unauthenticated') ||
+    message.includes('Permission denied') ||
+    message.includes('manjkajoča dovoljenja') ||
+    message.includes('Nalaganje v Firebase Storage ni dovoljeno') ||
+    serverResponse.includes('Permission denied') ||
+    serverResponse.includes('"code": 403')
+  );
+}
+
+export function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Pretvorba datoteke v podatkovni URL ni uspela.'));
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error('Branje datoteke ni uspelo.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function compressImageBlobForFallback(blob: Blob, maxBytes: number = MAX_FALLBACK_IMAGE_BYTES): Promise<Blob> {
+  const mime = (blob.type || '').toLowerCase();
+  if (blob.size <= maxBytes || mime === 'image/gif' || mime === 'image/svg+xml') {
+    return blob;
+  }
+
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = async () => {
+      try {
+        const attempts: Array<{ maxDim: number; quality: number }> = [
+          { maxDim: 1440, quality: 0.80 },
+          { maxDim: 1080, quality: 0.72 },
+          { maxDim: 820, quality: 0.62 },
+          { maxDim: 640, quality: 0.54 },
+        ];
+        let bestBlob: Blob = blob;
+
+        for (const attempt of attempts) {
+          let w = img.naturalWidth || img.width;
+          let h = img.naturalHeight || img.height;
+          if (w > attempt.maxDim || h > attempt.maxDim) {
+            if (w > h) {
+              h = Math.round((h * attempt.maxDim) / w);
+              w = attempt.maxDim;
+            } else {
+              w = Math.round((w * attempt.maxDim) / h);
+              h = attempt.maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) break;
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const candidate = await new Promise<Blob | null>((res) =>
+            canvas.toBlob((b) => res(b), 'image/jpeg', attempt.quality)
+          );
+          if (candidate) {
+            bestBlob = candidate;
+            if (candidate.size <= maxBytes) {
+              URL.revokeObjectURL(objectUrl);
+              resolve(candidate);
+              return;
+            }
+          }
+        }
+        URL.revokeObjectURL(objectUrl);
+        resolve(bestBlob);
+      } catch {
+        URL.revokeObjectURL(objectUrl);
+        resolve(blob);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(blob);
+    };
+    img.src = objectUrl;
+  });
+}
+
+function logStorageFallbackOnce(reason?: unknown): void {
+  if (loggedStorageFallbackNotice) return;
+  loggedStorageFallbackNotice = true;
+  console.warn(
+    '[Storage Fallback] Firebase Storage trenutno zavrača neposredno nalaganje (storage/unauthorized). Uporabljam optimizirano varnostno shranjevanje v Firestore chunks. Za nalaganje večjih datotek (> 2,5 MB) objavite storage.rules v Firebase Console.',
+    reason instanceof Error ? reason.message : reason
+  );
+}
+
 function mapStorageUploadError(error: any): Error {
   const code = error?.code || '';
   const message = error instanceof Error ? error.message : String(error);
 
-  if (code === 'storage/unauthorized' || code === 'storage/unauthenticated' || message.includes('unauthorized')) {
+  if (code === 'storage/unauthorized' || code === 'storage/unauthenticated' || message.includes('unauthorized') || message.includes('Permission denied')) {
     return new Error(
       'Nalaganje v Firebase Storage ni dovoljeno (manjkajoča dovoljenja ali prijava). Preverite Firebase Storage pravila ali se prijavite.'
     );
@@ -238,6 +352,8 @@ export async function uploadBlobToFirebaseStorage(
 
 /**
  * Optimizes an image File (if huge) and uploads it to Firebase Storage, returning its download URL.
+ * Automatically falls back to a compact Base64 Data URL (persisted cleanly via Firestore chunking)
+ * if Firebase Storage bucket rules reject direct writes (`storage/unauthorized`).
  */
 export async function uploadImageFileToStorage(
   file: File,
@@ -256,11 +372,23 @@ export async function uploadImageFileToStorage(
   const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const storagePath = `${safeFolder}/${safeAuthor}/images/${uniqueId}-${baseName}.${extension}`;
 
-  return uploadBlobToFirebaseStorage(blob, storagePath, contentType, onPercent);
+  try {
+    return await uploadBlobToFirebaseStorage(blob, storagePath, contentType, onPercent);
+  } catch (err) {
+    if (!isStorageUnauthorizedError(err)) {
+      throw err;
+    }
+    logStorageFallbackOnce(err);
+    const compactBlob = await compressImageBlobForFallback(blob, MAX_FALLBACK_IMAGE_BYTES);
+    const dataUrl = await blobToDataUrl(compactBlob);
+    onPercent?.(100);
+    return dataUrl;
+  }
 }
 
 /**
  * Uploads any file attachment (PDF, DOCX, ZIP, image, video, etc.) to Firebase Storage.
+ * Falls back to Firestore-chunked Data URL for attachments <= 2.5 MB if Storage rules reject direct writes.
  */
 export async function uploadAttachmentFileToStorage(
   file: File,
@@ -275,18 +403,39 @@ export async function uploadAttachmentFileToStorage(
   const storagePath = `${safeFolder}/${safeAuthor}/files/${uniqueId}-${safeName}`;
   const contentType = file.type || 'application/octet-stream';
 
-  const url = await uploadBlobToFirebaseStorage(file, storagePath, contentType, onPercent);
-  return {
-    name: file.name,
-    url,
-    size: file.size,
-    contentType,
-  };
+  try {
+    const url = await uploadBlobToFirebaseStorage(file, storagePath, contentType, onPercent);
+    return {
+      name: file.name,
+      url,
+      size: file.size,
+      contentType,
+    };
+  } catch (err) {
+    if (!isStorageUnauthorizedError(err)) {
+      throw err;
+    }
+    if (file.size > MAX_FALLBACK_ATTACHMENT_BYTES) {
+      throw new Error(
+        `Datoteka "${file.name}" presega 2,5 MB za varnostno shranjevanje brez Firebase Storage. Za nalaganje večjih datotek objavite storage.rules v Firebase Console (Storage → Rules).`
+      );
+    }
+    logStorageFallbackOnce(err);
+    const dataUrl = await blobToDataUrl(file);
+    onPercent?.(100);
+    return {
+      name: file.name,
+      url: dataUrl,
+      size: file.size,
+      contentType,
+    };
+  }
 }
 
 /**
  * If `value` is a Base64 `data:` URL, uploads it to Firebase Storage and returns the HTTPS download URL.
  * Existing HTTP(S) URLs are returned unchanged.
+ * Falls back cleanly to the compact `data:` URL when Firebase Storage returns `storage/unauthorized`.
  */
 export async function uploadDataUrlIfPresent(
   value: string | undefined,
@@ -307,7 +456,22 @@ export async function uploadDataUrlIfPresent(
   const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const storagePath = `${safeFolder}/${safeAuthor}/media/${uniqueId}.${extension}`;
 
-  return uploadBlobToFirebaseStorage(blob, storagePath, contentType, onPercent);
+  try {
+    return await uploadBlobToFirebaseStorage(blob, storagePath, contentType, onPercent);
+  } catch (err) {
+    if (!isStorageUnauthorizedError(err)) {
+      throw err;
+    }
+    logStorageFallbackOnce(err);
+    if (contentType.startsWith('image/') && blob.size > MAX_FALLBACK_IMAGE_BYTES) {
+      const compactBlob = await compressImageBlobForFallback(blob, MAX_FALLBACK_IMAGE_BYTES);
+      const compactDataUrl = await blobToDataUrl(compactBlob);
+      onPercent?.(100);
+      return compactDataUrl;
+    }
+    onPercent?.(100);
+    return trimmed;
+  }
 }
 
 /**
@@ -342,12 +506,19 @@ export async function replaceDataUrlsInHtmlWithStorage(
   const replacements = new Map<string, string>();
   await Promise.all(
     items.map(async (dataUrl, index) => {
-      const uploadedUrl = await uploadDataUrlIfPresent(dataUrl, `${folder}/inline`, authorId, (pct) => {
-        itemProgress[index] = pct;
-        emitOverall();
-      });
-      if (uploadedUrl) {
-        replacements.set(dataUrl, uploadedUrl);
+      try {
+        const uploadedUrl = await uploadDataUrlIfPresent(dataUrl, `${folder}/inline`, authorId, (pct) => {
+          itemProgress[index] = pct;
+          emitOverall();
+        });
+        if (uploadedUrl && uploadedUrl !== dataUrl) {
+          replacements.set(dataUrl, uploadedUrl);
+        }
+      } catch (err) {
+        if (!isStorageUnauthorizedError(err)) {
+          throw err;
+        }
+        logStorageFallbackOnce(err);
       }
       itemProgress[index] = 100;
       emitOverall();

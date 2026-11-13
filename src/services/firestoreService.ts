@@ -220,10 +220,17 @@ async function ensureMediaInFirebaseStorage(
     if (!val || typeof val !== 'string' || !val.startsWith('data:')) return val;
     const cached = uploadedCache.get(val);
     if (cached) return cached;
-    const url = await uploadDataUrlIfPresent(val, subFolder, authorId);
-    const finalUrl = url || val;
-    uploadedCache.set(val, finalUrl);
-    return finalUrl;
+    try {
+      const url = await uploadDataUrlIfPresent(val, subFolder, authorId);
+      const finalUrl = url || val;
+      uploadedCache.set(val, finalUrl);
+      return finalUrl;
+    } catch (err) {
+      if (isStorageUploadError(err)) {
+        return val;
+      }
+      throw err;
+    }
   };
 
   if (typeof result.imageUrl === 'string' && result.imageUrl.startsWith('data:')) {
@@ -262,11 +269,19 @@ async function ensureMediaInFirebaseStorage(
   }
 
   if (typeof result.content === 'string' && result.content.includes('data:')) {
-    result.content = await replaceDataUrlsInHtmlWithStorage(result.content, folder, authorId);
+    try {
+      result.content = await replaceDataUrlsInHtmlWithStorage(result.content, folder, authorId);
+    } catch (err) {
+      if (!isStorageUploadError(err)) throw err;
+    }
   }
 
   if (typeof result.description === 'string' && result.description.includes('data:')) {
-    result.description = await replaceDataUrlsInHtmlWithStorage(result.description, folder, authorId);
+    try {
+      result.description = await replaceDataUrlsInHtmlWithStorage(result.description, folder, authorId);
+    } catch (err) {
+      if (!isStorageUploadError(err)) throw err;
+    }
   }
 
   return result;
@@ -328,6 +343,7 @@ function prepareChunkedPayload(rawPayload: Record<string, any>): {
   moveFieldIfLarge('images', 25_000);
   moveFieldIfLarge('imageUrls', 25_000);
   moveFieldIfLarge('imageUrl', 25_000);
+  moveFieldIfLarge('attachments', 25_000);
   moveFieldIfLarge('authorAvatar', 25_000);
   moveFieldIfLarge('embedCode', 25_000);
   moveFieldIfLarge('content', 40_000, true);
@@ -488,6 +504,13 @@ function safeSaveArrayToLocalStorage(storageKey: string, items: any[]): void {
       }
       if (typeof copy.authorAvatar === 'string' && copy.authorAvatar.length > 30_000) {
         delete copy.authorAvatar;
+      }
+      if (Array.isArray(copy.attachments)) {
+        copy.attachments = copy.attachments.filter((a: any) => typeof a?.url === 'string' && a.url.length <= 50_000);
+        if (copy.attachments.length === 0) delete copy.attachments;
+      }
+      if (typeof copy.content === 'string' && copy.content.length > 80_000) {
+        copy.content = copy.content.slice(0, 1200);
       }
       return copy;
     });

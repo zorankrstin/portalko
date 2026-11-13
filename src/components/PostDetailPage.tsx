@@ -2744,9 +2744,9 @@ export function PostDetailPage({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {itemData.attachments.map((att: any, idx: number) => (
                   <a
-                    key={`post-att-${idx}-${att.url}`}
+                    key={`post-att-${idx}-${att.name || idx}`}
                     href={att.url}
-                    target="_blank"
+                    target={typeof att.url === 'string' && att.url.startsWith('data:') ? undefined : '_blank'}
                     rel="noopener noreferrer"
                     download={att.name}
                     className="flex items-center justify-between gap-3 p-3 rounded-xl bg-surface-container-low hover:bg-surface-container border border-surface-container hover:border-primary/40 transition-colors group"
