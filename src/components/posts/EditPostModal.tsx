@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   X, CheckCircle, AlertCircle, Save, Check, Ban, Image as ImageIcon, 
   Sparkles, Trash2, Loader2, Calendar, Tag, TrendingDown, Percent, 
-  Clock, Plus, Copy, CalendarDays, Layers, SlidersHorizontal, MapPin, Share2 
+  Clock, Plus, Copy, CalendarDays, Layers, SlidersHorizontal, MapPin, Share2,
+  Paperclip, FileText, Upload 
 } from 'lucide-react';
 import { 
   FirestorePost, 
   FirestoreAd, 
   FirestoreEvent, 
+  PostAttachment,
   updatePostInFirestore, 
   updateAdInFirestore, 
   updateEventInFirestore,
@@ -16,10 +18,16 @@ import {
   deleteEventInFirestore,
   MAX_ALLOWED_POST_BYTES
 } from '../../services/firestoreService';
+import {
+  MAX_STORAGE_FILE_BYTES,
+  uploadImageFileToStorage,
+  uploadAttachmentFileToStorage,
+  replaceDataUrlsInHtmlWithStorage,
+} from '../../services/storageService';
 import { PromotionConfig, PromotionBadgeType, EventScheduleSlot } from '../../types';
 import { PromotedBadge } from '../common/PromotedBadge';
 import { RichTextEditor } from '../RichTextEditor';
-import { compressImageFileToDataUrl, estimatePayloadUtf8Bytes, formatBytesSlovenian } from '../../utils/imageUtils';
+import { formatBytesSlovenian } from '../../utils/imageUtils';
 import { useCategories } from '../../hooks/useCategories';
 import { CategorySection, getTertiaryCategories } from '../../services/categoryService';
 import { getTodayYmd } from '../../utils/eventFilterUtils';
@@ -45,6 +53,7 @@ export interface EditablePostItem {
   authorAvatar?: string;
   status: 'published' | 'active' | 'pending' | 'rejected' | 'archived';
   imageUrl?: string;
+  attachments?: PostAttachment[];
   price?: string;
   oldPrice?: string;
   newPrice?: string;
@@ -89,8 +98,28 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [thirdLevelCategory, setThirdLevelCategory] = useState('');
   const [status, setStatus] = useState<'published' | 'active' | 'pending' | 'rejected'>('published');
   const [imageUrl, setImageUrl] = useState('');
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const pendingBlobUrlRef = useRef<string | null>(null);
+  const [existingAttachments, setExistingAttachments] = useState<PostAttachment[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<{
+    id: string;
+    file: File;
+    name: string;
+    size: number;
+    contentType: string;
+    uploadedAttachment?: PostAttachment;
+    uploadProgress?: number;
+    uploadStatus?: 'idle' | 'uploading' | 'done';
+  }[]>([]);
+  const [uploadProgressMsg, setUploadProgressMsg] = useState('');
+  const [uploadProgressState, setUploadProgressState] = useState<{
+    overallPercent: number;
+    transferredBytes: number;
+    totalBytes: number;
+    stageLabel: string;
+    phase: 'uploading' | 'saving' | 'done';
+  } | null>(null);
   const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('url');
-  const [isCompressing, setIsCompressing] = useState(false);
   const [price, setPrice] = useState('');
   const [oldPrice, setOldPrice] = useState('');
   const [newPrice, setNewPrice] = useState('');
@@ -314,7 +343,20 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       setThirdLevelCategory(item.thirdLevelCategory || item.make || '');
       const normalizedStatus = item.status === 'active' ? 'published' : (item.status || 'published');
       setStatus(normalizedStatus as any);
+      if (pendingBlobUrlRef.current) {
+        try {
+          URL.revokeObjectURL(pendingBlobUrlRef.current);
+        } catch {
+          // ignore
+        }
+        pendingBlobUrlRef.current = null;
+      }
+      setPendingImageFile(null);
       setImageUrl(item.imageUrl || '');
+      setExistingAttachments(Array.isArray(item.attachments) ? item.attachments : []);
+      setPendingAttachments([]);
+      setUploadProgressMsg('');
+      setUploadProgressState(null);
       setPrice(item.price || '');
       setOldPrice(item.oldPrice || '');
       setNewPrice(item.newPrice || '');
@@ -366,13 +408,67 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       setRejectionReason(item.rejectionReason || '');
       setErrorMsg('');
       setSuccessMsg('');
+    } else if (!isOpen && pendingBlobUrlRef.current) {
+      try {
+        URL.revokeObjectURL(pendingBlobUrlRef.current);
+      } catch {
+        // ignore
+      }
+      pendingBlobUrlRef.current = null;
+      setPendingImageFile(null);
     }
   }, [isOpen, item]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingBlobUrlRef.current) {
+        try {
+          URL.revokeObjectURL(pendingBlobUrlRef.current);
+        } catch {
+          // ignore
+        }
+        pendingBlobUrlRef.current = null;
+      }
+    };
+  }, []);
 
   const handleClearEmbed = () => {
     setEmbedCode('');
     setEmbedOrientation('auto');
     setShowEmbedPreview(false);
+  };
+
+  const handleAttachmentFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const nextItems: typeof pendingAttachments = [];
+    const oversizedNames: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > MAX_STORAGE_FILE_BYTES) {
+        oversizedNames.push(file.name);
+        continue;
+      }
+      nextItems.push({
+        id: `${Date.now()}_edit_att_${i}_${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        name: file.name,
+        size: file.size,
+        contentType: file.type || 'application/octet-stream',
+      });
+    }
+
+    if (oversizedNames.length > 0) {
+      setErrorMsg(
+        `Naslednje datoteke presegajo omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB: ${oversizedNames.join(', ')}`
+      );
+    }
+    if (nextItems.length > 0) {
+      setPendingAttachments(prev => [...prev, ...nextItems]);
+    }
+    e.target.value = '';
   };
 
   if (!isOpen || !item) return null;
@@ -410,23 +506,11 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       return;
     }
 
-    const currentBytes = estimatePayloadUtf8Bytes({
-      title: title.trim(),
-      subtitle: subtitle.trim(),
-      content: content.trim(),
-      imageUrl: imageUrl.trim(),
-      embedCode: embedCode.trim(),
-    });
-    if (currentBytes > MAX_ALLOWED_POST_BYTES) {
-      setErrorMsg(
-        `Objava presega največjo dovoljeno velikost ${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} (${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Prosimo, zmanjšajte velikost slik ali vsebine.`
-      );
-      return;
-    }
-
     setIsSubmitting(true);
     setErrorMsg('');
     setSuccessMsg('');
+    setUploadProgressMsg('');
+    setUploadProgressState(null);
 
     const targetStatus = overrideStatus || status;
     const parsedTags = tagsString
@@ -457,13 +541,154 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     }
     const finalEmbedOrientation = finalEmbedCode ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined;
 
+    const storageFolder = item.type === 'ad'
+      ? 'ads'
+      : item.type === 'event'
+        ? 'events'
+        : isDeal
+          ? 'posts/deals'
+          : 'posts';
+    const mediaOwnerId = item.authorId || 'editor';
+
     try {
+      const filesToUpload = pendingAttachments.filter(att => !att.uploadedAttachment);
+      const totalUploadCount = (pendingImageFile ? 1 : 0) + filesToUpload.length;
+      const totalUploadBytes =
+        (pendingImageFile ? pendingImageFile.size : 0) +
+        filesToUpload.reduce((sum, att) => sum + (att.size || 0), 0);
+
+      let completedBytes = 0;
+      let completedCount = 0;
+
+      const updateEditProgress = (
+        currentItemBytes: number,
+        pct: number,
+        stageLabel: string,
+        phase: 'uploading' | 'saving' | 'done' = 'uploading'
+      ) => {
+        const currentTransferred = Math.round(currentItemBytes * (pct / 100));
+        const transferredBytes = Math.min(totalUploadBytes, completedBytes + currentTransferred);
+        let overallPercent = 0;
+        if (totalUploadBytes > 0) {
+          overallPercent = Math.min(100, Math.round((transferredBytes / totalUploadBytes) * 100));
+        } else if (totalUploadCount > 0) {
+          overallPercent = Math.min(100, Math.round(((completedCount + pct / 100) / totalUploadCount) * 100));
+        } else {
+          overallPercent = pct;
+        }
+        setUploadProgressState({
+          overallPercent,
+          transferredBytes,
+          totalBytes: totalUploadBytes,
+          stageLabel,
+          phase,
+        });
+      };
+
+      if (totalUploadCount > 0) {
+        updateEditProgress(0, 0, 'Pripravljam prenos datotek v Firebase Storage...', 'uploading');
+      }
+
+      // 1. Upload replacement cover image if user selected a new local file
+      let resolvedImageUrl = imageUrl.trim();
+      if (pendingImageFile) {
+        const coverStageLabel = `Nalagam naslovno fotografijo (${pendingImageFile.name}) v Firebase Storage...`;
+        setUploadProgressMsg('Nalagam naslovno fotografijo v Firebase Storage...');
+        updateEditProgress(pendingImageFile.size, 0, coverStageLabel, 'uploading');
+
+        resolvedImageUrl = await uploadImageFileToStorage(pendingImageFile, storageFolder, mediaOwnerId, (pct) => {
+          updateEditProgress(pendingImageFile.size, pct, coverStageLabel, 'uploading');
+        });
+        completedBytes += pendingImageFile.size;
+        completedCount++;
+
+        if (pendingBlobUrlRef.current) {
+          try {
+            URL.revokeObjectURL(pendingBlobUrlRef.current);
+          } catch {
+            // ignore
+          }
+          pendingBlobUrlRef.current = null;
+        }
+        setPendingImageFile(null);
+        setImageUrl(resolvedImageUrl);
+      }
+
+      // 2. Upload any newly added attachment files to Firebase Storage
+      const uploadedAttachments: PostAttachment[] = [];
+      let fileIdx = 0;
+      const updatedPendingAtts = [...pendingAttachments];
+
+      for (let i = 0; i < updatedPendingAtts.length; i++) {
+        const att = updatedPendingAtts[i];
+        if (att.uploadedAttachment) {
+          uploadedAttachments.push(att.uploadedAttachment);
+          continue;
+        }
+        fileIdx++;
+        const attStageLabel = `Nalagam prilogo ${fileIdx} od ${filesToUpload.length}: ${att.name}`;
+        setUploadProgressMsg(`Nalagam prilogo ${fileIdx} od ${filesToUpload.length} (${att.name})...`);
+        updatedPendingAtts[i] = { ...att, uploadStatus: 'uploading', uploadProgress: 0 };
+        setPendingAttachments([...updatedPendingAtts]);
+        updateEditProgress(att.size || 0, 0, attStageLabel, 'uploading');
+
+        const uploaded = await uploadAttachmentFileToStorage(att.file, storageFolder, mediaOwnerId, (pct) => {
+          updatedPendingAtts[i] = { ...updatedPendingAtts[i], uploadStatus: 'uploading', uploadProgress: pct };
+          setPendingAttachments([...updatedPendingAtts]);
+          updateEditProgress(att.size || 0, pct, attStageLabel, 'uploading');
+        });
+
+        completedBytes += att.size || 0;
+        completedCount++;
+        updatedPendingAtts[i] = {
+          ...updatedPendingAtts[i],
+          uploadedAttachment: uploaded,
+          uploadStatus: 'done',
+          uploadProgress: 100,
+        };
+        setPendingAttachments([...updatedPendingAtts]);
+        uploadedAttachments.push(uploaded);
+      }
+
+      const finalAttachments = [...existingAttachments, ...uploadedAttachments];
+
+      // 3. Upload any inline Base64 images in content HTML to Firebase Storage
+      let cleanContent = content.trim();
+      if (cleanContent.includes('data:')) {
+        setUploadProgressMsg('Nalagam vdelane slike iz besedila v Firebase Storage...');
+        setUploadProgressState(prev => ({
+          overallPercent: prev ? Math.max(prev.overallPercent, 90) : 50,
+          transferredBytes: totalUploadBytes,
+          totalBytes: totalUploadBytes,
+          stageLabel: 'Nalagam vdelane slike iz besedila v Firebase Storage...',
+          phase: 'uploading',
+        }));
+        cleanContent = await replaceDataUrlsInHtmlWithStorage(cleanContent, storageFolder, mediaOwnerId, (pct) => {
+          setUploadProgressState({
+            overallPercent: totalUploadCount > 0 ? Math.max(90, 90 + Math.round(pct * 0.1)) : pct,
+            transferredBytes: totalUploadBytes,
+            totalBytes: totalUploadBytes,
+            stageLabel: `Nalagam vdelane slike iz besedila v Firebase Storage (${pct}%)...`,
+            phase: 'uploading',
+          });
+        });
+      }
+
+      setUploadProgressMsg('Shranjujem spremembe v Firestore...');
+      setUploadProgressState(prev => ({
+        overallPercent: 100,
+        transferredBytes: totalUploadBytes,
+        totalBytes: totalUploadBytes,
+        stageLabel: 'Prenos v Firebase Storage zaključen ✓ Shranjujem spremembe v Firestore...',
+        phase: 'saving',
+      }));
+
       if (item.type === 'ad') {
         const adStatus = targetStatus === 'published' ? 'active' : targetStatus;
         await updateAdInFirestore(item.id, {
           title: title.trim(),
           subtitle: subtitle.trim() || undefined,
-          description: content.trim(),
+          description: cleanContent,
           category: category.trim() || item.category || 'ostalo',
           categoryName: activeCategoryObj?.name || item.categoryName,
           subcategory: subcategory.trim() || undefined,
@@ -472,7 +697,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           thirdLevelCategory: thirdLevelCategory.trim() || undefined,
           price: price.trim() || 'Po dogovoru',
           location: location.trim() || 'Slovenija',
-          imageUrl: imageUrl.trim() || '',
+          imageUrl: resolvedImageUrl,
+          attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
           tags: parsedTags,
@@ -520,7 +746,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         await updateEventInFirestore(item.id, {
           title: title.trim(),
           subtitle: subtitle.trim() || undefined,
-          description: content.trim(),
+          description: cleanContent,
           category: category.trim() || item.category || 'dogodki',
           categoryName: activeCategoryObj?.name || item.categoryName,
           subcategory: subcategory.trim() || undefined,
@@ -534,7 +760,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           eventTimes: allTimes.length > 0 ? allTimes : (primaryTime ? [primaryTime] : undefined),
           eventSchedule: cleanSchedules.length > 0 ? cleanSchedules : undefined,
           ticketUrl: ticketUrl.trim() || '',
-          imageUrl: imageUrl.trim() || '',
+          imageUrl: resolvedImageUrl,
+          attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
           tags: parsedTags,
@@ -547,7 +774,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         });
       } else {
         // Post or Deal
-        const isDeal = item.type === 'deal' || 
+        const isDealPost = item.type === 'deal' || 
                        item.category === 'deal' || 
                        item.category === 'ugodnosti' || 
                        item.category?.startsWith('deal') || 
@@ -557,34 +784,35 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
         // STRICT REQUIREMENT: The edited post must always stay in same original category
         const cleanedCat = category.trim();
-        const preservedCategory = isDeal
+        const preservedCategory = isDealPost
           ? (cleanedCat && cleanedCat !== 'blog' && cleanedCat !== 'post' && cleanedCat !== 'splosno' ? cleanedCat : (item.category && item.category !== 'blog' && item.category !== 'post' ? item.category : 'deal'))
           : (cleanedCat && cleanedCat !== 'splosno' ? cleanedCat : (item.category || 'splosno'));
 
-        const preservedCategoryName = isDeal
+        const preservedCategoryName = isDealPost
           ? (item.categoryName && item.categoryName !== 'Blog' ? item.categoryName : 'Ugodnosti')
           : item.categoryName;
 
         await updatePostInFirestore(item.id, {
           title: title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
           subtitle: subtitle.trim() || undefined,
-          content: content.trim(),
+          content: cleanContent,
           category: preservedCategory,
           categoryName: preservedCategoryName,
           subcategory: subcategory.trim() || undefined,
           subcategoryName: resolvedSubName,
           make: thirdLevelCategory.trim() || undefined,
           thirdLevelCategory: thirdLevelCategory.trim() || undefined,
-          price: isDeal ? (newPrice.trim() || price.trim() || item.price || '') : (price.trim() || item.price || ''),
-          oldPrice: isDeal ? (oldPrice.trim() || undefined) : undefined,
-          newPrice: isDeal ? (newPrice.trim() || undefined) : undefined,
-          startDate: isDeal ? (startDate.trim() || undefined) : undefined,
-          expirationDate: isDeal ? (expirationDate.trim() || undefined) : undefined,
-          discount: isDeal ? (discount.trim() || undefined) : undefined,
-          promoCode: isDeal ? (promoCode.trim() || undefined) : undefined,
-          dealLink: isDeal ? (dealLink.trim() || undefined) : undefined,
-          location: isDeal ? location.trim() : (location.trim() || item.location || ''),
-          imageUrl: imageUrl.trim() || item.imageUrl || '',
+          price: isDealPost ? (newPrice.trim() || price.trim() || item.price || '') : (price.trim() || item.price || ''),
+          oldPrice: isDealPost ? (oldPrice.trim() || undefined) : undefined,
+          newPrice: isDealPost ? (newPrice.trim() || undefined) : undefined,
+          startDate: isDealPost ? (startDate.trim() || undefined) : undefined,
+          expirationDate: isDealPost ? (expirationDate.trim() || undefined) : undefined,
+          discount: isDealPost ? (discount.trim() || undefined) : undefined,
+          promoCode: isDealPost ? (promoCode.trim() || undefined) : undefined,
+          dealLink: isDealPost ? (dealLink.trim() || undefined) : undefined,
+          location: isDealPost ? location.trim() : (location.trim() || item.location || ''),
+          imageUrl: resolvedImageUrl || item.imageUrl || '',
+          attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
           tags: parsedTags,
@@ -597,6 +825,17 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         });
       }
 
+      setUploadProgressState(prev =>
+        prev
+          ? {
+              ...prev,
+              overallPercent: 100,
+              transferredBytes: prev.totalBytes,
+              stageLabel: 'Spremembe in vse datoteke so uspešno shranjene ✓',
+              phase: 'done',
+            }
+          : null
+      );
       setSuccessMsg('Spremembe so bile uspešno shranjene!');
       onSaved?.();
       setTimeout(() => {
@@ -604,15 +843,17 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
       }, 700);
     } catch (err: any) {
       console.error('Error updating post in Firestore:', err);
+      setUploadProgressState(null);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('exceeds the maximum allowed size') || msg.includes('največjo dovoljeno velikost')) {
         setErrorMsg(
-          `Velikost objave presega dovoljeno mejo (${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} / ${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Prosimo, zmanjšajte velikost slik.`
+          `Velikost besedilnega dela objave presega dovoljeno mejo (${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)}). Prosimo, skrajšajte besedilo.`
         );
       } else {
         setErrorMsg(err?.message || 'Napaka pri shranjevanju v bazo.');
       }
     } finally {
+      setUploadProgressMsg('');
       setIsSubmitting(false);
     }
   };
@@ -1410,35 +1651,54 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={async (e) => {
+                  onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      try {
-                        setIsCompressing(true);
-                        const dataUrl = await compressImageFileToDataUrl(file);
-                        setImageUrl(dataUrl);
-                      } catch (err: any) {
-                        console.error('Error processing image:', err);
-                        setErrorMsg('Napaka pri obdelavi slike: ' + (err.message || ''));
-                      } finally {
-                        setIsCompressing(false);
+                      if (!file.type.startsWith('image/')) {
+                        setErrorMsg('Izbrana datoteka ni veljavna slika.');
+                        e.target.value = '';
+                        return;
                       }
+                      if (file.size > MAX_STORAGE_FILE_BYTES) {
+                        setErrorMsg(`Slika presega omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB.`);
+                        e.target.value = '';
+                        return;
+                      }
+                      if (pendingBlobUrlRef.current) {
+                        try {
+                          URL.revokeObjectURL(pendingBlobUrlRef.current);
+                        } catch {
+                          // ignore
+                        }
+                      }
+                      const previewUrl = URL.createObjectURL(file);
+                      pendingBlobUrlRef.current = previewUrl;
+                      setPendingImageFile(file);
+                      setImageUrl(previewUrl);
                     }
                   }}
                   className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary cursor-pointer"
                 />
-                {isCompressing && (
-                  <div className="flex items-center gap-2 text-xs text-primary font-medium">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Optimiziram sliko...</span>
-                  </div>
-                )}
+                <span className="text-[10px] text-outline">
+                  Slika se ob shranjevanju naloži v Firebase Storage (do 25 MB).
+                </span>
               </div>
             ) : (
               <input
                 type="url"
                 value={imageUrl}
-                onChange={e => setImageUrl(e.target.value)}
+                onChange={e => {
+                  if (pendingBlobUrlRef.current) {
+                    try {
+                      URL.revokeObjectURL(pendingBlobUrlRef.current);
+                    } catch {
+                      // ignore
+                    }
+                    pendingBlobUrlRef.current = null;
+                  }
+                  setPendingImageFile(null);
+                  setImageUrl(e.target.value);
+                }}
                 placeholder="https://images.unsplash.com/..."
                 className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface outline-none focus:border-primary"
               />
@@ -1449,13 +1709,115 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                 <img src={imageUrl} alt="Predogled" className="w-full h-full object-cover" onError={() => {}} />
                 <button
                   type="button"
-                  onClick={() => setImageUrl('')}
+                  onClick={() => {
+                    if (pendingBlobUrlRef.current) {
+                      try {
+                        URL.revokeObjectURL(pendingBlobUrlRef.current);
+                      } catch {
+                        // ignore
+                      }
+                      pendingBlobUrlRef.current = null;
+                    }
+                    setPendingImageFile(null);
+                    setImageUrl('');
+                  }}
                   className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs font-medium backdrop-blur-xs transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
                   title="Odstrani sliko"
                 >
                   <X className="w-3.5 h-3.5" />
                   <span>Odstrani sliko</span>
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* Priložene datoteke (Firebase Storage) */}
+          <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">
+            <div className="flex items-center justify-between">
+              <label className="font-label-caps uppercase font-semibold text-outline flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5 text-secondary" />
+                <span>Priložene datoteke ({existingAttachments.length + pendingAttachments.length})</span>
+              </label>
+              <span className="text-[10px] text-outline">PDF, dokumenti, arhivi (do 25 MB)</span>
+            </div>
+
+            <label className="border border-dashed border-surface-container-high hover:border-secondary/60 rounded-xl px-3 py-2 text-center cursor-pointer transition-colors bg-surface-container-lowest hover:bg-surface-container flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+              <Upload className="w-3.5 h-3.5 text-secondary" />
+              <span className="font-medium">Dodaj datoteko v Firebase Storage</span>
+              <input
+                type="file"
+                multiple
+                onChange={handleAttachmentFilesSelected}
+                className="hidden"
+              />
+            </label>
+
+            {(existingAttachments.length > 0 || pendingAttachments.length > 0) && (
+              <div className="flex flex-col gap-1.5">
+                {existingAttachments.map((att, idx) => (
+                  <div
+                    key={`existing-att-${idx}-${att.url}`}
+                    className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-surface-container text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span className="font-medium text-on-surface truncate">{att.name}</span>
+                      <span className="text-[10px] text-outline shrink-0">({formatBytesSlovenian(att.size)})</span>
+                      <span className="text-[10px] text-emerald-600 font-semibold shrink-0">Storage ✓</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExistingAttachments(prev => prev.filter((_, i) => i !== idx))}
+                      className="p-1 text-outline hover:text-error rounded transition-colors cursor-pointer shrink-0"
+                      title="Odstrani prilogo"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {pendingAttachments.map((att, idx) => (
+                  <div
+                    key={att.id}
+                    className="flex flex-col gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-secondary/30 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-3.5 h-3.5 text-secondary shrink-0" />
+                        <span className="font-medium text-on-surface truncate">{att.name}</span>
+                        <span className="text-[10px] text-outline shrink-0">({formatBytesSlovenian(att.size)})</span>
+                        {att.uploadStatus === 'uploading' && (
+                          <span className="text-[10px] font-mono font-bold text-primary shrink-0">
+                            {att.uploadProgress ?? 0}%
+                          </span>
+                        )}
+                        <span className="text-[10px] text-secondary font-semibold shrink-0">
+                          {att.uploadedAttachment
+                            ? 'Naloženo ✓'
+                            : att.uploadStatus === 'uploading'
+                              ? 'Nalaganje...'
+                              : 'Pripravljeno za prenos'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPendingAttachments(prev => prev.filter((_, i) => i !== idx))}
+                        disabled={isSubmitting}
+                        className="p-1 text-outline hover:text-error rounded transition-colors cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Odstrani datoteko"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {att.uploadStatus === 'uploading' && (
+                      <div className="w-full h-1 bg-surface-container rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-secondary rounded-full transition-all duration-150 ease-out"
+                          style={{ width: `${Math.max(4, att.uploadProgress ?? 0)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1567,6 +1929,47 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           </div>
         </div>
 
+        {/* Real-time upload progress bar above footer */}
+        {uploadProgressState && (
+          <div className="px-3.5 py-2.5 rounded-xl bg-primary/5 border border-primary/25 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-on-surface flex items-center gap-1.5 min-w-0">
+                {uploadProgressState.phase === 'done' ? (
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                ) : (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                )}
+                <span className="truncate">{uploadProgressState.stageLabel}</span>
+              </span>
+              <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                {uploadProgressState.totalBytes > 0 && (
+                  <span className="text-outline">
+                    {formatBytesSlovenian(uploadProgressState.transferredBytes)} / {formatBytesSlovenian(uploadProgressState.totalBytes)}
+                  </span>
+                )}
+                <span className={`font-bold ${uploadProgressState.phase === 'done' ? 'text-emerald-600' : 'text-primary'}`}>
+                  {uploadProgressState.overallPercent}%
+                </span>
+              </div>
+            </div>
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={uploadProgressState.overallPercent}
+              aria-label="Napredek nalaganja sprememb"
+              className="w-full h-2 bg-surface-container rounded-full overflow-hidden"
+            >
+              <div
+                className={`h-full rounded-full transition-all duration-150 ease-out ${
+                  uploadProgressState.phase === 'done' ? 'bg-emerald-500' : 'bg-primary'
+                }`}
+                style={{ width: `${Math.max(3, uploadProgressState.overallPercent)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Footer actions */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-surface-container-low mt-2">
           <div className="flex items-center gap-2">
@@ -1600,8 +2003,14 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
               onClick={() => handleSave()}
               className="px-5 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary text-xs font-bold shadow-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
-              <span>{isSubmitting ? 'Shranjevanje...' : 'Shrani spremembe'}</span>
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>
+                {isSubmitting
+                  ? (uploadProgressState
+                      ? `Nalagam... ${uploadProgressState.overallPercent}%`
+                      : (uploadProgressMsg || 'Shranjevanje...'))
+                  : 'Shrani spremembe'}
+              </span>
             </button>
           </div>
         </div>

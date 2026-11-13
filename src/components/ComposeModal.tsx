@@ -32,17 +32,26 @@ import {
   CalendarDays,
   SlidersHorizontal,
   Sparkles,
-  Lock
+  Lock,
+  Paperclip,
+  FileText
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { RichTextEditor } from './RichTextEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { createPostInFirestore, createAdInFirestore, createEventInFirestore, MAX_ALLOWED_POST_BYTES } from '../services/firestoreService';
+import {
+  UploadedAttachment,
+  MAX_STORAGE_FILE_BYTES,
+  uploadImageFileToStorage,
+  uploadAttachmentFileToStorage,
+  replaceDataUrlsInHtmlWithStorage,
+} from '../services/storageService';
 import { trackEvent } from '../utils/analyticsUtils';
 import { LoginModal } from './LoginModal';
 import { useCategories } from '../hooks/useCategories';
 import { CategorySection, SLOVENIA_REGIONS, getAllSloveniaCities, getTertiaryCategories } from '../services/categoryService';
-import { compressImageFileToDataUrl, estimatePayloadUtf8Bytes, formatBytesSlovenian } from '../utils/imageUtils';
+import { estimatePayloadUtf8Bytes, formatBytesSlovenian } from '../utils/imageUtils';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { getTodayYmd } from '../utils/eventFilterUtils';
 import { EventScheduleSlot } from '../types';
@@ -51,6 +60,41 @@ import { canUserPostContentType, canUserPostBlogOrDeals, ROLES_BLOG_AND_DEALS, R
 import { isUserVerified } from '../utils/userVerificationUtils';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
+
+interface PendingImageItem {
+  id: string;
+  previewUrl: string;
+  file?: File;
+  uploadedUrl?: string;
+  name: string;
+  size: number;
+  uploadProgress?: number;
+  uploadStatus?: 'idle' | 'uploading' | 'done';
+}
+
+interface PendingAttachmentItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  contentType: string;
+  uploadedAttachment?: UploadedAttachment;
+  uploadProgress?: number;
+  uploadStatus?: 'idle' | 'uploading' | 'done';
+}
+
+interface UploadProgressState {
+  active: boolean;
+  overallPercent: number;
+  currentItemPercent: number;
+  uploadedCount: number;
+  totalCount: number;
+  transferredBytes: number;
+  totalBytes: number;
+  currentFileName: string;
+  stageLabel: string;
+  phase: 'uploading' | 'saving' | 'done';
+}
 
 interface ComposeModalProps {
   isOpen: boolean;
@@ -62,6 +106,7 @@ interface ComposeModalProps {
 export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCreated }: ComposeModalProps) {
   const { currentUser } = useAuth();
   const editorRef = useRef<any>(null);
+  const objectUrlsRef = useRef<Set<string>>(new Set());
   const [postType, setPostType] = useState<PostType>(initialType);
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
@@ -87,12 +132,12 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
   const [selectedTertiaryCategory, setSelectedTertiaryCategory] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [images, setImages] = useState<string[]>([]);
-  const [compressingProgress, setCompressingProgress] = useState('');
+  const [imageItems, setImageItems] = useState<PendingImageItem[]>([]);
+  const [attachmentItems, setAttachmentItems] = useState<PendingAttachmentItem[]>([]);
   const [urlImageInput, setUrlImageInput] = useState('');
   const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
-  const [isCompressing, setIsCompressing] = useState(false);
+  const [uploadProgressMsg, setUploadProgressMsg] = useState('');
+  const [uploadProgressState, setUploadProgressState] = useState<UploadProgressState | null>(null);
   const [embedCode, setEmbedCode] = useState('');
   const [embedOrientation, setEmbedOrientation] = useState<'auto' | 'vertical' | 'horizontal'>('auto');
   const [showEmbedLivePreview, setShowEmbedLivePreview] = useState(false);
@@ -107,22 +152,22 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
-  const estimatedPayloadBytes = useMemo(() => {
-    const primaryImg = images[0] || imageUrl || undefined;
-    const allImgs = images.length > 0 ? images : (imageUrl ? [imageUrl] : undefined);
+  const totalPendingUploadBytes = useMemo(() => {
+    const imgBytes = imageItems.reduce((sum, item) => sum + (item.file ? item.size : 0), 0);
+    const fileBytes = attachmentItems.reduce((sum, item) => sum + item.size, 0);
+    return imgBytes + fileBytes;
+  }, [imageItems, attachmentItems]);
+
+  const estimatedTextBytes = useMemo(() => {
     return estimatePayloadUtf8Bytes({
       title: title.trim(),
       subtitle: subtitle.trim(),
       content: content.trim(),
-      imageUrl: allImgs ? undefined : primaryImg,
-      images: allImgs,
       embedCode: embedCode.trim() || undefined,
       tagsString,
       location: location.trim() || undefined,
     });
-  }, [title, subtitle, content, images, imageUrl, embedCode, tagsString, location]);
-
-  const isPayloadOverLimit = estimatedPayloadBytes > MAX_ALLOWED_POST_BYTES;
+  }, [title, subtitle, content, embedCode, tagsString, location]);
 
   // Map post type to taxonomy section
   const sectionMap: Record<PostType, CategorySection> = useMemo(() => ({
@@ -148,36 +193,52 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     return getAllSloveniaCities();
   }, []);
 
-  // Multi-image handlers
-  const handleMultiFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const revokeAllObjectUrls = () => {
+    objectUrlsRef.current.forEach((url) => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore already revoked URLs
+      }
+    });
+    objectUrlsRef.current.clear();
+  };
+
+  // Multi-image handlers (preview via lightweight blob URLs, uploaded to Firebase Storage on submit)
+  const handleMultiFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    setIsCompressing(true);
-    const total = files.length;
-    const newUrls: string[] = [];
-    try {
-      for (let i = 0; i < total; i++) {
-        setCompressingProgress(`Optimiziram sliko ${i + 1} od ${total}...`);
-        const file = files[i];
-        if (!file.type.startsWith('image/')) continue;
-        const dataUrl = await compressImageFileToDataUrl(file, 1200, 550_000);
-        newUrls.push(dataUrl);
+
+    const nextItems: PendingImageItem[] = [];
+    const oversizedNames: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) continue;
+      if (file.size > MAX_STORAGE_FILE_BYTES) {
+        oversizedNames.push(file.name);
+        continue;
       }
-      setImages(prev => {
-        const merged = [...prev, ...newUrls];
-        if (!imageUrl && merged[0]) {
-          setImageUrl(merged[0]);
-        }
-        return merged;
+      const previewUrl = URL.createObjectURL(file);
+      objectUrlsRef.current.add(previewUrl);
+      nextItems.push({
+        id: `${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`,
+        previewUrl,
+        file,
+        name: file.name,
+        size: file.size,
       });
-    } catch (err: any) {
-      console.error('Error processing images:', err);
-      setErrorMsg('Napaka pri obdelavi slik: ' + (err.message || ''));
-    } finally {
-      setIsCompressing(false);
-      setCompressingProgress('');
-      e.target.value = '';
     }
+
+    if (oversizedNames.length > 0) {
+      setErrorMsg(
+        `Naslednje slike presegajo omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB na datoteko: ${oversizedNames.join(', ')}`
+      );
+    }
+    if (nextItems.length > 0) {
+      setImageItems(prev => [...prev, ...nextItems]);
+    }
+    e.target.value = '';
   };
 
   const handleAddImageUrl = () => {
@@ -187,38 +248,91 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
       finalUrl = `https://${trimmed}`;
     }
-    setImages(prev => {
-      const merged = [...prev, finalUrl];
-      if (!imageUrl) setImageUrl(finalUrl);
-      return merged;
-    });
+    setImageItems(prev => [
+      ...prev,
+      {
+        id: `${Date.now()}_url_${Math.random().toString(36).slice(2, 7)}`,
+        previewUrl: finalUrl,
+        uploadedUrl: finalUrl.startsWith('data:') ? undefined : finalUrl,
+        name: finalUrl,
+        size: 0,
+      },
+    ]);
     setUrlImageInput('');
   };
 
   const handleRemoveImage = (idxToRemove: number) => {
-    setImages(prev => {
-      const updated = prev.filter((_, idx) => idx !== idxToRemove);
-      if (imageUrl === prev[idxToRemove]) {
-        setImageUrl(updated[0] || '');
+    setImageItems(prev => {
+      const target = prev[idxToRemove];
+      if (target?.previewUrl.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(target.previewUrl);
+        } catch {
+          // ignore
+        }
+        objectUrlsRef.current.delete(target.previewUrl);
       }
-      return updated;
+      return prev.filter((_, idx) => idx !== idxToRemove);
     });
   };
 
   const handleSetPrimaryImage = (idxToPrimary: number) => {
-    setImages(prev => {
+    setImageItems(prev => {
       if (idxToPrimary <= 0 || idxToPrimary >= prev.length) return prev;
       const target = prev[idxToPrimary];
       const remaining = prev.filter((_, idx) => idx !== idxToPrimary);
-      const reordered = [target, ...remaining];
-      setImageUrl(target);
-      return reordered;
+      return [target, ...remaining];
     });
   };
+
+  // File attachment handlers (PDF, documents, archives, audio/video up to 25 MB each)
+  const handleAttachmentFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const nextAttachments: PendingAttachmentItem[] = [];
+    const oversizedNames: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > MAX_STORAGE_FILE_BYTES) {
+        oversizedNames.push(file.name);
+        continue;
+      }
+      nextAttachments.push({
+        id: `${Date.now()}_att_${i}_${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        name: file.name,
+        size: file.size,
+        contentType: file.type || 'application/octet-stream',
+      });
+    }
+
+    if (oversizedNames.length > 0) {
+      setErrorMsg(
+        `Naslednje datoteke presegajo omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB na datoteko: ${oversizedNames.join(', ')}`
+      );
+    }
+    if (nextAttachments.length > 0) {
+      setAttachmentItems(prev => [...prev, ...nextAttachments]);
+    }
+    e.target.value = '';
+  };
+
+  const handleRemoveAttachment = (idxToRemove: number) => {
+    setAttachmentItems(prev => prev.filter((_, idx) => idx !== idxToRemove));
+  };
+
+  useEffect(() => {
+    return () => {
+      revokeAllObjectUrls();
+    };
+  }, []);
 
   // Initialize or reset selections when modal opens or postType changes
   useEffect(() => {
     if (isOpen) {
+      revokeAllObjectUrls();
       setPostType(initialType);
       setTitle('');
       setSubtitle('');
@@ -239,13 +353,17 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setTagsString('');
       setSelectedRegion('all');
       setSelectedTertiaryCategory('');
-      setImageUrl('');
-      setImages([]);
+      setImageItems([]);
+      setAttachmentItems([]);
       setUrlImageInput('');
+      setUploadProgressMsg('');
+      setUploadProgressState(null);
       setEmbedCode('');
       setErrorMsg('');
       setSuccessMsg('');
       setIsSubmitting(false);
+    } else {
+      revokeAllObjectUrls();
     }
   }, [isOpen, initialType]);
 
@@ -526,15 +644,11 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setErrorMsg('Prosimo, vnesite vsebino objave.');
       return;
     }
-    if (estimatedPayloadBytes > MAX_ALLOWED_POST_BYTES) {
-      setErrorMsg(
-        `Objava presega največjo dovoljeno velikost ${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} (${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Trenutna velikost: ${formatBytesSlovenian(estimatedPayloadBytes)}. Prosimo, zmanjšajte število ali velikost slik.`
-      );
-      return;
-    }
 
     setIsSubmitting(true);
     setErrorMsg('');
+    setUploadProgressMsg('');
+    setUploadProgressState(null);
 
     const initialStatus: 'published' = 'published';
     const initialAdStatus = 'active';
@@ -561,21 +675,199 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       ? undefined
       : (location.trim() || (chosenRegionObj && chosenRegionObj.id !== 'all' ? chosenRegionObj.name : undefined));
 
-    const primaryImg = images[0] || imageUrl || undefined;
-    const allImgs = images.length > 0 ? images : (imageUrl ? [imageUrl] : undefined);
-
     const userTags = tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean);
     if (selectedTertiaryCategory.trim() && !userTags.some(t => t.toLowerCase() === selectedTertiaryCategory.trim().toLowerCase())) {
       userTags.push(selectedTertiaryCategory.trim());
     }
 
+    const storageFolder = postType === 'ad'
+      ? 'ads'
+      : postType === 'event'
+        ? 'events'
+        : postType === 'deal'
+          ? 'posts/deals'
+          : 'posts';
+
     try {
+      const pendingImgItems = imageItems.filter(item => item.file && !item.uploadedUrl);
+      const pendingAttItems = attachmentItems.filter(att => !att.uploadedAttachment);
+      const totalUploadCount = pendingImgItems.length + pendingAttItems.length;
+      const totalUploadBytes =
+        pendingImgItems.reduce((sum, item) => sum + (item.size || 0), 0) +
+        pendingAttItems.reduce((sum, att) => sum + (att.size || 0), 0);
+
+      let completedBytes = 0;
+      let completedCount = 0;
+
+      const updateOverallProgress = (
+        currentItemBytes: number,
+        pct: number,
+        fileName: string,
+        stageLabel: string,
+        phase: 'uploading' | 'saving' | 'done' = 'uploading'
+      ) => {
+        const currentTransferred = Math.round(currentItemBytes * (pct / 100));
+        const transferredBytes = Math.min(totalUploadBytes, completedBytes + currentTransferred);
+        let overallPercent = 0;
+        if (totalUploadBytes > 0) {
+          overallPercent = Math.min(100, Math.round((transferredBytes / totalUploadBytes) * 100));
+        } else if (totalUploadCount > 0) {
+          overallPercent = Math.min(100, Math.round(((completedCount + pct / 100) / totalUploadCount) * 100));
+        } else {
+          overallPercent = pct;
+        }
+        setUploadProgressState({
+          active: phase !== 'done',
+          overallPercent,
+          currentItemPercent: pct,
+          uploadedCount: Math.min(totalUploadCount, completedCount + (phase === 'uploading' && pct < 100 ? 1 : 0)),
+          totalCount: totalUploadCount,
+          transferredBytes,
+          totalBytes: totalUploadBytes,
+          currentFileName: fileName,
+          stageLabel,
+          phase,
+        });
+      };
+
+      if (totalUploadCount > 0) {
+        updateOverallProgress(0, 0, '', 'Pripravljam prenos v Firebase Storage...', 'uploading');
+      }
+
+      // 1. Upload queued images to Firebase Storage (caching uploadedUrl on items to avoid duplicate uploads on retry)
+      const uploadedImageUrls: string[] = [];
+      const pendingImagesCount = pendingImgItems.length;
+      let uploadedImgIdx = 0;
+
+      const updatedImageItems = [...imageItems];
+      for (let i = 0; i < updatedImageItems.length; i++) {
+        const item = updatedImageItems[i];
+        if (item.uploadedUrl) {
+          uploadedImageUrls.push(item.uploadedUrl);
+          continue;
+        }
+        if (item.file) {
+          uploadedImgIdx++;
+          const stageLabel = `Nalagam fotografijo ${uploadedImgIdx} od ${pendingImagesCount}: ${item.name}`;
+          setUploadProgressMsg(`Nalagam fotografijo ${uploadedImgIdx} od ${pendingImagesCount} v Firebase Storage...`);
+          updatedImageItems[i] = { ...item, uploadStatus: 'uploading', uploadProgress: 0 };
+          setImageItems([...updatedImageItems]);
+          updateOverallProgress(item.size || 0, 0, item.name, stageLabel, 'uploading');
+
+          const url = await uploadImageFileToStorage(item.file, storageFolder, authorId, (pct) => {
+            updatedImageItems[i] = { ...updatedImageItems[i], uploadStatus: 'uploading', uploadProgress: pct };
+            setImageItems([...updatedImageItems]);
+            updateOverallProgress(item.size || 0, pct, item.name, stageLabel, 'uploading');
+          });
+
+          completedBytes += item.size || 0;
+          completedCount++;
+          updatedImageItems[i] = {
+            ...updatedImageItems[i],
+            uploadedUrl: url,
+            uploadStatus: 'done',
+            uploadProgress: 100,
+          };
+          setImageItems([...updatedImageItems]);
+          uploadedImageUrls.push(url);
+        } else if (item.previewUrl && !item.previewUrl.startsWith('blob:')) {
+          uploadedImageUrls.push(item.previewUrl);
+        }
+      }
+
+      // 2. Upload queued file attachments to Firebase Storage
+      const uploadedAttachments: UploadedAttachment[] = [];
+      const pendingFilesCount = pendingAttItems.length;
+      let uploadedFileIdx = 0;
+
+      const updatedAttachmentItems = [...attachmentItems];
+      for (let i = 0; i < updatedAttachmentItems.length; i++) {
+        const att = updatedAttachmentItems[i];
+        if (att.uploadedAttachment) {
+          uploadedAttachments.push(att.uploadedAttachment);
+          continue;
+        }
+        uploadedFileIdx++;
+        const stageLabel = `Nalagam prilogo ${uploadedFileIdx} od ${pendingFilesCount}: ${att.name}`;
+        setUploadProgressMsg(`Nalagam priloženo datoteko ${uploadedFileIdx} od ${pendingFilesCount} (${att.name})...`);
+        updatedAttachmentItems[i] = { ...att, uploadStatus: 'uploading', uploadProgress: 0 };
+        setAttachmentItems([...updatedAttachmentItems]);
+        updateOverallProgress(att.size || 0, 0, att.name, stageLabel, 'uploading');
+
+        const uploaded = await uploadAttachmentFileToStorage(att.file, storageFolder, authorId, (pct) => {
+          updatedAttachmentItems[i] = { ...updatedAttachmentItems[i], uploadStatus: 'uploading', uploadProgress: pct };
+          setAttachmentItems([...updatedAttachmentItems]);
+          updateOverallProgress(att.size || 0, pct, att.name, stageLabel, 'uploading');
+        });
+
+        completedBytes += att.size || 0;
+        completedCount++;
+        updatedAttachmentItems[i] = {
+          ...updatedAttachmentItems[i],
+          uploadedAttachment: uploaded,
+          uploadStatus: 'done',
+          uploadProgress: 100,
+        };
+        setAttachmentItems([...updatedAttachmentItems]);
+        uploadedAttachments.push(uploaded);
+      }
+
+      // 3. Offload any pasted inline data: images inside rich-text content to Firebase Storage
+      let cleanContent = content.trim();
+      if (cleanContent.includes('data:')) {
+        setUploadProgressMsg('Nalagam vdelane slike iz besedila v Firebase Storage...');
+        setUploadProgressState((prev) => ({
+          active: true,
+          overallPercent: prev ? Math.max(prev.overallPercent, 90) : 50,
+          currentItemPercent: 0,
+          uploadedCount: totalUploadCount,
+          totalCount: totalUploadCount,
+          transferredBytes: totalUploadBytes,
+          totalBytes: totalUploadBytes,
+          currentFileName: 'Vdelane slike',
+          stageLabel: 'Nalagam vdelane slike iz besedila v Firebase Storage...',
+          phase: 'uploading',
+        }));
+        cleanContent = await replaceDataUrlsInHtmlWithStorage(cleanContent, storageFolder, authorId, (pct) => {
+          setUploadProgressState((prev) => ({
+            active: true,
+            overallPercent: totalUploadCount > 0 ? Math.max(prev?.overallPercent ?? 90, 90 + Math.round(pct * 0.1)) : pct,
+            currentItemPercent: pct,
+            uploadedCount: totalUploadCount,
+            totalCount: totalUploadCount,
+            transferredBytes: totalUploadBytes,
+            totalBytes: totalUploadBytes,
+            currentFileName: 'Vdelane slike',
+            stageLabel: `Nalagam vdelane slike iz besedila v Firebase Storage (${pct}%)...`,
+            phase: 'uploading',
+          }));
+        });
+      }
+
+      setUploadProgressMsg('Shranjujem objavo v Firestore...');
+      setUploadProgressState((prev) => ({
+        active: true,
+        overallPercent: 100,
+        currentItemPercent: 100,
+        uploadedCount: totalUploadCount,
+        totalCount: totalUploadCount,
+        transferredBytes: totalUploadBytes,
+        totalBytes: totalUploadBytes,
+        currentFileName: prev?.currentFileName || '',
+        stageLabel: 'Prenos v Firebase Storage zaključen ✓ Shranjujem objavo v Firestore...',
+        phase: 'saving',
+      }));
+
+      const primaryImg = uploadedImageUrls[0] || undefined;
+      const allImgs = uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined;
+      const finalAttachments = uploadedAttachments.length > 0 ? uploadedAttachments : undefined;
+
       if (postType === 'post' || postType === 'deal') {
         const cleanPostTitle = title.replace(/^\[Ugodnost\]\s*/i, '').trim();
         const postPayload = {
           title: cleanPostTitle,
           subtitle: subtitle.trim() || undefined,
-          content: content.trim() || cleanPostTitle,
+          content: cleanContent || cleanPostTitle,
           category: postType === 'deal' ? 'deal' : categorySlug,
           categoryName: postType === 'deal' 
             ? (categoryName && categoryName !== 'Ugodnosti' && categoryName !== 'Ugodnost' && categoryName !== 'Splošno' ? categoryName : (subcategoryName || '')) 
@@ -590,8 +882,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorName,
           authorRole,
           authorAvatar,
-          imageUrl: allImgs && allImgs.length > 0 ? undefined : primaryImg,
+          imageUrl: primaryImg,
           images: allImgs,
+          attachments: finalAttachments,
           embedCode: embedCode || undefined,
           embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
           price: postType === 'deal' ? (newPrice.trim() || discount.trim() || undefined) : undefined,
@@ -608,7 +901,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           tags: userTags.length > 0 ? userTags : undefined,
         };
 
-        console.group('📝 [Blog Post Workflow] Submitting Blog/Post to Firestore');
+        console.group('📝 [Blog Post Workflow] Submitting Blog/Post with Firebase Storage Media');
         console.log('👤 [Blog Post Workflow] Author Context:', {
           authorId,
           authorName,
@@ -617,8 +910,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           emailVerified: currentUser?.emailVerified,
           isVerifiedAccount: isVerifiedUser,
         });
+        console.log('☁️ [Blog Post Workflow] Firebase Storage Media URLs:', {
+          imageUrl: postPayload.imageUrl,
+          imagesCount: postPayload.images?.length || 0,
+          attachmentsCount: postPayload.attachments?.length || 0,
+        });
         console.log('📦 [Blog Post Workflow] Verifying Data Structure being sent to Firestore:', postPayload);
-        console.log('📏 [Blog Post Workflow] Estimated UTF-8 payload size:', estimatePayloadUtf8Bytes(postPayload), 'bytes (limit:', MAX_ALLOWED_POST_BYTES, 'bytes)');
+        console.log('📏 [Blog Post Workflow] Firestore document payload size:', estimatePayloadUtf8Bytes(postPayload), 'bytes');
         console.log('🔍 [Blog Post Workflow] Verifying "published" status parameter:', postPayload.status);
 
         const createdId = await createPostInFirestore(postPayload);
@@ -634,7 +932,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         await createAdInFirestore({
           title: title.trim(),
           subtitle: subtitle.trim() || undefined,
-          description: content.trim() || title.trim(),
+          description: cleanContent || title.trim(),
           category: categorySlug,
           categoryName,
           subcategory: subcategorySlug || undefined,
@@ -650,6 +948,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorAvatar: authorAvatar || undefined,
           imageUrl: primaryImg,
           images: allImgs,
+          attachments: finalAttachments,
           embedCode: embedCode || undefined,
           embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
           status: initialAdStatus,
@@ -697,7 +996,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         await createEventInFirestore({
           title: title.trim(),
           subtitle: subtitle.trim() || undefined,
-          description: content.trim() || title.trim(),
+          description: cleanContent || title.trim(),
           location: effectiveLocation,
           region: regionName,
           eventDate: primaryDate,
@@ -717,6 +1016,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           authorAvatar: authorAvatar || undefined,
           imageUrl: primaryImg,
           images: allImgs,
+          attachments: finalAttachments,
           embedCode: embedCode || undefined,
           embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
           status: initialStatus,
@@ -725,6 +1025,19 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         });
       }
 
+      setUploadProgressState((prev) =>
+        prev
+          ? {
+              ...prev,
+              active: false,
+              overallPercent: 100,
+              currentItemPercent: 100,
+              transferredBytes: prev.totalBytes,
+              stageLabel: 'Objava in vse datoteke so uspešno shranjene ✓',
+              phase: 'done',
+            }
+          : null
+      );
       setSuccessMsg('Vaša objava je bila uspešno objavljena in je takoj vidna vsem obiskovalcem!');
       trackEvent('new_post_published', {
         post_type: postType,
@@ -737,7 +1050,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         onClose();
       }, 1200);
     } catch (err: any) {
-      console.error('❌ [Blog Post Workflow] Error occurred while creating or publishing post in Firestore:', err);
+      console.error('❌ [Blog Post Workflow] Error occurred while creating or publishing post:', err);
+      setUploadProgressState(null);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('Missing or insufficient permissions')) {
         setErrorMsg('Napaka pravic: Za objavo blog zapisov je potreben status preverjenega uporabnika ali skrbnika.');
@@ -745,12 +1059,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         setErrorMsg('Dnevna kvota branj baze podatkov je bila presežena. Vaša objava je shranjena.');
       } else if (msg.includes('exceeds the maximum allowed size') || msg.includes('največjo dovoljeno velikost')) {
         setErrorMsg(
-          `Velikost objave presega dovoljeno mejo (${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)} / ${MAX_ALLOWED_POST_BYTES.toLocaleString('sl-SI')} bajtov). Prosimo, odstranite ali zmanjšajte katero od slik.`
+          `Velikost besedilnega dela objave presega dovoljeno mejo (${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)}). Prosimo, skrajšajte besedilo.`
         );
       } else {
         setErrorMsg(err?.message || 'Prišlo je do napake pri shranjevanju. Preverite povezavo ali pravice.');
       }
     } finally {
+      setUploadProgressMsg('');
       setIsSubmitting(false);
     }
   };
@@ -1637,9 +1952,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               <div className="flex items-center gap-1.5">
                 <ImageIcon className="w-4 h-4 text-primary" />
                 <label className="text-xs font-semibold text-on-surface">Fotografije objave (ena ali več)</label>
-                {images.length > 0 && (
+                {imageItems.length > 0 && (
                   <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-bold text-[10px]">
-                    {images.length} {images.length === 1 ? 'slika' : 'slik'}
+                    {imageItems.length} {imageItems.length === 1 ? 'slika' : 'slik'}
                   </span>
                 )}
               </div>
@@ -1677,7 +1992,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                     Kliknite za izbiro ene ali več fotografij
                   </span>
                   <span className="text-[10px] text-outline">
-                    Podprte oblike: JPG, PNG, WEBP. Samodejno stiskanje in optimizacija.
+                    Podprte oblike: JPG, PNG, WEBP, GIF (do 25 MB na datoteko). Nalaganje v Firebase Storage ob oddaji.
                   </span>
                   <input 
                     type="file" 
@@ -1687,12 +2002,6 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                     className="hidden" 
                   />
                 </label>
-                {isCompressing && (
-                  <div className="flex items-center gap-2 text-xs text-primary font-medium p-2 bg-primary/10 rounded-lg animate-pulse">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{compressingProgress || 'Pripravljam in optimiziram fotografije...'}</span>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="flex gap-2">
@@ -1719,27 +2028,45 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               </div>
             )}
 
-            {/* Predogled galerije naloženih fotografij */}
-            {images.length > 0 && (
+            {/* Predogled galerije pripravljenih fotografij */}
+            {imageItems.length > 0 && (
               <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-surface-container/60">
                 <div className="flex items-center justify-between text-[11px] text-outline">
                   <span>Zvezdica označi glavno naslovno sliko:</span>
-                  <span className="font-semibold text-on-surface-variant">Naloženo: {images.length}</span>
+                  <span className="font-semibold text-on-surface-variant">Izbrano: {imageItems.length}</span>
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                  {images.map((img, idx) => (
+                  {imageItems.map((img, idx) => (
                     <div 
-                      key={idx} 
+                      key={img.id} 
                       className={`relative rounded-xl overflow-hidden aspect-video border group ${
                         idx === 0 ? 'border-primary ring-2 ring-primary/40 shadow-xs' : 'border-surface-container'
                       }`}
                     >
-                      <img src={img} alt={`Predogled ${idx + 1}`} className="h-full w-full object-cover" />
+                      <img src={img.previewUrl} alt={`Predogled ${idx + 1}`} className="h-full w-full object-cover" />
                       {idx === 0 && (
                         <span className="absolute top-1 left-1 bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
                           <Star className="w-2.5 h-2.5 fill-current" />
                           <span>Glavna</span>
                         </span>
+                      )}
+                      {img.uploadedUrl && (
+                        <span className="absolute bottom-1 left-1 bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
+                          Storage ✓
+                        </span>
+                      )}
+                      {img.uploadStatus === 'uploading' && (
+                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-1.5 gap-1 z-10">
+                          <span className="text-[11px] font-mono font-bold text-white bg-black/50 px-1.5 py-0.5 rounded">
+                            {img.uploadProgress ?? 0}%
+                          </span>
+                          <div className="w-full h-1.5 bg-white/25 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary rounded-full transition-all duration-150"
+                              style={{ width: `${Math.max(5, img.uploadProgress ?? 0)}%` }}
+                            />
+                          </div>
+                        </div>
                       )}
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
                         {idx !== 0 && (
@@ -1767,29 +2094,141 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
               </div>
             )}
 
-            {/* Live payload size bar (supports up to 4.5 MB / 4,500,000 bytes) */}
-            {(images.length > 0 || estimatedPayloadBytes > 50_000) && (
-              <div className={`mt-1 px-2.5 py-1.5 rounded-lg border text-[11px] flex flex-col gap-1 ${
-                isPayloadOverLimit
-                  ? 'bg-error/10 border-error/30 text-error'
-                  : 'bg-surface-container-lowest border-surface-container text-on-surface-variant'
-              }`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold">
-                    Skupna velikost objave: {formatBytesSlovenian(estimatedPayloadBytes)} ({estimatedPayloadBytes.toLocaleString('sl-SI')} bajtov)
-                  </span>
-                  <span className="text-[10px] font-mono opacity-80">
-                    Omejitev: {formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)}
-                  </span>
+            {/* Priložene datoteke (PDF, dokumenti, arhivi...) */}
+            <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-surface-container/60">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Paperclip className="w-3.5 h-3.5 text-secondary" />
+                  <span className="text-xs font-semibold text-on-surface">Priložene datoteke (neobvezno)</span>
+                  {attachmentItems.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-secondary/10 text-secondary font-bold text-[10px]">
+                      {attachmentItems.length}
+                    </span>
+                  )}
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-surface-container overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-300 ${
-                      isPayloadOverLimit ? 'bg-error' : estimatedPayloadBytes > MAX_ALLOWED_POST_BYTES * 0.8 ? 'bg-amber-500' : 'bg-primary'
-                    }`}
-                    style={{ width: `${Math.min(100, Math.round((estimatedPayloadBytes / MAX_ALLOWED_POST_BYTES) * 100))}%` }}
-                  />
+                <span className="text-[10px] text-outline">PDF, DOCX, XLSX, ZIP, video (do 25 MB)</span>
+              </div>
+
+              <label className="border border-dashed border-surface-container-high hover:border-secondary/60 rounded-xl px-3 py-2 text-center cursor-pointer transition-colors bg-surface-container-lowest/60 hover:bg-surface-container-lowest flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+                <Upload className="w-4 h-4 text-secondary" />
+                <span className="font-medium">Dodaj dokument ali datoteko v Firebase Storage</span>
+                <input
+                  type="file"
+                  multiple
+                  onChange={handleAttachmentFilesSelected}
+                  className="hidden"
+                />
+              </label>
+
+              {attachmentItems.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {attachmentItems.map((att, idx) => (
+                    <div
+                      key={att.id}
+                      className="flex flex-col gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-surface-container text-xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-3.5 h-3.5 text-secondary shrink-0" />
+                          <span className="font-medium text-on-surface truncate">{att.name}</span>
+                          <span className="text-[10px] text-outline shrink-0">
+                            ({formatBytesSlovenian(att.size)})
+                          </span>
+                          {att.uploadStatus === 'uploading' && (
+                            <span className="text-[10px] font-mono text-primary font-bold shrink-0">
+                              {att.uploadProgress ?? 0}%
+                            </span>
+                          )}
+                          {att.uploadedAttachment && (
+                            <span className="text-[10px] text-emerald-600 font-bold shrink-0">Naloženo ✓</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachment(idx)}
+                          disabled={isSubmitting}
+                          className="p-1 text-outline hover:text-error rounded transition-colors cursor-pointer shrink-0 disabled:opacity-40"
+                          title="Odstrani datoteko"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {att.uploadStatus === 'uploading' && (
+                        <div className="w-full h-1 bg-surface-container rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-secondary rounded-full transition-all duration-150 ease-out"
+                            style={{ width: `${Math.max(4, att.uploadProgress ?? 0)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
+              )}
+            </div>
+
+            {/* Firebase Storage real-time upload progress bar & summary */}
+            {(totalPendingUploadBytes > 0 || estimatedTextBytes > 10_000 || uploadProgressMsg || uploadProgressState) && (
+              <div className="mt-1 px-3 py-2.5 rounded-xl border bg-surface-container-lowest border-surface-container text-on-surface-variant text-[11px] flex flex-col gap-2">
+                {uploadProgressState ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="font-semibold flex items-center gap-1.5 min-w-0">
+                        {uploadProgressState.phase === 'done' ? (
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                        )}
+                        <span className={`truncate ${uploadProgressState.phase === 'done' ? 'text-emerald-700 dark:text-emerald-400' : 'text-primary'}`}>
+                          {uploadProgressState.stageLabel}
+                        </span>
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                        {uploadProgressState.totalBytes > 0 && (
+                          <span className="text-outline">
+                            {formatBytesSlovenian(uploadProgressState.transferredBytes)} / {formatBytesSlovenian(uploadProgressState.totalBytes)}
+                          </span>
+                        )}
+                        <span className={`font-bold ${uploadProgressState.phase === 'done' ? 'text-emerald-600' : 'text-primary'}`}>
+                          {uploadProgressState.overallPercent}%
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={uploadProgressState.overallPercent}
+                      aria-label="Skupni napredek nalaganja v Firebase Storage"
+                      className="w-full h-2 bg-surface-container rounded-full overflow-hidden"
+                    >
+                      <div
+                        className={`h-full rounded-full transition-all duration-150 ease-out ${
+                          uploadProgressState.phase === 'done' ? 'bg-emerald-500' : 'bg-primary'
+                        }`}
+                        style={{ width: `${Math.max(3, uploadProgressState.overallPercent)}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="font-semibold flex items-center gap-1.5">
+                      {uploadProgressMsg ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                          <span className="text-primary">{uploadProgressMsg}</span>
+                        </>
+                      ) : (
+                        <span>
+                          Za prenos v Firebase Storage: {imageItems.filter(i => i.file).length} slik, {attachmentItems.length} datotek ({formatBytesSlovenian(totalPendingUploadBytes)})
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[10px] font-mono opacity-80">
+                      Shranjeno v Firebase Storage (brez Base64 v Firestore)
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1864,6 +2303,40 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             )}
           </div>
 
+          {/* Sticky real-time Firebase Storage progress indicator above submit actions */}
+          {uploadProgressState && (
+            <div className="px-3.5 py-2.5 rounded-xl bg-primary/5 border border-primary/25 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-on-surface flex items-center gap-1.5 min-w-0">
+                  {uploadProgressState.phase === 'done' ? (
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                  )}
+                  <span className="truncate">{uploadProgressState.stageLabel}</span>
+                </span>
+                <span className={`font-mono font-bold shrink-0 ${uploadProgressState.phase === 'done' ? 'text-emerald-600' : 'text-primary'}`}>
+                  {uploadProgressState.overallPercent}%
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={uploadProgressState.overallPercent}
+                aria-label="Napredek nalaganja objave"
+                className="w-full h-2 bg-surface-container rounded-full overflow-hidden"
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-150 ease-out ${
+                    uploadProgressState.phase === 'done' ? 'bg-emerald-500' : 'bg-primary'
+                  }`}
+                  style={{ width: `${Math.max(3, uploadProgressState.overallPercent)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between border-t border-surface-container-low pt-4">
             <div className="flex items-center gap-1.5">
               <button 
@@ -1903,24 +2376,26 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             </div>
             <button 
               onClick={handleSubmit}
-              disabled={isSubmitting || !canPostCurrentType || isPayloadOverLimit}
+              disabled={isSubmitting || !canPostCurrentType}
               className={`px-6 py-2.5 rounded-xl font-label-md text-sm font-semibold shadow-md transition-all flex items-center gap-2 ${
-                canPostCurrentType && !isPayloadOverLimit
+                canPostCurrentType
                   ? 'bg-primary hover:bg-primary-container text-on-primary cursor-pointer' 
                   : 'bg-surface-container-high text-outline cursor-not-allowed opacity-60'
               } disabled:opacity-50`}
               title={
-                isPayloadOverLimit
-                  ? `Objava presega omejitev ${formatBytesSlovenian(MAX_ALLOWED_POST_BYTES)}`
-                  : !canPostCurrentType
-                    ? (isGuestOrUnauth ? 'Prijavite se za objavljanje' : 'Za objavo v tej kategoriji potrebujete status Preverjen uporabnik ali Skrbnik')
-                    : 'Oddaj objavo'
+                !canPostCurrentType
+                  ? (isGuestOrUnauth ? 'Prijavite se za objavljanje' : 'Za objavo v tej kategoriji potrebujete status Preverjen uporabnik ali Skrbnik')
+                  : 'Oddaj objavo'
               }
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Shranjevanje...</span>
+                  <span>
+                    {uploadProgressState
+                      ? `Nalagam... ${uploadProgressState.overallPercent}%`
+                      : (uploadProgressMsg || 'Shranjevanje...')}
+                  </span>
                 </>
               ) : (
                 <span>Objavi zdaj</span>

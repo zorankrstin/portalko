@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, initializeFirestore, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseProjectConfig from '../../firebase-applet-config.json';
 
 // Silence internal Firestore SDK diagnostic logs
@@ -54,6 +55,12 @@ export const db = (() => {
 export const firestore = db;
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+export const storage = (() => {
+  const bucket = firebaseConfig.storageBucket;
+  if (!bucket) return getStorage(app);
+  const bucketUrl = bucket.startsWith('gs://') ? bucket : `gs://${bucket}`;
+  return getStorage(app, bucketUrl);
+})();
 
 export enum OperationType {
   CREATE = 'create',

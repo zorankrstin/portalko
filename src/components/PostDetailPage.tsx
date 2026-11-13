@@ -5,7 +5,7 @@ import {
   Phone, Send, Heart, AlertTriangle, Sparkles, CheckCircle2, 
   CalendarPlus, Bookmark, Eye, ChevronRight, ChevronLeft, Store, ArrowRight,
   Edit3, Trash2, Search, X, BookOpen, Maximize2, Minimize2, ZoomIn, Images, Ticket, CalendarDays,
-  Zap, Smartphone, Code
+  Zap, Smartphone, Code, Paperclip, FileText, Download
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from '../types';
@@ -55,6 +55,7 @@ import { UserAvatar } from './common/UserAvatar';
 import { isDummyAvatar, resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { isUserVerified } from '../utils/userVerificationUtils';
+import { formatBytesSlovenian } from '../utils/imageUtils';
 
 // Mapping of mock blog post IDs to their actual categories
 const MOCK_BLOG_CATEGORY_MAP: Record<string, { id: string; name: string }> = {
@@ -360,6 +361,7 @@ export function PostDetailPage({
           : (fs.imageUrls && fs.imageUrls.length > 0)
           ? fs.imageUrls
           : (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
+        attachments: fs.attachments,
         interestedCount: fs.interestedCount || 42,
         likesCount: fs.likesCount || 0,
         viewsCount: fs.viewsCount ?? 0,
@@ -394,6 +396,7 @@ export function PostDetailPage({
         date: fs.expirationDate ? `Velja do ${fs.expirationDate}` : (fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes'),
         image: fs.imageUrl || fs.image || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        attachments: fs.attachments,
         region: fs.location || fs.region || 'Vsa Slovenija',
         votes: fs.likesCount ?? (fs as any).votes ?? 0,
         likesCount: fs.likesCount ?? (fs as any).votes ?? 0,
@@ -428,6 +431,7 @@ export function PostDetailPage({
         thirdLevelCategory: fs.thirdLevelCategory || (fs as any).make,
         image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
         images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        attachments: fs.attachments,
         authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
         likesCount: fs.likesCount || 0,
         viewsCount: fs.viewsCount ?? 0,
@@ -491,6 +495,7 @@ export function PostDetailPage({
         embedOrientation: fs.embedOrientation,
         image: fs.imageUrl || (fs as any).image || (fs.images && fs.images[0]),
         images: (fs.images && fs.images.length > 0) ? fs.images : (fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined)),
+        attachments: fs.attachments,
         category: fs.category,
         categoryName: resolvedCat.name,
         categoryId: resolvedCat.id,
@@ -1856,6 +1861,7 @@ export function PostDetailPage({
     type: resolvedType,
     status: (itemData.status || 'published') as any,
     imageUrl: itemData.image,
+    attachments: itemData.attachments,
     price: itemData.price || itemData.discount,
     oldPrice: itemData.oldPrice,
     newPrice: itemData.newPrice,
@@ -2725,6 +2731,48 @@ export function PostDetailPage({
                 className="tiptap rounded-xl overflow-hidden"
                 dangerouslySetInnerHTML={{ __html: getCleanHtml(parseSocialEmbed(itemData.embedCode, itemData.embedOrientation === 'auto' ? undefined : itemData.embedOrientation)?.embedHtml || itemData.embedCode) }}
               />
+            </div>
+          )}
+
+          {/* Attached Files from Firebase Storage */}
+          {itemData.attachments && Array.isArray(itemData.attachments) && itemData.attachments.length > 0 && (
+            <div className="flex flex-col gap-2.5 pt-4 border-t border-surface-container-low">
+              <h3 className="font-headline-sm text-sm font-bold text-on-surface flex items-center gap-2">
+                <Paperclip className="w-4 h-4 text-primary" />
+                <span>Priložene datoteke ({itemData.attachments.length})</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {itemData.attachments.map((att: any, idx: number) => (
+                  <a
+                    key={`post-att-${idx}-${att.url}`}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={att.name}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl bg-surface-container-low hover:bg-surface-container border border-surface-container hover:border-primary/40 transition-colors group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-on-surface truncate group-hover:text-primary transition-colors">
+                          {att.name || 'Priložena datoteka'}
+                        </div>
+                        {typeof att.size === 'number' && att.size > 0 && (
+                          <div className="text-[11px] text-outline">
+                            {formatBytesSlovenian(att.size)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-semibold text-primary shrink-0">
+                      <Download className="w-4 h-4" />
+                      <span className="hidden sm:inline">Prenesi</span>
+                    </div>
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 

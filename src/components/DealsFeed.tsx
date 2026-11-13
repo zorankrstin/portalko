@@ -34,9 +34,15 @@ import {
   UserCheck
 } from 'lucide-react';
 import { RichTextEditor, RichTextEditorRef } from './RichTextEditor';
-import { compressImageFileToDataUrl } from '../utils/imageUtils';
+import {
+  uploadImageFileToStorage,
+  uploadDataUrlIfPresent,
+  replaceDataUrlsInHtmlWithStorage,
+  MAX_STORAGE_FILE_BYTES,
+} from '../services/storageService';
 import { UserAvatar } from './common/UserAvatar';
 import { isDummyAvatar } from '../utils/avatarUtils';
+import { formatBytesSlovenian } from '../utils/imageUtils';
 import { parseSocialEmbed } from '../utils/embedUtils';
 import { 
   DealItem, 
@@ -145,10 +151,23 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     embedCode: '',
   });
   const [photoMode, setPhotoMode] = useState<'upload' | 'url'>('upload');
-  const [isCompressingPhotos, setIsCompressingPhotos] = useState(false);
-  const [compressingProgress, setCompressingProgress] = useState('');
+  const pendingPhotoFilesRef = useRef<Map<string, File>>(new Map());
+  const uploadedPhotoUrlsRef = useRef<Map<string, string>>(new Map());
   const [urlPhotoInput, setUrlPhotoInput] = useState('');
   const editorRef = useRef<RichTextEditorRef>(null);
+  const [isSubmittingDeal, setIsSubmittingDeal] = useState(false);
+  const [dealUploadProgress, setDealUploadProgress] = useState('');
+  const [photoUploadPercentMap, setPhotoUploadPercentMap] = useState<Record<string, number>>({});
+  const [dealUploadProgressState, setDealUploadProgressState] = useState<{
+    overallPercent: number;
+    uploadedCount: number;
+    totalCount: number;
+    transferredBytes: number;
+    totalBytes: number;
+    stageLabel: string;
+    phase: 'uploading' | 'saving' | 'done';
+  } | null>(null);
+  const [submitErrorMsg, setSubmitErrorMsg] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   // Subscribe to Firestore for real community deals
@@ -474,36 +493,63 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
     }, 400);
   };
 
-  // Multi-photo upload and management handlers
-  const handleMultiPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const revokeDealPhotoUrls = (urls?: string[]) => {
+    const targets = urls || Array.from(pendingPhotoFilesRef.current.keys());
+    targets.forEach((url) => {
+      if (url.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
+        }
+        pendingPhotoFilesRef.current.delete(url);
+        uploadedPhotoUrlsRef.current.delete(url);
+      }
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      revokeDealPhotoUrls();
+    };
+  }, []);
+
+  // Multi-photo upload and management handlers (blob previews uploaded to Firebase Storage on submit)
+  const handleMultiPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    setIsCompressingPhotos(true);
-    const total = files.length;
-    const newUploadedUrls: string[] = [];
-    try {
-      for (let i = 0; i < total; i++) {
-        setCompressingProgress(`Optimiziram sliko ${i + 1} od ${total}...`);
-        const file = files[i];
-        if (!file.type.startsWith('image/')) continue;
-        const dataUrl = await compressImageFileToDataUrl(file, 1200);
-        newUploadedUrls.push(dataUrl);
+
+    const newPreviewUrls: string[] = [];
+    const oversizedNames: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) continue;
+      if (file.size > MAX_STORAGE_FILE_BYTES) {
+        oversizedNames.push(file.name);
+        continue;
       }
+      const previewUrl = URL.createObjectURL(file);
+      pendingPhotoFilesRef.current.set(previewUrl, file);
+      newPreviewUrls.push(previewUrl);
+    }
+
+    if (oversizedNames.length > 0) {
+      setSubmitErrorMsg(
+        `Naslednje slike presegajo omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB: ${oversizedNames.join(', ')}`
+      );
+    }
+    if (newPreviewUrls.length > 0) {
       setModalForm(prev => {
-        const merged = [...prev.images, ...newUploadedUrls];
+        const merged = [...prev.images, ...newPreviewUrls];
         return {
           ...prev,
           images: merged,
           image: prev.image || merged[0] || '',
         };
       });
-    } catch (err) {
-      console.error('Napaka pri stiskanju fotografij:', err);
-    } finally {
-      setIsCompressingPhotos(false);
-      setCompressingProgress('');
-      e.target.value = '';
     }
+    e.target.value = '';
   };
 
   const handleAddPhotoUrl = () => {
@@ -526,6 +572,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
   const handleRemovePhoto = (idxToRemove: number) => {
     setModalForm(prev => {
+      const targetUrl = prev.images[idxToRemove];
+      if (targetUrl) revokeDealPhotoUrls([targetUrl]);
       const updated = prev.images.filter((_, idx) => idx !== idxToRemove);
       return {
         ...prev,
@@ -558,68 +606,197 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
       return;
     }
 
-    const fallbackImg = CATEGORY_IMAGE_FALLBACKS[modalForm.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
-    const primaryImg = modalForm.images[0] || modalForm.image || fallbackImg;
-    const allImages = modalForm.images.length > 0 ? modalForm.images : (modalForm.image ? [modalForm.image] : [fallbackImg]);
+    setIsSubmittingDeal(true);
+    setSubmitErrorMsg('');
+    setDealUploadProgress('');
+    setPhotoUploadPercentMap({});
+    setDealUploadProgressState(null);
 
-    // Optional location & region resolution
-    const chosenRegObj = SLOVENIA_REGIONS.find(r => r.id === modalForm.region);
-    const regionBaseName = modalForm.locationType === 'online' || modalForm.region === 'all'
-      ? 'Vsa Slovenija / Splet'
-      : (chosenRegObj ? `${chosenRegObj.name} regija` : modalForm.region);
-    const locationName = modalForm.locationType === 'physical' && modalForm.location.trim()
-      ? modalForm.location.trim()
-      : undefined;
-    const finalRegion = locationName
-      ? `${locationName}${regionBaseName !== 'Vsa Slovenija / Splet' ? ` (${regionBaseName})` : ''}`
-      : regionBaseName;
-
-    const newDeal: DealItem = {
-      id: `user-deal-${Date.now()}`,
-      title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
-      subtitle: modalForm.subtitle.trim() || undefined,
-      partner: modalForm.store,
-      partnerRole: 'Uporabniški predlog',
-      partnerInitial: modalForm.store.substring(0, 2).toUpperCase(),
-      partnerLogoBg: 'bg-primary text-on-primary',
-      partnerAvatar: (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : undefined,
-      category: modalForm.category,
-      categoryName: modalForm.category === 'tehnika' ? 'Tehnika & Elektronika' :
-                    modalForm.category === 'prehrana' ? 'Prehrana & Trgovine' :
-                    modalForm.category === 'turizem' ? 'Turizem & Doživetja' :
-                    modalForm.category === 'sport' ? 'Moda & Šport' :
-                    modalForm.category === 'dom' ? 'Dom & Vrt' : 'Avto & Mobilnost',
-      region: finalRegion,
-      location: locationName,
-      discount: modalForm.discount || '-20%',
-      oldPrice: modalForm.oldPrice || undefined,
-      newPrice: modalForm.newPrice || undefined,
-      startDate: modalForm.startDate || undefined,
-      expirationDate: modalForm.expirationDate || undefined,
-      dealType: modalForm.code ? 'code' : 'sale',
-      dealTypeName: modalForm.code ? 'Koda za popust' : 'Letak & Akcija',
-      date: modalForm.expirationDate ? `Velja do ${modalForm.expirationDate}` : (modalForm.date || 'Velja do konca meseca'),
-      description: modalForm.description || 'Ugodnost, ki jo je predlagal član skupnosti Portal.si.',
-      code: modalForm.code ? modalForm.code.toUpperCase() : undefined,
-      link: modalForm.link || '#',
-      votes: 1,
-      verifiedText: 'Novo dodano',
-      statusTag: 'today',
-      image: primaryImg,
-      images: allImages,
-      embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
-    };
-
-    // Prepend locally
-    setUserDeals(prev => [newDeal, ...prev]);
-
-    // Also persist to Firestore if available
     try {
+      const authorId = currentUser?.id || 'user';
+      const fallbackImg = CATEGORY_IMAGE_FALLBACKS[modalForm.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
+      const rawImgs = modalForm.images.length > 0 ? modalForm.images : (modalForm.image ? [modalForm.image] : []);
+
+      // Upload queued local images & any Base64 strings to Firebase Storage
+      const resolvedImages: string[] = [];
+      const pendingFiles = rawImgs.filter(u => pendingPhotoFilesRef.current.has(u) && !uploadedPhotoUrlsRef.current.has(u));
+      const pendingDataUrls = rawImgs.filter(u => !pendingPhotoFilesRef.current.has(u) && !uploadedPhotoUrlsRef.current.has(u) && u.startsWith('data:'));
+      const totalUploadCount = pendingFiles.length + pendingDataUrls.length;
+      const totalUploadBytes = pendingFiles.reduce((sum, u) => sum + (pendingPhotoFilesRef.current.get(u)?.size || 0), 0);
+
+      let completedBytes = 0;
+      let completedCount = 0;
+      let uploadedCount = 0;
+
+      const updateDealProgress = (
+        currentItemBytes: number,
+        pct: number,
+        stageLabel: string,
+        phase: 'uploading' | 'saving' | 'done' = 'uploading'
+      ) => {
+        const currentTransferred = Math.round(currentItemBytes * (pct / 100));
+        const transferredBytes = Math.min(totalUploadBytes, completedBytes + currentTransferred);
+        let overallPercent = 0;
+        if (totalUploadBytes > 0) {
+          overallPercent = Math.min(100, Math.round((transferredBytes / totalUploadBytes) * 100));
+        } else if (totalUploadCount > 0) {
+          overallPercent = Math.min(100, Math.round(((completedCount + pct / 100) / totalUploadCount) * 100));
+        } else {
+          overallPercent = pct;
+        }
+        setDealUploadProgressState({
+          overallPercent,
+          uploadedCount: Math.min(totalUploadCount, completedCount + (phase === 'uploading' && pct < 100 ? 1 : 0)),
+          totalCount: totalUploadCount,
+          transferredBytes,
+          totalBytes: totalUploadBytes,
+          stageLabel,
+          phase,
+        });
+      };
+
+      if (totalUploadCount > 0) {
+        updateDealProgress(0, 0, 'Pripravljam prenos slik v Firebase Storage...', 'uploading');
+      }
+
+      for (const imgEntry of rawImgs) {
+        if (uploadedPhotoUrlsRef.current.has(imgEntry)) {
+          resolvedImages.push(uploadedPhotoUrlsRef.current.get(imgEntry)!);
+        } else if (pendingPhotoFilesRef.current.has(imgEntry)) {
+          uploadedCount++;
+          const file = pendingPhotoFilesRef.current.get(imgEntry)!;
+          const stageLabel = `Nalagam fotografijo ${uploadedCount} od ${pendingFiles.length}: ${file.name}`;
+          setDealUploadProgress(`Nalagam fotografijo ${uploadedCount} od ${pendingFiles.length} v Firebase Storage...`);
+          setPhotoUploadPercentMap(prev => ({ ...prev, [imgEntry]: 0 }));
+          updateDealProgress(file.size, 0, stageLabel, 'uploading');
+
+          const uploadedUrl = await uploadImageFileToStorage(file, 'posts/deals', authorId, (pct) => {
+            setPhotoUploadPercentMap(prev => ({ ...prev, [imgEntry]: pct }));
+            updateDealProgress(file.size, pct, stageLabel, 'uploading');
+          });
+
+          completedBytes += file.size;
+          completedCount++;
+          setPhotoUploadPercentMap(prev => ({ ...prev, [imgEntry]: 100 }));
+          uploadedPhotoUrlsRef.current.set(imgEntry, uploadedUrl);
+          resolvedImages.push(uploadedUrl);
+        } else if (imgEntry.startsWith('data:')) {
+          uploadedCount++;
+          const stageLabel = `Nalagam fotografijo ${uploadedCount} od ${totalUploadCount} v Firebase Storage...`;
+          setDealUploadProgress('Nalagam fotografijo v Firebase Storage...');
+          setPhotoUploadPercentMap(prev => ({ ...prev, [imgEntry]: 0 }));
+          updateDealProgress(0, 0, stageLabel, 'uploading');
+          const uploadedUrl = await uploadDataUrlIfPresent(imgEntry, 'posts/deals', authorId, (pct) => {
+            setPhotoUploadPercentMap(prev => ({ ...prev, [imgEntry]: pct }));
+            updateDealProgress(0, pct, stageLabel, 'uploading');
+          });
+          completedCount++;
+          setPhotoUploadPercentMap(prev => ({ ...prev, [imgEntry]: 100 }));
+          if (uploadedUrl) {
+            uploadedPhotoUrlsRef.current.set(imgEntry, uploadedUrl);
+            resolvedImages.push(uploadedUrl);
+          }
+        } else {
+          resolvedImages.push(imgEntry);
+        }
+      }
+
+      let cleanDescription = modalForm.description || '';
+      if (cleanDescription.includes('data:')) {
+        setDealUploadProgress('Nalagam vdelane slike iz opisa v Firebase Storage...');
+        setDealUploadProgressState(prev => ({
+          overallPercent: prev ? Math.max(prev.overallPercent, 90) : 50,
+          uploadedCount: totalUploadCount,
+          totalCount: totalUploadCount,
+          transferredBytes: totalUploadBytes,
+          totalBytes: totalUploadBytes,
+          stageLabel: 'Nalagam vdelane slike iz opisa v Firebase Storage...',
+          phase: 'uploading',
+        }));
+        cleanDescription = await replaceDataUrlsInHtmlWithStorage(cleanDescription, 'posts/deals', authorId, (pct) => {
+          setDealUploadProgressState({
+            overallPercent: totalUploadCount > 0 ? Math.max(90, 90 + Math.round(pct * 0.1)) : pct,
+            uploadedCount: totalUploadCount,
+            totalCount: totalUploadCount,
+            transferredBytes: totalUploadBytes,
+            totalBytes: totalUploadBytes,
+            stageLabel: `Nalagam vdelane slike iz opisa v Firebase Storage (${pct}%)...`,
+            phase: 'uploading',
+          });
+        });
+      }
+
+      setDealUploadProgress('Shranjujem ugodnost v Firestore...');
+      setDealUploadProgressState(prev => ({
+        overallPercent: 100,
+        uploadedCount: totalUploadCount,
+        totalCount: totalUploadCount,
+        transferredBytes: totalUploadBytes,
+        totalBytes: totalUploadBytes,
+        stageLabel: 'Prenos v Firebase Storage zaključen ✓ Shranjujem ugodnost v Firestore...',
+        phase: 'saving',
+      }));
+
+      const primaryImg = resolvedImages[0] || fallbackImg;
+      const allImages = resolvedImages.length > 0 ? resolvedImages : [fallbackImg];
+
+      // Optional location & region resolution
+      const chosenRegObj = SLOVENIA_REGIONS.find(r => r.id === modalForm.region);
+      const regionBaseName = modalForm.locationType === 'online' || modalForm.region === 'all'
+        ? 'Vsa Slovenija / Splet'
+        : (chosenRegObj ? `${chosenRegObj.name} regija` : modalForm.region);
+      const locationName = modalForm.locationType === 'physical' && modalForm.location.trim()
+        ? modalForm.location.trim()
+        : undefined;
+      const finalRegion = locationName
+        ? `${locationName}${regionBaseName !== 'Vsa Slovenija / Splet' ? ` (${regionBaseName})` : ''}`
+        : regionBaseName;
+
+      const newDeal: DealItem = {
+        id: `user-deal-${Date.now()}`,
+        title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
+        subtitle: modalForm.subtitle.trim() || undefined,
+        partner: modalForm.store,
+        partnerRole: 'Uporabniški predlog',
+        partnerInitial: modalForm.store.substring(0, 2).toUpperCase(),
+        partnerLogoBg: 'bg-primary text-on-primary',
+        partnerAvatar: (currentUser?.avatar && !isDummyAvatar(currentUser.avatar)) ? currentUser.avatar : undefined,
+        category: modalForm.category,
+        categoryName: modalForm.category === 'tehnika' ? 'Tehnika & Elektronika' :
+                      modalForm.category === 'prehrana' ? 'Prehrana & Trgovine' :
+                      modalForm.category === 'turizem' ? 'Turizem & Doživetja' :
+                      modalForm.category === 'sport' ? 'Moda & Šport' :
+                      modalForm.category === 'dom' ? 'Dom & Vrt' : 'Avto & Mobilnost',
+        region: finalRegion,
+        location: locationName,
+        discount: modalForm.discount || '-20%',
+        oldPrice: modalForm.oldPrice || undefined,
+        newPrice: modalForm.newPrice || undefined,
+        startDate: modalForm.startDate || undefined,
+        expirationDate: modalForm.expirationDate || undefined,
+        dealType: modalForm.code ? 'code' : 'sale',
+        dealTypeName: modalForm.code ? 'Koda za popust' : 'Letak & Akcija',
+        date: modalForm.expirationDate ? `Velja do ${modalForm.expirationDate}` : (modalForm.date || 'Velja do konca meseca'),
+        description: cleanDescription || 'Ugodnost, ki jo je predlagal član skupnosti Portal.si.',
+        code: modalForm.code ? modalForm.code.toUpperCase() : undefined,
+        link: modalForm.link || '#',
+        votes: 1,
+        verifiedText: 'Novo dodano',
+        statusTag: 'today',
+        image: primaryImg,
+        images: allImages,
+        embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
+      };
+
+      // Prepend locally
+      setUserDeals(prev => [newDeal, ...prev]);
+
+      // Persist to Firestore with compact Storage URLs
       if (currentUser) {
         await createPostInFirestore({
           title: modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim(),
           subtitle: modalForm.subtitle.trim() || undefined,
-          content: modalForm.description || `${modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim()}. Trgovec: ${modalForm.store}. Koda: ${modalForm.code || 'Brez kode'}`,
+          content: cleanDescription || `${modalForm.title.replace(/^\[Ugodnost\]\s*/i, '').trim()}. Trgovec: ${modalForm.store}. Koda: ${modalForm.code || 'Brez kode'}`,
           category: 'deal',
           categoryName: modalForm.category ? (
             modalForm.category === 'tehnika' ? 'Tehnika & Elektronika' :
@@ -650,40 +827,59 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           commentsCount: 0,
           imageUrl: primaryImg,
           images: allImages,
-          imageUrls: allImages,
         });
       }
-    } catch (err) {
-      console.warn('Could not save deal to Firestore:', err);
-    }
 
-    setSubmitSuccess(true);
-    setTimeout(() => {
-      setSubmitSuccess(false);
-      setIsSubmitModalOpen(false);
-      setModalForm({
-        store: '',
-        title: '',
-        subtitle: '',
-        description: '',
-        category: 'tehnika',
-        locationType: 'online',
-        region: 'all',
-        location: '',
-        code: '',
-        discount: '-20%',
-        oldPrice: '',
-        newPrice: '',
-        startDate: '',
-        expirationDate: '',
-        link: '',
-        tagsString: '',
-        date: 'Velja do konca meseca',
-        image: '',
-        images: [],
-        embedCode: '',
-      });
-    }, 1500);
+      revokeDealPhotoUrls();
+      setDealUploadProgressState(prev =>
+        prev
+          ? {
+              ...prev,
+              overallPercent: 100,
+              transferredBytes: prev.totalBytes,
+              stageLabel: 'Ugodnost in slike so uspešno shranjene ✓',
+              phase: 'done',
+            }
+          : null
+      );
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        setSubmitSuccess(false);
+        setDealUploadProgressState(null);
+        setPhotoUploadPercentMap({});
+        setIsSubmitModalOpen(false);
+        setModalForm({
+          store: '',
+          title: '',
+          subtitle: '',
+          description: '',
+          category: 'tehnika',
+          locationType: 'online',
+          region: 'all',
+          location: '',
+          code: '',
+          discount: '-20%',
+          oldPrice: '',
+          newPrice: '',
+          startDate: '',
+          expirationDate: '',
+          link: '',
+          tagsString: '',
+          date: 'Velja do konca meseca',
+          image: '',
+          images: [],
+          embedCode: '',
+        });
+      }, 1500);
+    } catch (err: any) {
+      console.error('Could not save deal to Firestore:', err);
+      setDealUploadProgressState(null);
+      setPhotoUploadPercentMap({});
+      setSubmitErrorMsg(err?.message || 'Prišlo je do napake pri nalaganju slik ali shranjevanju ugodnosti.');
+    } finally {
+      setDealUploadProgress('');
+      setIsSubmittingDeal(false);
+    }
   };
 
   return (
@@ -1160,6 +1356,13 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
               Ste opazili izjemen popust v slovenskih trgovinah ali imate kodo za popust? Delite jo s skupnostjo Portal.si!
             </p>
 
+            {submitErrorMsg && (
+              <div className="p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{submitErrorMsg}</span>
+              </div>
+            )}
+
             {submitSuccess ? (
               <div className="p-4 bg-secondary/10 border border-secondary/20 rounded-xl text-center text-xs text-secondary font-bold space-y-1">
                 <CheckCircle2 className="w-6 h-6 mx-auto mb-1" />
@@ -1506,7 +1709,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           Kliknite za izbiro ene ali več fotografij
                         </span>
                         <span className="text-[10px] text-outline">
-                          Podprte oblike: JPG, PNG, WEBP. Samodejno stiskanje in optimizacija.
+                          Podprte oblike: JPG, PNG, WEBP, GIF (do 25 MB). Nalaganje v Firebase Storage ob oddaji.
                         </span>
                         <input 
                           type="file" 
@@ -1516,12 +1719,50 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                           onChange={handleMultiPhotoUpload}
                         />
                       </label>
-                      {isCompressingPhotos && (
-                        <div className="flex items-center gap-2 text-xs text-primary font-medium p-2 bg-primary/10 rounded-lg animate-pulse">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>{compressingProgress || 'Optimiziram fotografije za objavo...'}</span>
+                      {dealUploadProgressState ? (
+                        <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-primary/25 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="font-semibold flex items-center gap-1.5 min-w-0">
+                              {dealUploadProgressState.phase === 'done' ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              ) : (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                              )}
+                              <span className="truncate text-on-surface">{dealUploadProgressState.stageLabel}</span>
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                              {dealUploadProgressState.totalBytes > 0 && (
+                                <span className="text-outline">
+                                  {formatBytesSlovenian(dealUploadProgressState.transferredBytes)} / {formatBytesSlovenian(dealUploadProgressState.totalBytes)}
+                                </span>
+                              )}
+                              <span className={`font-bold ${dealUploadProgressState.phase === 'done' ? 'text-emerald-600' : 'text-primary'}`}>
+                                {dealUploadProgressState.overallPercent}%
+                              </span>
+                            </div>
+                          </div>
+                          <div
+                            role="progressbar"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={dealUploadProgressState.overallPercent}
+                            aria-label="Napredek nalaganja fotografij v Firebase Storage"
+                            className="w-full h-2 bg-surface-container rounded-full overflow-hidden"
+                          >
+                            <div
+                              className={`h-full rounded-full transition-all duration-150 ease-out ${
+                                dealUploadProgressState.phase === 'done' ? 'bg-emerald-500' : 'bg-primary'
+                              }`}
+                              style={{ width: `${Math.max(3, dealUploadProgressState.overallPercent)}%` }}
+                            />
+                          </div>
                         </div>
-                      )}
+                      ) : dealUploadProgress ? (
+                        <div className="flex items-center gap-2 text-xs text-primary font-medium p-2 bg-primary/10 rounded-lg">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>{dealUploadProgress}</span>
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="flex gap-2">
@@ -1556,7 +1797,11 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                         <span className="font-semibold text-on-surface-variant">Naloženo: {modalForm.images.length}</span>
                       </div>
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                        {modalForm.images.map((imgUrl, idx) => (
+                        {modalForm.images.map((imgUrl, idx) => {
+                          const itemPct = photoUploadPercentMap[imgUrl];
+                          const isUploadingThisPhoto = typeof itemPct === 'number' && itemPct < 100 && isSubmittingDeal;
+                          const isUploadedThisPhoto = uploadedPhotoUrlsRef.current.has(imgUrl) || itemPct === 100;
+                          return (
                           <div 
                             key={idx} 
                             className={`relative rounded-xl overflow-hidden aspect-video border group ${
@@ -1569,6 +1814,24 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                                 <Star className="w-2.5 h-2.5 fill-current" />
                                 <span>Glavna</span>
                               </span>
+                            )}
+                            {isUploadedThisPhoto && (
+                              <span className="absolute bottom-1 left-1 bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
+                                Storage ✓
+                              </span>
+                            )}
+                            {isUploadingThisPhoto && (
+                              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-1.5 gap-1 z-10">
+                                <span className="text-[11px] font-mono font-bold text-white bg-black/50 px-1.5 py-0.5 rounded">
+                                  {itemPct}%
+                                </span>
+                                <div className="w-full h-1.5 bg-white/25 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-primary rounded-full transition-all duration-150"
+                                    style={{ width: `${Math.max(5, itemPct)}%` }}
+                                  />
+                                </div>
+                              </div>
                             )}
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
                               {idx !== 0 && (
@@ -1591,7 +1854,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                               </button>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1700,6 +1964,39 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                   )}
                 </div>
 
+                {dealUploadProgressState && (
+                  <div className="px-3 py-2.5 rounded-xl bg-primary/5 border border-primary/25 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-semibold text-on-surface flex items-center gap-1.5 min-w-0">
+                        {dealUploadProgressState.phase === 'done' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                        )}
+                        <span className="truncate">{dealUploadProgressState.stageLabel}</span>
+                      </span>
+                      <span className={`font-mono font-bold shrink-0 ${dealUploadProgressState.phase === 'done' ? 'text-emerald-600' : 'text-primary'}`}>
+                        {dealUploadProgressState.overallPercent}%
+                      </span>
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={dealUploadProgressState.overallPercent}
+                      aria-label="Napredek nalaganja ugodnosti"
+                      className="w-full h-2 bg-surface-container rounded-full overflow-hidden"
+                    >
+                      <div
+                        className={`h-full rounded-full transition-all duration-150 ease-out ${
+                          dealUploadProgressState.phase === 'done' ? 'bg-emerald-500' : 'bg-primary'
+                        }`}
+                        style={{ width: `${Math.max(3, dealUploadProgressState.overallPercent)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="pt-2 flex justify-end gap-2">
                   <button 
                     onClick={() => setIsSubmitModalOpen(false)}
@@ -1710,9 +2007,21 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                   </button>
                   <button 
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-primary text-on-primary font-label-md font-semibold hover:bg-primary-container transition-colors cursor-pointer shadow-xs"
+                    disabled={isSubmittingDeal}
+                    className="px-5 py-2 rounded-xl bg-primary text-on-primary font-label-md font-semibold hover:bg-primary-container transition-colors cursor-pointer shadow-xs flex items-center gap-2 disabled:opacity-50"
                   >
-                    Objavi ugodnost
+                    {isSubmittingDeal ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>
+                          {dealUploadProgressState
+                            ? `Nalagam... ${dealUploadProgressState.overallPercent}%`
+                            : (dealUploadProgress || 'Shranjevanje...')}
+                        </span>
+                      </>
+                    ) : (
+                      <span>Objavi ugodnost</span>
+                    )}
                   </button>
                 </div>
               </form>

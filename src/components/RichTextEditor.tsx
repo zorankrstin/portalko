@@ -9,9 +9,10 @@ import { Node } from '@tiptap/core';
 import { 
   Bold, Italic, Underline as UnderlineIcon, List, ListOrdered, Link as LinkIcon, Unlink, 
   Image as ImageIcon, Smile, X, Check, ExternalLink, Share2, 
-  Video, Code, Sparkles, AlertCircle 
+  Video, Code, Sparkles, AlertCircle, Upload, Loader2 
 } from 'lucide-react';
 import { parseSocialEmbed, ParsedEmbed, isIframeOrHtmlVertical } from '../utils/embedUtils';
+import { uploadImageFileToStorage, MAX_STORAGE_FILE_BYTES } from '../services/storageService';
 
 // Custom Tiptap Node for Iframe Embeds (Fully responsive with vertical and horizontal orientation support)
 const IframeNode = Node.create({
@@ -157,6 +158,10 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
   
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadPercent, setImageUploadPercent] = useState(0);
+  const [imageUploadFileName, setImageUploadFileName] = useState('');
+  const [imageUploadError, setImageUploadError] = useState('');
   
   // Embed dialog state
   const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
@@ -263,10 +268,46 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
   // Image dialog handlers
   const openImageDialog = () => {
     setImageUrl('');
+    setImageUploadError('');
     setIsImageDialogOpen(true);
     setIsLinkDialogOpen(false);
     setIsEmbedDialogOpen(false);
     setTimeout(() => imageInputRef.current?.focus(), 80);
+  };
+
+  const handleInlineImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    if (!file.type.startsWith('image/')) {
+      setImageUploadError('Izbrana datoteka ni veljavna slika.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_STORAGE_FILE_BYTES) {
+      setImageUploadError(`Slika presega omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB.`);
+      e.target.value = '';
+      return;
+    }
+    setIsUploadingImage(true);
+    setImageUploadPercent(0);
+    setImageUploadFileName(file.name);
+    setImageUploadError('');
+    try {
+      const uploadedUrl = await uploadImageFileToStorage(file, 'posts/inline', 'editor', (pct) => {
+        setImageUploadPercent(pct);
+      });
+      setImageUploadPercent(100);
+      editor.chain().focus().setImage({ src: uploadedUrl }).run();
+      setIsImageDialogOpen(false);
+      setImageUrl('');
+    } catch (err: any) {
+      setImageUploadError(err?.message || 'Nalaganje slike v Firebase Storage ni uspelo.');
+    } finally {
+      setIsUploadingImage(false);
+      setImageUploadPercent(0);
+      setImageUploadFileName('');
+      e.target.value = '';
+    }
   };
 
   const handleApplyImage = () => {
@@ -281,6 +322,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     }
     setIsImageDialogOpen(false);
     setImageUrl('');
+    setImageUploadError('');
   };
 
   // Embed dialog handlers
@@ -697,7 +739,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-primary flex items-center gap-1.5">
               <ImageIcon className="w-3.5 h-3.5" />
-              Vstavi spletno sliko
+              Vstavi sliko v besedilo
             </span>
             <button
               type="button"
@@ -707,9 +749,57 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          <label className="border border-dashed border-primary/40 hover:border-primary rounded-lg px-3 py-2 flex flex-col items-stretch justify-center gap-1.5 text-xs font-semibold text-primary bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer">
+            {isUploadingImage ? (
+              <div className="flex flex-col gap-1.5 w-full">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 truncate min-w-0">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    <span className="truncate">
+                      Nalagam{imageUploadFileName ? ` (${imageUploadFileName})` : ' sliko'}...
+                    </span>
+                  </span>
+                  <span className="font-mono font-bold text-[11px] shrink-0">{imageUploadPercent}%</span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={imageUploadPercent}
+                  aria-label="Napredek nalaganja slike v Firebase Storage"
+                  className="w-full h-1.5 bg-primary/20 rounded-full overflow-hidden"
+                >
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-150 ease-out"
+                    style={{ width: `${Math.max(4, imageUploadPercent)}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <Upload className="w-3.5 h-3.5" />
+                <span>Naloži sliko z naprave v Firebase Storage</span>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              disabled={isUploadingImage}
+              onChange={handleInlineImageFileUpload}
+              className="hidden"
+            />
+          </label>
+
+          {imageUploadError && (
+            <div className="text-[11px] text-error bg-error/10 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{imageUploadError}</span>
+            </div>
+          )}
           
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-outline">URL naslov slike *</label>
+            <label className="text-[11px] font-semibold text-outline">Ali prilepite URL naslov slike</label>
             <input
               ref={imageInputRef}
               type="text"
@@ -740,7 +830,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             <button
               type="button"
               onClick={handleApplyImage}
-              disabled={!imageUrl.trim()}
+              disabled={!imageUrl.trim() || isUploadingImage}
               className="px-3 py-1 text-xs font-semibold bg-primary hover:bg-primary/90 text-on-primary rounded-lg transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
             >
               <Check className="w-3.5 h-3.5" />

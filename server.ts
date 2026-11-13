@@ -1770,7 +1770,13 @@ async function startServer() {
         let template = fs.readFileSync(indexHtmlPath, "utf-8");
         template = await vite.transformIndexHtml(url, template);
         const html = preparePageHtml(template, url);
-        res.status(200).set({ "Content-Type": "text/html; charset=utf-8" }).send(html);
+        res
+          .status(200)
+          .set({
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+          })
+          .send(html);
       } catch (e: any) {
         vite.ssrFixStacktrace(e);
         next(e);

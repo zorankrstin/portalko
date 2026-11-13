@@ -26,6 +26,13 @@ import { slugify } from '../utils/urlUtils';
 import { isDummyAvatar } from '../utils/avatarUtils';
 import { isLikelyBot } from '../utils/botUtils';
 import { estimatePayloadUtf8Bytes } from '../utils/imageUtils';
+import {
+  UploadedAttachment,
+  uploadDataUrlIfPresent,
+  replaceDataUrlsInHtmlWithStorage,
+} from './storageService';
+
+export type PostAttachment = UploadedAttachment;
 
 /**
  * Maximum logical payload size supported by Portalko (at least 4,000,000 bytes / 4.5 MB).
@@ -192,6 +199,87 @@ function deduplicateMediaPayload(payload: Record<string, any>): Record<string, a
     delete deduped.imageUrl;
   }
   return deduped;
+}
+
+/**
+ * Ensures any remaining Base64 `data:` strings (images, inline HTML <img>, large avatars)
+ * inside a payload are uploaded to Firebase Storage and replaced with compact HTTPS download URLs
+ * BEFORE saving the document to Firestore.
+ */
+async function ensureMediaInFirebaseStorage(
+  payload: Record<string, any>,
+  collectionName: 'posts' | 'ads' | 'events',
+  docId?: string
+): Promise<Record<string, any>> {
+  const result: Record<string, any> = { ...payload };
+  const folder = docId ? `${collectionName}/${docId}` : collectionName;
+  const authorId = String(result.authorId || 'user');
+  const uploadedCache = new Map<string, string>();
+
+  const uploadUniqueDataUrl = async (val: string, subFolder: string): Promise<string> => {
+    if (!val || typeof val !== 'string' || !val.startsWith('data:')) return val;
+    const cached = uploadedCache.get(val);
+    if (cached) return cached;
+    const url = await uploadDataUrlIfPresent(val, subFolder, authorId);
+    const finalUrl = url || val;
+    uploadedCache.set(val, finalUrl);
+    return finalUrl;
+  };
+
+  if (typeof result.imageUrl === 'string' && result.imageUrl.startsWith('data:')) {
+    result.imageUrl = await uploadUniqueDataUrl(result.imageUrl, folder);
+  }
+
+  if (Array.isArray(result.images) && result.images.length > 0) {
+    const resolvedImages: string[] = [];
+    for (const img of result.images) {
+      if (typeof img === 'string' && img.startsWith('data:')) {
+        resolvedImages.push(await uploadUniqueDataUrl(img, folder));
+      } else if (typeof img === 'string' && img.trim()) {
+        resolvedImages.push(img);
+      }
+    }
+    result.images = resolvedImages;
+    if (!result.imageUrl && resolvedImages[0]) {
+      result.imageUrl = resolvedImages[0];
+    }
+  }
+
+  if (Array.isArray(result.imageUrls) && result.imageUrls.length > 0) {
+    const resolvedUrls: string[] = [];
+    for (const img of result.imageUrls) {
+      if (typeof img === 'string' && img.startsWith('data:')) {
+        resolvedUrls.push(await uploadUniqueDataUrl(img, folder));
+      } else if (typeof img === 'string' && img.trim()) {
+        resolvedUrls.push(img);
+      }
+    }
+    result.imageUrls = resolvedUrls;
+  }
+
+  if (typeof result.authorAvatar === 'string' && result.authorAvatar.startsWith('data:') && result.authorAvatar.length > 25_000) {
+    result.authorAvatar = await uploadUniqueDataUrl(result.authorAvatar, `avatars/${authorId}`);
+  }
+
+  if (typeof result.content === 'string' && result.content.includes('data:')) {
+    result.content = await replaceDataUrlsInHtmlWithStorage(result.content, folder, authorId);
+  }
+
+  if (typeof result.description === 'string' && result.description.includes('data:')) {
+    result.description = await replaceDataUrlsInHtmlWithStorage(result.description, folder, authorId);
+  }
+
+  return result;
+}
+
+function isStorageUploadError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('Firebase Storage') ||
+    msg.includes('storage/') ||
+    msg.includes('Datoteka presega') ||
+    msg.includes('Izbrana datoteka ni veljavna')
+  );
 }
 
 function prepareChunkedPayload(rawPayload: Record<string, any>): {
@@ -497,6 +585,7 @@ export interface FirestorePost {
   embedOrientation?: 'horizontal' | 'vertical' | 'auto';
   images?: string[];
   imageUrls?: string[];
+  attachments?: PostAttachment[];
   price?: string;
   oldPrice?: string;
   newPrice?: string;
@@ -557,6 +646,7 @@ export interface FirestoreAd {
   embedOrientation?: 'horizontal' | 'vertical' | 'auto';
   images?: string[];
   imageUrls?: string[];
+  attachments?: PostAttachment[];
   tags?: string[];
   status: 'active' | 'sold' | 'closed' | 'pending' | 'rejected';
   rejectionReason?: string;
@@ -606,6 +696,7 @@ export interface FirestoreEvent {
   embedOrientation?: 'horizontal' | 'vertical' | 'auto';
   images?: string[];
   imageUrls?: string[];
+  attachments?: PostAttachment[];
   tags?: string[];
   interestedCount?: number;
   likesCount?: number;
@@ -1421,7 +1512,8 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
       commentsCount: post.commentsCount || 0,
     };
 
-    const prepared = prepareChunkedPayload(newPost);
+    const storageResolvedPost = await ensureMediaInFirebaseStorage(newPost, 'posts', postRef.id);
+    const prepared = prepareChunkedPayload(storageResolvedPost);
     console.log(
       `📦 [Firestore:createPost] Payload prepared for collection "posts" (ID: ${postRef.id}, total: ${prepared.totalBytes.toLocaleString('sl-SI')} B, chunks: ${prepared.chunks.length}):`,
       prepared.mainDoc
@@ -1441,7 +1533,7 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
     await setDoc(postRef, prepared.mainDoc);
     console.log('✅ [Firestore:createPost] Document successfully persisted in Firestore with ID:', postRef.id, 'status: published');
 
-    const fullHydratedPost = normalizeMediaFields(cleanDataForFirestore(newPost)) as FirestorePost;
+    const fullHydratedPost = normalizeMediaFields(cleanDataForFirestore(storageResolvedPost)) as FirestorePost;
 
     // Optimistically update local cache so the newly created post is instantly visible
     try {
@@ -1460,7 +1552,7 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
   } catch (error) {
     console.error('❌ [Firestore:createPost] Error caught while writing post document:', error);
     console.groupEnd();
-    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+    if (isStorageUploadError(error) || (error instanceof Error && error.message.includes('največjo dovoljeno velikost'))) {
       throw error;
     }
     // Clean up orphaned chunks if main doc write failed
@@ -1550,7 +1642,8 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
         authorAvatar: originalAuthorAvatar,
       };
 
-      const prepared = prepareChunkedPayload(rawNewPost);
+      const storageReadyNewPost = await ensureMediaInFirebaseStorage(rawNewPost, 'posts', postId);
+      const prepared = prepareChunkedPayload(storageReadyNewPost);
       if (prepared.chunks.length > 0) {
         hydratedDocCache.set(`posts/${postId}`, {
           updatedAt: now,
@@ -1618,9 +1711,10 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
       }
 
       const now = new Date().toISOString();
+      const storageReadySafeData = await ensureMediaInFirebaseStorage(safeData, 'posts', postId);
       const mergedDoc: Record<string, any> = {
         ...existing,
-        ...safeData,
+        ...storageReadySafeData,
         id: postId,
         updatedAt: now,
       };
@@ -1630,10 +1724,10 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
       delete mergedDoc.totalPayloadBytes;
 
       // Sync primary imageUrl changes into images array when images isn't explicitly supplied
-      if (safeData.imageUrl !== undefined && safeData.images === undefined) {
+      if (storageReadySafeData.imageUrl !== undefined && storageReadySafeData.images === undefined) {
         const existingImgs = Array.isArray(existing.images) ? [...existing.images] : [];
-        if (safeData.imageUrl) {
-          mergedDoc.images = [safeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
+        if (storageReadySafeData.imageUrl) {
+          mergedDoc.images = [storageReadySafeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
         } else {
           mergedDoc.images = existingImgs.slice(1).filter(Boolean);
         }
@@ -1643,12 +1737,13 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
       // Respect explicit undefined/null removals (e.g., rejectionReason, embedCode)
       const removableKeys = ['rejectionReason', 'promotion', 'promotedUntil', 'promotionBadgeType', 'embedCode', 'embedOrientation'];
       for (const k of removableKeys) {
-        if (k in safeData && (safeData[k] === undefined || safeData[k] === null)) {
+        if (k in storageReadySafeData && (storageReadySafeData[k] === undefined || storageReadySafeData[k] === null)) {
           delete mergedDoc[k];
         }
       }
 
-      const prepared = prepareChunkedPayload(mergedDoc);
+      const finalMergedDoc = await ensureMediaInFirebaseStorage(mergedDoc, 'posts', postId);
+      const prepared = prepareChunkedPayload(finalMergedDoc);
 
       if (prepared.chunks.length > 0 || prevChunkCount > 0) {
         if (prepared.chunks.length > 0) {
@@ -1664,13 +1759,14 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
         await setDoc(postRef, prepared.mainDoc);
       } else {
         await updateDoc(postRef, sanitizeUpdateData({
-          ...safeData,
+          ...storageReadySafeData,
+          ...(finalMergedDoc.images !== undefined ? { images: finalMergedDoc.images } : {}),
           updatedAt: now,
         }));
       }
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+    if (isStorageUploadError(error) || (error instanceof Error && error.message.includes('največjo dovoljeno velikost'))) {
       throw error;
     }
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -2047,7 +2143,8 @@ export async function createAdInFirestore(ad: Omit<FirestoreAd, 'id'> & { id?: s
       createdAt: now,
       updatedAt: now,
     };
-    const prepared = prepareChunkedPayload(newAd);
+    const storageReadyAd = await ensureMediaInFirebaseStorage(newAd, 'ads', adRef.id);
+    const prepared = prepareChunkedPayload(storageReadyAd);
     if (prepared.chunks.length > 0) {
       hydratedDocCache.set(`ads/${adRef.id}`, {
         updatedAt: now,
@@ -2059,7 +2156,7 @@ export async function createAdInFirestore(ad: Omit<FirestoreAd, 'id'> & { id?: s
     await setDoc(adRef, prepared.mainDoc);
     return adRef.id;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+    if (isStorageUploadError(error) || (error instanceof Error && error.message.includes('največjo dovoljeno velikost'))) {
       throw error;
     }
     if (adRefId) {
@@ -2113,7 +2210,8 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
         authorAvatar: originalAuthorAvatar,
       };
 
-      const prepared = prepareChunkedPayload(rawPayload);
+      const storageReadyAd = await ensureMediaInFirebaseStorage(rawPayload, 'ads', adId);
+      const prepared = prepareChunkedPayload(storageReadyAd);
       if (prepared.chunks.length > 0) {
         hydratedDocCache.set(`ads/${adId}`, {
           updatedAt: now,
@@ -2154,9 +2252,10 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
       }
 
       const now = new Date().toISOString();
+      const storageReadySafeData = await ensureMediaInFirebaseStorage(safeData, 'ads', adId);
       const mergedDoc: Record<string, any> = {
         ...existing,
-        ...safeData,
+        ...storageReadySafeData,
         id: adId,
         updatedAt: now,
       };
@@ -2164,10 +2263,10 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
       delete mergedDoc.chunkCount;
       delete mergedDoc.totalPayloadBytes;
 
-      if (safeData.imageUrl !== undefined && safeData.images === undefined) {
+      if (storageReadySafeData.imageUrl !== undefined && storageReadySafeData.images === undefined) {
         const existingImgs = Array.isArray(existing.images) ? [...existing.images] : [];
-        if (safeData.imageUrl) {
-          mergedDoc.images = [safeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
+        if (storageReadySafeData.imageUrl) {
+          mergedDoc.images = [storageReadySafeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
         } else {
           mergedDoc.images = existingImgs.slice(1).filter(Boolean);
         }
@@ -2176,12 +2275,13 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
 
       const removableKeys = ['rejectionReason', 'promotion', 'promotedUntil', 'promotionBadgeType', 'embedCode', 'embedOrientation'];
       for (const k of removableKeys) {
-        if (k in safeData && (safeData[k] === undefined || safeData[k] === null)) {
+        if (k in storageReadySafeData && (storageReadySafeData[k] === undefined || storageReadySafeData[k] === null)) {
           delete mergedDoc[k];
         }
       }
 
-      const prepared = prepareChunkedPayload(mergedDoc);
+      const finalMergedAd = await ensureMediaInFirebaseStorage(mergedDoc, 'ads', adId);
+      const prepared = prepareChunkedPayload(finalMergedAd);
       if (prepared.chunks.length > 0 || prevChunkCount > 0) {
         if (prepared.chunks.length > 0) {
           hydratedDocCache.set(`ads/${adId}`, {
@@ -2196,13 +2296,14 @@ export async function updateAdInFirestore(adId: string, data: Partial<FirestoreA
         await setDoc(adRef, prepared.mainDoc);
       } else {
         await updateDoc(adRef, sanitizeUpdateData({
-          ...safeData,
+          ...storageReadySafeData,
+          ...(finalMergedAd.images !== undefined ? { images: finalMergedAd.images } : {}),
           updatedAt: now,
         }));
       }
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+    if (isStorageUploadError(error) || (error instanceof Error && error.message.includes('največjo dovoljeno velikost'))) {
       throw error;
     }
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -2628,7 +2729,8 @@ export async function createEventInFirestore(event: Omit<FirestoreEvent, 'id'> &
       updatedAt: now,
       isPromoted: event.isPromoted || false,
     };
-    const prepared = prepareChunkedPayload(newEvent);
+    const storageReadyEvent = await ensureMediaInFirebaseStorage(newEvent, 'events', eventRef.id);
+    const prepared = prepareChunkedPayload(storageReadyEvent);
     if (prepared.chunks.length > 0) {
       hydratedDocCache.set(`events/${eventRef.id}`, {
         updatedAt: now,
@@ -2640,7 +2742,7 @@ export async function createEventInFirestore(event: Omit<FirestoreEvent, 'id'> &
     await setDoc(eventRef, prepared.mainDoc);
     return eventRef.id;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+    if (isStorageUploadError(error) || (error instanceof Error && error.message.includes('največjo dovoljeno velikost'))) {
       throw error;
     }
     if (eventRefId) {
@@ -2695,7 +2797,8 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
         authorAvatar: originalAuthorAvatar,
       };
 
-      const prepared = prepareChunkedPayload(rawPayload);
+      const storageReadyEvent = await ensureMediaInFirebaseStorage(rawPayload, 'events', eventId);
+      const prepared = prepareChunkedPayload(storageReadyEvent);
       if (prepared.chunks.length > 0) {
         hydratedDocCache.set(`events/${eventId}`, {
           updatedAt: now,
@@ -2736,9 +2839,10 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
       }
 
       const now = new Date().toISOString();
+      const storageReadySafeData = await ensureMediaInFirebaseStorage(safeData, 'events', eventId);
       const mergedDoc: Record<string, any> = {
         ...existing,
-        ...safeData,
+        ...storageReadySafeData,
         id: eventId,
         updatedAt: now,
       };
@@ -2746,10 +2850,10 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
       delete mergedDoc.chunkCount;
       delete mergedDoc.totalPayloadBytes;
 
-      if (safeData.imageUrl !== undefined && safeData.images === undefined) {
+      if (storageReadySafeData.imageUrl !== undefined && storageReadySafeData.images === undefined) {
         const existingImgs = Array.isArray(existing.images) ? [...existing.images] : [];
-        if (safeData.imageUrl) {
-          mergedDoc.images = [safeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
+        if (storageReadySafeData.imageUrl) {
+          mergedDoc.images = [storageReadySafeData.imageUrl, ...existingImgs.slice(1)].filter(Boolean);
         } else {
           mergedDoc.images = existingImgs.slice(1).filter(Boolean);
         }
@@ -2758,12 +2862,13 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
 
       const removableKeys = ['rejectionReason', 'promotion', 'promotedUntil', 'promotionBadgeType', 'embedCode', 'embedOrientation'];
       for (const k of removableKeys) {
-        if (k in safeData && (safeData[k] === undefined || safeData[k] === null)) {
+        if (k in storageReadySafeData && (storageReadySafeData[k] === undefined || storageReadySafeData[k] === null)) {
           delete mergedDoc[k];
         }
       }
 
-      const prepared = prepareChunkedPayload(mergedDoc);
+      const finalMergedEvent = await ensureMediaInFirebaseStorage(mergedDoc, 'events', eventId);
+      const prepared = prepareChunkedPayload(finalMergedEvent);
       if (prepared.chunks.length > 0 || prevChunkCount > 0) {
         if (prepared.chunks.length > 0) {
           hydratedDocCache.set(`events/${eventId}`, {
@@ -2778,13 +2883,14 @@ export async function updateEventInFirestore(eventId: string, data: Partial<Fire
         await setDoc(eventRef, prepared.mainDoc);
       } else {
         await updateDoc(eventRef, sanitizeUpdateData({
-          ...safeData,
+          ...storageReadySafeData,
+          ...(finalMergedEvent.images !== undefined ? { images: finalMergedEvent.images } : {}),
           updatedAt: now,
         }));
       }
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes('največjo dovoljeno velikost')) {
+    if (isStorageUploadError(error) || (error instanceof Error && error.message.includes('največjo dovoljeno velikost'))) {
       throw error;
     }
     handleFirestoreError(error, OperationType.UPDATE, path);
