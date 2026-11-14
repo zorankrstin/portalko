@@ -101,8 +101,9 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
     const items: FeedItemKind[] = [];
     const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
-    // Insert live firestore posts (published live without admin approval; only hide if rejected/archived)
+    // Insert live firestore posts (published live without admin approval; hide drafts and rejected/archived)
     firestorePosts.forEach(fp => {
+      if (fp.status === 'osnutek') return;
       if (fp.status === 'rejected' || fp.status === 'archived') {
         const isAuthor = currentUser?.id === fp.authorId || (currentUser?.name && currentUser.name === fp.authorName);
         if (!isAdminOrSuper && !isAuthor) return;

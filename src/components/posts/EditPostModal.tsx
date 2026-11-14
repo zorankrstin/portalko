@@ -51,7 +51,7 @@ export interface EditablePostItem {
   authorRole?: string;
   authorId?: string;
   authorAvatar?: string;
-  status: 'published' | 'active' | 'pending' | 'rejected' | 'archived';
+  status: 'published' | 'osnutek' | 'active' | 'pending' | 'rejected' | 'archived';
   imageUrl?: string;
   attachments?: PostAttachment[];
   price?: string;
@@ -96,7 +96,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [category, setCategory] = useState('');
   const [subcategory, setSubcategory] = useState('');
   const [thirdLevelCategory, setThirdLevelCategory] = useState('');
-  const [status, setStatus] = useState<'published' | 'active' | 'pending' | 'rejected'>('published');
+  const [status, setStatus] = useState<'published' | 'osnutek' | 'active' | 'pending' | 'rejected'>('published');
   const [imageUrl, setImageUrl] = useState('');
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
   const pendingBlobUrlRef = useRef<string | null>(null);
@@ -500,7 +500,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     }
   };
 
-  const handleSave = async (overrideStatus?: 'published' | 'pending' | 'rejected') => {
+  const handleSave = async (overrideStatus?: 'published' | 'osnutek' | 'pending' | 'rejected') => {
     if (!title.trim()) {
       setErrorMsg('Naslov objave ne sme biti prazen.');
       return;
@@ -970,7 +970,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           {/* Status selection */}
           <div className="bg-surface-container-low p-3.5 rounded-xl border border-surface-container/60 flex flex-col gap-2">
             <label className="font-label-caps uppercase font-bold text-on-surface">Status objave</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`grid gap-2 ${(item.type === 'post' || status === 'osnutek') ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <button
                 type="button"
                 onClick={() => setStatus('published')}
@@ -983,6 +983,20 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                 <Check className="w-3.5 h-3.5" />
                 <span>Objavljeno (Aktivno)</span>
               </button>
+              {(item.type === 'post' || status === 'osnutek') && (
+                <button
+                  type="button"
+                  onClick={() => setStatus('osnutek')}
+                  className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    status === 'osnutek'
+                      ? 'bg-amber-500 text-amber-950 shadow-xs'
+                      : 'bg-surface-container-lowest text-on-surface-variant border border-surface-container hover:bg-surface-container'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Osnutek</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setStatus('rejected')}

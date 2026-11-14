@@ -252,6 +252,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 1. Firestore Posts / Deals
     firestorePosts.forEach(p => {
+      if (p.status === 'osnutek' || p.status === 'rejected' || p.status === 'archived') return;
       if (isMatchingAuthor(p.authorName, p.authorId)) {
         const itemType = (p.category === 'deal' || p.category === 'ugodnosti' || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost') ? 'deal' : 'post';
         itemsMap.set(`${itemType}-${p.id}`, {

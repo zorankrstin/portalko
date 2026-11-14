@@ -54,6 +54,7 @@ import { DEFAULT_CATEGORIES } from '../services/categoryService';
 import { UserAvatar } from './common/UserAvatar';
 import { isDummyAvatar, resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { VerifiedBadge } from './common/VerifiedBadge';
+import { FollowAuthorButton } from './common/FollowAuthorButton';
 import { isUserVerified } from '../utils/userVerificationUtils';
 import { formatBytesSlovenian } from '../utils/imageUtils';
 
@@ -1276,7 +1277,7 @@ export function PostDetailPage({
 
     // 1. From Firestore posts
     firestorePosts
-      .filter(p => p.category !== 'deal' && p.status !== 'archived' && p.status !== 'rejected')
+      .filter(p => p.category !== 'deal' && p.status !== 'osnutek' && p.status !== 'archived' && p.status !== 'rejected')
       .forEach(p => {
         if (p.id === currentId || p.id === target.id) return;
         const cat = resolveBlogCategory({
@@ -1545,7 +1546,7 @@ export function PostDetailPage({
 
     // 1. From Firestore posts (Blog and Deals)
     firestorePosts.forEach(p => {
-      if (seenIds.has(p.id) || p.status === 'rejected' || p.status === 'archived') return;
+      if (seenIds.has(p.id) || p.status === 'osnutek' || p.status === 'rejected' || p.status === 'archived') return;
       if (matchesAuthor(p.authorId, p.authorName)) {
         seenIds.add(p.id);
         const isDeal = p.category === 'deal' || 
@@ -2066,8 +2067,8 @@ export function PostDetailPage({
         {/* Post Top Header Area (Above Photo) */}
         <div className="p-4 sm:p-6 md:p-8 flex flex-col gap-6 border-b border-surface-container/60 bg-surface-container-lowest">
           {/* Author / Seller / Partner Block */}
-          <div className="p-4 rounded-2xl bg-surface-container-low/70 border border-surface-container flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="p-4 rounded-2xl bg-surface-container-low/70 border border-surface-container flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
               {(() => {
                 const resolvedPhoto = resolveUserUploadedAvatar(
                   itemData.partnerAvatar || itemData.authorAvatar,
@@ -2095,23 +2096,38 @@ export function PostDetailPage({
                   </button>
                 );
               })()}
-              <div>
+              <div className="min-w-0">
                 <div className="font-headline-sm text-base font-bold text-on-surface flex items-center gap-1.5">
                   <button
                     type="button"
                     id="btn-post-detail-author-name"
                     onClick={handleAuthorClick}
-                    className="text-left font-bold text-on-surface hover:text-primary hover:underline transition-colors cursor-pointer flex items-center gap-1.5 focus:outline-none"
+                    className="text-left font-bold text-on-surface hover:text-primary hover:underline transition-colors cursor-pointer flex items-center gap-1.5 focus:outline-none truncate"
                     title={`Ogled profila avtorja: ${authorDisplayName}`}
                   >
-                    <span>{authorDisplayName}</span>
+                    <span className="truncate">{authorDisplayName}</span>
                     {isAuthorVerified && (
                       <VerifiedBadge size="sm" title="Preverjen partner (Verified)" />
                     )}
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleAuthorClick}
+                  className="text-xs text-outline hover:text-primary transition-colors cursor-pointer mt-0.5 text-left"
+                >
+                  Oglej si profil avtorja
+                </button>
               </div>
             </div>
+
+            {(target.type === 'blog' || target.type === 'post') && (
+              <FollowAuthorButton
+                authorId={authorId}
+                authorName={authorDisplayName}
+                authorAvatar={authorAvatar}
+              />
+            )}
           </div>
 
           {/* Post Header: Post Title and Meta Row */}
@@ -3219,28 +3235,39 @@ export function PostDetailPage({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (onAuthorClick) {
-                  onAuthorClick({
-                    id: authorId,
-                    name: authorDisplayName,
-                    avatar: (authorAvatar && !isDummyAvatar(authorAvatar)) ? authorAvatar : undefined,
-                    role: authorRole,
-                    fromPostTarget: target
-                  });
-                } else {
-                  onViewChange('profile');
-                }
-                scrollToPageTop();
-              }}
-              className="text-xs text-primary font-bold hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-auto"
-              title={`Prikaži vse objave avtorja ${authorDisplayName}`}
-            >
-              <span>Vse objave avtorja</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-3 flex-wrap self-start sm:self-auto">
+              {(target.type === 'blog' || target.type === 'post') && (
+                <FollowAuthorButton
+                  authorId={authorId}
+                  authorName={authorDisplayName}
+                  authorAvatar={authorAvatar}
+                  showFollowerCount={false}
+                  compact={true}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onAuthorClick) {
+                    onAuthorClick({
+                      id: authorId,
+                      name: authorDisplayName,
+                      avatar: (authorAvatar && !isDummyAvatar(authorAvatar)) ? authorAvatar : undefined,
+                      role: authorRole,
+                      fromPostTarget: target
+                    });
+                  } else {
+                    onViewChange('profile');
+                  }
+                  scrollToPageTop();
+                }}
+                className="text-xs text-primary font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                title={`Prikaži vse objave avtorja ${authorDisplayName}`}
+              >
+                <span>Vse objave avtorja</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -171,11 +171,11 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   };
 
   return (
-    <article className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col gap-space-sm group/article ${
-      isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
+    <article className={`bg-surface-container-lowest rounded-2xl p-5 sm:p-6 shadow-sm border transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-lg flex flex-col gap-3.5 group/article ${
+      isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60 hover:border-primary/25'
     }`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <a
             href={authorUrl}
             data-author-name={author}
@@ -197,11 +197,11 @@ export const BlogPost: React.FC<BlogPostProps> = ({
               userId={authorId}
               role={authorRole}
               size="md"
-              className="w-11 h-11 ring-1 ring-black/5 group-hover/avatar:ring-2 group-hover/avatar:ring-primary transition-all"
+              className="w-11 h-11 ring-2 ring-primary/10 group-hover/avatar:ring-primary/40 transition-all"
             />
           </a>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <a
                 href={authorUrl}
                 data-author-name={author}
@@ -214,7 +214,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
                 data-post-image={image}
                 data-post-category={categoryName || category}
                 data-post-location={location}
-                className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors flex items-center gap-1"
+                className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors flex items-center gap-1 truncate"
                 title={`Ogled profila avtorja: ${author}`}
               >
                 <span>{author}</span>
@@ -222,10 +222,16 @@ export const BlogPost: React.FC<BlogPostProps> = ({
                   <VerifiedBadge size="xs" />
                 )}
               </a>
-              <span className="font-label-caps text-label-caps bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded-md">{authorRole}</span>
+              <span className="font-label-caps text-label-caps bg-surface-container-high/80 text-on-surface-variant px-2 py-0.5 rounded-md font-semibold">{authorRole}</span>
             </div>
-            <p className="font-body-sm text-xs text-outline flex items-center gap-1">
+            <p className="font-body-sm text-xs text-outline flex flex-wrap items-center gap-1.5 mt-0.5">
               <span>{date}</span>
+              {categoryName && (
+                <>
+                  <span>•</span>
+                  <span className="text-primary font-semibold">{categoryName}</span>
+                </>
+              )}
               {location && (
                 <>
                   <span>•</span>
@@ -235,12 +241,12 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           {isPromoted && (
             <PromotedBadge type={promotionBadgeType} size="sm" />
           )}
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-fixed text-on-primary-fixed font-label-caps text-label-caps font-bold">
-            <BookOpen className="w-[1em] h-[1em] text-xs" /> Blog
+          <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-fixed/70 text-on-primary-fixed font-label-caps text-[11px] font-bold tracking-wide">
+            <BookOpen className="w-3.5 h-3.5" /> Blog
           </span>
           <BookmarkButton id={id} data={bookmarkData} />
           <ShareMenu 
@@ -266,23 +272,23 @@ export const BlogPost: React.FC<BlogPostProps> = ({
         </div>
       </div>
       
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 pt-0.5">
         <a 
           href={postUrl}
           onClick={handleOpenDetail}
           className="block group/title cursor-pointer"
           title="Odpri samostojno stran članka"
         >
-          <h4 className="font-headline-md text-headline-md font-bold text-on-surface group-hover/title:text-primary transition-colors">
+          <h2 className="font-headline-md text-[21px] sm:text-[24px] font-extrabold text-on-surface leading-[1.26] tracking-[-0.018em] group-hover/title:text-primary transition-colors">
             {title}
-          </h4>
+          </h2>
           {subtitle && subtitle.trim() && (
-            <p className="font-headline-xs text-xs sm:text-sm font-medium text-on-surface-variant/90 leading-snug mt-0.5">
+            <p className="text-sm sm:text-[15px] font-semibold text-primary/85 leading-snug mt-1.5">
               {subtitle.trim()}
             </p>
           )}
         </a>
-        <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
+        <p className="font-body-md text-[14.5px] sm:text-[15px] text-on-surface-variant/90 line-clamp-3 leading-[1.62]">
           {getPlainTextSnippet(finalDesc)}
         </p>
       </div>
@@ -291,33 +297,34 @@ export const BlogPost: React.FC<BlogPostProps> = ({
         <a
           href={postUrl}
           onClick={handleOpenDetail}
-          className="relative rounded-xl overflow-hidden h-72 w-full bg-surface-container block cursor-pointer group/img"
+          className="relative rounded-xl overflow-hidden aspect-[16/9] max-h-80 w-full bg-surface-container block cursor-pointer group/img ring-1 ring-black/5"
           title="Odpri samostojno stran članka"
         >
           <img 
-            className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" 
+            className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500" 
             src={imgSrc} 
             alt={title} 
             onError={handleImageError}
           />
-          <div className="absolute bottom-3 left-3 bg-inverse-surface/80 backdrop-blur-sm text-inverse-on-surface px-2.5 py-1 rounded-lg font-label-md text-xs flex items-center gap-1.5">
-            <Camera className="w-[1em] h-[1em] text-xs text-secondary-fixed" /> {readTime} {photoCount ? `• ${photoCount}` : ''}
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 via-black/15 to-transparent pointer-events-none" />
+          <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg font-label-md text-[11px] font-medium flex items-center gap-1.5">
+            <Camera className="w-3.5 h-3.5 text-secondary-fixed" /> {readTime} {photoCount ? `• ${photoCount}` : ''}
           </div>
         </a>
       )}
       
       {tags && tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {tags.map((tag, idx) => (
-            <span key={idx} className="text-xs font-label-md text-primary hover:underline cursor-pointer">
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {tags.slice(0, 5).map((tag, idx) => (
+            <span key={idx} className="text-xs font-label-md font-medium text-primary/90 bg-primary/5 px-2.5 py-0.5 rounded-lg border border-primary/10">
               #{tag.replace(/^#/, '')}
             </span>
           ))}
         </div>
       )}
       
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-surface-container-low">
-        <div className="flex items-center gap-4 text-on-surface-variant font-label-md text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-surface-container-low mt-0.5">
+        <div className="flex flex-wrap items-center gap-4 text-on-surface-variant font-label-md text-xs">
           <LikeButton
             id={id}
             targetType="blog"
@@ -356,11 +363,11 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           <a
             href={postUrl}
             onClick={handleOpenDetail}
-            className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container"
+            className="px-3.5 py-1.5 rounded-xl bg-primary/8 hover:bg-primary text-primary hover:text-on-primary font-label-md text-xs font-bold transition-all inline-flex items-center gap-1.5 cursor-pointer border border-primary/20 shadow-2xs"
             title="Preberi celoten članek"
           >
             <span>Preberi članek</span>
-            <ArrowRight className="w-3.5 h-3.5 text-primary" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </a>
         </div>
       </div>

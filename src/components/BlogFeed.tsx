@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { BookOpen, PlusCircle, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { BookOpen, PlusCircle, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { BlogPost } from './posts/BlogPost';
 import { FirestorePostCard } from './posts/FirestorePostCard';
 import { ComposeModal } from './ComposeModal';
@@ -30,6 +30,13 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
   const [sortOption, setSortOption] = useState<string>('newest');
   const [firestorePosts, setFirestorePosts] = useState<FirestorePost[]>([]);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const pillsScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollCategoryPills = (direction: 'left' | 'right') => {
+    const el = pillsScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction === 'left' ? -240 : 240, behavior: 'smooth' });
+  };
 
   // Dynamic categories for blog
   const { categories } = useCategories('blog');
@@ -114,6 +121,9 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
   // Category counts based on real user blog posts
   const categoryCounts = useMemo(() => {
     const validPosts = firestorePosts.filter(p => {
+      if (p.status === 'osnutek' || p.status === 'rejected' || p.status === 'archived') {
+        return false;
+      }
       const isDeal = p.category === 'deal' || 
                      p.category === 'ugodnosti' || 
                      p.category === 'akcije' ||
@@ -149,6 +159,9 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
   // Filter real Firestore posts
   const filteredFirestore = useMemo(() => {
     return firestorePosts.filter(post => {
+      if (post.status === 'osnutek' || post.status === 'rejected' || post.status === 'archived') {
+        return false;
+      }
       // Strictly exclude deals and posts in category Ugodnosti from Blog feed
       const isDeal = post.category === 'deal' || 
                      post.category === 'ugodnosti' || 
@@ -345,6 +358,136 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
         searchQuery={searchQuery}
       />
 
+      {/* Horizontal Scrollable Category Filter Pills above Blog Post Cards */}
+      <div
+        role="region"
+        aria-label="Hitri filter po temah bloga"
+        className="flex flex-col gap-2"
+      >
+        <div className="relative flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => scrollCategoryPills('left')}
+            className="hidden sm:flex shrink-0 w-8 h-8 items-center justify-center rounded-full bg-surface-container-lowest hover:bg-surface-container-low border border-surface-container text-on-surface-variant hover:text-primary shadow-2xs transition-colors cursor-pointer"
+            aria-label="Pomakni kategorije levo"
+            title="Pomakni levo"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div
+            ref={pillsScrollRef}
+            className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-1 px-0.5"
+          >
+            <button
+              type="button"
+              onClick={() => handleCategorySelect('all')}
+              aria-pressed={selectedCategory === 'all'}
+              className={`px-3.5 py-1.5 rounded-full font-label-md text-xs font-semibold whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
+                selectedCategory === 'all'
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'bg-surface-container-lowest hover:bg-surface-container-low text-on-surface-variant hover:text-on-surface border border-surface-container'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Vse teme</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold leading-none ${
+                  selectedCategory === 'all'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-surface-container text-outline'
+                }`}
+              >
+                {categoryCounts.all ?? filteredFirestore.length}
+              </span>
+            </button>
+
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat.id;
+              const count = categoryCounts[cat.id] ?? 0;
+              return (
+                <button
+                  key={`pill-${cat.id}`}
+                  type="button"
+                  onClick={() => handleCategorySelect(isSelected ? 'all' : cat.id)}
+                  aria-pressed={isSelected}
+                  className={`px-3.5 py-1.5 rounded-full font-label-md text-xs font-semibold whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isSelected
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'bg-surface-container-lowest hover:bg-surface-container-low text-on-surface-variant hover:text-on-surface border border-surface-container'
+                  }`}
+                >
+                  {cat.icon && <span aria-hidden="true">{cat.icon}</span>}
+                  <span>{cat.name}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold leading-none ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-surface-container text-outline'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => scrollCategoryPills('right')}
+            className="hidden sm:flex shrink-0 w-8 h-8 items-center justify-center rounded-full bg-surface-container-lowest hover:bg-surface-container-low border border-surface-container text-on-surface-variant hover:text-primary shadow-2xs transition-colors cursor-pointer"
+            aria-label="Pomakni kategorije desno"
+            title="Pomakni desno"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {activeCategoryObj && activeCategoryObj.subcategories && activeCategoryObj.subcategories.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth pb-0.5 pl-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedSubcategory('all');
+                setSelectedTertiaryCategory('all');
+                setPage(1);
+              }}
+              aria-pressed={selectedSubcategory === 'all'}
+              className={`px-3 py-1 rounded-full font-label-md text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                selectedSubcategory === 'all'
+                  ? 'bg-secondary text-on-secondary shadow-2xs'
+                  : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant border border-surface-container/70'
+              }`}
+            >
+              Vse podteme
+            </button>
+            {activeCategoryObj.subcategories.map((sub) => {
+              const isSubSelected = selectedSubcategory === sub.id;
+              return (
+                <button
+                  key={`subpill-${sub.id}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedSubcategory(isSubSelected ? 'all' : sub.id);
+                    setSelectedTertiaryCategory('all');
+                    setPage(1);
+                  }}
+                  aria-pressed={isSubSelected}
+                  className={`px-3 py-1 rounded-full font-label-md text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                    isSubSelected
+                      ? 'bg-secondary text-on-secondary shadow-2xs'
+                      : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant border border-surface-container/70'
+                  }`}
+                >
+                  {sub.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Cards List: 10 cards initially, 10 more on each load */}
       <div className="flex flex-col gap-space-md">
         {visibleItems.length === 0 ? (
@@ -355,7 +498,8 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
           visibleItems.map((item, idx) => (
             <FirestorePostCard 
               key={`fs-post-${item.data.id}-${idx}`} 
-              post={item.data} 
+              post={item.data}
+              onNavigatePost={onNavigatePost}
             />
           ))
         )}

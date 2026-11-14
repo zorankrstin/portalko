@@ -23,7 +23,7 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
   useEffect(() => {
     const unsub = subscribeToPosts((allPosts) => {
       const deals = allPosts.filter(p => {
-        if (p.status === 'rejected') return false;
+        if (p.status === 'osnutek' || p.status === 'rejected' || p.status === 'archived') return false;
         return p.category === 'deal' || p.category === 'ugodnosti' || p.id.startsWith('deal-') || p.categoryName === 'Ugodnosti';
       });
       setUserDeals(deals);

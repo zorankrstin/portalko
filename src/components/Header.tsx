@@ -84,7 +84,7 @@ export function Header({
     }
 
     const filtered = allPosts
-      .filter(p => p.title.toLowerCase().includes(text.toLowerCase()))
+      .filter(p => p.status !== 'osnutek' && p.status !== 'rejected' && p.status !== 'archived' && p.title.toLowerCase().includes(text.toLowerCase()))
       .map(p => p.title);
     
     // Unique suggestions

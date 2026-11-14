@@ -36,6 +36,18 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidFollow(data) {
+      return data.keys().hasAll(['id', 'followerId', 'authorId', 'authorName', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'followerId', 'followerName', 'authorId', 'authorName', 'authorAvatar', 'createdAt']) &&
+             isValidId(data.id) &&
+             isValidId(data.followerId) &&
+             isValidId(data.authorId) &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 100 &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             (!('followerName' in data) || (data.followerName is string && data.followerName.size() <= 100)) &&
+             (!('authorAvatar' in data) || (data.authorAvatar is string && data.authorAvatar.size() <= 500000));
+    }
+
     // Posting permissions:
     // Blog posts and Deals (Akcije) in /posts collection: ONLY superadmin, admin, moderator, and verified users.
     function canPostBlogOrDeals(data) {
@@ -92,6 +104,20 @@ service cloud.firestore {
       match /notifications/{notifId} {
         allow read, write: if true;
       }
+
+      // User subscribed/followed writers
+      match /following/{authorId} {
+        allow read: if true;
+        allow create, update: if isValidId(authorId) && isValidFollow(request.resource.data);
+        allow delete: if isValidId(authorId);
+      }
+    }
+
+    // Public per-author followers lookup & count
+    match /author_followers/{authorId}/followers/{followerId} {
+      allow read: if true;
+      allow create, update: if isValidId(authorId) && isValidId(followerId) && isValidFollow(request.resource.data);
+      allow delete: if isValidId(authorId) && isValidId(followerId);
     }
 
     // Posts Collection (Blog posts & Deals - Akcije)

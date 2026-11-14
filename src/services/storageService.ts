@@ -1,5 +1,5 @@
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { ref, uploadBytesResumable, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, storage } from '../lib/firebase';
 
 export interface UploadedAttachment {
   name: string;
@@ -9,7 +9,7 @@ export interface UploadedAttachment {
 }
 
 export const MAX_STORAGE_FILE_BYTES = 25 * 1024 * 1024; // 25 MB per file in Firebase Storage
-export const MAX_FALLBACK_IMAGE_BYTES = 1_100_000; // ~1.45 MB Base64, fits cleanly inside Firestore 4.5 MB chunks
+export const MAX_FALLBACK_IMAGE_BYTES = 750_000; // ~1.0 MB Base64, fits multiple photos cleanly inside Firestore 4.5 MB chunks
 export const MAX_FALLBACK_ATTACHMENT_BYTES = 2_500_000; // ~3.33 MB Base64, fits inside Firestore 4.5 MB chunks
 
 let loggedStorageFallbackNotice = false;
@@ -174,17 +174,30 @@ export function dataUrlToBlob(dataUrl: string): { blob: Blob; contentType: strin
   };
 }
 
+function extractStorageServerDetails(error: unknown): string {
+  if (!error || typeof error !== 'object') return '';
+  const errObj = error as {
+    serverResponse?: unknown;
+    customData?: { serverResponse?: unknown };
+  };
+  const raw = errObj.customData?.serverResponse ?? errObj.serverResponse;
+  if (!raw) return '';
+  return typeof raw === 'string' ? raw : JSON.stringify(raw);
+}
+
 export function isStorageUnauthorizedError(error: unknown): boolean {
   if (!error) return false;
-  const errObj = error as { code?: string; status?: number; message?: string; serverResponse?: string };
+  const errObj = error as { code?: string; status?: number; status_?: number; message?: string };
   const code = String(errObj?.code || '');
+  const status = Number(errObj?.status || errObj?.status_ || 0);
   const message = error instanceof Error ? error.message : String(error);
-  const serverResponse = String(errObj?.serverResponse || '');
+  const serverResponse = extractStorageServerDetails(error);
 
   return (
     code === 'storage/unauthorized' ||
     code === 'storage/unauthenticated' ||
-    errObj?.status === 403 ||
+    status === 401 ||
+    status === 403 ||
     message.includes('storage/unauthorized') ||
     message.includes('storage/unauthenticated') ||
     message.includes('Permission denied') ||
@@ -192,6 +205,52 @@ export function isStorageUnauthorizedError(error: unknown): boolean {
     message.includes('Nalaganje v Firebase Storage ni dovoljeno') ||
     serverResponse.includes('Permission denied') ||
     serverResponse.includes('"code": 403')
+  );
+}
+
+export function isStorageFallbackEligibleError(error: unknown): boolean {
+  if (!error) return false;
+  if (isStorageUnauthorizedError(error)) return true;
+
+  const errObj = error as { code?: string; status?: number; status_?: number; message?: string };
+  const code = String(errObj?.code || '');
+  const status = Number(errObj?.status || errObj?.status_ || 0);
+  const message = error instanceof Error ? error.message : String(error);
+  const serverResponse = extractStorageServerDetails(error);
+
+  // Never swallow explicit user cancellation or pre-upload client validation errors
+  if (
+    code === 'storage/canceled' ||
+    message.includes('je bilo preklicano') ||
+    message.includes('Izbrana datoteka ni veljavna') ||
+    message.includes('največjo dovoljeno velikost za nalaganje') ||
+    message.includes('presega 2,5 MB za varnostno shranjevanje')
+  ) {
+    return false;
+  }
+
+  return (
+    code === 'storage/unknown' ||
+    code === 'storage/bucket-not-found' ||
+    code === 'storage/project-not-found' ||
+    code === 'storage/retry-limit-exceeded' ||
+    code === 'storage/quota-exceeded' ||
+    code === 'storage/invalid-checksum' ||
+    code === 'storage/server-file-wrong-size' ||
+    code === 'storage/cannot-slice-blob' ||
+    status === 400 ||
+    status === 404 ||
+    status === 412 ||
+    status >= 500 ||
+    message.includes('storage/unknown') ||
+    message.includes('An unknown error occurred') ||
+    message.includes('server response') ||
+    message.includes('storage/bucket-not-found') ||
+    message.includes('storage/retry-limit-exceeded') ||
+    message.includes('Failed to fetch') ||
+    message.includes('NetworkError') ||
+    message.includes('Napaka pri nalaganju v Firebase Storage') ||
+    serverResponse.length > 0
   );
 }
 
@@ -279,35 +338,54 @@ async function compressImageBlobForFallback(blob: Blob, maxBytes: number = MAX_F
 function logStorageFallbackOnce(reason?: unknown): void {
   if (loggedStorageFallbackNotice) return;
   loggedStorageFallbackNotice = true;
+  const serverDetails = extractStorageServerDetails(reason);
   console.warn(
-    '[Storage Fallback] Firebase Storage trenutno zavrača neposredno nalaganje (storage/unauthorized). Uporabljam optimizirano varnostno shranjevanje v Firestore chunks. Za nalaganje večjih datotek (> 2,5 MB) objavite storage.rules v Firebase Console.',
-    reason instanceof Error ? reason.message : reason
+    '[Storage Fallback] Neposredno nalaganje v Firebase Storage ni uspelo; uporabljam optimizirano shranjevanje v Firestore chunks. Za večje datoteke (> 2,5 MB) preverite Firebase Storage pravila in CORS nastavitve.',
+    reason instanceof Error ? reason.message : reason,
+    serverDetails ? `| Server response: ${serverDetails}` : ''
   );
 }
 
 function mapStorageUploadError(error: any): Error {
   const code = error?.code || '';
   const message = error instanceof Error ? error.message : String(error);
+  const serverDetails = extractStorageServerDetails(error);
 
+  let mapped: Error;
   if (code === 'storage/unauthorized' || code === 'storage/unauthenticated' || message.includes('unauthorized') || message.includes('Permission denied')) {
-    return new Error(
+    mapped = new Error(
       'Nalaganje v Firebase Storage ni dovoljeno (manjkajoča dovoljenja ali prijava). Preverite Firebase Storage pravila ali se prijavite.'
     );
+  } else if (code === 'storage/canceled') {
+    mapped = new Error('Nalaganje datoteke v Firebase Storage je bilo preklicano.');
+  } else if (code === 'storage/quota-exceeded') {
+    mapped = new Error('Kvota prostora za shranjevanje v Firebase Storage je bila presežena.');
+  } else if (code === 'storage/retry-limit-exceeded') {
+    mapped = new Error('Časovna omejitev nalaganja v Firebase Storage je potekla. Preverite internetno povezavo.');
+  } else if (code === 'storage/unknown' || message.includes('storage/unknown')) {
+    mapped = new Error(
+      `Napaka pri nalaganju v Firebase Storage (${code || 'storage/unknown'})${serverDetails ? `: ${serverDetails}` : ': strežnik Firebase Storage je zavrnil ali prekinil prenos.'}`
+    );
+  } else {
+    mapped = new Error(`Napaka pri nalaganju v Firebase Storage: ${message}`);
   }
-  if (code === 'storage/canceled') {
-    return new Error('Nalaganje datoteke v Firebase Storage je bilo preklicano.');
+
+  (mapped as any).code = code;
+  (mapped as any).serverResponse = serverDetails;
+  return mapped;
+}
+
+function normalizeUploadContentType(contentType?: string, fallbackMime?: string): string | undefined {
+  const raw = (contentType || fallbackMime || '').trim();
+  if (/^[a-zA-Z0-9.+_-]+\/[a-zA-Z0-9.+_-]+/.test(raw)) {
+    return raw.split(';')[0].trim();
   }
-  if (code === 'storage/quota-exceeded') {
-    return new Error('Kvota prostora za shranjevanje v Firebase Storage je bila presežena.');
-  }
-  if (code === 'storage/retry-limit-exceeded') {
-    return new Error('Časovna omejitev nalaganja v Firebase Storage je potekla. Preverite internetno povezavo.');
-  }
-  return new Error(`Napaka pri nalaganju v Firebase Storage: ${message}`);
+  return 'application/octet-stream';
 }
 
 /**
  * Uploads any Blob or File to Firebase Storage and returns its permanent HTTPS download URL.
+ * Automatically retries via single-request `uploadBytes` if `uploadBytesResumable` hits `storage/unknown`.
  */
 export async function uploadBlobToFirebaseStorage(
   blobOrFile: Blob | File,
@@ -321,39 +399,77 @@ export async function uploadBlobToFirebaseStorage(
     );
   }
 
-  const storageRef = ref(storage, storagePath);
-  const metadata = contentType ? { contentType } : undefined;
+  // Ensure Firebase Auth token is fresh when a user is signed in
+  if (auth.currentUser) {
+    await auth.currentUser.getIdToken().catch(() => undefined);
+  }
 
-  return new Promise((resolve, reject) => {
-    onPercent?.(0);
-    const uploadTask = uploadBytesResumable(storageRef, blobOrFile, metadata);
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        if (onPercent && snapshot.totalBytes > 0) {
-          onPercent(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+  const storageRef = ref(storage, storagePath);
+  const safeContentType = normalizeUploadContentType(contentType, blobOrFile.type);
+  const metadata = safeContentType ? { contentType: safeContentType } : undefined;
+
+  const runResumableUpload = (): Promise<string> =>
+    new Promise((resolve, reject) => {
+      onPercent?.(0);
+      const uploadTask = uploadBytesResumable(storageRef, blobOrFile, metadata);
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          if (onPercent && snapshot.totalBytes > 0) {
+            onPercent(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+          }
+        },
+        (error) => {
+          reject(error);
+        },
+        async () => {
+          try {
+            onPercent?.(100);
+            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(downloadUrl);
+          } catch (err) {
+            reject(err);
+          }
         }
-      },
-      (error) => {
-        reject(mapStorageUploadError(error));
-      },
-      async () => {
-        try {
-          onPercent?.(100);
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve(downloadUrl);
-        } catch (err) {
-          reject(mapStorageUploadError(err));
-        }
+      );
+    });
+
+  try {
+    return await runResumableUpload();
+  } catch (resumableErr: any) {
+    const code = String(resumableErr?.code || '');
+    const serverDetails = extractStorageServerDetails(resumableErr);
+
+    // Retry via simple single-request uploadBytes if resumable handshake failed with storage/unknown or retry limit
+    if (
+      code !== 'storage/canceled' &&
+      code !== 'storage/unauthorized' &&
+      code !== 'storage/unauthenticated'
+    ) {
+      console.warn(
+        `[Storage] uploadBytesResumable failed (${code || 'unknown'})${serverDetails ? ` - ${serverDetails}` : ''}. Retrying with uploadBytes...`
+      );
+      try {
+        const snapshot = await uploadBytes(storageRef, blobOrFile, metadata);
+        onPercent?.(100);
+        return await getDownloadURL(snapshot.ref);
+      } catch (simpleErr: any) {
+        const simpleDetails = extractStorageServerDetails(simpleErr);
+        console.warn(
+          `[Storage] uploadBytes retry also failed (${simpleErr?.code || 'unknown'})${simpleDetails ? ` - ${simpleDetails}` : ''}`
+        );
+        throw mapStorageUploadError(simpleErr);
       }
-    );
-  });
+    }
+
+    throw mapStorageUploadError(resumableErr);
+  }
 }
 
 /**
  * Optimizes an image File (if huge) and uploads it to Firebase Storage, returning its download URL.
  * Automatically falls back to a compact Base64 Data URL (persisted cleanly via Firestore chunking)
- * if Firebase Storage bucket rules reject direct writes (`storage/unauthorized`).
+ * if Firebase Storage rejects direct writes (`storage/unauthorized`, `storage/unknown`, CORS, etc.).
  */
 export async function uploadImageFileToStorage(
   file: File,
@@ -375,7 +491,7 @@ export async function uploadImageFileToStorage(
   try {
     return await uploadBlobToFirebaseStorage(blob, storagePath, contentType, onPercent);
   } catch (err) {
-    if (!isStorageUnauthorizedError(err)) {
+    if (!isStorageFallbackEligibleError(err)) {
       throw err;
     }
     logStorageFallbackOnce(err);
@@ -388,7 +504,7 @@ export async function uploadImageFileToStorage(
 
 /**
  * Uploads any file attachment (PDF, DOCX, ZIP, image, video, etc.) to Firebase Storage.
- * Falls back to Firestore-chunked Data URL for attachments <= 2.5 MB if Storage rules reject direct writes.
+ * Falls back to Firestore-chunked Data URL for attachments <= 2.5 MB if Storage is unavailable or rejects writes.
  */
 export async function uploadAttachmentFileToStorage(
   file: File,
@@ -412,12 +528,12 @@ export async function uploadAttachmentFileToStorage(
       contentType,
     };
   } catch (err) {
-    if (!isStorageUnauthorizedError(err)) {
+    if (!isStorageFallbackEligibleError(err)) {
       throw err;
     }
     if (file.size > MAX_FALLBACK_ATTACHMENT_BYTES) {
       throw new Error(
-        `Datoteka "${file.name}" presega 2,5 MB za varnostno shranjevanje brez Firebase Storage. Za nalaganje večjih datotek objavite storage.rules v Firebase Console (Storage → Rules).`
+        `Datoteka "${file.name}" presega 2,5 MB za varnostno shranjevanje brez Firebase Storage. Za nalaganje večjih datotek preverite Firebase Storage pravila (storage.rules) v Firebase Console.`
       );
     }
     logStorageFallbackOnce(err);
@@ -435,7 +551,7 @@ export async function uploadAttachmentFileToStorage(
 /**
  * If `value` is a Base64 `data:` URL, uploads it to Firebase Storage and returns the HTTPS download URL.
  * Existing HTTP(S) URLs are returned unchanged.
- * Falls back cleanly to the compact `data:` URL when Firebase Storage returns `storage/unauthorized`.
+ * Falls back cleanly to the compact `data:` URL when Firebase Storage fails (`storage/unauthorized`, `storage/unknown`, etc.).
  */
 export async function uploadDataUrlIfPresent(
   value: string | undefined,
@@ -459,7 +575,7 @@ export async function uploadDataUrlIfPresent(
   try {
     return await uploadBlobToFirebaseStorage(blob, storagePath, contentType, onPercent);
   } catch (err) {
-    if (!isStorageUnauthorizedError(err)) {
+    if (!isStorageFallbackEligibleError(err)) {
       throw err;
     }
     logStorageFallbackOnce(err);
@@ -515,7 +631,7 @@ export async function replaceDataUrlsInHtmlWithStorage(
           replacements.set(dataUrl, uploadedUrl);
         }
       } catch (err) {
-        if (!isStorageUnauthorizedError(err)) {
+        if (!isStorageFallbackEligibleError(err)) {
           throw err;
         }
         logStorageFallbackOnce(err);

@@ -22,7 +22,7 @@ export function RightSidebarBlog({ onNavigatePost }: RightSidebarBlogProps) {
   useEffect(() => {
     const unsub = subscribeToPosts((allPosts) => {
       const blogs = allPosts.filter(p => {
-        if (p.status === 'rejected') return false;
+        if (p.status === 'osnutek' || p.status === 'rejected' || p.status === 'archived') return false;
         const isDeal = p.category === 'deal' || p.category === 'ugodnosti' || p.id.startsWith('deal-') || p.categoryName === 'Ugodnosti';
         const isAd = p.category === 'ad' || p.id.startsWith('ad-');
         const isEvent = p.category === 'event' || p.id.startsWith('event-');

@@ -49,7 +49,7 @@
         "eventTime": { "type": "string", "maxLength": 50 },
         "ticketUrl": { "type": "string", "maxLength": 500 },
         "location": { "type": "string", "maxLength": 100 },
-        "status": { "type": "string", "enum": ["published", "pending", "rejected", "archived"] },
+        "status": { "type": "string", "enum": ["published", "osnutek", "pending", "rejected", "archived"] },
         "rejectionReason": { "type": "string", "maxLength": 500 },
         "likesCount": { "type": "number" },
         "likedBy": { "type": "array" },
@@ -197,6 +197,21 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "userId", "targetId", "targetType"]
+    },
+    "Follow": {
+      "title": "Author Follow Subscription",
+      "description": "Subscription record tracking a reader following a writer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "followerId": { "type": "string", "maxLength": 128 },
+        "followerName": { "type": "string", "maxLength": 100 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorAvatar": { "type": "string", "maxLength": 500000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "followerId", "authorId", "authorName", "createdAt"]
     },
     "Category": {
       "title": "Category and Subcategories",
@@ -353,6 +368,14 @@
     "/users/{userId}/notifications/{notifId}": {
       "schema": "Notification",
       "description": "User specific real-time notifications for post and comment replies, comments, and likes"
+    },
+    "/users/{userId}/following/{authorId}": {
+      "schema": "Follow",
+      "description": "Authors that a user subscribes to and follows"
+    },
+    "/author_followers/{authorId}/followers/{followerId}": {
+      "schema": "Follow",
+      "description": "Subscribers following a specific writer for public follower counts"
     },
     "/comments/{commentId}": {
       "schema": "Comment",

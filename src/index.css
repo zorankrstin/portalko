@@ -92,6 +92,10 @@
   --text-headline-sm--line-height: 28px;
   --text-headline-sm--letter-spacing: -0.01em;
 
+  --text-title-md: 21px;
+  --text-title-md--line-height: 28px;
+  --text-title-md--letter-spacing: -0.015em;
+
   --text-display-xl-mobile: 32px;
   --text-display-xl-mobile--line-height: 40px;
   --text-display-xl-mobile--letter-spacing: -0.02em;

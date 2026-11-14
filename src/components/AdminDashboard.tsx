@@ -2004,6 +2004,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                 >
                   <option value="all">Vsi statusi</option>
                   <option value="published">Objavljeno / Aktivno</option>
+                  <option value="osnutek">Osnutek</option>
                   <option value="rejected">Zavrnjeno</option>
                 </select>
               </div>
@@ -2224,25 +2225,32 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
 
                           <td className="p-3">
                             <div className="flex items-center gap-1.5">
-                              <select
-                                value={post.status === 'active' ? 'published' : post.status}
-                                onChange={(e) => {
-                                  const newStatus = e.target.value as any;
-                                  if (newStatus === 'published') {
-                                    handleApproveItem(post);
-                                  } else if (newStatus === 'rejected') {
-                                    handleRejectItem(post);
-                                  }
-                                }}
-                                className={`text-[11px] font-bold py-1 px-2 rounded-lg border outline-none cursor-pointer transition-colors ${
-                                  post.status === 'published' || post.status === 'active'
-                                    ? 'bg-secondary/10 text-secondary border-secondary/30'
-                                    : 'bg-error/10 text-error border-error/30'
-                                }`}
-                              >
-                                <option value="published">Objavljeno</option>
-                                <option value="rejected">Zavrnjeno</option>
-                              </select>
+                                <select
+                                  value={post.status === 'active' ? 'published' : post.status}
+                                  onChange={(e) => {
+                                    const newStatus = e.target.value as any;
+                                    if (newStatus === 'published') {
+                                      handleApproveItem(post);
+                                    } else if (newStatus === 'osnutek') {
+                                      if (post.type === 'post' || post.type === 'deal') {
+                                        updatePostInFirestore(post.id, { status: 'osnutek' }).catch(console.error);
+                                      }
+                                    } else if (newStatus === 'rejected') {
+                                      handleRejectItem(post);
+                                    }
+                                  }}
+                                  className={`text-[11px] font-bold py-1 px-2 rounded-lg border outline-none cursor-pointer transition-colors ${
+                                    post.status === 'published' || post.status === 'active'
+                                      ? 'bg-secondary/10 text-secondary border-secondary/30'
+                                      : post.status === 'osnutek'
+                                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
+                                        : 'bg-error/10 text-error border-error/30'
+                                  }`}
+                                >
+                                  <option value="published">Objavljeno</option>
+                                  <option value="osnutek">Osnutek</option>
+                                  <option value="rejected">Zavrnjeno</option>
+                                </select>
                             </div>
                           </td>
 

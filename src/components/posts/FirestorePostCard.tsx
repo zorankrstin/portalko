@@ -3,7 +3,7 @@ import { ShareMenu } from "../ShareMenu";
 import { BookmarkButton } from "../BookmarkButton";
 import { ReportButton } from "../ReportButton";
 import { LikeButton } from "../LikeButton";
-import { Heart, MessageCircle, Sparkles, Edit3, Check, Ban, ArrowRight, Trash2, Loader2 } from 'lucide-react';
+import { Heart, MessageCircle, Edit3, Check, Ban, ArrowRight, Trash2, Loader2, BookOpen, Clock, Camera, Paperclip, Eye, MapPin } from 'lucide-react';
 import { FirestorePost, deletePostInFirestore, deleteAdInFirestore, deleteEventInFirestore } from "../../services/firestoreService";
 import { useAuth } from "../../contexts/AuthContext";
 import { AdPost } from "./AdPost";
@@ -16,7 +16,7 @@ import { UserAvatar } from "../common/UserAvatar";
 import { resolveUserUploadedAvatar } from "../../utils/avatarUtils";
 import { isItemActivelyPromoted } from "../../services/promotionService";
 import { parseEventDateInfo, resolveEventDisplayDate, formatSlovenianDate } from "../../utils/dateUtils";
-import { getPlainTextSnippet } from "../../utils/textUtils";
+import { getPlainTextSnippet, formatViewsCount } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, slugify } from "../../utils/urlUtils";
 import type { PostDetailTarget } from "../../types";
@@ -60,8 +60,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
   const isAuthor = currentUser?.id === post.authorId;
   const canEdit = isAdminOrSuper || isAuthor;
 
-  // Only hide post if it was explicitly rejected or archived, unless viewed by admin or author
-  if (post.status === 'rejected' || post.status === 'archived') {
+  // Hide post if it is a draft, rejected, or archived, unless viewed by admin or author
+  if (post.status === 'osnutek' || post.status === 'rejected' || post.status === 'archived') {
     if (!canEdit) {
       return null;
     }
@@ -371,10 +371,25 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     }
   };
 
+  const plainSnippet = getPlainTextSnippet(post.content);
+  const wordCount = plainSnippet ? plainSnippet.split(/\s+/).filter(Boolean).length : 0;
+  const readMinutes = Math.max(1, Math.round(wordCount / 180));
+  const galleryCount = Array.isArray(post.images) && post.images.length > 0
+    ? post.images.length
+    : Array.isArray(post.imageUrls) && post.imageUrls.length > 0
+      ? post.imageUrls.length
+      : (imgSrc ? 1 : 0);
+  const attachmentsCount = Array.isArray(post.attachments) ? post.attachments.length : 0;
+
   return (
-    <article className={`bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col gap-space-sm relative overflow-hidden ${
-      isActivelyPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
+    <article className={`bg-surface-container-lowest rounded-2xl p-5 sm:p-6 shadow-sm border transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-lg flex flex-col gap-3.5 relative overflow-hidden group/article ${
+      isActivelyPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60 hover:border-primary/25'
     }`}>
+      {post.status === 'osnutek' && (
+        <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-2.5 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2 font-semibold">
+          <span>Osnutek – ta objava še ni javno objavljena</span>
+        </div>
+      )}
       {post.status === 'rejected' && (
         <div className="bg-error/10 border border-error/20 rounded-xl p-2.5 text-xs text-error flex items-center gap-2">
           <Ban className="w-4 h-4 shrink-0" />
@@ -382,20 +397,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         </div>
       )}
 
-      <div className="absolute top-0 right-0 transform translate-x-2 -translate-y-2 flex items-center gap-1">
-        {isActivelyPromoted && (
-          <div className="mr-2 mt-3">
-            <PromotedBadge type={badgeType} size="sm" />
-          </div>
-        )}
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-bl-xl bg-primary/10 text-primary text-[11px] font-semibold tracking-wider uppercase">
-          <Sparkles className="w-3 h-3" />
-          V živo (Firebase)
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <a
             href={authorUrl}
             data-author-name={post.authorName}
@@ -418,11 +421,11 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
               userId={post.authorId}
               role={post.authorRole}
               size="md"
-              className="w-10 h-10 ring-1 ring-black/5 group-hover/author:ring-2 group-hover/author:ring-primary transition-all"
+              className="w-11 h-11 ring-2 ring-primary/10 group-hover/author:ring-primary/40 transition-all"
             />
           </a>
-          <div>
-            <div className="flex items-center gap-1.5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
               <a
                 href={authorUrl}
                 data-author-name={post.authorName}
@@ -436,30 +439,48 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
                 data-post-category={post.categoryName || post.category}
                 data-post-price={post.price || post.discount}
                 data-post-location={post.location}
-                className="font-label-md text-label-md font-bold text-on-surface hover:text-primary hover:underline transition-colors"
+                className="font-headline-sm text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors truncate"
                 title={`Ogled profila avtorja: ${post.authorName}`}
               >
                 <UserDisplayName name={post.authorName} role={post.authorRole} userId={post.authorId} users={users} />
               </a>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-surface-container-high/80 text-on-surface-variant font-semibold">
                 {roleLabels[post.authorRole] || 'Član'}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-outline mt-0.5">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-outline mt-0.5">
               <span>{formatSlovenianDate(post.createdAt) || 'Nedavno'}</span>
               {(post.categoryName || post.category) && (
                 <>
                   <span>•</span>
-                  <span className="text-primary font-medium">{post.categoryName || post.category}</span>
+                  <span className="text-primary font-semibold">{post.categoryName || post.category}</span>
+                </>
+              )}
+              {post.location && post.location !== 'Slovenija' && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-0.5">
+                    <MapPin className="w-3 h-3" />
+                    {post.location}
+                  </span>
                 </>
               )}
             </div>
           </div>
         </div>
         
-        <div className="flex items-center gap-1 pr-16">
+        <div className="flex items-center gap-1 shrink-0">
+          {isActivelyPromoted && (
+            <div className="mr-1">
+              <PromotedBadge type={badgeType} size="sm" />
+            </div>
+          )}
+          <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-fixed/70 text-on-primary-fixed text-[11px] font-bold tracking-wide">
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Blog</span>
+          </span>
           {canEdit && (
-            <div className="flex items-center gap-1 mr-1">
+            <div className="flex items-center gap-1 mr-0.5">
               <button
                 onClick={() => setIsEditModalOpen(true)}
                 className="px-2 py-1 rounded-lg text-xs font-semibold bg-surface-container-low hover:bg-surface-container text-on-surface flex items-center gap-1 transition-colors cursor-pointer"
@@ -506,53 +527,87 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 pt-0.5">
         <a
           href={postUrl}
           onClick={handleOpenDetail}
           className="block group/title cursor-pointer"
           title="Odpri samostojno stran članka"
         >
-          <h2 className="font-headline-sm text-title-md text-on-surface font-bold leading-snug group-hover/title:text-primary transition-colors">
+          <h2 className="font-headline-md text-[21px] sm:text-[24px] text-on-surface font-extrabold leading-[1.26] tracking-[-0.018em] group-hover/title:text-primary transition-colors">
             {post.title}
           </h2>
           {post.subtitle && post.subtitle.trim() && (
-            <p className="font-headline-xs text-xs sm:text-sm font-medium text-on-surface-variant/90 leading-snug mt-1">
+            <p className="text-sm sm:text-[15px] font-semibold text-primary/85 leading-snug mt-1.5">
               {post.subtitle.trim()}
             </p>
           )}
         </a>
-        <p className="font-body-md text-body-md text-on-surface-variant line-clamp-3 leading-relaxed">
-          {getPlainTextSnippet(post.content)}
-        </p>
+        {plainSnippet && (
+          <p className="font-body-md text-[14.5px] sm:text-[15px] text-on-surface-variant/90 line-clamp-3 leading-[1.62]">
+            {plainSnippet}
+          </p>
+        )}
       </div>
 
       {imgSrc && !hasImgError && (
         <a
           href={postUrl}
           onClick={handleOpenDetail}
-          className="relative rounded-xl overflow-hidden aspect-[16/9] bg-surface-container max-h-80 block cursor-pointer group/img"
+          className="relative rounded-xl overflow-hidden aspect-[16/9] max-h-80 bg-surface-container block cursor-pointer group/img ring-1 ring-black/5"
           title="Odpri samostojno stran članka"
         >
           <img 
             alt={post.title} 
-            className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500" 
+            className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500" 
             src={imgSrc} 
             loading="lazy"
             onError={handleImageError}
           />
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 via-black/15 to-transparent pointer-events-none" />
+          <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1.5">
+            <span className="bg-black/70 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg font-label-md text-[11px] font-medium flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-secondary-fixed" />
+              <span>{readMinutes} min branja</span>
+            </span>
+            {galleryCount > 1 && (
+              <span className="bg-black/70 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg font-label-md text-[11px] font-medium flex items-center gap-1">
+                <Camera className="w-3.5 h-3.5 text-primary-fixed" />
+                <span>{galleryCount} fotografij</span>
+              </span>
+            )}
+            {attachmentsCount > 0 && (
+              <span className="bg-black/70 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg font-label-md text-[11px] font-medium flex items-center gap-1">
+                <Paperclip className="w-3.5 h-3.5 text-primary-fixed" />
+                <span>{attachmentsCount} {attachmentsCount === 1 ? 'priloga' : 'prilog'}</span>
+              </span>
+            )}
+          </div>
         </a>
       )}
 
+      {post.tags && post.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {post.tags.slice(0, 5).map((tag, idx) => (
+            <span
+              key={idx}
+              className="text-xs font-label-md font-medium text-primary/90 bg-primary/5 px-2.5 py-0.5 rounded-lg border border-primary/10"
+            >
+              #{tag.replace(/^#/, '')}
+            </span>
+          ))}
+        </div>
+      )}
+
       {post.price && (
-        <div className="inline-flex items-center gap-2 bg-secondary/10 px-3 py-1 rounded-lg text-secondary font-bold text-sm">
+        <div className="inline-flex items-center gap-2 bg-secondary/10 px-3 py-1 rounded-lg text-secondary font-bold text-sm self-start">
           <span>Posebna ponudba:</span>
           <span>{post.price}</span>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low pt-3 mt-1">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low pt-3 mt-0.5">
+        <div className="flex flex-wrap items-center gap-4 text-xs font-label-md">
           <LikeButton
             id={post.id}
             targetType={post.category === 'deal' ? 'deal' : post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog'}
@@ -570,6 +625,13 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             <MessageCircle className="w-4 h-4" />
             <span>{post.commentsCount || 0} komentarjev</span>
           </a>
+
+          {(post.viewsCount || 0) > 0 && (
+            <span className="hidden sm:flex items-center gap-1 text-outline">
+              <Eye className="w-4 h-4" />
+              <span>{formatViewsCount(post.viewsCount || 0)}</span>
+            </span>
+          )}
 
           <ShareMenu
             id={post.id}
@@ -593,11 +655,11 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           <a
             href={postUrl}
             onClick={handleOpenDetail}
-            className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container"
+            className="px-3.5 py-1.5 rounded-xl bg-primary/8 hover:bg-primary text-primary hover:text-on-primary font-label-md text-xs font-bold transition-all inline-flex items-center gap-1.5 cursor-pointer border border-primary/20 shadow-2xs"
             title="Preberi celoten članek"
           >
             <span>Preberi članek</span>
-            <ArrowRight className="w-3.5 h-3.5 text-primary" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </a>
         </div>
       </div>

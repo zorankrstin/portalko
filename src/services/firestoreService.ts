@@ -292,7 +292,9 @@ function isStorageUploadError(error: unknown): boolean {
   return (
     msg.includes('Firebase Storage') ||
     msg.includes('storage/') ||
+    msg.includes('An unknown error occurred') ||
     msg.includes('Datoteka presega') ||
+    msg.includes('presega 2,5 MB') ||
     msg.includes('Izbrana datoteka ni veljavna')
   );
 }
@@ -626,7 +628,7 @@ export interface FirestorePost {
   location?: string;
   region?: string;
   tags?: string[];
-  status?: 'published' | 'pending' | 'rejected' | 'archived';
+  status?: 'published' | 'osnutek' | 'pending' | 'rejected' | 'archived';
   rejectionReason?: string;
   likesCount?: number;
   likedBy?: string[];
@@ -1554,7 +1556,7 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
     }
 
     await setDoc(postRef, prepared.mainDoc);
-    console.log('✅ [Firestore:createPost] Document successfully persisted in Firestore with ID:', postRef.id, 'status: published');
+    console.log('✅ [Firestore:createPost] Document successfully persisted in Firestore with ID:', postRef.id, 'status:', prepared.mainDoc.status);
 
     const fullHydratedPost = normalizeMediaFields(cleanDataForFirestore(storageResolvedPost)) as FirestorePost;
 
@@ -3359,3 +3361,235 @@ export function subscribeToItemViews(
     return () => {};
   }
 }
+
+// -------------------------------------------------------------
+// AUTHOR FOLLOW / SUBSCRIBE SERVICE
+// -------------------------------------------------------------
+
+export interface AuthorFollowRecord {
+  id: string;
+  followerId: string;
+  followerName?: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  createdAt: string;
+}
+
+const FOLLOWING_CACHE_PREFIX = 'portalko_following_v1_';
+const FOLLOWER_COUNTS_CACHE_KEY = 'portalko_author_follower_counts_v1';
+
+export function normalizeAuthorFollowKey(authorId?: string, authorName?: string): string {
+  const cleanId = (authorId || '').trim();
+  if (/^[a-zA-Z0-9_-]{1,128}$/.test(cleanId)) {
+    return cleanId;
+  }
+  const slug = slugify(authorName || 'avtor').replace(/[^a-zA-Z0-9_-]/g, '-');
+  const fallback = `author-${slug || 'avtor'}`;
+  return fallback.slice(0, 120);
+}
+
+function sanitizeFollowDocId(id: string): string {
+  const cleaned = (id || 'user').trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+  return cleaned || 'user';
+}
+
+function getCachedFollowingList(userId: string): string[] {
+  try {
+    const raw = localStorage.getItem(`${FOLLOWING_CACHE_PREFIX}${userId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+function saveCachedFollowingList(userId: string, authorKeys: string[]) {
+  try {
+    localStorage.setItem(`${FOLLOWING_CACHE_PREFIX}${userId}`, JSON.stringify(authorKeys));
+  } catch {
+    // ignore
+  }
+}
+
+function getCachedFollowerCount(authorKey: string): number {
+  try {
+    const raw = localStorage.getItem(FOLLOWER_COUNTS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed[authorKey] === 'number') {
+        return parsed[authorKey];
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return 0;
+}
+
+function saveCachedFollowerCount(authorKey: string, count: number) {
+  try {
+    const raw = localStorage.getItem(FOLLOWER_COUNTS_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    parsed[authorKey] = Math.max(0, count);
+    localStorage.setItem(FOLLOWER_COUNTS_CACHE_KEY, JSON.stringify(parsed));
+  } catch {
+    // ignore
+  }
+}
+
+export function subscribeToUserFollowing(
+  userId: string,
+  onFollowing: (authorKeys: string[], records: AuthorFollowRecord[]) => void
+): () => void {
+  if (!userId) {
+    onFollowing([], []);
+    return () => {};
+  }
+
+  const safeFollowerId = sanitizeFollowDocId(userId);
+  const cachedKeys = getCachedFollowingList(safeFollowerId);
+  if (cachedKeys.length > 0) {
+    onFollowing(cachedKeys, []);
+  }
+
+  const path = `users/${safeFollowerId}/following`;
+  try {
+    return onSnapshot(
+      collection(db, 'users', safeFollowerId, 'following'),
+      (snapshot) => {
+        const records: AuthorFollowRecord[] = snapshot.docs.map(d => ({
+          id: d.id,
+          ...(d.data() as Omit<AuthorFollowRecord, 'id'>),
+        }));
+        const keys = records.map(r => r.authorId || r.id);
+        saveCachedFollowingList(safeFollowerId, keys);
+        onFollowing(keys, records);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+        onFollowing(getCachedFollowingList(safeFollowerId), []);
+      }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    onFollowing(getCachedFollowingList(safeFollowerId), []);
+    return () => {};
+  }
+}
+
+export function subscribeToAuthorFollowerCount(
+  authorKey: string,
+  onCount: (count: number) => void
+): () => void {
+  if (!authorKey) {
+    onCount(0);
+    return () => {};
+  }
+
+  const safeAuthorKey = normalizeAuthorFollowKey(authorKey);
+  onCount(getCachedFollowerCount(safeAuthorKey));
+
+  const path = `author_followers/${safeAuthorKey}/followers`;
+  try {
+    return onSnapshot(
+      collection(db, 'author_followers', safeAuthorKey, 'followers'),
+      (snapshot) => {
+        const count = snapshot.size;
+        saveCachedFollowerCount(safeAuthorKey, count);
+        onCount(count);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return () => {};
+  }
+}
+
+export async function toggleFollowAuthorInFirestore(params: {
+  followerId: string;
+  followerName?: string;
+  authorId?: string;
+  authorName: string;
+  authorAvatar?: string;
+  follow: boolean;
+}): Promise<{ following: boolean; authorKey: string }> {
+  const safeFollowerId = sanitizeFollowDocId(params.followerId);
+  const authorKey = normalizeAuthorFollowKey(params.authorId, params.authorName);
+
+  const userFollowingPath = `users/${safeFollowerId}/following/${authorKey}`;
+  const authorFollowerPath = `author_followers/${authorKey}/followers/${safeFollowerId}`;
+
+  const userFollowingRef = doc(db, 'users', safeFollowerId, 'following', authorKey);
+  const authorFollowerRef = doc(db, 'author_followers', authorKey, 'followers', safeFollowerId);
+
+  if (params.follow) {
+    const cleanAvatar =
+      params.authorAvatar && params.authorAvatar.length <= 500000
+        ? params.authorAvatar
+        : undefined;
+
+    const basePayload: Record<string, any> = {
+      id: authorKey,
+      followerId: safeFollowerId,
+      followerName: (params.followerName || 'Bralec').trim().slice(0, 100),
+      authorId: authorKey,
+      authorName: (params.authorName || 'Avtor').trim().slice(0, 100) || 'Avtor',
+      createdAt: new Date().toISOString(),
+    };
+    if (cleanAvatar) {
+      basePayload.authorAvatar = cleanAvatar;
+    }
+
+    const followerSidePayload: Record<string, any> = {
+      ...basePayload,
+      id: safeFollowerId,
+    };
+
+    try {
+      await setDoc(userFollowingRef, cleanDataForFirestore(basePayload));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, userFollowingPath);
+    }
+
+    try {
+      await setDoc(authorFollowerRef, cleanDataForFirestore(followerSidePayload));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, authorFollowerPath);
+    }
+
+    const prevKeys = getCachedFollowingList(safeFollowerId);
+    if (!prevKeys.includes(authorKey)) {
+      saveCachedFollowingList(safeFollowerId, [...prevKeys, authorKey]);
+    }
+    saveCachedFollowerCount(authorKey, getCachedFollowerCount(authorKey) + 1);
+    return { following: true, authorKey };
+  } else {
+    try {
+      await deleteDoc(userFollowingRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, userFollowingPath);
+    }
+
+    try {
+      await deleteDoc(authorFollowerRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, authorFollowerPath);
+    }
+
+    const prevKeys = getCachedFollowingList(safeFollowerId);
+    saveCachedFollowingList(
+      safeFollowerId,
+      prevKeys.filter(k => k !== authorKey)
+    );
+    saveCachedFollowerCount(authorKey, Math.max(0, getCachedFollowerCount(authorKey) - 1));
+    return { following: false, authorKey };
+  }
+}
+

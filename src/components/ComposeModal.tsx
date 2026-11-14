@@ -34,12 +34,13 @@ import {
   Sparkles,
   Lock,
   Paperclip,
-  FileText
+  FileText,
+  Save
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { RichTextEditor } from './RichTextEditor';
 import { useAuth } from '../contexts/AuthContext';
-import { createPostInFirestore, createAdInFirestore, createEventInFirestore, MAX_ALLOWED_POST_BYTES } from '../services/firestoreService';
+import { createPostInFirestore, updatePostInFirestore, createAdInFirestore, createEventInFirestore, MAX_ALLOWED_POST_BYTES } from '../services/firestoreService';
 import {
   UploadedAttachment,
   MAX_STORAGE_FILE_BYTES,
@@ -148,6 +149,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   }, [embedCode, embedOrientation]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingMode, setSubmittingMode] = useState<'published' | 'osnutek' | null>(null);
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -362,6 +365,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setErrorMsg('');
       setSuccessMsg('');
       setIsSubmitting(false);
+      setSubmittingMode(null);
+      setSavedDraftId(null);
     } else {
       revokeAllObjectUrls();
     }
@@ -624,7 +629,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const authorRole = effectiveAuthorRole;
   const authorId = currentUser?.id || 'guest_user';
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (targetStatus: 'published' | 'osnutek' = 'published') => {
     if (!canPostCurrentType) {
       if (isGuestOrUnauth) {
         setErrorMsg('Za objavljanje morate biti prijavljeni.');
@@ -636,21 +641,32 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       return;
     }
 
-    if (!title.trim()) {
-      setErrorMsg('Prosimo, vnesite naslov objave.');
-      return;
-    }
-    if (!content.trim() && postType === 'post') {
-      setErrorMsg('Prosimo, vnesite vsebino objave.');
-      return;
+    const isDraftSave = targetStatus === 'osnutek' && postType === 'post';
+
+    if (isDraftSave) {
+      if (!title.trim() && !content.trim()) {
+        setErrorMsg('Vnesite vsaj naslov ali nekaj vsebine za shranjevanje osnutka.');
+        return;
+      }
+    } else {
+      if (!title.trim()) {
+        setErrorMsg('Prosimo, vnesite naslov objave.');
+        return;
+      }
+      if (!content.trim() && postType === 'post') {
+        setErrorMsg('Prosimo, vnesite vsebino objave.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
+    setSubmittingMode(isDraftSave ? 'osnutek' : 'published');
     setErrorMsg('');
+    setSuccessMsg('');
     setUploadProgressMsg('');
     setUploadProgressState(null);
 
-    const initialStatus: 'published' = 'published';
+    const initialStatus: 'published' | 'osnutek' = isDraftSave ? 'osnutek' : 'published';
     const initialAdStatus = 'active';
 
     const chosenCat = activeCategory;
@@ -863,7 +879,10 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       const finalAttachments = uploadedAttachments.length > 0 ? uploadedAttachments : undefined;
 
       if (postType === 'post' || postType === 'deal') {
-        const cleanPostTitle = title.replace(/^\[Ugodnost\]\s*/i, '').trim();
+        const cleanPostTitle = title.replace(/^\[Ugodnost\]\s*/i, '').trim() || (isDraftSave ? 'Neimenovan osnutek' : '');
+        if (isDraftSave && !title.trim()) {
+          setTitle(cleanPostTitle);
+        }
         const postPayload = {
           title: cleanPostTitle,
           subtitle: subtitle.trim() || undefined,
@@ -901,7 +920,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           tags: userTags.length > 0 ? userTags : undefined,
         };
 
-        console.group('📝 [Blog Post Workflow] Submitting Blog/Post with Firebase Storage Media');
+        console.group(`📝 [Blog Post Workflow] Submitting Blog/Post (status: ${initialStatus})`);
         console.log('👤 [Blog Post Workflow] Author Context:', {
           authorId,
           authorName,
@@ -917,16 +936,27 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         });
         console.log('📦 [Blog Post Workflow] Verifying Data Structure being sent to Firestore:', postPayload);
         console.log('📏 [Blog Post Workflow] Firestore document payload size:', estimatePayloadUtf8Bytes(postPayload), 'bytes');
-        console.log('🔍 [Blog Post Workflow] Verifying "published" status parameter:', postPayload.status);
+        console.log('🔍 [Blog Post Workflow] Verifying status parameter:', postPayload.status);
 
-        const createdId = await createPostInFirestore(postPayload);
+        let persistedId = savedDraftId;
+        if (postType === 'post' && savedDraftId) {
+          await updatePostInFirestore(savedDraftId, postPayload);
+        } else {
+          persistedId = await createPostInFirestore(postPayload);
+        }
 
-        if (!createdId) {
+        if (!persistedId) {
           console.error('❌ [Blog Post Workflow] Silent failure detected: createPostInFirestore did not return a valid document ID.');
           throw new Error('Objave žal ni bilo mogoče shraniti v bazo podatkov. Preverite povezavo ali pravice.');
         }
 
-        console.log('✅ [Blog Post Workflow] Post successfully saved & published with Firestore ID:', createdId);
+        if (isDraftSave) {
+          setSavedDraftId(persistedId);
+        } else {
+          setSavedDraftId(null);
+        }
+
+        console.log(`✅ [Blog Post Workflow] Post successfully saved with Firestore ID: ${persistedId} (status: ${initialStatus})`);
         console.groupEnd();
       } else if (postType === 'ad') {
         await createAdInFirestore({
@@ -1019,7 +1049,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           attachments: finalAttachments,
           embedCode: embedCode || undefined,
           embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
-          status: initialStatus,
+          status: 'published',
           isPromoted: false,
           tags: userTags.length > 0 ? userTags : undefined,
         });
@@ -1038,17 +1068,28 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             }
           : null
       );
-      setSuccessMsg('Vaša objava je bila uspešno objavljena in je takoj vidna vsem obiskovalcem!');
-      trackEvent('new_post_published', {
-        post_type: postType,
-        post_title: title.trim(),
-        category: categorySlug,
-        subcategory: subcategorySlug || '',
-      });
-      onPostCreated?.();
-      setTimeout(() => {
-        onClose();
-      }, 1200);
+      if (isDraftSave) {
+        setSuccessMsg('Osnutek je bil začasno shranjen v Firestore pod statusom "osnutek". Lahko nadaljujete s pisanjem ali ga najdete v svojem profilu pod "Moje objave".');
+        trackEvent('blog_draft_saved', {
+          post_type: postType,
+          post_title: title.trim() || 'Neimenovan osnutek',
+          category: categorySlug,
+          subcategory: subcategorySlug || '',
+        });
+        onPostCreated?.();
+      } else {
+        setSuccessMsg('Vaša objava je bila uspešno objavljena in je takoj vidna vsem obiskovalcem!');
+        trackEvent('new_post_published', {
+          post_type: postType,
+          post_title: title.trim(),
+          category: categorySlug,
+          subcategory: subcategorySlug || '',
+        });
+        onPostCreated?.();
+        setTimeout(() => {
+          onClose();
+        }, 1200);
+      }
     } catch (err: any) {
       console.error('❌ [Blog Post Workflow] Error occurred while creating or publishing post:', err);
       setUploadProgressState(null);
@@ -1067,6 +1108,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     } finally {
       setUploadProgressMsg('');
       setIsSubmitting(false);
+      setSubmittingMode(null);
     }
   };
 
@@ -2337,7 +2379,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
             </div>
           )}
 
-          <div className="flex items-center justify-between border-t border-surface-container-low pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low pt-4">
             <div className="flex items-center gap-1.5">
               <button 
                 type="button" 
@@ -2374,33 +2416,65 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                 <Unlink className="w-4 h-4" />
               </button>
             </div>
-            <button 
-              onClick={handleSubmit}
-              disabled={isSubmitting || !canPostCurrentType}
-              className={`px-6 py-2.5 rounded-xl font-label-md text-sm font-semibold shadow-md transition-all flex items-center gap-2 ${
-                canPostCurrentType
-                  ? 'bg-primary hover:bg-primary-container text-on-primary cursor-pointer' 
-                  : 'bg-surface-container-high text-outline cursor-not-allowed opacity-60'
-              } disabled:opacity-50`}
-              title={
-                !canPostCurrentType
-                  ? (isGuestOrUnauth ? 'Prijavite se za objavljanje' : 'Za objavo v tej kategoriji potrebujete status Preverjen uporabnik ali Skrbnik')
-                  : 'Oddaj objavo'
-              }
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>
-                    {uploadProgressState
-                      ? `Nalagam... ${uploadProgressState.overallPercent}%`
-                      : (uploadProgressMsg || 'Shranjevanje...')}
-                  </span>
-                </>
-              ) : (
-                <span>Objavi zdaj</span>
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
+              {postType === 'post' && (
+                <button
+                  type="button"
+                  onClick={() => handleSubmit('osnutek')}
+                  disabled={isSubmitting || !canPostCurrentType}
+                  className={`px-4 py-2.5 rounded-xl font-label-md text-xs sm:text-sm font-semibold border transition-all flex items-center gap-1.5 ${
+                    canPostCurrentType
+                      ? 'border-primary/35 bg-primary/10 hover:bg-primary/20 text-primary cursor-pointer'
+                      : 'border-surface-container bg-surface-container-high text-outline cursor-not-allowed opacity-60'
+                  } disabled:opacity-50`}
+                  title="Začasno shrani vsebino v Firestore pod statusom 'osnutek'"
+                >
+                  {isSubmitting && submittingMode === 'osnutek' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>
+                        {uploadProgressState
+                          ? `Shranjujem... ${uploadProgressState.overallPercent}%`
+                          : 'Shranjujem osnutek...'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Shrani kot osnutek</span>
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+              <button 
+                type="button"
+                onClick={() => handleSubmit('published')}
+                disabled={isSubmitting || !canPostCurrentType}
+                className={`px-6 py-2.5 rounded-xl font-label-md text-sm font-semibold shadow-md transition-all flex items-center gap-2 ${
+                  canPostCurrentType
+                    ? 'bg-primary hover:bg-primary-container text-on-primary cursor-pointer' 
+                    : 'bg-surface-container-high text-outline cursor-not-allowed opacity-60'
+                } disabled:opacity-50`}
+                title={
+                  !canPostCurrentType
+                    ? (isGuestOrUnauth ? 'Prijavite se za objavljanje' : 'Za objavo v tej kategoriji potrebujete status Preverjen uporabnik ali Skrbnik')
+                    : 'Oddaj objavo'
+                }
+              >
+                {isSubmitting && submittingMode === 'published' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>
+                      {uploadProgressState
+                        ? `Nalagam... ${uploadProgressState.overallPercent}%`
+                        : (uploadProgressMsg || 'Shranjevanje...')}
+                    </span>
+                  </>
+                ) : (
+                  <span>Objavi zdaj</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
