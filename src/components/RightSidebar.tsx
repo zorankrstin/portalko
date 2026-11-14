@@ -15,11 +15,11 @@ export function RightSidebar({ onNavigatePost }: RightSidebarProps = {}) {
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex w-full lg:w-[336px] xl:w-[340px] flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
-      {/* VREME WIDGET - Top prominent utility */}
-      <WeatherWidget />
-
       {/* Promocijska pasica */}
       <PromotionBannerZone position="right_sidebar" />
+
+      {/* VREME WIDGET - Top prominent utility */}
+      <WeatherWidget />
       
       {/* Oglasni prostor */}
       <AdSense />

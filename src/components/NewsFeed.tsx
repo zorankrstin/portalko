@@ -118,8 +118,19 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
     ...activeFeeds.map(feed => ({ id: feed.name, label: feed.name })),
   ];
 
+  const FEED_DELAY_CLASSES = [
+    'animate-feed-delay-0',
+    'animate-feed-delay-1',
+    'animate-feed-delay-2',
+    'animate-feed-delay-3',
+    'animate-feed-delay-4',
+    'animate-feed-delay-5',
+    'animate-feed-delay-6',
+    'animate-feed-delay-7',
+  ] as const;
+
   return (
-    <div className="flex flex-col gap-space-md">
+    <div className="flex flex-col gap-space-md animate-feed-item">
       {/* Header section */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
@@ -210,7 +221,7 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
         {rssItems.length === 0 && (isRefreshing || !hasLoaded) ? (
           <NewsFeedSkeletonList count={5} retryAttempt={retryAttempt} />
         ) : visibleNews.length === 0 ? (
-          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50 flex flex-col items-center gap-3">
+          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50 flex flex-col items-center gap-3 animate-feed-item">
             <Rss className="w-8 h-8 text-outline/50" />
             <p className="font-headline-sm text-base font-bold text-on-surface">Ni najdenih novic</p>
             <p className="font-body-sm text-xs text-outline max-w-sm">
@@ -263,18 +274,25 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
                 </span>
               </div>
             )}
-            {visibleNews.map((item, idx) => (
-              <RssPost
-                key={`rss-${item.id}-${idx}`}
-                id={item.id}
-                title={item.title}
-                link={item.link}
-                description={item.description}
-                pubDate={item.pubDate}
-                sourceName={item.sourceName}
-                thumbnail={item.thumbnail}
-              />
-            ))}
+            {visibleNews.map((item, idx) => {
+              const delayClass = FEED_DELAY_CLASSES[Math.min(idx % PAGE_SIZE, FEED_DELAY_CLASSES.length - 1)];
+              return (
+                <div
+                  key={`${selectedCategory}-rss-${item.id}-${idx}`}
+                  className={`animate-feed-item ${delayClass}`}
+                >
+                  <RssPost
+                    id={item.id}
+                    title={item.title}
+                    link={item.link}
+                    description={item.description}
+                    pubDate={item.pubDate}
+                    sourceName={item.sourceName}
+                    thumbnail={item.thumbnail}
+                  />
+                </div>
+              );
+            })}
           </>
         )}
       </div>

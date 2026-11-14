@@ -62,7 +62,9 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex w-full lg:w-[336px] xl:w-[340px] flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
-      
+      {/* Promocijska pasica */}
+      <PromotionBannerZone position="right_sidebar" />
+
       {/* 0. VROČE UGODNOSTI */}
       <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-lowest shadow-sm border border-surface-container/60 space-y-3">
         <div className="flex items-center justify-between">
@@ -113,9 +115,6 @@ export function RightSidebarDeals({ onNavigatePost }: RightSidebarDealsProps = {
           )}
         </div>
       </div>
-
-      {/* Promocijska pasica */}
-      <PromotionBannerZone position="right_sidebar" />
 
       {/* Oglasni prostor */}
       <AdSense />

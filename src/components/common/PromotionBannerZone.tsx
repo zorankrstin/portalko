@@ -88,6 +88,8 @@ export function PromotionBannerZone({
     return null;
   }
 
+  const isRightSidebar = position === 'right_sidebar';
+
   return (
     <div
       className={`promotion-banner-zone flex flex-col gap-3.5 w-full ${className}`}
@@ -98,7 +100,11 @@ export function PromotionBannerZone({
           return (
             <div
               key={banner.id}
-              className="bg-surface-container-lowest border border-surface-container/60 rounded-2xl p-2 sm:p-2.5 shadow-xs transition-shadow hover:shadow-sm flex flex-col items-center justify-center overflow-visible w-full"
+              className={`bg-surface-container-lowest rounded-2xl flex flex-col items-center justify-center overflow-visible w-full transition-all duration-200 ${
+                isRightSidebar
+                  ? 'p-2.5 sm:p-3 border border-outline-variant/65 ring-1 ring-primary/10 shadow-[0_4px_14px_-3px_rgba(19,27,46,0.08),0_2px_6px_-2px_rgba(0,97,148,0.06)] hover:shadow-[0_8px_20px_-4px_rgba(19,27,46,0.12)] hover:border-primary/35'
+                  : 'p-2 sm:p-2.5 border border-surface-container/60 shadow-xs hover:shadow-sm'
+              }`}
             >
               {showSponsoredLabel && (
                 <div className="flex items-center justify-between px-1.5 pb-1.5 border-b border-surface-container-low mb-2 text-[10px] text-outline font-semibold uppercase tracking-wider w-full">
@@ -121,13 +127,19 @@ export function PromotionBannerZone({
 
           const content = (
             <div
-              className={`group relative overflow-hidden rounded-2xl border border-surface-container/70 bg-surface-container-lowest shadow-xs hover:shadow-md transition-all duration-300 ${
+              className={`group relative overflow-hidden rounded-2xl bg-surface-container-lowest transition-all duration-300 ${
                 isMainContainer ? 'w-full' : ''
+              } ${
+                isRightSidebar
+                  ? 'p-1.5 border border-outline-variant/65 ring-1 ring-primary/10 shadow-[0_4px_14px_-3px_rgba(19,27,46,0.08),0_2px_6px_-2px_rgba(0,97,148,0.06)] hover:shadow-[0_8px_20px_-4px_rgba(19,27,46,0.12)] hover:border-primary/35'
+                  : 'border border-surface-container/70 shadow-xs hover:shadow-md'
               }`}
             >
               {/* Image Container */}
               <div
                 className={`relative overflow-hidden w-full ${
+                  isRightSidebar ? 'rounded-xl' : ''
+                } ${
                   isMainContainer
                     ? 'h-36 sm:h-44 md:h-52'
                     : isLeftSidebar

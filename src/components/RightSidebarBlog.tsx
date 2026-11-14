@@ -10,6 +10,7 @@ import { PostDetailTarget } from '../types';
 import { ComposeModal } from './ComposeModal';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
+import { PromotionBannerZone } from './common/PromotionBannerZone';
 
 interface RightSidebarBlogProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -57,7 +58,9 @@ export function RightSidebarBlog({ onNavigatePost }: RightSidebarBlogProps) {
       data-sidebar="right" 
       className="sidebar-scrollable hidden lg:flex w-full lg:w-[336px] xl:w-[340px] flex-col gap-space-md sticky top-20 self-start max-h-[calc(100vh-5.5rem)] overflow-y-auto no-scrollbar pb-6 overscroll-contain"
     >
-      
+      {/* Promocijska pasica */}
+      <PromotionBannerZone position="right_sidebar" />
+
       {/* 1. Postani avtor / Deli svojo zgodbo CTA */}
       <div className="bg-gradient-to-br from-primary/10 via-surface-container-lowest to-surface-container-lowest rounded-2xl p-4 sm:p-5 shadow-sm border border-primary/20 flex flex-col gap-3 relative overflow-hidden">
         <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider font-label-caps">

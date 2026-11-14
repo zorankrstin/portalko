@@ -1,7 +1,8 @@
-import { Search, ChevronDown, Bookmark, X, Filter, LogOut, User as UserIcon, Shield, Settings, Crown, UserCheck } from 'lucide-react';
+import { Search, ChevronDown, Bookmark, X, Filter, LogOut, User as UserIcon, Shield, Settings, Crown, UserCheck, Bell } from 'lucide-react';
 import { NotificationCenter } from './NotificationCenter';
 import { useBookmarks } from '../contexts/BookmarkContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationContext';
 import { LoginModal } from './LoginModal';
 import { UserAvatar } from './common/UserAvatar';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -43,7 +44,35 @@ export function Header({
 
   const { currentUser, logout } = useAuth();
   const { savedIds } = useBookmarks();
+  const { notifications, unreadCount, markAllAsRead } = useNotifications();
   const savedCount = savedIds.length;
+
+  const unreadNotifications = useMemo(
+    () => notifications.filter(n => !n.read),
+    [notifications]
+  );
+  const unreadMessagesCount = useMemo(
+    () => unreadNotifications.filter(n => n.type === 'comment' || n.type === 'reply').length,
+    [unreadNotifications]
+  );
+  const unreadSystemCount = useMemo(
+    () => unreadNotifications.filter(n => n.type === 'system').length,
+    [unreadNotifications]
+  );
+  const hasUnreadAlerts = unreadCount > 0;
+  const unreadSummaryTitle = useMemo(() => {
+    if (!hasUnreadAlerts) return '';
+    if (unreadMessagesCount > 0 && unreadSystemCount > 0) {
+      return `Nova sporočila (${unreadMessagesCount}) in sistemska obvestila (${unreadSystemCount})`;
+    }
+    if (unreadSystemCount > 0) {
+      return `Nova sistemska obvestila (${unreadSystemCount})`;
+    }
+    if (unreadMessagesCount > 0) {
+      return `Nova sporočila in odgovori (${unreadMessagesCount})`;
+    }
+    return `Neprebrana obvestila (${unreadCount})`;
+  }, [hasUnreadAlerts, unreadMessagesCount, unreadSystemCount, unreadCount]);
 
   const parsedSearch = parseSearchQuery(searchQuery || '');
   
@@ -289,16 +318,29 @@ export function Header({
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                 className="flex items-center gap-1 sm:gap-2 p-1 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer"
                 aria-expanded={isUserMenuOpen}
-                title={`Profil: ${currentUser.name}`}
+                aria-label={hasUnreadAlerts ? `Profil: ${currentUser.name} (${unreadSummaryTitle})` : `Profil: ${currentUser.name}`}
+                title={hasUnreadAlerts ? `Profil: ${currentUser.name} • ${unreadSummaryTitle}` : `Profil: ${currentUser.name}`}
               >
-                <UserAvatar
-                  src={currentUser.avatar}
-                  name={currentUser.name}
-                  userId={currentUser.id}
-                  role={currentUser.role}
-                  size="sm"
-                  className="w-8 h-8 sm:w-9 sm:h-9 ring-2 ring-primary/20 shadow-xs"
-                />
+                <div className="relative shrink-0">
+                  <UserAvatar
+                    src={currentUser.avatar}
+                    name={currentUser.name}
+                    userId={currentUser.id}
+                    role={currentUser.role}
+                    size="sm"
+                    className="w-8 h-8 sm:w-9 sm:h-9 ring-2 ring-primary/20 shadow-xs"
+                  />
+                  {hasUnreadAlerts && (
+                    <span
+                      id="header-profile-notification-dot"
+                      className="absolute -top-0.5 -right-0.5 flex h-3 w-3 pointer-events-none"
+                      aria-hidden="true"
+                    >
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 ring-2 ring-white shadow-xs" />
+                    </span>
+                  )}
+                </div>
                 <div className="hidden md:flex flex-col text-left">
                   <span className="text-xs font-bold text-on-surface leading-tight truncate max-w-[120px]">
                     {currentUser.name}
@@ -323,6 +365,38 @@ export function Header({
                       <span>{roleInfo.label}</span>
                     </span>
                   </div>
+
+                  {/* Unread messages & system notifications alert */}
+                  {hasUnreadAlerts && (
+                    <div className="px-3 py-2 border-b border-surface-container-low bg-red-500/5">
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsUserMenuOpen(false);
+                            document.getElementById('header-notification-bell')?.click();
+                          }}
+                          className="flex items-center gap-2 text-left text-xs font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer min-w-0"
+                        >
+                          <span className="relative flex h-2 w-2 shrink-0">
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600" />
+                          </span>
+                          <Bell className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                          <span className="truncate">
+                            {unreadSummaryTitle}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={markAllAsRead}
+                          className="text-[10px] font-bold text-primary hover:underline shrink-0 cursor-pointer"
+                          title="Označi vsa obvestila kot prebrana"
+                        >
+                          Prebrano
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Menu actions */}
                   <div className="py-1">

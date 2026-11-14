@@ -301,8 +301,19 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
     }, 450);
   };
 
+  const FEED_DELAY_CLASSES = [
+    'animate-feed-delay-0',
+    'animate-feed-delay-1',
+    'animate-feed-delay-2',
+    'animate-feed-delay-3',
+    'animate-feed-delay-4',
+    'animate-feed-delay-5',
+    'animate-feed-delay-6',
+    'animate-feed-delay-7',
+  ] as const;
+
   return (
-    <div className="flex flex-col gap-space-md">
+    <div className="flex flex-col gap-space-md animate-feed-item">
       {/* Header section */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
@@ -491,17 +502,24 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
       {/* Cards List: 10 cards initially, 10 more on each load */}
       <div className="flex flex-col gap-space-md">
         {visibleItems.length === 0 ? (
-          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50">
+          <div className="bg-surface-container-lowest rounded-2xl p-8 text-center text-outline border border-surface-container/50 animate-feed-item">
             Ni najdenih blog člankov za izbrane kriterije.
           </div>
         ) : (
-          visibleItems.map((item, idx) => (
-            <FirestorePostCard 
-              key={`fs-post-${item.data.id}-${idx}`} 
-              post={item.data}
-              onNavigatePost={onNavigatePost}
-            />
-          ))
+          visibleItems.map((item, idx) => {
+            const delayClass = FEED_DELAY_CLASSES[Math.min(idx % PAGE_SIZE, FEED_DELAY_CLASSES.length - 1)];
+            return (
+              <div
+                key={`${selectedCategory}-${selectedSubcategory}-${selectedTertiaryCategory}-${selectedRegion}-${sortOption}-fs-post-${item.data.id}-${idx}`}
+                className={`animate-feed-item ${delayClass}`}
+              >
+                <FirestorePostCard
+                  post={item.data}
+                  onNavigatePost={onNavigatePost}
+                />
+              </div>
+            );
+          })
         )}
       </div>
 
