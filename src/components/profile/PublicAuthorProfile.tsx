@@ -249,12 +249,53 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
   // Aggregate author's items
   const authorItems = useMemo<AuthorItemCardData[]>(() => {
     const itemsMap = new Map<string, AuthorItemCardData>();
+    const excludedIds = new Set<string>();
+    const excludedTitleSlugs = new Set<string>();
+
+    const isHiddenStatus = (status?: string) => {
+      const s = (status || '').toLowerCase().trim();
+      return s === 'osnutek' || s === 'draft' || s === 'pending' || s === 'rejected' || s === 'archived';
+    };
+
+    const normalizeCleanId = (id?: string) =>
+      String(id || '')
+        .toLowerCase()
+        .trim()
+        .replace(/^(event|ad|deal|blog|post|news)-/, '');
+
+    const hasExistingItem = (type: AuthorItemCardData['type'], id?: string, title?: string) => {
+      if (id && itemsMap.has(`${type}-${id}`)) return true;
+      const cleanId = normalizeCleanId(id);
+      const titleSlug = title ? slugify(title) : '';
+      const idSlug = id ? slugify(id) : '';
+
+      for (const existing of itemsMap.values()) {
+        const isSameCollectionGroup =
+          existing.type === type ||
+          ((existing.type === 'post' || existing.type === 'deal') && (type === 'post' || type === 'deal'));
+        if (!isSameCollectionGroup) continue;
+        if (id && existing.id === id) return true;
+        if (cleanId && normalizeCleanId(existing.id) === cleanId) return true;
+        const existingTitleSlug = slugify(existing.title);
+        if (existingTitleSlug) {
+          if (titleSlug && existingTitleSlug === titleSlug) return true;
+          if (idSlug && existingTitleSlug === idSlug) return true;
+        }
+      }
+      return false;
+    };
 
     // 1. Firestore Posts / Deals
     firestorePosts.forEach(p => {
-      if (p.status === 'osnutek' || p.status === 'rejected' || p.status === 'archived') return;
+      if (isHiddenStatus(p.status)) {
+        excludedIds.add(p.id);
+        excludedIds.add(normalizeCleanId(p.id));
+        if (p.title) excludedTitleSlugs.add(slugify(p.title));
+        return;
+      }
       if (isMatchingAuthor(p.authorName, p.authorId)) {
         const itemType = (p.category === 'deal' || p.category === 'ugodnosti' || p.categoryName === 'Ugodnosti' || p.categoryName === 'Ugodnost') ? 'deal' : 'post';
+        if (hasExistingItem(itemType, p.id, p.title)) return;
         itemsMap.set(`${itemType}-${p.id}`, {
           id: p.id,
           type: itemType,
@@ -274,7 +315,14 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 2. Firestore Ads
     firestoreAds.forEach(a => {
+      if (isHiddenStatus((a as any).status)) {
+        excludedIds.add(a.id);
+        excludedIds.add(normalizeCleanId(a.id));
+        if (a.title) excludedTitleSlugs.add(slugify(a.title));
+        return;
+      }
       if (isMatchingAuthor(a.authorName, a.authorId)) {
+        if (hasExistingItem('ad', a.id, a.title)) return;
         itemsMap.set(`ad-${a.id}`, {
           id: a.id,
           type: 'ad',
@@ -294,9 +342,16 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 3. Firestore Events
     firestoreEvents.forEach(e => {
+      if (isHiddenStatus((e as any).status)) {
+        excludedIds.add(e.id);
+        excludedIds.add(normalizeCleanId(e.id));
+        if (e.title) excludedTitleSlugs.add(slugify(e.title));
+        return;
+      }
       const evAuthorName = e.authorName || (e as any).organizer;
       const evAuthorId = e.authorId || (e as any).organizerId;
       if (isMatchingAuthor(evAuthorName, evAuthorId)) {
+        if (hasExistingItem('event', e.id, e.title)) return;
         const resolvedDate = resolveEventDisplayDate(e);
         itemsMap.set(`event-${e.id}`, {
           id: e.id,
@@ -318,7 +373,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 4. Mock Blogs
     INITIAL_BLOG_POSTS.forEach(b => {
-      if (isMatchingAuthor(b.author, b.authorId)) {
+      if (isMatchingAuthor(b.author, b.authorId) && !hasExistingItem('post', b.id, b.title)) {
         itemsMap.set(`post-${b.id}`, {
           id: b.id,
           type: 'post',
@@ -337,7 +392,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 5. Mock Ads
     INITIAL_ADS.forEach(ad => {
-      if (isMatchingAuthor(ad.author, ad.authorId)) {
+      if (isMatchingAuthor(ad.author, ad.authorId) && !hasExistingItem('ad', ad.id, ad.title)) {
         itemsMap.set(`ad-${ad.id}`, {
           id: ad.id,
           type: 'ad',
@@ -356,7 +411,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 6. Mock Events
     INITIAL_EVENTS.forEach(ev => {
-      if (isMatchingAuthor(ev.organizer, ev.organizerId)) {
+      if (isMatchingAuthor(ev.organizer, ev.organizerId) && !hasExistingItem('event', ev.id, ev.title)) {
         itemsMap.set(`event-${ev.id}`, {
           id: ev.id,
           type: 'event',
@@ -375,7 +430,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
 
     // 7. Mock Deals
     [...HERO_BENTO_DEALS, ...INITIAL_DEALS].forEach(d => {
-      if (isMatchingAuthor(d.partner, d.partnerId)) {
+      if (isMatchingAuthor(d.partner, d.partnerId) && !hasExistingItem('deal', d.id, d.title)) {
         itemsMap.set(`deal-${d.id}`, {
           id: d.id,
           type: 'deal',
@@ -392,20 +447,36 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
       }
     });
 
-    // 8. If navigated from a specific post target and it's not yet in map, add it
-    if (targetAuthor.fromPostTarget && !itemsMap.has(`${targetAuthor.fromPostTarget.type}-${targetAuthor.fromPostTarget.id}`)) {
+    // 8. If navigated from a specific post target and it's not yet in map (and not unpublished/excluded), add fallback card
+    if (targetAuthor.fromPostTarget) {
       const t = targetAuthor.fromPostTarget;
-      itemsMap.set(`${t.type}-${t.id}`, {
-        id: t.id,
-        type: t.type === 'ad' ? 'ad' : t.type === 'event' ? 'event' : t.type === 'deal' ? 'deal' : 'post',
-        title: t.initialData?.title || 'Objava avtorja',
-        description: t.initialData?.description || t.initialData?.content || '',
-        category: t.initialData?.category,
-        imageUrl: t.initialData?.image || t.initialData?.imageUrl,
-        price: t.initialData?.price || t.initialData?.discount,
-        location: t.initialData?.location || t.initialData?.region,
-        likesCount: (t.initialData as any)?.likesCount || 0,
-      });
+      const normalizedType: AuthorItemCardData['type'] =
+        t.type === 'ad' ? 'ad' : t.type === 'event' ? 'event' : t.type === 'deal' ? 'deal' : 'post';
+      const targetTitle = t.initialData?.title;
+      const targetTitleSlug = targetTitle ? slugify(targetTitle) : t.titleSlug ? slugify(t.titleSlug) : '';
+      const targetCleanId = normalizeCleanId(t.id);
+
+      const isExcluded =
+        excludedIds.has(t.id) ||
+        excludedIds.has(targetCleanId) ||
+        (targetTitleSlug ? excludedTitleSlugs.has(targetTitleSlug) : false) ||
+        excludedTitleSlugs.has(slugify(t.id));
+
+      const alreadyIncluded = hasExistingItem(normalizedType, t.id, targetTitle || t.titleSlug);
+
+      if (!isExcluded && !alreadyIncluded && targetTitle) {
+        itemsMap.set(`${normalizedType}-${t.id}`, {
+          id: t.id,
+          type: normalizedType,
+          title: targetTitle,
+          description: t.initialData?.description || t.initialData?.content || '',
+          category: t.initialData?.category,
+          imageUrl: t.initialData?.image || t.initialData?.imageUrl,
+          price: t.initialData?.price || t.initialData?.discount,
+          location: t.initialData?.location || t.initialData?.region,
+          likesCount: (t.initialData as any)?.likesCount || 0,
+        });
+      }
     }
 
     return Array.from(itemsMap.values());
