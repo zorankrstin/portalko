@@ -1572,6 +1572,10 @@ export async function createPostInFirestore(post: Omit<FirestorePost, 'id'> & { 
       console.warn('Note: Could not update local posts cache:', cacheErr);
     }
 
+    if (typeof window !== 'undefined') {
+      fetch('/api/rss/invalidate', { method: 'POST' }).catch(() => {});
+    }
+
     console.groupEnd();
     return postRef.id;
   } catch (error) {
@@ -1788,6 +1792,9 @@ export async function updatePostInFirestore(postId: string, data: Partial<Firest
           ...(finalMergedDoc.images !== undefined ? { images: finalMergedDoc.images } : {}),
           updatedAt: now,
         }));
+      }
+      if (typeof window !== 'undefined') {
+        fetch('/api/rss/invalidate', { method: 'POST' }).catch(() => {});
       }
     }
   } catch (error) {

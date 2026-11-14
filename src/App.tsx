@@ -33,6 +33,7 @@ import { updatePageSeo } from './utils/seoUtils';
 import { usePageSeo, DEFAULT_PAGE_SEO } from './services/seoSettingsService';
 import { initAnalyticsNavigationTracker } from './utils/analyticsUtils';
 import { parseUrlPath, buildPostUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } from './utils/urlUtils';
+import { openCookieSettingsModal } from './services/cookieConsentService';
 
 export { VIEW_HASH_MAP };
 
@@ -629,7 +630,7 @@ export default function App() {
   };
 
   return (
-    <div className="pb-20 lg:pb-0 min-h-screen w-full max-w-full overflow-x-clip">
+    <div className="pb-20 lg:pb-0 min-h-screen w-full max-w-full overflow-x-clip flex flex-col">
       <Header 
         onProfileClick={() => {
           setSelectedAuthorProfile(null);
@@ -673,7 +674,7 @@ export default function App() {
         </div>
       )}
       
-      <div className="max-w-7xl 2xl:max-w-[1400px] w-full mx-auto px-4 lg:px-6 xl:px-margin-desktop py-space-md" id="main-content-container">
+      <div className="flex-1 max-w-7xl 2xl:max-w-[1400px] w-full mx-auto px-4 lg:px-6 xl:px-margin-desktop py-space-md" id="main-content-container">
         <div 
           className={`grid grid-cols-1 ${
             currentView === 'admin' 
@@ -847,7 +848,35 @@ export default function App() {
           )}
         </div>
       </div>
-      
+
+      <footer className="w-full border-t border-surface-container/60 bg-surface-container-lowest/80 mt-6">
+        <div className="max-w-7xl 2xl:max-w-[1400px] w-full mx-auto px-4 lg:px-6 xl:px-margin-desktop py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex flex-col items-center sm:items-start gap-1.5 text-center sm:text-left">
+            <div className="text-outline font-label-md text-xs flex flex-wrap items-center justify-center sm:justify-start gap-x-2.5 gap-y-1">
+              <a className="hover:text-primary transition-colors" href="/pogoji-uporabe">Pogoji uporabe</a>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  openCookieSettingsModal();
+                }}
+                className="hover:text-primary transition-colors cursor-pointer bg-transparent p-0 border-0 text-inherit font-inherit"
+              >
+                Piškotki
+              </button>
+              <span>•</span>
+              <a className="hover:text-primary transition-colors" href="/novice">RSS viri</a>
+              <span>•</span>
+              <a className="hover:text-primary transition-colors" href="/o-nas">O nas</a>
+            </div>
+            <p className="text-outline-variant font-label-caps text-label-caps">
+              © 2026 Portalko • Vse pravice pridržane
+            </p>
+          </div>
+        </div>
+      </footer>
+
       <BottomNav currentView={activeNavView} onViewChange={handleViewChange} />
       <BackToTopButton />
       <CookieConsentBanner />

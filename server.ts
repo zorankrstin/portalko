@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
@@ -11,6 +12,12 @@ import {
   SitemapEntry, 
   SITE_URL 
 } from "./src/utils/sitemapGenerator";
+import {
+  formatFirestoreDocToRssItem,
+  generateSiteRssXml,
+  SiteRssFeedType,
+  SiteRssItem,
+} from "./src/utils/rssFeedGenerator";
 import { isMaliciousSecurityPath, verifyIncomingRequestSecurity } from "./src/utils/securityGuard";
 
 dotenv.config();
@@ -28,10 +35,132 @@ const GA_TAG_HTML = `    <!-- Google tag (gtag.js) -->
       gtag('config', 'G-DYZSLZ29C4');
     </script>`;
 
-// Cached dynamic sitemap in memory (refreshed every 15 minutes)
+// Shared Firebase / Firestore singleton for server-side sitemap & dynamic RSS feed
+let cachedServerFirestoreDb: any = null;
+
+async function getServerFirestoreDb(): Promise<any | null> {
+  if (cachedServerFirestoreDb) return cachedServerFirestoreDb;
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (!fs.existsSync(configPath)) return null;
+
+  const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const { initializeApp, getApps, getApp } = await import("firebase/app");
+  const { getFirestore } = await import("firebase/firestore");
+  const app = getApps().length > 0 ? getApp() : initializeApp(cfg);
+  cachedServerFirestoreDb = getFirestore(app, cfg.firestoreDatabaseId);
+  return cachedServerFirestoreDb;
+}
+
+// Cached dynamic sitemap in memory (refreshed every 15 minutes or when posts change)
 let cachedSitemapXml: string | null = null;
 let lastSitemapTime = 0;
 const SITEMAP_CACHE_DURATION = 15 * 60 * 1000;
+
+// Real-time published posts cache & generated RSS XML cache for external news aggregators
+let realtimeSitePostDocs: Array<{ id: string; data: any }> = [];
+let hasRealtimePostsSnapshot = false;
+let isRealtimePostsListenerActive = false;
+const cachedSiteRssXmlMap = new Map<string, { xml: string; etag: string; lastModified: string }>();
+
+function invalidateSiteFeedCaches() {
+  cachedSiteRssXmlMap.clear();
+  cachedSitemapXml = null;
+  lastSitemapTime = 0;
+}
+
+async function startSiteRssRealtimeSync(): Promise<void> {
+  if (isRealtimePostsListenerActive) return;
+  try {
+    const db = await getServerFirestoreDb();
+    if (!db) return;
+
+    const { collection, onSnapshot } = await import("firebase/firestore");
+    isRealtimePostsListenerActive = true;
+    onSnapshot(
+      collection(db, "posts"),
+      (snapshot) => {
+        realtimeSitePostDocs = snapshot.docs.map((d) => ({
+          id: d.id,
+          data: d.data(),
+        }));
+        hasRealtimePostsSnapshot = true;
+        invalidateSiteFeedCaches();
+      },
+      (err) => {
+        isRealtimePostsListenerActive = false;
+        console.warn("[Site RSS] Firestore realtime listener notice:", err?.message || err);
+      }
+    );
+  } catch (err: any) {
+    isRealtimePostsListenerActive = false;
+    console.warn("[Site RSS] Could not initialize realtime posts listener:", err?.message || err);
+  }
+}
+
+async function getPublishedSitePostsDocs(): Promise<Array<{ id: string; data: any }>> {
+  if (hasRealtimePostsSnapshot) {
+    return realtimeSitePostDocs;
+  }
+
+  try {
+    const db = await getServerFirestoreDb();
+    if (!db) return [];
+    const { collection, getDocs } = await import("firebase/firestore");
+    const snap = await getDocs(collection(db, "posts"));
+    const docs = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+    realtimeSitePostDocs = docs;
+    hasRealtimePostsSnapshot = true;
+    return docs;
+  } catch (err: any) {
+    console.warn("[Site RSS] Error reading posts from Firestore:", err?.message || err);
+    return realtimeSitePostDocs;
+  }
+}
+
+async function getOrGenerateSiteRssXml(options: {
+  feedType: SiteRssFeedType;
+  selfUrl: string;
+  categoryFilter?: string;
+  maxItems?: number;
+}): Promise<{ xml: string; etag: string; lastModified: string }> {
+  const cacheKey = `${options.feedType}|${options.selfUrl}|${options.categoryFilter || ""}|${options.maxItems || 60}`;
+  const cached = cachedSiteRssXmlMap.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const docs = await getPublishedSitePostsDocs();
+  const items: SiteRssItem[] = [];
+
+  for (const entry of docs) {
+    const formatted = formatFirestoreDocToRssItem(entry.data, entry.id, options.feedType);
+    if (!formatted) continue;
+
+    if (options.categoryFilter) {
+      const targetCat = options.categoryFilter.toLowerCase().trim();
+      const matchesCat = (formatted.categories || [formatted.category]).some(
+        (c) => c.toLowerCase().includes(targetCat)
+      );
+      if (!matchesCat) continue;
+    }
+
+    items.push(formatted);
+  }
+
+  const xml = generateSiteRssXml(items, {
+    feedType: options.feedType,
+    selfUrl: options.selfUrl,
+    maxItems: options.maxItems || 60,
+  });
+
+  const etag = `"${crypto.createHash("sha1").update(xml).digest("hex")}"`;
+  const newestMs = items.reduce((max, it) => (it.timestampMs > max ? it.timestampMs : max), 0);
+  const lastModified = new Date(newestMs > 0 ? newestMs : Date.now()).toUTCString();
+
+  const result = { xml, etag, lastModified };
+  cachedSiteRssXmlMap.set(cacheKey, result);
+  return result;
+}
 
 async function getOrGenerateSitemap(): Promise<string> {
   const now = Date.now();
@@ -43,13 +172,9 @@ async function getOrGenerateSitemap(): Promise<string> {
   const seenLocs = new Set<string>(entries.map(e => e.loc));
 
   try {
-    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-    if (fs.existsSync(configPath)) {
-      const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
-      const { initializeApp } = await import("firebase/app");
-      const { getFirestore, collection, getDocs } = await import("firebase/firestore");
-      const app = initializeApp(cfg);
-      const db = getFirestore(app, cfg.firestoreDatabaseId);
+    const db = await getServerFirestoreDb();
+    if (db) {
+      const { collection, getDocs } = await import("firebase/firestore");
 
       // Fetch Events
       try {
@@ -233,8 +358,31 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  const PUBLIC_SYNDICATION_PATHS = new Set([
+    "/rss.xml",
+    "/feed.xml",
+    "/rss",
+    "/feed",
+    "/blog/rss.xml",
+    "/blog/feed",
+    "/novice/rss.xml",
+    "/novice/feed",
+    "/api/rss/site.xml",
+    "/sitemap.xml",
+    "/robots.txt",
+  ]);
+
   // 1. ENTRY-LEVEL SECURITY MIDDLEWARE: Reject known malicious scanner paths & bot User-Agents before any route handling
+  // Allow external RSS news aggregators, feed readers & search crawlers on public syndication endpoints (/rss.xml, /sitemap.xml, etc.)
   app.use((req, res, next) => {
+    const cleanReqPath = (req.path || "").toLowerCase().replace(/\/+$/, "") || "/";
+    if (PUBLIC_SYNDICATION_PATHS.has(cleanReqPath)) {
+      if (isMaliciousSecurityPath(req.path, req.originalUrl || req.url)) {
+        return res.status(404).type("text/plain").send("Not Found");
+      }
+      return next();
+    }
+
     const userAgent = req.headers["user-agent"] || "";
     const check = verifyIncomingRequestSecurity(req.path, req.originalUrl || req.url, userAgent);
     if (!check.allowed) {
@@ -255,6 +403,78 @@ async function startServer() {
       return res.sendStatus(200);
     }
     next();
+  });
+
+  // Dynamic Site XML RSS 2.0 Feed endpoints for external news aggregators & feed readers
+  const handleSiteRssFeedRequest = async (req: express.Request, res: express.Response) => {
+    try {
+      const pathLower = (req.path || "").toLowerCase();
+      const queryType = String(req.query.type || "").toLowerCase().trim();
+      let feedType: SiteRssFeedType = "all";
+      if (pathLower.startsWith("/blog") || queryType === "blog") {
+        feedType = "blog";
+      } else if (pathLower.startsWith("/novice") || queryType === "news") {
+        feedType = "news";
+      }
+
+      const categoryFilter = typeof req.query.category === "string" ? req.query.category.trim() : undefined;
+      const parsedLimit = Number(req.query.limit);
+      const maxItems = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(100, Math.floor(parsedLimit)) : 60;
+
+      const host = req.get("host");
+      const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim() || req.protocol || "https";
+      const selfUrl = host ? `${proto}://${host}${req.originalUrl}` : `${SITE_URL}${req.path}`;
+
+      const { xml, etag, lastModified } = await getOrGenerateSiteRssXml({
+        feedType,
+        selfUrl,
+        categoryFilter,
+        maxItems,
+      });
+
+      res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
+      res.setHeader("ETag", etag);
+      res.setHeader("Last-Modified", lastModified);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+
+      if (req.headers["if-none-match"] === etag) {
+        return res.status(304).end();
+      }
+
+      return res.status(200).send(xml);
+    } catch (err: any) {
+      console.error("[Site RSS] Error generating RSS XML feed:", err);
+      const fallbackXml = generateSiteRssXml([], {
+        feedType: "all",
+        selfUrl: `${SITE_URL}/rss.xml`,
+      });
+      res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      return res.status(200).send(fallbackXml);
+    }
+  };
+
+  app.get(
+    [
+      "/rss.xml",
+      "/feed.xml",
+      "/rss",
+      "/feed",
+      "/blog/rss.xml",
+      "/blog/feed",
+      "/novice/rss.xml",
+      "/novice/feed",
+      "/api/rss/site.xml",
+    ],
+    handleSiteRssFeedRequest
+  );
+
+  // Explicit cache invalidation hook (called when posts are published/updated)
+  app.post("/api/rss/invalidate", (req, res) => {
+    invalidateSiteFeedCaches();
+    res.json({ success: true });
   });
 
   // Sitemap endpoint (dynamic and real-time with Firestore entries)
@@ -432,25 +652,26 @@ async function startServer() {
 
   // Server-side RSS Cache keyed by requested feed configurations
   const serverRssCaches = new Map<string, { timestamp: number; items: ServerNewsItem[] }>();
+  const perFeedFallbackCache = new Map<string, ServerNewsItem[]>();
+  const inFlightRssFetches = new Map<string, Promise<ServerNewsItem[]>>();
   let emergencyRssFallbackItems: ServerNewsItem[] = [];
   const articleThumbnailCache = new Map<string, string>();
 
-  async function fetchArticleOgImage(url: string, timeoutMs = 3000): Promise<string | null> {
+  async function fetchArticleOgImage(url: string, timeoutMs = 2500): Promise<string | null> {
     if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) return null;
     const cached = articleThumbnailCache.get(url);
     if (cached) return cached;
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 PortalkoNews/2.0',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
       });
-      clearTimeout(timer);
       if (!res.ok) return null;
       const html = await res.text();
       const match = html.match(/<meta[^>]+property=["\x27]og:image["\x27][^>]+content=["\x27]([^"\x27]+)["\x27]/i)
@@ -462,55 +683,102 @@ async function startServer() {
       }
     } catch {
       // Ignore errors / timeouts
+    } finally {
+      clearTimeout(timer);
     }
     return null;
   }
 
-  async function fetchRssFeedFromSource(feed: ServerRssFeedConfig, timeoutMs = 8000): Promise<ServerNewsItem[]> {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+  async function enrichMaribor24Thumbnails(items: ServerNewsItem[], maxSync = 12): Promise<void> {
+    const missing = items.filter(it => !it.thumbnail && it.link && (it.feedId === 'maribor24' || it.link.includes('maribor24.si')));
+    if (missing.length === 0) return;
 
+    const syncSlice = missing.slice(0, maxSync);
+    const BATCH_SIZE = 4;
+    for (let i = 0; i < syncSlice.length; i += BATCH_SIZE) {
+      const batch = syncSlice.slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(
+        batch.map(async (item) => {
+          const ogImg = await fetchArticleOgImage(item.link, 2500);
+          if (ogImg) item.thumbnail = ogImg;
+        })
+      );
+    }
+
+    // Background-warm remaining items without blocking the HTTP response
+    const remainingSlice = missing.slice(maxSync, 35);
+    if (remainingSlice.length > 0) {
+      void (async () => {
+        for (let i = 0; i < remainingSlice.length; i += BATCH_SIZE) {
+          const batch = remainingSlice.slice(i, i + BATCH_SIZE);
+          await Promise.allSettled(
+            batch.map(async (item) => {
+              const ogImg = await fetchArticleOgImage(item.link, 2500);
+              if (ogImg) item.thumbnail = ogImg;
+            })
+          );
+        }
+      })();
+    }
+  }
+
+  async function fetchRssFeedOnce(feed: ServerRssFeedConfig, timeoutMs: number): Promise<ServerNewsItem[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
       const response = await fetch(feed.url, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 PortalkoNews/2.0',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*;q=0.9',
           'Accept-Language': 'sl,en;q=0.9',
         },
         redirect: 'follow',
       });
-      clearTimeout(timer);
 
       if (!response.ok) {
-        console.warn(`[RSS Server] ${feed.name} returned HTTP ${response.status}`);
-        return [];
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const xml = await response.text();
-      const parsed = parseServerRssXml(xml, feed.name, feed.id);
-
-      // Sources like Maribor24 don't provide enclosures in their RSS feed.
-      // Automatically enrich the newest items with their real featured og:image.
-      if (feed.id === 'maribor24' || parsed.some(it => !it.thumbnail && it.link.includes('maribor24.si'))) {
-        const enrichLimit = Math.min(parsed.length, 35);
-        await Promise.allSettled(
-          parsed.slice(0, enrichLimit).map(async (item) => {
-            if (!item.thumbnail && item.link) {
-              const ogImg = await fetchArticleOgImage(item.link);
-              if (ogImg) {
-                item.thumbnail = ogImg;
-              }
-            }
-          })
-        );
-      }
-
-      return parsed;
-    } catch (err: any) {
-      console.warn(`[RSS Server] Error fetching ${feed.name} (${feed.url}):`, err.message);
-      return [];
+      return parseServerRssXml(xml, feed.name, feed.id);
+    } finally {
+      clearTimeout(timer);
     }
+  }
+
+  async function fetchRssFeedFromSource(feed: ServerRssFeedConfig, timeoutMs = 12000): Promise<ServerNewsItem[]> {
+    const feedCacheKey = feed.id || feed.url;
+    const maxAttempts = 2;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const attemptTimeout = attempt === 1 ? timeoutMs : Math.max(timeoutMs, 15000);
+        const parsed = await fetchRssFeedOnce(feed, attemptTimeout);
+
+        if (parsed.length > 0) {
+          if (feed.id === 'maribor24' || parsed.some(it => !it.thumbnail && it.link.includes('maribor24.si'))) {
+            await enrichMaribor24Thumbnails(parsed);
+          }
+          perFeedFallbackCache.set(feedCacheKey, parsed);
+          return parsed;
+        }
+      } catch (err: any) {
+        const isLastAttempt = attempt === maxAttempts;
+        if (!isLastAttempt) {
+          await new Promise(resolve => setTimeout(resolve, 350));
+          continue;
+        }
+        const cachedFeedItems = perFeedFallbackCache.get(feedCacheKey);
+        if (cachedFeedItems && cachedFeedItems.length > 0) {
+          console.info(`[RSS Server] Using cached items for ${feed.name} after transient fetch issue: ${err?.message || 'Unknown error'}`);
+          return cachedFeedItems;
+        }
+        console.warn(`[RSS Server] Could not refresh ${feed.name} (${feed.url}): ${err?.message || 'Unknown error'}`);
+      }
+    }
+
+    return perFeedFallbackCache.get(feedCacheKey) || [];
   }
 
   // Common handler for GET and POST /api/rss/news
@@ -545,53 +813,66 @@ async function startServer() {
     }
 
     try {
-      const feedPromises = requestedFeeds.map(feed => fetchRssFeedFromSource(feed));
-      const feedResults = await Promise.allSettled(feedPromises);
+      let fetchPromise = inFlightRssFetches.get(cacheKey);
+      if (!fetchPromise) {
+        fetchPromise = (async () => {
+          const feedPromises = requestedFeeds.map(feed => fetchRssFeedFromSource(feed, 12000));
+          const feedResults = await Promise.allSettled(feedPromises);
 
-      const allItems: ServerNewsItem[] = [];
-      feedResults.forEach(result => {
-        if (result.status === "fulfilled" && Array.isArray(result.value)) {
-          allItems.push(...result.value);
-        }
-      });
+          const allItems: ServerNewsItem[] = [];
+          feedResults.forEach(result => {
+            if (result.status === "fulfilled" && Array.isArray(result.value)) {
+              allItems.push(...result.value);
+            }
+          });
 
-      if (allItems.length > 0) {
-        // Strict deduplication by normalized link & title
-        const seenLinks = new Set<string>();
-        const seenTitles = new Set<string>();
-        const uniqueItems: ServerNewsItem[] = [];
+          if (allItems.length > 0) {
+            // Strict deduplication by normalized link & title
+            const seenLinks = new Set<string>();
+            const seenTitles = new Set<string>();
+            const uniqueItems: ServerNewsItem[] = [];
 
-        for (const item of allItems) {
-          const normLink = item.link.toLowerCase().replace(/\/+$/, "");
-          const normTitle = item.title.toLowerCase().trim();
-          if (!seenLinks.has(normLink) && !seenTitles.has(normTitle)) {
-            seenLinks.add(normLink);
-            seenTitles.add(normTitle);
-            uniqueItems.push(item);
+            for (const item of allItems) {
+              const normLink = item.link.toLowerCase().replace(/\/+$/, "");
+              const normTitle = item.title.toLowerCase().trim();
+              if (!seenLinks.has(normLink) && !seenTitles.has(normTitle)) {
+                seenLinks.add(normLink);
+                seenTitles.add(normTitle);
+                uniqueItems.push(item);
+              }
+            }
+
+            // Sort by pubDate descending
+            uniqueItems.sort((a, b) => {
+              const timeA = new Date(a.pubDate).getTime();
+              const timeB = new Date(b.pubDate).getTime();
+              if (isNaN(timeA) || isNaN(timeB)) return 0;
+              return timeB - timeA;
+            });
+
+            // Update in-memory caches by cacheKey
+            serverRssCaches.set(cacheKey, {
+              timestamp: Date.now(),
+              items: uniqueItems
+            });
+            emergencyRssFallbackItems = uniqueItems;
+            return uniqueItems;
           }
-        }
-
-        // Sort by pubDate descending
-        uniqueItems.sort((a, b) => {
-          const timeA = new Date(a.pubDate).getTime();
-          const timeB = new Date(b.pubDate).getTime();
-          if (isNaN(timeA) || isNaN(timeB)) return 0;
-          return timeB - timeA;
+          return [];
+        })().finally(() => {
+          inFlightRssFetches.delete(cacheKey);
         });
+        inFlightRssFetches.set(cacheKey, fetchPromise);
+      }
 
-        // Update in-memory caches by cacheKey
-        serverRssCaches.set(cacheKey, {
-          timestamp: now,
-          items: uniqueItems
-        });
-        emergencyRssFallbackItems = uniqueItems;
-
+      const uniqueItems = await fetchPromise;
+      if (uniqueItems.length > 0) {
         return res.json({
           success: true,
           count: uniqueItems.length,
           items: uniqueItems,
           cached: false,
-          fetchedAt: new Date(now).toISOString()
+          fetchedAt: new Date().toISOString()
         });
       }
 
@@ -631,55 +912,67 @@ async function startServer() {
   app.get("/api/rss/news", handleRssNewsRequest);
   app.post("/api/rss/news", handleRssNewsRequest);
 
-  // Background pre-warming and automatic periodic cache refresher for production
+  // Background pre-warming and automatic periodic cache refresher
   async function warmServerRssCache(): Promise<void> {
-    try {
-      const feedPromises = DEFAULT_SERVER_FEEDS.map(feed => fetchRssFeedFromSource(feed, 6000));
-      const feedResults = await Promise.allSettled(feedPromises);
-
-      const allItems: ServerNewsItem[] = [];
-      feedResults.forEach(result => {
-        if (result.status === "fulfilled" && Array.isArray(result.value)) {
-          allItems.push(...result.value);
-        }
-      });
-
-      if (allItems.length > 0) {
-        const seenLinks = new Set<string>();
-        const seenTitles = new Set<string>();
-        const uniqueItems: ServerNewsItem[] = [];
-
-        for (const item of allItems) {
-          const normLink = item.link.toLowerCase().replace(/\/+$/, "");
-          const normTitle = item.title.toLowerCase().trim();
-          if (!seenLinks.has(normLink) && !seenTitles.has(normTitle)) {
-            seenLinks.add(normLink);
-            seenTitles.add(normTitle);
-            uniqueItems.push(item);
-          }
-        }
-
-        uniqueItems.sort((a, b) => {
-          const timeA = new Date(a.pubDate).getTime();
-          const timeB = new Date(b.pubDate).getTime();
-          if (isNaN(timeA) || isNaN(timeB)) return 0;
-          return timeB - timeA;
-        });
-
-        const defaultKey = DEFAULT_SERVER_FEEDS.map(f => f.id || f.name).sort().join(",");
-        serverRssCaches.set(defaultKey, {
-          timestamp: Date.now(),
-          items: uniqueItems
-        });
-        emergencyRssFallbackItems = uniqueItems;
-      }
-    } catch (err: any) {
-      console.warn("[RSS Server] Error warming RSS cache:", err.message);
+    const defaultKey = DEFAULT_SERVER_FEEDS.map(f => f.id || f.name).sort().join(",");
+    if (inFlightRssFetches.has(defaultKey)) {
+      await inFlightRssFetches.get(defaultKey);
+      return;
     }
+
+    const warmPromise = (async () => {
+      try {
+        const feedPromises = DEFAULT_SERVER_FEEDS.map(feed => fetchRssFeedFromSource(feed, 12000));
+        const feedResults = await Promise.allSettled(feedPromises);
+
+        const allItems: ServerNewsItem[] = [];
+        feedResults.forEach(result => {
+          if (result.status === "fulfilled" && Array.isArray(result.value)) {
+            allItems.push(...result.value);
+          }
+        });
+
+        if (allItems.length > 0) {
+          const seenLinks = new Set<string>();
+          const seenTitles = new Set<string>();
+          const uniqueItems: ServerNewsItem[] = [];
+
+          for (const item of allItems) {
+            const normLink = item.link.toLowerCase().replace(/\/+$/, "");
+            const normTitle = item.title.toLowerCase().trim();
+            if (!seenLinks.has(normLink) && !seenTitles.has(normTitle)) {
+              seenLinks.add(normLink);
+              seenTitles.add(normTitle);
+              uniqueItems.push(item);
+            }
+          }
+
+          uniqueItems.sort((a, b) => {
+            const timeA = new Date(a.pubDate).getTime();
+            const timeB = new Date(b.pubDate).getTime();
+            if (isNaN(timeA) || isNaN(timeB)) return 0;
+            return timeB - timeA;
+          });
+
+          serverRssCaches.set(defaultKey, {
+            timestamp: Date.now(),
+            items: uniqueItems
+          });
+          emergencyRssFallbackItems = uniqueItems;
+          return uniqueItems;
+        }
+      } catch (err: any) {
+        console.warn("[RSS Server] Error warming RSS cache:", err.message);
+      }
+      return [];
+    })().finally(() => {
+      inFlightRssFetches.delete(defaultKey);
+    });
+
+    inFlightRssFetches.set(defaultKey, warmPromise);
+    await warmPromise;
   }
 
-  // Pre-warm on startup so first production request gets instant response
-  warmServerRssCache().catch(() => {});
   // Periodically refresh RSS cache in background every 2.5 minutes
   setInterval(() => {
     warmServerRssCache().catch(() => {});
@@ -692,19 +985,17 @@ async function startServer() {
       return res.status(400).send("Parameter 'url' is required and must start with http:// or https://");
     }
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-
       const upstream = await fetch(targetUrl, {
         signal: controller.signal,
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 PortalkoNews/2.0",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           "Accept": "application/rss+xml, application/xml, text/xml, */*;q=0.8"
         },
         redirect: "follow"
       });
-      clearTimeout(timer);
 
       if (!upstream.ok) {
         return res.status(upstream.status).send(`Upstream returned HTTP ${upstream.status}`);
@@ -718,6 +1009,8 @@ async function startServer() {
     } catch (err: any) {
       console.warn("[RSS Proxy] Error proxying:", targetUrl, err.message);
       return res.status(502).send("Could not reach upstream RSS feed: " + err.message);
+    } finally {
+      clearTimeout(timer);
     }
   });
 
@@ -732,14 +1025,6 @@ async function startServer() {
     res.setHeader("Access-Control-Allow-Origin", "*");
     return res.json({ url: targetUrl, image: img });
   });
-
-  // Background proactive warmup of RSS feeds
-  setTimeout(() => {
-    handleRssNewsRequest({ query: {}, body: {} } as any, {
-      setHeader: () => {},
-      json: () => {}
-    } as any).catch(() => {});
-  }, 1000);
 
   // Stripe config status check
   app.get("/api/stripe/config", (req, res) => {
@@ -1827,6 +2112,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    setTimeout(() => {
+      startSiteRssRealtimeSync().catch(() => {});
+      warmServerRssCache().catch(() => {});
+    }, 300);
   });
 }
 

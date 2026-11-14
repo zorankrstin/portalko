@@ -64,5 +64,9 @@ Disallow: /*.ini
 Disallow: /*?*spa_route=
 Crawl-delay: 5
 
-# Sitemaps
+# Sitemaps & RSS Feeds
 Sitemap: https://portalko.net/sitemap.xml
+Allow: /rss.xml
+Allow: /feed.xml
+Allow: /blog/rss.xml
+Allow: /novice/rss.xml

@@ -494,27 +494,33 @@ export async function fetchRealRssNews(forceRefresh: boolean = false): Promise<R
   for (const endpoint of endpointsToTry) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
+      const timer = setTimeout(() => controller.abort(), 12000);
 
       let res: Response | null = null;
       try {
-        res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            force: forceRefresh,
-            feeds: activeFeeds
-          }),
-          signal: controller.signal
-        });
-      } catch (postErr) {
-        // If POST failed or was refused, try GET fallback
-        res = await fetch(`${endpoint}?force=${forceRefresh ? 'true' : 'false'}`, {
-          method: 'GET',
-          signal: controller.signal
-        });
+        try {
+          res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              force: forceRefresh,
+              feeds: activeFeeds
+            }),
+            signal: controller.signal
+          });
+        } catch (postErr) {
+          if (controller.signal.aborted) {
+            throw postErr;
+          }
+          // If POST failed or was refused, try GET fallback
+          res = await fetch(`${endpoint}?force=${forceRefresh ? 'true' : 'false'}`, {
+            method: 'GET',
+            signal: controller.signal
+          });
+        }
+      } finally {
+        clearTimeout(timer);
       }
-      clearTimeout(timer);
 
       if (res && res.ok) {
         const contentType = res.headers.get('content-type') || '';
