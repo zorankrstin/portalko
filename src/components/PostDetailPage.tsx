@@ -16,6 +16,7 @@ import { LikeButton } from './LikeButton';
 import { buildAmpUrl, isAmpRequested, AmpArticleData, generateAmpHtml } from '../services/ampService';
 import { AmpArticleView } from './amp/AmpArticleView';
 import { useLikes } from '../contexts/LikeContext';
+import { useShares } from '../contexts/ShareContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { sendTargetAuthorNotification } from '../services/fcmService';
@@ -263,12 +264,14 @@ export function PostDetailPage({
   const [blogLikes, setBlogLikes] = useState<number>(0);
   const [hasBlogLiked, setHasBlogLiked] = useState(false);
   const { getLikesCount, isLiked, toggleLike } = useLikes();
+  const { getSharesCount, incrementShareCount } = useShares();
 
   // Carousel & Lightbox state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [imageFitMode, setImageFitMode] = useState<'contain' | 'cover'>('contain');
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isShareButtonAnimating, setIsShareButtonAnimating] = useState(false);
   const [isAmpActive, setIsAmpActive] = useState<boolean>(() => {
     return typeof window !== 'undefined' && isAmpRequested();
   });
@@ -366,6 +369,7 @@ export function PostDetailPage({
         interestedCount: fs.interestedCount || 42,
         likesCount: fs.likesCount || 0,
         viewsCount: fs.viewsCount ?? 0,
+        sharesCount: fs.sharesCount ?? 0,
       };
     };
 
@@ -402,6 +406,7 @@ export function PostDetailPage({
         votes: fs.likesCount ?? (fs as any).votes ?? 0,
         likesCount: fs.likesCount ?? (fs as any).votes ?? 0,
         viewsCount: fs.viewsCount ?? 0,
+        sharesCount: fs.sharesCount ?? 0,
         code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : (fs.code ? fs.code.trim() : undefined),
         link: fs.dealLink || fs.link || 'https://www.portalko.net',
         embedCode: fs.embedCode,
@@ -436,6 +441,7 @@ export function PostDetailPage({
         authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
         likesCount: fs.likesCount || 0,
         viewsCount: fs.viewsCount ?? 0,
+        sharesCount: fs.sharesCount ?? 0,
         embedCode: fs.embedCode,
         embedOrientation: fs.embedOrientation,
       };
@@ -509,6 +515,7 @@ export function PostDetailPage({
         likesCount: fs.likesCount || 0,
         commentsCount: fs.commentsCount || 0,
         viewsCount: fs.viewsCount ?? 0,
+        sharesCount: fs.sharesCount ?? 0,
         tags: (fs.tags && fs.tags.length > 0) ? fs.tags : undefined,
       };
     };
@@ -1888,7 +1895,15 @@ export function PostDetailPage({
   const authorDisplayName = itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor';
   const authorAvatar = itemData.partnerAvatar || itemData.authorAvatar;
   const authorRole = itemData.partnerRole || itemData.authorRole;
-  const authorId = itemData.authorId;
+  const rawAuthorId = itemData.authorId || itemData.partnerId || itemData.organizerId;
+  const matchedAuthorUser = users.find(
+    u =>
+      (rawAuthorId && u.id === rawAuthorId) ||
+      (authorDisplayName &&
+        (u.name.trim().toLowerCase() === authorDisplayName.trim().toLowerCase() ||
+          slugify(u.name) === slugify(authorDisplayName)))
+  );
+  const authorId = rawAuthorId || matchedAuthorUser?.id;
 
   const isAuthorVerified = isUserVerified({
     role: authorRole,
@@ -2121,13 +2136,11 @@ export function PostDetailPage({
               </div>
             </div>
 
-            {(target.type === 'blog' || target.type === 'post') && (
-              <FollowAuthorButton
-                authorId={authorId}
-                authorName={authorDisplayName}
-                authorAvatar={authorAvatar}
-              />
-            )}
+            <FollowAuthorButton
+              authorId={authorId}
+              authorName={authorDisplayName}
+              authorAvatar={authorAvatar}
+            />
           </div>
 
           {/* Post Header: Post Title and Meta Row */}
@@ -2434,16 +2447,33 @@ export function PostDetailPage({
               className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
             />
 
-            {/* Deli objavo - Odpre Share Modal */}
+            {/* Deli objavo - Odpre Share Modal in poveča števec delitev */}
             <button
               type="button"
               id="btn-post-open-share-modal"
-              onClick={() => setIsShareModalOpen(true)}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs hover:scale-102 active:scale-95"
+              onClick={() => {
+                setIsShareButtonAnimating(false);
+                requestAnimationFrame(() => {
+                  setIsShareButtonAnimating(true);
+                  setTimeout(() => setIsShareButtonAnimating(false), 540);
+                });
+                void incrementShareCount({
+                  id: itemData.id,
+                  type: target.type,
+                  initialCount: (itemData as any).sharesCount || 0,
+                });
+                setIsShareModalOpen(true);
+              }}
+              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs hover:scale-102 active:scale-95 ${
+                isShareButtonAnimating ? 'animate-share-bounce' : ''
+              }`}
               title="Deli objavo (kopiraj povezavo ali deli na družbena omrežja)"
             >
-              <Share2 className="w-4 h-4" />
+              <Share2 className={`w-4 h-4 transition-transform duration-200 ${isShareButtonAnimating ? 'scale-125' : ''}`} />
               <span>Deli</span>
+              <span className={`inline-block px-1.5 py-0.5 rounded-md bg-white/20 text-xs font-bold tabular-nums ${isShareButtonAnimating ? 'animate-share-count-pop' : ''}`}>
+                {getSharesCount(itemData.id, target.type, undefined, (itemData as any).sharesCount || 0)}
+              </span>
             </button>
 
             {/* AMP (Accelerated Mobile Pages) Button for News & Blog posts */}
@@ -3236,15 +3266,13 @@ export function PostDetailPage({
               </div>
             </div>
             <div className="flex items-center gap-3 flex-wrap self-start sm:self-auto">
-              {(target.type === 'blog' || target.type === 'post') && (
-                <FollowAuthorButton
-                  authorId={authorId}
-                  authorName={authorDisplayName}
-                  authorAvatar={authorAvatar}
-                  showFollowerCount={false}
-                  compact={true}
-                />
-              )}
+              <FollowAuthorButton
+                authorId={authorId}
+                authorName={authorDisplayName}
+                authorAvatar={authorAvatar}
+                showFollowerCount={false}
+                compact={true}
+              />
               <button
                 type="button"
                 onClick={() => {

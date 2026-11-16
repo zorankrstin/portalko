@@ -14,6 +14,8 @@ import {
   subscribeToPosts, 
   subscribeToAds, 
   subscribeToEvents, 
+  subscribeToAuthorFollowerCount,
+  normalizeAuthorFollowKey,
   FirestorePost, 
   FirestoreAd, 
   FirestoreEvent 
@@ -28,6 +30,7 @@ import { isDummyAvatar, isUserUploadedAvatar, isCustomUploadedAvatar, resolveUse
 import { resolveEventDisplayDate } from '../../utils/dateUtils';
 import { VerifiedBadge } from '../common/VerifiedBadge';
 import { isUserVerified } from '../../utils/userVerificationUtils';
+import { FollowAuthorButton } from '../common/FollowAuthorButton';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
@@ -556,11 +559,24 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     });
   }, [authorProfile]);
 
+  const followAuthorId = effectiveTargetId || realAuthorMetadata?.id;
+  const authorFollowKey = useMemo(
+    () => normalizeAuthorFollowKey(followAuthorId, authorProfile.name),
+    [followAuthorId, authorProfile.name]
+  );
+  const [followerCount, setFollowerCount] = useState(0);
+
+  useEffect(() => {
+    if (!authorFollowKey) return;
+    const unsub = subscribeToAuthorFollowerCount(authorFollowKey, setFollowerCount);
+    return () => unsub();
+  }, [authorFollowKey]);
+
   // Categorized counts & engagement totals
   const isAuthorVerified = isUserVerified({
     role: authorProfile.role,
     name: authorProfile.name,
-    userId: effectiveTargetId,
+    userId: followAuthorId,
     users,
   });
 
@@ -648,8 +664,14 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           </div>
         </div>
 
-        {/* Action buttons (Share & Report) */}
-        <div className="flex items-center gap-2 self-end sm:self-start shrink-0">
+        {/* Action buttons (Follow, Share & Report) */}
+        <div className="flex items-center gap-2 flex-wrap justify-end self-end sm:self-start shrink-0">
+            <FollowAuthorButton
+              authorId={followAuthorId}
+              authorName={authorProfile.name}
+              authorAvatar={authorProfile.avatar}
+              showFollowerCount={false}
+            />
             <ShareMenu
               title={`Profil avtorja ${authorProfile.name} na Portalko.net`}
               url={window.location.href}
@@ -668,10 +690,14 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-3 pt-4 border-t border-surface-container/60 relative z-10">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-surface-container/60 relative z-10">
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
             <span className="font-headline-sm text-xl font-black text-on-surface">{authorItems.length}</span>
             <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Vseh objav</span>
+          </div>
+          <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
+            <span className="font-headline-sm text-xl font-black text-primary">{followerCount}</span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider mt-0.5">Sledilcev</span>
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/60 border border-surface-container/50 flex flex-col items-center text-center">
             <span className="font-headline-sm text-xl font-black text-emerald-600 dark:text-emerald-400">{totalViews}</span>

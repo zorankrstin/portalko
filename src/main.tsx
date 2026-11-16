@@ -35,6 +35,7 @@ import { LikeProvider } from './contexts/LikeContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ReportProvider } from './contexts/ReportContext';
 import { EventFilterProvider } from './contexts/EventFilterContext';
+import { ShareProvider } from './contexts/ShareContext';
 
 import { SecurityRouteGuard } from './components/SecurityRouteGuard';
 
@@ -43,15 +44,17 @@ createRoot(document.getElementById('root')!).render(
     <SecurityRouteGuard>
       <AuthProvider>
         <LikeProvider>
-          <NotificationProvider>
-            <BookmarkProvider>
-              <ReportProvider>
-                <EventFilterProvider>
-                  <App />
-                </EventFilterProvider>
-              </ReportProvider>
-            </BookmarkProvider>
-          </NotificationProvider>
+          <ShareProvider>
+            <NotificationProvider>
+              <BookmarkProvider>
+                <ReportProvider>
+                  <EventFilterProvider>
+                    <App />
+                  </EventFilterProvider>
+                </ReportProvider>
+              </BookmarkProvider>
+            </NotificationProvider>
+          </ShareProvider>
         </LikeProvider>
       </AuthProvider>
     </SecurityRouteGuard>

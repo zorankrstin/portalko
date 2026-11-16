@@ -517,6 +517,8 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             location={(post as any).location || (post as any).region}
             discount={(post as any).discount}
             date={(post as any).date}
+            showCount={false}
+            initialSharesCount={post.sharesCount || 0}
           />
           <ReportButton 
             targetId={post.id}
@@ -647,7 +649,9 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             discount={(post as any).discount}
             date={(post as any).date}
             showLabel={true}
-            buttonClassName="flex items-center gap-1.5 text-outline hover:text-primary text-label-md font-label-md transition-colors cursor-pointer"
+            showCount={true}
+            initialSharesCount={post.sharesCount || 0}
+            buttonClassName="flex items-center gap-1.5 text-outline hover:text-primary text-label-md font-label-md transition-colors cursor-pointer group"
           />
         </div>
 

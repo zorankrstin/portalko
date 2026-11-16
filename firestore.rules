@@ -48,6 +48,16 @@ service cloud.firestore {
              (!('authorAvatar' in data) || (data.authorAvatar is string && data.authorAvatar.size() <= 500000));
     }
 
+    function isValidShareCount(data) {
+      return data.keys().hasAll(['id', 'targetId', 'targetType', 'sharesCount']) &&
+             data.keys().hasOnly(['id', 'targetId', 'targetType', 'sharesCount', 'updatedAt']) &&
+             isValidId(data.id) &&
+             data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 256 &&
+             data.targetType in ['news', 'blog', 'post', 'ad', 'event', 'deal'] &&
+             data.sharesCount is int && data.sharesCount >= 0 && data.sharesCount <= 100000000 &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
     // Posting permissions:
     // Blog posts and Deals (Akcije) in /posts collection: ONLY superadmin, admin, moderator, and verified users.
     function canPostBlogOrDeals(data) {
@@ -213,6 +223,21 @@ service cloud.firestore {
     match /activity_logs/{logId} {
       allow read: if true;
       allow write: if true;
+    }
+
+    // Content Share Counts Collection (news, blog, ads, events, deals)
+    match /share_counts/{targetKey} {
+      allow read: if true;
+      allow create: if isValidId(targetKey) &&
+                       isValidShareCount(request.resource.data) &&
+                       request.resource.data.id == targetKey &&
+                       request.resource.data.sharesCount == 1;
+      allow update: if isValidId(targetKey) &&
+                       isValidShareCount(request.resource.data) &&
+                       request.resource.data.id == resource.data.id &&
+                       request.resource.data.targetId == resource.data.targetId &&
+                       request.resource.data.targetType == resource.data.targetType &&
+                       request.resource.data.sharesCount == resource.data.sharesCount + 1;
     }
 
     // Connection test document

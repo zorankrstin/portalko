@@ -527,6 +527,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   likesCount={`${blog.likesCount || 0} všečkov`}
                   commentsCount={`${blog.commentsCount || 0} komentarjev`}
                   viewsCount={`${blog.viewsCount} ogledov`}
+                  sharesCount={blog.sharesCount || 0}
                   tags={blog.tags}
                   onNavigatePost={onNavigatePost}
                 />

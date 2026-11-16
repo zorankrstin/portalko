@@ -47,6 +47,11 @@ import {
   subscribeToPosts, 
   subscribeToAds, 
   subscribeToEvents, 
+  subscribeToAuthorFollowerCount,
+  subscribeToUserFollowing,
+  toggleFollowAuthorInFirestore,
+  normalizeAuthorFollowKey,
+  AuthorFollowRecord,
   FirestorePost, 
   FirestoreAd, 
   FirestoreEvent,
@@ -54,6 +59,8 @@ import {
   deleteAdInFirestore,
   deleteEventInFirestore 
 } from '../services/firestoreService';
+import { slugify } from '../utils/urlUtils';
+import { UserAvatar } from './common/UserAvatar';
 import { 
   useAuth, 
   DEFAULT_PROFILE_MENU, 
@@ -131,6 +138,11 @@ export function UserProfile({
   const [isEditPostModalOpen, setIsEditPostModalOpen] = useState(false);
   const [isComposeModalOpen, setIsComposeModalOpen] = useState(false);
 
+  const [myFollowerCount, setMyFollowerCount] = useState(0);
+  const [followingKeys, setFollowingKeys] = useState<string[]>([]);
+  const [followingRecords, setFollowingRecords] = useState<AuthorFollowRecord[]>([]);
+  const [isFollowingListOpen, setIsFollowingListOpen] = useState(false);
+
   useEffect(() => {
     const unsubP = subscribeToPosts((posts) => {
       setUserFirestorePosts(posts);
@@ -147,6 +159,25 @@ export function UserProfile({
       unsubE();
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.id || currentUser.role === 'guest') {
+      setMyFollowerCount(0);
+      setFollowingKeys([]);
+      setFollowingRecords([]);
+      return;
+    }
+    const myFollowKey = normalizeAuthorFollowKey(currentUser.id, currentUser.name);
+    const unsubFollowers = subscribeToAuthorFollowerCount(myFollowKey, setMyFollowerCount);
+    const unsubFollowing = subscribeToUserFollowing(currentUser.id, (keys, records) => {
+      setFollowingKeys(keys);
+      setFollowingRecords(records);
+    });
+    return () => {
+      unsubFollowers();
+      unsubFollowing();
+    };
+  }, [currentUser?.id, currentUser?.name, currentUser?.role]);
 
   const myItems = useMemo<EditablePostItem[]>(() => {
     if (!currentUser) return [];
@@ -596,13 +627,22 @@ export function UserProfile({
               <span className="font-label-md text-xs text-outline uppercase tracking-wider">Ogledov</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-headline-sm text-lg font-bold text-on-surface">1.2k</span>
+              <span className="font-headline-sm text-lg font-bold text-primary">{myFollowerCount}</span>
               <span className="font-label-md text-xs text-outline uppercase tracking-wider">Sledilcev</span>
             </div>
-            <div className="flex flex-col">
-              <span className="font-headline-sm text-lg font-bold text-on-surface">340</span>
-              <span className="font-label-md text-xs text-outline uppercase tracking-wider">Sledi</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsFollowingListOpen(prev => !prev)}
+              className="flex flex-col text-left hover:opacity-80 transition-opacity cursor-pointer"
+              title="Prikaži uporabnike, ki jim sledite"
+            >
+              <span className="font-headline-sm text-lg font-bold text-on-surface flex items-center gap-1">
+                <span>{followingRecords.length > 0 ? followingRecords.length : followingKeys.length}</span>
+              </span>
+              <span className="font-label-md text-xs text-primary underline decoration-dotted underline-offset-2 uppercase tracking-wider">
+                Sledi
+              </span>
+            </button>
           </div>
         </div>
         
@@ -627,6 +667,79 @@ export function UserProfile({
           </button>
         </div>
       </div>
+
+      {/* Followed Users Panel (toggled from Sledi stat) */}
+      {isFollowingListOpen && (
+        <div className="bg-surface-container-lowest rounded-2xl p-4 sm:p-5 shadow-sm border border-surface-container/60 flex flex-col gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between border-b border-surface-container-low pb-2.5">
+            <div className="flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-primary" />
+              <h3 className="font-headline-sm text-sm font-bold text-on-surface">
+                Uporabniki in avtorji, ki jim sledite ({followingRecords.length > 0 ? followingRecords.length : followingKeys.length})
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFollowingListOpen(false)}
+              className="text-xs font-semibold text-outline hover:text-on-surface cursor-pointer"
+            >
+              Zapri
+            </button>
+          </div>
+
+          {followingRecords.length === 0 ? (
+            <p className="text-xs text-on-surface-variant py-2">
+              Trenutno ne sledite še nobenemu uporabniku. Na kateri koli objavi ali profilu uporabnika kliknite gumb <strong>Sledi</strong>.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {followingRecords.map((rec) => {
+                const authorHref = `/avtor/${slugify(rec.authorName || rec.authorId)}`;
+                return (
+                  <div
+                    key={rec.id}
+                    className="flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-surface-container-low/70 border border-surface-container/60"
+                  >
+                    <a
+                      href={authorHref}
+                      data-author-name={rec.authorName}
+                      data-author-id={rec.authorId}
+                      data-author-avatar={rec.authorAvatar || ''}
+                      className="flex items-center gap-2.5 min-w-0 flex-1 group"
+                    >
+                      <UserAvatar
+                        src={rec.authorAvatar}
+                        name={rec.authorName}
+                        userId={rec.authorId}
+                        size="sm"
+                      />
+                      <span className="text-xs font-bold text-on-surface group-hover:text-primary truncate transition-colors">
+                        {rec.authorName}
+                      </span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleFollowAuthorInFirestore({
+                          followerId: currentUser.id,
+                          followerName: currentUser.name,
+                          authorId: rec.authorId,
+                          authorName: rec.authorName,
+                          authorAvatar: rec.authorAvatar,
+                          follow: false,
+                        }).catch(() => {})
+                      }
+                      className="px-2.5 py-1 rounded-lg bg-surface-container-lowest hover:bg-error/10 text-outline hover:text-error border border-surface-container text-[11px] font-semibold transition-colors cursor-pointer shrink-0"
+                    >
+                      Prekliči
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Verification Request Banner for Registered Users */}
       {currentUser.role === 'registered' && (

@@ -40,6 +40,7 @@ export interface BlogPostProps {
   dislikesCount?: string | number;
   commentsCount?: string;
   viewsCount?: string;
+  sharesCount?: number;
   tags?: string[];
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
@@ -71,6 +72,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   dislikesCount = 0,
   commentsCount = "0 komentarjev",
   viewsCount = "1.420 ogledov",
+  sharesCount = 0,
   tags = [],
   isPromoted = false,
   promotionBadgeType = 'PROMO',
@@ -259,6 +261,8 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             category={categoryName || category}
             author={author}
             date={date}
+            showCount={false}
+            initialSharesCount={sharesCount}
           />
           <ReportButton 
             targetId={id || ''} 
@@ -355,7 +359,9 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             author={author}
             date={date}
             showLabel={true}
-            buttonClassName="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer text-on-surface-variant font-label-md text-xs"
+            showCount={true}
+            initialSharesCount={sharesCount}
+            buttonClassName="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer text-on-surface-variant font-label-md text-xs group"
           />
         </div>
 

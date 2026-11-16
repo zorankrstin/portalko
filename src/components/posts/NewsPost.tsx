@@ -15,6 +15,7 @@ export interface NewsPostProps {
   likesCount?: number;
   lovesCount?: number;
   dislikesCount?: number;
+  sharesCount?: number;
 }
 
 export const NewsPost: React.FC<NewsPostProps> = ({ 
@@ -28,6 +29,7 @@ export const NewsPost: React.FC<NewsPostProps> = ({
   likesCount = 0,
   lovesCount = 0,
   dislikesCount = 0,
+  sharesCount = 0,
 }) => {
   const bookmarkData = {
     type: 'news',
@@ -68,6 +70,9 @@ export const NewsPost: React.FC<NewsPostProps> = ({
             description={summary}
             category={categoryName}
             author={source}
+            showCount={true}
+            initialSharesCount={sharesCount}
+            buttonClassName="px-2 py-1 rounded-lg bg-surface-container-low/70 hover:bg-surface-container text-outline hover:text-primary transition-colors flex items-center justify-center gap-1.5 cursor-pointer group border border-surface-container/40"
           />
         </div>
       </div>

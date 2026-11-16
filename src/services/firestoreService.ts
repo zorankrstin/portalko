@@ -14,7 +14,8 @@ import {
   limit,
   increment,
   serverTimestamp,
-  arrayUnion
+  arrayUnion,
+  runTransaction
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { User, Role } from '../contexts/AuthContext';
@@ -634,6 +635,7 @@ export interface FirestorePost {
   likedBy?: string[];
   commentsCount?: number;
   viewsCount?: number;
+  sharesCount?: number;
   // Chunking metadata for >1MB payloads (up to 4.5MB)
   hasChunkedContent?: boolean;
   chunkCount?: number;
@@ -678,6 +680,7 @@ export interface FirestoreAd {
   likesCount?: number;
   likedBy?: string[];
   viewsCount?: number;
+  sharesCount?: number;
   // Chunking metadata for >1MB payloads (up to 4.5MB)
   hasChunkedContent?: boolean;
   chunkCount?: number;
@@ -727,6 +730,7 @@ export interface FirestoreEvent {
   likesCount?: number;
   likedBy?: string[];
   viewsCount?: number;
+  sharesCount?: number;
   // Chunking metadata for >1MB payloads (up to 4.5MB)
   hasChunkedContent?: boolean;
   chunkCount?: number;
@@ -3598,5 +3602,183 @@ export async function toggleFollowAuthorInFirestore(params: {
     saveCachedFollowerCount(authorKey, Math.max(0, getCachedFollowerCount(authorKey) - 1));
     return { following: false, authorKey };
   }
+}
+
+// -------------------------------------------------------------
+// CONTENT SHARE COUNTS SERVICE (NEWS & BLOGS & POSTS)
+// -------------------------------------------------------------
+
+export type ShareTargetType = 'news' | 'blog' | 'post' | 'ad' | 'event' | 'deal';
+
+const SHARE_COUNTS_CACHE_KEY = 'portalko_share_counts_v1';
+
+export function normalizeShareTargetType(type?: ShareTargetType | string): 'news' | 'blog' | 'ad' | 'event' | 'deal' {
+  const lower = (type || 'blog').toLowerCase().trim();
+  if (lower === 'news' || lower === 'novice') return 'news';
+  if (lower === 'ad' || lower === 'oglasi') return 'ad';
+  if (lower === 'event' || lower === 'dogodki') return 'event';
+  if (lower === 'deal' || lower === 'akcije' || lower === 'ugodnosti') return 'deal';
+  return 'blog';
+}
+
+function stableHash64Hex(input: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    h1 ^= ch;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= ch + ((h1 >>> 0) & 0xff);
+    h2 = Math.imul(h2, 0x85ebca6b);
+  }
+  return `${(h1 >>> 0).toString(36)}_${(h2 >>> 0).toString(36)}`;
+}
+
+export function computeCanonicalShareKey(params: {
+  id?: string;
+  type?: ShareTargetType | string;
+  url?: string;
+}): string {
+  const normType = normalizeShareTargetType(params.type);
+  const rawUrl = (params.url || '').trim();
+  const rawId = (params.id || '').trim();
+
+  // For external RSS news items, hash the canonical article URL so shifting RSS feed indices keep their share counts
+  if (normType === 'news' && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'))) {
+    const cleanUrl = rawUrl.toLowerCase().replace(/\/+$/, '');
+    return `news_${stableHash64Hex(cleanUrl)}`;
+  }
+
+  const strippedId = rawId
+    .replace(/^(event|ad|deal|blog|post|news)-/i, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  if (strippedId) {
+    return `${normType}_${strippedId}`.slice(0, 128);
+  }
+
+  if (rawUrl) {
+    return `${normType}_${stableHash64Hex(rawUrl.toLowerCase())}`.slice(0, 128);
+  }
+
+  return '';
+}
+
+export function getCachedShareCounts(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(SHARE_COUNTS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return {};
+}
+
+export function saveCachedShareCounts(counts: Record<string, number>): void {
+  try {
+    localStorage.setItem(SHARE_COUNTS_CACHE_KEY, JSON.stringify(counts));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function rawSubscribeToShareCounts(onUpdate: (counts: Record<string, number>) => void): () => void {
+  const path = 'share_counts';
+  try {
+    return onSnapshot(
+      collection(db, 'share_counts'),
+      (snapshot) => {
+        const countsMap: Record<string, number> = {};
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data && typeof data.sharesCount === 'number' && data.sharesCount >= 0) {
+            countsMap[docSnap.id] = data.sharesCount;
+          }
+        });
+        saveCachedShareCounts(countsMap);
+        onUpdate(countsMap);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+        onUpdate(getCachedShareCounts());
+      }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    onUpdate(getCachedShareCounts());
+    return () => {};
+  }
+}
+
+export const subscribeToShareCounts = createSharedSubscription(rawSubscribeToShareCounts, getCachedShareCounts);
+
+export async function incrementShareCountInFirestore(params: {
+  id?: string;
+  type?: ShareTargetType | string;
+  url?: string;
+}): Promise<number | null> {
+  const targetKey = computeCanonicalShareKey(params);
+  if (!targetKey || !/^[a-zA-Z0-9_-]{1,128}$/.test(targetKey)) {
+    return null;
+  }
+
+  const normType = normalizeShareTargetType(params.type);
+  const rawTargetId = (params.url && normType === 'news' ? params.url : (params.id || params.url || targetKey)).trim().slice(0, 256);
+  const shareDocRef = doc(db, 'share_counts', targetKey);
+  const sharePath = `share_counts/${targetKey}`;
+
+  let updatedCount: number | null = null;
+
+  try {
+    updatedCount = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(shareDocRef);
+      const nowIso = new Date().toISOString();
+      if (!snap.exists()) {
+        tx.set(shareDocRef, {
+          id: targetKey,
+          targetId: rawTargetId || targetKey,
+          targetType: normType,
+          sharesCount: 1,
+          updatedAt: nowIso,
+        });
+        return 1;
+      }
+
+      const existingData = snap.data();
+      const prevCount = typeof existingData?.sharesCount === 'number' && existingData.sharesCount >= 0
+        ? Math.floor(existingData.sharesCount)
+        : 0;
+      const nextCount = prevCount + 1;
+      tx.update(shareDocRef, {
+        sharesCount: nextCount,
+        updatedAt: nowIso,
+      });
+      return nextCount;
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, sharePath);
+  }
+
+  // Also mirror sharesCount onto primary Firestore post/ad/event document when applicable
+  const cleanId = (params.id || '').trim();
+  if (normType !== 'news' && cleanId && /^[a-zA-Z0-9_-]{1,128}$/.test(cleanId)) {
+    const collectionName = normType === 'ad' ? 'ads' : normType === 'event' ? 'events' : 'posts';
+    try {
+      const parentRef = doc(db, collectionName, cleanId);
+      const parentSnap = await getDoc(parentRef);
+      if (parentSnap.exists()) {
+        await updateDoc(parentRef, { sharesCount: increment(1) });
+      }
+    } catch {
+      // Non-blocking sync for parent document
+    }
+  }
+
+  return updatedCount;
 }
 

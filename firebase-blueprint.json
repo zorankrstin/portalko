@@ -54,6 +54,7 @@
         "likesCount": { "type": "number" },
         "likedBy": { "type": "array" },
         "viewsCount": { "type": "number" },
+        "sharesCount": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -85,6 +86,7 @@
         "likesCount": { "type": "number" },
         "likedBy": { "type": "array" },
         "viewsCount": { "type": "number" },
+        "sharesCount": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -122,6 +124,7 @@
         "likesCount": { "type": "number" },
         "likedBy": { "type": "array" },
         "viewsCount": { "type": "number" },
+        "sharesCount": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -314,6 +317,19 @@
         "timestamp": { "type": "number" }
       },
       "required": ["userId", "type", "title", "body"]
+    },
+    "ShareCount": {
+      "title": "Content Share Counter",
+      "description": "Persistent share count for news articles, blog posts, classified ads, events, and deals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetId": { "type": "string", "maxLength": 256 },
+        "targetType": { "type": "string", "enum": ["news", "blog", "post", "ad", "event", "deal"] },
+        "sharesCount": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "targetId", "targetType", "sharesCount"]
     }
   },
   "firestore": {
@@ -388,6 +404,10 @@
     "/activity_logs/{logId}": {
       "schema": "ActivityLog",
       "description": "Audit trail log entries tracking actions performed by administrators"
+    },
+    "/share_counts/{targetKey}": {
+      "schema": "ShareCount",
+      "description": "Public share counters for news items and blog/community posts"
     }
   }
 }
