@@ -178,6 +178,47 @@
   }
 }
 
+@keyframes share-delta-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.8);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.95);
+  }
+}
+
+@keyframes share-toast-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes share-confetti-burst {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(0.6);
+  }
+  22% {
+    opacity: 1;
+    transform: translate3d(calc(var(--cx, 0px) * 0.65), calc(var(--cy, -80px) * 0.85), 0) rotate(calc(var(--cr, 180deg) * 0.4)) scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--cx, 0px), calc(var(--cy, -80px) + 52px), 0) rotate(var(--cr, 320deg)) scale(0.5);
+  }
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -197,6 +238,31 @@
   .animate-share-count-pop {
     animation: share-count-pop 460ms cubic-bezier(0.22, 1, 0.36, 1);
   }
+  .animate-share-delta-rise {
+    animation: share-delta-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-share-toast-in {
+    animation: share-toast-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .share-confetti-particle {
+    animation: share-confetti-burst 1050ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .share-confetti-0  { --cx: -115px; --cy: -105px; --cr: -240deg; animation-delay: 0ms; }
+  .share-confetti-1  { --cx: -88px;  --cy: -135px; --cr: 195deg;  animation-delay: 25ms; }
+  .share-confetti-2  { --cx: -55px;  --cy: -155px; --cr: -310deg; animation-delay: 10ms; }
+  .share-confetti-3  { --cx: -22px;  --cy: -145px; --cr: 260deg;  animation-delay: 40ms; }
+  .share-confetti-4  { --cx: 12px;   --cy: -162px; --cr: -190deg; animation-delay: 15ms; }
+  .share-confetti-5  { --cx: 45px;   --cy: -142px; --cr: 290deg;  animation-delay: 35ms; }
+  .share-confetti-6  { --cx: 78px;   --cy: -125px; --cr: -260deg; animation-delay: 5ms; }
+  .share-confetti-7  { --cx: 108px;  --cy: -98px;  --cr: 220deg;  animation-delay: 45ms; }
+  .share-confetti-8  { --cx: -130px; --cy: -65px;  --cr: 300deg;  animation-delay: 30ms; }
+  .share-confetti-9  { --cx: -72px;  --cy: -92px;  --cr: -210deg; animation-delay: 55ms; }
+  .share-confetti-10 { --cx: -35px;  --cy: -118px; --cr: 340deg;  animation-delay: 20ms; }
+  .share-confetti-11 { --cx: 5px;    --cy: -128px; --cr: -280deg; animation-delay: 50ms; }
+  .share-confetti-12 { --cx: 38px;   --cy: -108px; --cr: 250deg;  animation-delay: 12ms; }
+  .share-confetti-13 { --cx: 68px;   --cy: -82px;  --cr: -330deg; animation-delay: 38ms; }
+  .share-confetti-14 { --cx: 95px;   --cy: -55px;  --cr: 210deg;  animation-delay: 22ms; }
+  .share-confetti-15 { --cx: -10px;  --cy: -175px; --cr: 360deg;  animation-delay: 8ms; }
   .animate-feed-delay-0 { animation-delay: 0ms; }
   .animate-feed-delay-1 { animation-delay: 40ms; }
   .animate-feed-delay-2 { animation-delay: 80ms; }
@@ -210,7 +276,10 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-feed-item,
   .animate-share-bounce,
-  .animate-share-count-pop {
+  .animate-share-count-pop,
+  .animate-share-delta-rise,
+  .animate-share-toast-in,
+  .share-confetti-particle {
     animation: none;
   }
 }

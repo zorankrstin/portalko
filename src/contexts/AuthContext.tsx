@@ -52,7 +52,7 @@ export interface ProfileMenuItem {
   label: string;
   icon?: string;
   type: 'builtIn' | 'custom' | 'externalLink';
-  builtInTab?: 'posts' | 'saved' | 'settings';
+  builtInTab?: 'posts' | 'saved' | 'network' | 'settings';
   content?: string;
   url?: string;
   visible: boolean;
@@ -62,8 +62,9 @@ export interface ProfileMenuItem {
 export const DEFAULT_PROFILE_MENU: ProfileMenuItem[] = [
   { id: 'menu-posts', label: 'Moje objave', icon: 'FileText', type: 'builtIn', builtInTab: 'posts', visible: true, order: 1 },
   { id: 'menu-saved', label: 'Shranjeno', icon: 'Bookmark', type: 'builtIn', builtInTab: 'saved', visible: true, order: 2 },
-  { id: 'menu-about', label: 'O meni', icon: 'User', type: 'custom', content: 'Pozdravljeni na mojem profilu na Portalko.net! Tukaj delim zanimive objave, novice ter predloge za slovensko skupnost.', visible: true, order: 3 },
-  { id: 'menu-settings', label: 'Nastavitve računa', icon: 'Settings', type: 'builtIn', builtInTab: 'settings', visible: true, order: 4 },
+  { id: 'menu-network', label: 'Omrežje povezav', icon: 'Network', type: 'builtIn', builtInTab: 'network', visible: true, order: 3 },
+  { id: 'menu-about', label: 'O meni', icon: 'User', type: 'custom', content: 'Pozdravljeni na mojem profilu na Portalko.net! Tukaj delim zanimive objave, novice ter predloge za slovensko skupnost.', visible: true, order: 4 },
+  { id: 'menu-settings', label: 'Nastavitve računa', icon: 'Settings', type: 'builtIn', builtInTab: 'settings', visible: true, order: 5 },
 ];
 
 export const DEFAULT_SOCIAL_LINKS: SocialLink[] = [

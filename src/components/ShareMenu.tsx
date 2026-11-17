@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Share2 } from 'lucide-react';
 import { buildPostUrl } from '../utils/urlUtils';
 import { ShareModal } from './common/ShareModal';
+import { ShareCounter } from './common/ShareCounter';
 import { useShares } from '../contexts/ShareContext';
 
 export interface ShareMenuProps {
@@ -52,7 +53,6 @@ export function ShareMenu({
 }: ShareMenuProps) {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isButtonAnimating, setIsButtonAnimating] = useState(false);
-  const [isCountPopping, setIsCountPopping] = useState(false);
   const { getSharesCount, incrementShareCount } = useShares();
 
   const shouldShowCount = showCount !== undefined ? showCount : showLabel;
@@ -60,9 +60,6 @@ export function ShareMenu({
   const sharesCount = hasShareTarget ? getSharesCount(id, type, url, initialSharesCount) : 0;
 
   const buttonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevCountRef = useRef<number>(sharesCount);
-  const hasMountedRef = useRef(false);
 
   const triggerButtonAnimation = () => {
     if (buttonTimerRef.current) clearTimeout(buttonTimerRef.current);
@@ -75,33 +72,9 @@ export function ShareMenu({
     });
   };
 
-  const triggerCountAnimation = () => {
-    if (countTimerRef.current) clearTimeout(countTimerRef.current);
-    setIsCountPopping(false);
-    requestAnimationFrame(() => {
-      setIsCountPopping(true);
-      countTimerRef.current = setTimeout(() => {
-        setIsCountPopping(false);
-      }, 500);
-    });
-  };
-
-  useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      prevCountRef.current = sharesCount;
-      return;
-    }
-    if (sharesCount > prevCountRef.current) {
-      triggerCountAnimation();
-    }
-    prevCountRef.current = sharesCount;
-  }, [sharesCount]);
-
   useEffect(() => {
     return () => {
       if (buttonTimerRef.current) clearTimeout(buttonTimerRef.current);
-      if (countTimerRef.current) clearTimeout(countTimerRef.current);
     };
   }, []);
 
@@ -150,7 +123,6 @@ export function ShareMenu({
     setIsShareModalOpen(true);
 
     if (hasShareTarget) {
-      triggerCountAnimation();
       void incrementShareCount({
         id,
         type,
@@ -170,7 +142,7 @@ export function ShareMenu({
 
   return (
     <>
-      <div className={`relative inline-block ${className}`}>
+      <div className={`relative inline-flex items-center gap-1.5 shrink-0 ${className}`}>
         <button 
           onClick={handleShareClick}
           className={`${baseButtonClasses} ${
@@ -194,23 +166,17 @@ export function ShareMenu({
               {label}
             </span>
           )}
-          {shouldShowCount && hasShareTarget && (
-            <span
-              className={
-                countClassName ||
-                `inline-block text-xs font-semibold tabular-nums transition-colors duration-200 ${
-                  isCountPopping
-                    ? 'animate-share-count-pop text-primary font-extrabold'
-                    : sharesCount > 0
-                    ? 'text-primary font-bold'
-                    : 'text-outline'
-                }`
-              }
-            >
-              {sharesCount}
-            </span>
-          )}
         </button>
+        {shouldShowCount && hasShareTarget && (
+          <ShareCounter
+            id={id}
+            type={type}
+            url={url || shareUrl}
+            initialSharesCount={initialSharesCount}
+            variant={showLabel ? 'inline' : 'compact'}
+            className={countClassName}
+          />
+        )}
       </div>
 
       {isShareModalOpen && (

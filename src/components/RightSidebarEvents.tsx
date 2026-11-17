@@ -8,6 +8,7 @@ import { EventCalendarWidget } from './common/EventCalendarWidget';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { getUpcomingEvents, getTodayYmd } from '../utils/eventFilterUtils';
 import { PromotionBannerZone } from './common/PromotionBannerZone';
+import { WeatherWidget } from './WeatherWidget';
 import { buildPostUrl, slugify } from '../utils/urlUtils';
 
 interface RightSidebarEventsProps {
@@ -76,6 +77,9 @@ export function RightSidebarEvents({ onNavigatePost }: RightSidebarEventsProps) 
       <PromotionBannerZone position="right_sidebar" />
       {/* 1. Interaktivni Koledar prireditev (Date Filter) */}
       <EventCalendarWidget events={allEvents} />
+
+      {/* 2. Lokalna vremenska napoved za obiskovalce dogodkov */}
+      <WeatherWidget variant="events" />
 
       {/* 2. Prihajajoči top dogodki v vaši bližini */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-space-sm">

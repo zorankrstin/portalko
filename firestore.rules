@@ -58,6 +58,23 @@ service cloud.firestore {
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
+    function isValidEventReminder(data) {
+      return data.keys().hasAll(['id', 'userId', 'eventId', 'eventTitle', 'eventDate', 'leadMinutes', 'remindAt', 'triggered', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'userId', 'eventId', 'eventTitle', 'eventDate', 'eventTime', 'location', 'leadMinutes', 'remindAt', 'triggered', 'createdAt', 'updatedAt']) &&
+             isValidId(data.id) &&
+             isValidId(data.userId) &&
+             isValidId(data.eventId) &&
+             data.eventTitle is string && data.eventTitle.size() >= 1 && data.eventTitle.size() <= 200 &&
+             data.eventDate is string && data.eventDate.size() >= 8 && data.eventDate.size() <= 32 &&
+             (!('eventTime' in data) || (data.eventTime is string && data.eventTime.size() <= 64)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
+             data.leadMinutes is int && data.leadMinutes in [0, 15, 60, 1440] &&
+             data.remindAt is string && data.remindAt.size() >= 10 && data.remindAt.size() <= 64 &&
+             data.triggered is bool &&
+             data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 64 &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
     // Posting permissions:
     // Blog posts and Deals (Akcije) in /posts collection: ONLY superadmin, admin, moderator, and verified users.
     function canPostBlogOrDeals(data) {
@@ -120,6 +137,24 @@ service cloud.firestore {
         allow read: if true;
         allow create, update: if isValidId(authorId) && isValidFollow(request.resource.data);
         allow delete: if isValidId(authorId);
+      }
+
+      // User scheduled event reminders
+      match /event_reminders/{reminderId} {
+        allow read: if isValidId(userId);
+        allow create: if isValidId(userId) &&
+                         isValidId(reminderId) &&
+                         isValidEventReminder(request.resource.data) &&
+                         request.resource.data.id == reminderId &&
+                         request.resource.data.userId == userId;
+        allow update: if isValidId(userId) &&
+                         isValidId(reminderId) &&
+                         isValidEventReminder(request.resource.data) &&
+                         request.resource.data.id == resource.data.id &&
+                         request.resource.data.userId == resource.data.userId &&
+                         request.resource.data.eventId == resource.data.eventId &&
+                         request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isValidId(userId) && isValidId(reminderId);
       }
     }
 

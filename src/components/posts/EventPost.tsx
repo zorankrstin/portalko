@@ -16,6 +16,7 @@ import { UserAvatar } from "../common/UserAvatar";
 import { resolveEventDisplayDate } from "../../utils/dateUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
+import { EventReminderButton } from "../events/EventReminderButton";
 
 export interface EventPostProps {
   id?: string;
@@ -450,6 +451,14 @@ export const EventPost: React.FC<EventPostProps> = ({
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <EventReminderButton
+              eventId={id}
+              eventTitle={title}
+              eventDate={resolvedDate.dateYmd}
+              eventTime={displayTime}
+              location={displayLocation}
+              description={cleanDescription}
+            />
             <LikeButton 
               id={id} 
               targetType="event" 

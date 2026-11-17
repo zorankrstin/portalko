@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, X, Sparkles, Check } from 'lucide-react';
+import { BellRing, Calendar, ChevronLeft, ChevronRight, X, Sparkles } from 'lucide-react';
 import { useEventFilter } from '../../contexts/EventFilterContext';
+import { useEventReminders } from '../../contexts/EventReminderContext';
 import { getTodayYmd, formatYmd, extractEventDateStrings } from '../../utils/eventFilterUtils';
 import { FirestoreEvent } from '../../services/firestoreService';
 
@@ -28,6 +29,8 @@ export const EventCalendarWidget: React.FC<EventCalendarWidgetProps> = ({
     selectWeekend,
     datesSummary,
   } = useEventFilter();
+
+  const { remindersByDate } = useEventReminders();
 
   const todayYmd = useMemo(() => getTodayYmd(), []);
 
@@ -87,6 +90,7 @@ export const EventCalendarWidget: React.FC<EventCalendarWidgetProps> = ({
       isSelected: boolean;
       hasEvents: boolean;
       eventCount: number;
+      hasReminder: boolean;
     }[] = [];
 
     // Leading days from previous month
@@ -104,6 +108,7 @@ export const EventCalendarWidget: React.FC<EventCalendarWidgetProps> = ({
         isSelected: selectedDates.includes(dateStr),
         hasEvents: evCount > 0,
         eventCount: evCount,
+        hasReminder: Boolean(remindersByDate[dateStr]?.length),
       });
     }
 
@@ -120,6 +125,7 @@ export const EventCalendarWidget: React.FC<EventCalendarWidgetProps> = ({
         isSelected: selectedDates.includes(dateStr),
         hasEvents: evCount > 0,
         eventCount: evCount,
+        hasReminder: Boolean(remindersByDate[dateStr]?.length),
       });
     }
 
@@ -139,12 +145,13 @@ export const EventCalendarWidget: React.FC<EventCalendarWidgetProps> = ({
           isSelected: selectedDates.includes(dateStr),
           hasEvents: evCount > 0,
           eventCount: evCount,
+          hasReminder: Boolean(remindersByDate[dateStr]?.length),
         });
       }
     }
 
     return days;
-  }, [year, month, todayYmd, selectedDates, eventDatesMap]);
+  }, [year, month, todayYmd, selectedDates, eventDatesMap, remindersByDate]);
 
   const handleDayClick = (dateStr: string) => {
     toggleDate(dateStr);
@@ -233,17 +240,26 @@ export const EventCalendarWidget: React.FC<EventCalendarWidgetProps> = ({
                   : 'bg-surface-container-low/40 text-on-surface hover:bg-surface-container'
               }`}
             >
-              <span className="leading-none text-[11px]">{d.dayNum}</span>
+              <span className="leading-none text-[11px] tabular-nums">{d.dayNum}</span>
 
-              {/* Event indicator dot */}
-              {d.hasEvents && (
-                <span
-                  className={`w-1.5 h-1.5 rounded-full mt-0.5 transition-colors ${
-                    d.isSelected 
-                      ? 'bg-white' 
-                      : 'bg-secondary'
-                  }`}
-                />
+              {/* Event & Reminder indicator dots */}
+              {(d.hasEvents || d.hasReminder) && (
+                <div className="flex items-center gap-0.5 mt-0.5">
+                  {d.hasEvents && (
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                        d.isSelected ? 'bg-white' : 'bg-secondary'
+                      }`}
+                    />
+                  )}
+                  {d.hasReminder && (
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                        d.isSelected ? 'bg-amber-200' : 'bg-amber-500'
+                      }`}
+                    />
+                  )}
+                </div>
               )}
             </button>
           );
@@ -299,7 +315,7 @@ export const EventCalendarWidget: React.FC<EventCalendarWidgetProps> = ({
           <span className="w-2 h-2 rounded-full bg-secondary"></span> Z dogodki
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full border border-primary bg-primary/20"></span> Danes
+          <span className="w-2 h-2 rounded-full bg-amber-500"></span> Opomnik
         </span>
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-primary"></span> Izbrano

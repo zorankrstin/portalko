@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Smartphone
 } from 'lucide-react';
+import { useShares } from '../contexts/ShareContext';
 
 export const XLogoIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -62,6 +63,7 @@ export function SocialShareWidget({
   const [showCustomize, setShowCustomize] = useState(false);
   const [customNote, setCustomNote] = useState('');
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const { triggerShareFeedback } = useShares();
 
   // Derive canonical or current URL
   const resolvedUrl = url || (typeof window !== 'undefined' ? window.location.href : '');
@@ -145,6 +147,7 @@ export function SocialShareWidget({
     const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(resolvedUrl)}&quote=${encodeURIComponent(quoteText)}`;
     window.open(fbUrl, '_blank', 'width=620,height=480,scrollbars=yes,resizable=yes');
     showTemporaryFeedback('Odpiranje Facebook deljenja...');
+    triggerShareFeedback({ title: 'Deljeno prek Facebooka!', subtitle: title, showConfetti: true });
   };
 
   // 2. Share X (Twitter)
@@ -154,6 +157,7 @@ export function SocialShareWidget({
     )}&hashtags=Portalko,Slovenija`;
     window.open(xUrl, '_blank', 'width=620,height=480,scrollbars=yes,resizable=yes');
     showTemporaryFeedback('Odpiranje X (Twitter) deljenja...');
+    triggerShareFeedback({ title: 'Deljeno prek omrežja X!', subtitle: title, showConfetti: true });
   };
 
   // 3. Share WhatsApp
@@ -161,6 +165,7 @@ export function SocialShareWidget({
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(fullPreFilledText)}`;
     window.open(waUrl, '_blank');
     showTemporaryFeedback('Odpiranje WhatsApp sporočila s pripravljeno vsebino...');
+    triggerShareFeedback({ title: 'Deljeno prek WhatsAppa!', subtitle: title, showConfetti: true });
   };
 
   // 4. Share Viber
@@ -175,6 +180,7 @@ export function SocialShareWidget({
     // Attempt protocol launch
     window.location.href = viberProtocolUrl;
     showTemporaryFeedback('Odpiranje Viberja (besedilo s povezavo je tudi kopirano v odložišče)');
+    triggerShareFeedback({ title: 'Deljeno prek Viberja!', subtitle: title, showConfetti: true });
   };
 
   // 5. Share Email
@@ -182,6 +188,7 @@ export function SocialShareWidget({
     const mailtoUrl = `mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
     window.location.href = mailtoUrl;
     showTemporaryFeedback('Pripravljam e-poštno sporočilo...');
+    triggerShareFeedback({ title: 'Pripravljeno za deljenje po e-pošti!', subtitle: title, showConfetti: true });
   };
 
   // 6. Native Web Share API (for mobile devices)
@@ -194,6 +201,7 @@ export function SocialShareWidget({
         url: resolvedUrl,
       });
       showTemporaryFeedback('Uspešno deljeno prek sistemskega menija!');
+      triggerShareFeedback({ title: 'Objava uspešno deljena!', subtitle: title, showConfetti: true });
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
         copyToClipboard(resolvedUrl, true);

@@ -1996,6 +1996,57 @@ async function startServer() {
     }
   });
 
+  // Approximate IP geolocation fallback for local weather widget (when browser GPS is denied/unavailable)
+  app.get("/api/weather/ip-location", async (req, res) => {
+    try {
+      const forwarded = req.headers["x-forwarded-for"];
+      const rawIp = Array.isArray(forwarded)
+        ? forwarded[0]
+        : typeof forwarded === "string"
+        ? forwarded.split(",")[0].trim()
+        : req.socket.remoteAddress || "";
+      const cleanIp = rawIp.replace(/^::ffff:/, "").trim();
+
+      const isPrivateOrLocal =
+        !cleanIp ||
+        cleanIp === "127.0.0.1" ||
+        cleanIp === "::1" ||
+        cleanIp.startsWith("10.") ||
+        cleanIp.startsWith("192.168.") ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(cleanIp);
+
+      if (isPrivateOrLocal) {
+        return res.json({ ok: false, reason: "local_network" });
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const geoRes = await fetch(`https://ipwho.is/${encodeURIComponent(cleanIp)}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!geoRes.ok) {
+        return res.json({ ok: false });
+      }
+      const data: any = await geoRes.json();
+      if (data && data.success !== false && typeof data.latitude === "number" && typeof data.longitude === "number") {
+        return res.json({
+          ok: true,
+          lat: data.latitude,
+          lon: data.longitude,
+          city: data.city || "",
+          region: data.region || "",
+          countryCode: data.country_code || "",
+          source: "ip",
+        });
+      }
+      return res.json({ ok: false });
+    } catch {
+      return res.json({ ok: false });
+    }
+  });
+
   // Security filter: drop vulnerability probes & scanner targets with 404
   app.use((req, res, next) => {
     const p = req.path.toLowerCase();

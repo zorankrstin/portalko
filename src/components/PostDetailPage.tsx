@@ -11,6 +11,7 @@ import DOMPurify from 'dompurify';
 import { PostDetailTarget, ViewMode, AuthorProfileTarget, PostDetailType } from '../types';
 import { BookmarkButton } from './BookmarkButton';
 import { ShareMenu } from './ShareMenu';
+import { ShareCounter } from './common/ShareCounter';
 import { ReportButton } from './ReportButton';
 import { LikeButton } from './LikeButton';
 import { buildAmpUrl, isAmpRequested, AmpArticleData, generateAmpHtml } from '../services/ampService';
@@ -56,6 +57,8 @@ import { UserAvatar } from './common/UserAvatar';
 import { isDummyAvatar, resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { FollowAuthorButton } from './common/FollowAuthorButton';
+import { EventReminderButton } from './events/EventReminderButton';
+import { normalizeDateToYmd } from '../utils/eventFilterUtils';
 import { isUserVerified } from '../utils/userVerificationUtils';
 import { formatBytesSlovenian } from '../utils/imageUtils';
 
@@ -264,7 +267,7 @@ export function PostDetailPage({
   const [blogLikes, setBlogLikes] = useState<number>(0);
   const [hasBlogLiked, setHasBlogLiked] = useState(false);
   const { getLikesCount, isLiked, toggleLike } = useLikes();
-  const { getSharesCount, incrementShareCount } = useShares();
+  const { incrementShareCount } = useShares();
 
   // Carousel & Lightbox state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -2447,34 +2450,40 @@ export function PostDetailPage({
               className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
             />
 
-            {/* Deli objavo - Odpre Share Modal in poveča števec delitev */}
-            <button
-              type="button"
-              id="btn-post-open-share-modal"
-              onClick={() => {
-                setIsShareButtonAnimating(false);
-                requestAnimationFrame(() => {
-                  setIsShareButtonAnimating(true);
-                  setTimeout(() => setIsShareButtonAnimating(false), 540);
-                });
-                void incrementShareCount({
-                  id: itemData.id,
-                  type: target.type,
-                  initialCount: (itemData as any).sharesCount || 0,
-                });
-                setIsShareModalOpen(true);
-              }}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs hover:scale-102 active:scale-95 ${
-                isShareButtonAnimating ? 'animate-share-bounce' : ''
-              }`}
-              title="Deli objavo (kopiraj povezavo ali deli na družbena omrežja)"
-            >
-              <Share2 className={`w-4 h-4 transition-transform duration-200 ${isShareButtonAnimating ? 'scale-125' : ''}`} />
-              <span>Deli</span>
-              <span className={`inline-block px-1.5 py-0.5 rounded-md bg-white/20 text-xs font-bold tabular-nums ${isShareButtonAnimating ? 'animate-share-count-pop' : ''}`}>
-                {getSharesCount(itemData.id, target.type, undefined, (itemData as any).sharesCount || 0)}
-              </span>
-            </button>
+            {/* Deli objavo + realnočasovni števec delitev poleg gumba */}
+            <div className="inline-flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                id="btn-post-open-share-modal"
+                onClick={() => {
+                  setIsShareButtonAnimating(false);
+                  requestAnimationFrame(() => {
+                    setIsShareButtonAnimating(true);
+                    setTimeout(() => setIsShareButtonAnimating(false), 540);
+                  });
+                  void incrementShareCount({
+                    id: itemData.id,
+                    type: target.type,
+                    initialCount: (itemData as any).sharesCount || 0,
+                  });
+                  setIsShareModalOpen(true);
+                }}
+                className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs hover:scale-102 active:scale-95 ${
+                  isShareButtonAnimating ? 'animate-share-bounce' : ''
+                }`}
+                title="Deli objavo (kopiraj povezavo ali deli na družbena omrežja)"
+              >
+                <Share2 className={`w-4 h-4 transition-transform duration-200 ${isShareButtonAnimating ? 'scale-125' : ''}`} />
+                <span>Deli</span>
+              </button>
+              <ShareCounter
+                id={itemData.id}
+                type={target.type}
+                initialSharesCount={(itemData as any).sharesCount || 0}
+                variant="pill"
+                showLabel={true}
+              />
+            </div>
 
             {/* AMP (Accelerated Mobile Pages) Button for News & Blog posts */}
             {(target.type === 'news' || target.type === 'blog' || target.type === 'post') && (
@@ -2488,6 +2497,25 @@ export function PostDetailPage({
                 <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
                 <span>AMP</span>
               </button>
+            )}
+
+            {/* Event Reminder Button for Events */}
+            {target.type === 'event' && (
+              <EventReminderButton
+                eventId={itemData.id}
+                eventTitle={itemData.title}
+                eventDate={
+                  normalizeDateToYmd(
+                    (itemData as any).eventDate ||
+                      (Array.isArray((itemData as any).eventDates) ? (itemData as any).eventDates[0] : '') ||
+                      itemData.date
+                  ) || undefined
+                }
+                eventTime={(itemData as any).eventTime || (itemData as any).time}
+                location={itemData.location}
+                description={getPlainTextSnippet(itemData.description || '')}
+                className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs sm:text-sm font-semibold text-on-surface transition-colors flex items-center gap-2 cursor-pointer border border-surface-container/60 shadow-2xs"
+              />
             )}
 
             {/* Prijavi */}

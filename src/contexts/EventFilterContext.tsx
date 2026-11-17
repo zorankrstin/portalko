@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useMemo, ReactNode } from '
 import { 
   getTodayYmd, 
   getUpcomingWeekendDates, 
+  getNext7DaysDates,
+  getMonthDates,
   formatSelectedDatesSummary, 
   extractCityOrRegion,
   navigateToEventsView 
@@ -14,6 +16,11 @@ export interface EventFilterContextType {
   clearDates: () => void;
   selectToday: (autoNavigate?: boolean) => void;
   selectWeekend: (autoNavigate?: boolean) => void;
+  selectNext7Days: (autoNavigate?: boolean) => void;
+  selectMonth: (year: number, monthZeroIndexed: number, autoNavigate?: boolean) => void;
+
+  onlyWithReminders: boolean;
+  setOnlyWithReminders: (val: boolean) => void;
 
   selectedCategory: string;
   setSelectedCategory: (cat: string) => void;
@@ -43,6 +50,7 @@ const EventFilterContext = createContext<EventFilterContextType | undefined>(und
 
 export const EventFilterProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [selectedDates, setSelectedDatesState] = useState<string[]>([]);
+  const [onlyWithReminders, setOnlyWithReminders] = useState<boolean>(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
@@ -88,6 +96,22 @@ export const EventFilterProvider: React.FC<{ children: ReactNode }> = ({ childre
     }
   };
 
+  const selectNext7Days = (autoNavigate = true) => {
+    const next7 = getNext7DaysDates();
+    setSelectedDatesState(next7);
+    if (autoNavigate) {
+      navigateToEventsView();
+    }
+  };
+
+  const selectMonth = (year: number, monthZeroIndexed: number, autoNavigate = true) => {
+    const monthDates = getMonthDates(year, monthZeroIndexed);
+    setSelectedDatesState(monthDates);
+    if (autoNavigate) {
+      navigateToEventsView();
+    }
+  };
+
   const filterByEventCategory = (
     category: string,
     categoryName?: string,
@@ -126,6 +150,7 @@ export const EventFilterProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   const clearAllFilters = () => {
     setSelectedDatesState([]);
+    setOnlyWithReminders(false);
     setSelectedCategory('all');
     setSelectedSubcategory('all');
     setSelectedRegion('all');
@@ -138,12 +163,13 @@ export const EventFilterProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   const activeFilterCount = useMemo(() => {
     let count = selectedDates.length;
+    if (onlyWithReminders) count++;
     if (selectedCategory !== 'all') count++;
     if (selectedSubcategory !== 'all') count++;
     if (selectedRegion !== 'all') count++;
     if (locationFilter.trim()) count++;
     return count;
-  }, [selectedDates, selectedCategory, selectedSubcategory, selectedRegion, locationFilter]);
+  }, [selectedDates, onlyWithReminders, selectedCategory, selectedSubcategory, selectedRegion, locationFilter]);
 
   const hasActiveFilters = activeFilterCount > 0;
 
@@ -156,6 +182,10 @@ export const EventFilterProvider: React.FC<{ children: ReactNode }> = ({ childre
         clearDates,
         selectToday,
         selectWeekend,
+        selectNext7Days,
+        selectMonth,
+        onlyWithReminders,
+        setOnlyWithReminders,
         selectedCategory,
         setSelectedCategory,
         selectedSubcategory,

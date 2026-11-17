@@ -3523,6 +3523,72 @@ export function subscribeToAuthorFollowerCount(
   }
 }
 
+export function subscribeToAuthorFollowersList(
+  authorKey: string,
+  onFollowers: (records: AuthorFollowRecord[]) => void
+): () => void {
+  if (!authorKey) {
+    onFollowers([]);
+    return () => {};
+  }
+
+  const safeAuthorKey = normalizeAuthorFollowKey(authorKey);
+  const path = `author_followers/${safeAuthorKey}/followers`;
+  try {
+    return onSnapshot(
+      collection(db, 'author_followers', safeAuthorKey, 'followers'),
+      (snapshot) => {
+        const records: AuthorFollowRecord[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<AuthorFollowRecord, 'id'>),
+        }));
+        saveCachedFollowerCount(safeAuthorKey, snapshot.size);
+        onFollowers(records);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+        onFollowers([]);
+      }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    onFollowers([]);
+    return () => {};
+  }
+}
+
+export async function fetchUserFollowingOnce(userId: string): Promise<AuthorFollowRecord[]> {
+  if (!userId) return [];
+  const safeFollowerId = sanitizeFollowDocId(userId);
+  const path = `users/${safeFollowerId}/following`;
+  try {
+    const snapshot = await getDocs(collection(db, 'users', safeFollowerId, 'following'));
+    return snapshot.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<AuthorFollowRecord, 'id'>),
+    }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
+  }
+}
+
+export async function fetchAuthorFollowersOnce(authorKey: string): Promise<AuthorFollowRecord[]> {
+  if (!authorKey) return [];
+  const safeAuthorKey = normalizeAuthorFollowKey(authorKey);
+  const path = `author_followers/${safeAuthorKey}/followers`;
+  try {
+    const snapshot = await getDocs(collection(db, 'author_followers', safeAuthorKey, 'followers'));
+    return snapshot.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<AuthorFollowRecord, 'id'>),
+    }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
+  }
+}
+
 export async function toggleFollowAuthorInFirestore(params: {
   followerId: string;
   followerName?: string;
@@ -3781,4 +3847,200 @@ export async function incrementShareCountInFirestore(params: {
 
   return updatedCount;
 }
+
+// -------------------------------------------------------------
+// EVENT REMINDERS SERVICE
+// -------------------------------------------------------------
+
+export type EventReminderLeadMinutes = 0 | 15 | 60 | 1440;
+
+export interface EventReminderRecord {
+  id: string;
+  userId: string;
+  eventId: string;
+  eventTitle: string;
+  eventDate: string; // YYYY-MM-DD
+  eventTime?: string;
+  location?: string;
+  leadMinutes: EventReminderLeadMinutes;
+  remindAt: string; // ISO string
+  triggered: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+const EVENT_REMINDERS_CACHE_PREFIX = 'portalko_event_reminders_v1_';
+
+export function sanitizeReminderDocId(rawId: string): string {
+  const cleaned = (rawId || 'reminder').trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+  return cleaned || 'reminder';
+}
+
+export function getCachedEventReminders(userIdOrGuest: string): EventReminderRecord[] {
+  try {
+    const key = `${EVENT_REMINDERS_CACHE_PREFIX}${sanitizeReminderDocId(userIdOrGuest || 'guest')}`;
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return [];
+}
+
+export function saveCachedEventReminders(userIdOrGuest: string, reminders: EventReminderRecord[]): void {
+  try {
+    const key = `${EVENT_REMINDERS_CACHE_PREFIX}${sanitizeReminderDocId(userIdOrGuest || 'guest')}`;
+    localStorage.setItem(key, JSON.stringify(reminders));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+export function subscribeToUserEventReminders(
+  userId: string,
+  onUpdate: (reminders: EventReminderRecord[]) => void
+): () => void {
+  if (!userId) {
+    onUpdate([]);
+    return () => {};
+  }
+
+  const safeUserId = sanitizeReminderDocId(userId);
+  const cached = getCachedEventReminders(safeUserId);
+  if (cached.length > 0) {
+    onUpdate(cached);
+  }
+
+  const path = `users/${safeUserId}/event_reminders`;
+  try {
+    return onSnapshot(
+      collection(db, 'users', safeUserId, 'event_reminders'),
+      (snapshot) => {
+        const list: EventReminderRecord[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<EventReminderRecord, 'id'>),
+        }));
+        saveCachedEventReminders(safeUserId, list);
+        onUpdate(list);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+        onUpdate(getCachedEventReminders(safeUserId));
+      }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    onUpdate(getCachedEventReminders(safeUserId));
+    return () => {};
+  }
+}
+
+export async function upsertEventReminderInFirestore(params: {
+  userId: string;
+  eventId: string;
+  eventTitle: string;
+  eventDate: string;
+  eventTime?: string;
+  location?: string;
+  leadMinutes: EventReminderLeadMinutes;
+  remindAt: string;
+  triggered?: boolean;
+}): Promise<EventReminderRecord> {
+  const safeUserId = sanitizeReminderDocId(params.userId);
+  const safeEventId = sanitizeReminderDocId(params.eventId);
+  const nowIso = new Date().toISOString();
+
+  const ref = doc(db, 'users', safeUserId, 'event_reminders', safeEventId);
+  const path = `users/${safeUserId}/event_reminders/${safeEventId}`;
+
+  let existingCreatedAt = nowIso;
+  let docExists = false;
+  try {
+    const existingSnap = await getDoc(ref);
+    if (existingSnap.exists()) {
+      docExists = true;
+      const existingData = existingSnap.data();
+      if (typeof existingData?.createdAt === 'string' && existingData.createdAt.length >= 10) {
+        existingCreatedAt = existingData.createdAt;
+      }
+    }
+  } catch {
+    // proceed cleanly
+  }
+
+  const payload: EventReminderRecord = {
+    id: safeEventId,
+    userId: safeUserId,
+    eventId: safeEventId,
+    eventTitle: (params.eventTitle || 'Dogodek').trim().slice(0, 200),
+    eventDate: (params.eventDate || '').trim().slice(0, 32),
+    leadMinutes: params.leadMinutes,
+    remindAt: params.remindAt.slice(0, 64),
+    triggered: Boolean(params.triggered),
+    createdAt: existingCreatedAt.slice(0, 64),
+  };
+
+  if (params.eventTime && params.eventTime.trim()) {
+    payload.eventTime = params.eventTime.trim().slice(0, 64);
+  }
+  if (params.location && params.location.trim()) {
+    payload.location = params.location.trim().slice(0, 200);
+  }
+  if (docExists) {
+    payload.updatedAt = nowIso.slice(0, 64);
+  }
+
+  try {
+    if (docExists) {
+      await setDoc(ref, payload);
+    } else {
+      await setDoc(ref, payload);
+    }
+  } catch (error) {
+    handleFirestoreError(error, docExists ? OperationType.UPDATE : OperationType.CREATE, path);
+  }
+
+  return payload;
+}
+
+export async function markEventReminderTriggeredInFirestore(
+  userId: string,
+  eventId: string,
+  record: EventReminderRecord
+): Promise<void> {
+  const safeUserId = sanitizeReminderDocId(userId);
+  const safeEventId = sanitizeReminderDocId(eventId);
+  const path = `users/${safeUserId}/event_reminders/${safeEventId}`;
+  const ref = doc(db, 'users', safeUserId, 'event_reminders', safeEventId);
+
+  try {
+    await updateDoc(ref, {
+      triggered: true,
+      updatedAt: new Date().toISOString().slice(0, 64),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    void record;
+  }
+}
+
+export async function deleteEventReminderFromFirestore(
+  userId: string,
+  eventId: string
+): Promise<void> {
+  const safeUserId = sanitizeReminderDocId(userId);
+  const safeEventId = sanitizeReminderDocId(eventId);
+  const path = `users/${safeUserId}/event_reminders/${safeEventId}`;
+  const ref = doc(db, 'users', safeUserId, 'event_reminders', safeEventId);
+
+  try {
+    await deleteDoc(ref);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 

@@ -73,19 +73,22 @@ import { SocialLinksDisplay, getPlatformIcon, getPlatformLabel } from './profile
 import { SocialLinksEditorModal } from './profile/SocialLinksEditorModal';
 import { ProfileMenuEditorModal, getMenuTabIcon } from './profile/ProfileMenuEditorModal';
 import { CustomTabContent } from './profile/CustomTabContent';
+import { SocialNetworkGraph } from './profile/SocialNetworkGraph';
 
 export interface UserProfileProps {
   onViewChange: (view: ViewMode) => void;
   targetAuthor?: AuthorProfileTarget | null;
   onClearTargetAuthor?: () => void;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onAuthorClick?: (author: AuthorProfileTarget) => void;
 }
 
 export function UserProfile({ 
   onViewChange, 
   targetAuthor, 
   onClearTargetAuthor, 
-  onNavigatePost 
+  onNavigatePost,
+  onAuthorClick 
 }: UserProfileProps) {
   const { currentUser, logout, updateUser, changePassword, requestVerification, cancelVerificationRequest } = useAuth();
   const [activeTabId, setActiveTabId] = useState<string>('posts');
@@ -354,6 +357,7 @@ export function UserProfile({
         onBack={onClearTargetAuthor ? onClearTargetAuthor : () => onViewChange('main')}
         onNavigatePost={onNavigatePost}
         onViewChange={onViewChange}
+        onAuthorClick={onAuthorClick}
       />
     );
   }
@@ -434,9 +438,17 @@ export function UserProfile({
 
   // User profile menu and social links
   const userSocialLinks = currentUser.socialLinks || DEFAULT_SOCIAL_LINKS;
-  const userProfileMenu = (currentUser.profileMenu && currentUser.profileMenu.length > 0)
+  const rawProfileMenu = (currentUser.profileMenu && currentUser.profileMenu.length > 0)
     ? currentUser.profileMenu
     : DEFAULT_PROFILE_MENU;
+
+  const hasNetworkTab = rawProfileMenu.some(t => t.type === 'builtIn' && t.builtInTab === 'network');
+  const userProfileMenu: ProfileMenuItem[] = hasNetworkTab
+    ? rawProfileMenu
+    : [
+        ...rawProfileMenu,
+        { id: 'menu-network', label: 'Omrežje povezav', icon: 'Network', type: 'builtIn', builtInTab: 'network', visible: true, order: 2.5 },
+      ];
 
   const sortedMenuTabs = [...userProfileMenu].sort((a, b) => a.order - b.order);
   const visibleTabs = sortedMenuTabs.filter(t => t.visible !== false);
@@ -678,13 +690,26 @@ export function UserProfile({
                 Uporabniki in avtorji, ki jim sledite ({followingRecords.length > 0 ? followingRecords.length : followingKeys.length})
               </h3>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsFollowingListOpen(false)}
-              className="text-xs font-semibold text-outline hover:text-on-surface cursor-pointer"
-            >
-              Zapri
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFollowingListOpen(false);
+                  const networkTab = sortedMenuTabs.find(t => t.builtInTab === 'network');
+                  setActiveTabId(networkTab ? networkTab.id : 'network');
+                }}
+                className="text-xs font-bold text-primary hover:underline cursor-pointer"
+              >
+                Prikaži omrežje (D3 graf)
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFollowingListOpen(false)}
+                className="text-xs font-semibold text-outline hover:text-on-surface cursor-pointer"
+              >
+                Zapri
+              </button>
+            </div>
           </div>
 
           {followingRecords.length === 0 ? (
@@ -993,6 +1018,17 @@ export function UserProfile({
         {/* Built-in Saved */}
         {currentTab?.type === 'builtIn' && currentTab.builtInTab === 'saved' && (
           <SavedPostsTab />
+        )}
+
+        {/* Built-in Social Network Graph (D3.js) */}
+        {currentTab?.type === 'builtIn' && currentTab.builtInTab === 'network' && (
+          <SocialNetworkGraph
+            rootUserId={currentUser.id}
+            rootUserName={currentUser.name}
+            rootUserAvatar={currentUser.avatar}
+            rootUserRole={currentUser.role}
+            onAuthorClick={onAuthorClick}
+          />
         )}
 
         {/* Custom or External Link Tab */}

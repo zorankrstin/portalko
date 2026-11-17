@@ -3,7 +3,7 @@ import {
   ArrowLeft, Crown, Shield, UserCheck, CheckCircle2, 
   MapPin, Calendar, Tag, Store, BookOpen, Share2, 
   Clock, ExternalLink, Sparkles, MessageSquare, AlertCircle,
-  Eye, ThumbsUp, Users
+  Eye, ThumbsUp, Users, Network
 } from 'lucide-react';
 import { AuthorProfileTarget, PostDetailTarget, ViewMode } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -31,12 +31,14 @@ import { resolveEventDisplayDate } from '../../utils/dateUtils';
 import { VerifiedBadge } from '../common/VerifiedBadge';
 import { isUserVerified } from '../../utils/userVerificationUtils';
 import { FollowAuthorButton } from '../common/FollowAuthorButton';
+import { SocialNetworkGraph } from './SocialNetworkGraph';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
   onBack: () => void;
   onNavigatePost?: (target: PostDetailTarget) => void;
   onViewChange: (view: ViewMode) => void;
+  onAuthorClick?: (author: AuthorProfileTarget) => void;
 }
 
 export interface AuthorItemCardData {
@@ -56,9 +58,10 @@ export interface AuthorItemCardData {
   interestedCount?: number | string;
 }
 
-export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onViewChange }: PublicAuthorProfileProps) {
+export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onViewChange, onAuthorClick }: PublicAuthorProfileProps) {
   const { users, currentUser } = useAuth();
   const [activeTypeFilter, setActiveTypeFilter] = useState<'all' | 'post' | 'ad' | 'event' | 'deal'>('all');
+  const [activeSection, setActiveSection] = useState<'posts' | 'network'>('posts');
 
   // Real-time Firestore items
   const [firestorePosts, setFirestorePosts] = useState<FirestorePost[]>([]);
@@ -710,7 +713,44 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
         </div>
       </div>
 
-      {/* Author Published Content Section */}
+      {/* Author Profile Section Switcher: Objave vs Socialno omrežje */}
+      <div className="flex items-center gap-2 border-b border-surface-container px-1">
+        <button
+          type="button"
+          onClick={() => setActiveSection('posts')}
+          className={`px-4 py-2.5 font-label-md text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
+            activeSection === 'posts'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Objave ({authorItems.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('network')}
+          className={`px-4 py-2.5 font-label-md text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
+            activeSection === 'network'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          <Network className="w-4 h-4" />
+          <span>Omrežje povezav</span>
+        </button>
+      </div>
+
+      {activeSection === 'network' ? (
+        <SocialNetworkGraph
+          rootUserId={followAuthorId}
+          rootUserName={authorProfile.name}
+          rootUserAvatar={authorProfile.avatar}
+          rootUserRole={authorProfile.role}
+          onAuthorClick={onAuthorClick}
+        />
+      ) : (
+      /* Author Published Content Section */
       <div className="flex flex-col gap-3">
         {/* Filter Tabs */}
         <div className="flex items-center justify-between flex-wrap gap-2 border-b border-surface-container pb-2 px-1">
@@ -914,6 +954,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

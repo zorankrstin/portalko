@@ -31,6 +31,8 @@ export interface EventsCategoryLocationFilterProps {
   selectedDates?: string[];
   datesSummary?: string;
   onClearDates?: () => void;
+  onlyWithReminders?: boolean;
+  onClearReminders?: () => void;
 }
 
 export function EventsCategoryLocationFilter({
@@ -52,6 +54,8 @@ export function EventsCategoryLocationFilter({
   selectedDates = [],
   datesSummary = '',
   onClearDates,
+  onlyWithReminders = false,
+  onClearReminders,
 }: EventsCategoryLocationFilterProps) {
   // Deduplicated list of Slovenian towns for the location dropdown
   const popularTownsList = useMemo(() => {
@@ -155,6 +159,7 @@ export function EventsCategoryLocationFilter({
     selectedRegion !== 'all' || 
     sortOption !== 'newest' ||
     selectedDates.length > 0 ||
+    onlyWithReminders ||
     Boolean(searchQuery);
 
   // Get active location display name
@@ -346,6 +351,23 @@ export function EventsCategoryLocationFilter({
                     onClick={onClearDates} 
                     className="hover:text-error cursor-pointer"
                     title="Odstrani filter datumov"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            )}
+
+            {/* Active reminders filter indicator */}
+            {onlyWithReminders && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[11px] font-bold border border-amber-500/35">
+                <span>Moji opomniki</span>
+                {onClearReminders && (
+                  <button
+                    type="button"
+                    onClick={onClearReminders}
+                    className="hover:text-error cursor-pointer"
+                    title="Odstrani filter opomnikov"
                   >
                     <X className="w-3 h-3" />
                   </button>

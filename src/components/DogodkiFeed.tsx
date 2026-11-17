@@ -15,8 +15,9 @@ import { EventPost } from './posts/EventPost';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { parseEventDateInfo, resolveEventDisplayDate } from '../utils/dateUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
+import { useEventReminders } from '../contexts/EventReminderContext';
 import { extractEventDateStrings } from '../utils/eventFilterUtils';
-import { EventCalendarWidget } from './common/EventCalendarWidget';
+import { InteractiveEventsCalendar } from './events/InteractiveEventsCalendar';
 import { EventsCategoryLocationFilter } from './events/EventsCategoryLocationFilter';
 import { useAuth } from '../contexts/AuthContext';
 import { slugify } from '../utils/urlUtils';
@@ -37,9 +38,11 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
   const [isLoading, setIsLoading] = useState(false);
   const [firestoreEvents, setFirestoreEvents] = useState<FirestoreEvent[]>([]);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [showMobileCalendar, setShowMobileCalendar] = useState(false);
+  const [isCalendarExpanded, setIsCalendarExpanded] = useState(true);
   const [selectedTertiaryCategory, setSelectedTertiaryCategory] = useState<string>('all');
   const [sortOption, setSortOption] = useState<string>('newest');
+
+  const { hasReminder } = useEventReminders();
 
   // Global Event Filter Context (synced with Koledar prireditev in RightSidebar)
   const {
@@ -47,6 +50,8 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
     clearDates,
     toggleDate,
     datesSummary,
+    onlyWithReminders,
+    setOnlyWithReminders,
     selectedCategory,
     setSelectedCategory,
     selectedSubcategory,
@@ -125,6 +130,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
     setSelectedRegion('all');
     setLocationFilter('');
     clearDates();
+    setOnlyWithReminders(false);
     setSortOption('newest');
     setPage(1);
   };
@@ -252,7 +258,10 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
         (event.region && event.region.toLowerCase().includes(targetLocLower)) ||
         (event.title && event.title.toLowerCase().includes(targetLocLower));
 
-      return matchesSearch && matchesCat && matchesSubcat && matchesTertiary && matchesReg && matchesDates && matchesLocation;
+      // 3. Reminder Filtering
+      const matchesReminder = !onlyWithReminders || hasReminder(event.id);
+
+      return matchesSearch && matchesCat && matchesSubcat && matchesTertiary && matchesReg && matchesDates && matchesLocation && matchesReminder;
     });
   }, [
     firestoreEvents, 
@@ -264,7 +273,9 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
     selectedTertiaryCategory,
     selectedRegion, 
     selectedDates, 
-    locationFilter
+    locationFilter,
+    onlyWithReminders,
+    hasReminder
   ]);
 
   type UnifiedEvent = { type: 'firestore'; data: FirestoreEvent };
@@ -336,14 +347,13 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
             </h2>
           </div>
           <div className="flex items-center gap-2">
-            {/* Mobile Calendar Toggle Button (for screens where right sidebar is hidden) */}
             <button
               type="button"
-              onClick={() => setShowMobileCalendar(prev => !prev)}
-              className="lg:hidden px-3 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              onClick={() => setIsCalendarExpanded(prev => !prev)}
+              className="px-3 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
             >
               <Calendar className="w-4 h-4 text-tertiary-container" />
-              <span>{selectedDates.length > 0 ? `Koledar (${selectedDates.length})` : 'Koledar'}</span>
+              <span>{selectedDates.length > 0 ? `Koledar (${selectedDates.length})` : isCalendarExpanded ? 'Skrij koledar' : 'Koledar'}</span>
             </button>
             <button 
               onClick={() => setIsComposeOpen(true)}
@@ -354,14 +364,15 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
             </button>
           </div>
         </div>
-
-        {/* Collapsible Mobile Calendar */}
-        {showMobileCalendar && (
-          <div className="lg:hidden mt-2 pt-3 border-t border-surface-container animate-in fade-in duration-200">
-            <EventCalendarWidget events={firestoreEvents} />
-          </div>
-        )}
       </div>
+
+      {/* Prominent Interactive Events Calendar & Reminder Scheduler */}
+      <InteractiveEventsCalendar
+        events={firestoreEvents}
+        onNavigatePost={onNavigatePost}
+        isExpanded={isCalendarExpanded}
+        onToggleExpand={() => setIsCalendarExpanded(prev => !prev)}
+      />
 
       {/* Dedicated Category Badges and Dropdown Filter Component */}
       <EventsCategoryLocationFilter
@@ -401,6 +412,8 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
         selectedDates={selectedDates}
         datesSummary={datesSummary}
         onClearDates={clearDates}
+        onlyWithReminders={onlyWithReminders}
+        onClearReminders={() => setOnlyWithReminders(false)}
       />
 
       {/* Events List */}
@@ -411,7 +424,9 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
             <div>
               <h4 className="font-headline-sm text-base font-bold text-on-surface">Ni najdenih dogodkov</h4>
               <p className="text-xs text-outline mt-1 max-w-md mx-auto">
-                {selectedDates.length > 0 
+                {onlyWithReminders
+                  ? 'Trenutno nimate nastavljenega opomnika za noben dogodek, ki ustreza izbranim filtrom.'
+                  : selectedDates.length > 0 
                   ? `Za izbrane datume (${datesSummary})${locationFilter ? ` in lokacijo "${locationFilter}"` : ''} trenutno ni vpisanih dogodkov.`
                   : locationFilter
                   ? `Za lokacijo "${locationFilter}" trenutno ni vpisanih dogodkov.`

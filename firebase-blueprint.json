@@ -330,6 +330,26 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "targetId", "targetType", "sharesCount"]
+    },
+    "EventReminder": {
+      "title": "User Event Reminder",
+      "description": "Scheduled reminder for an individual event with lead time and notification trigger state",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "eventId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "eventTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "eventDate": { "type": "string", "minLength": 8, "maxLength": 32 },
+        "eventTime": { "type": "string", "maxLength": 64 },
+        "location": { "type": "string", "maxLength": 200 },
+        "leadMinutes": { "type": "integer", "enum": [0, 15, 60, 1440] },
+        "remindAt": { "type": "string", "minLength": 10, "maxLength": 64 },
+        "triggered": { "type": "boolean" },
+        "createdAt": { "type": "string", "minLength": 10, "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "eventId", "eventTitle", "eventDate", "leadMinutes", "remindAt", "triggered", "createdAt"]
     }
   },
   "firestore": {
@@ -388,6 +408,10 @@
     "/users/{userId}/following/{authorId}": {
       "schema": "Follow",
       "description": "Authors that a user subscribes to and follows"
+    },
+    "/users/{userId}/event_reminders/{reminderId}": {
+      "schema": "EventReminder",
+      "description": "User scheduled reminders for individual events"
     },
     "/author_followers/{authorId}/followers/{followerId}": {
       "schema": "Follow",

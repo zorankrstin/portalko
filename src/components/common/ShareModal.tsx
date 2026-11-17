@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { buildPostUrl } from '../../utils/urlUtils';
 import { getActiveFallbackImage, handleImageFallbackError } from '../../services/portalSettingsService';
+import { useShares } from '../../contexts/ShareContext';
 
 export const XLogoIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -83,6 +84,7 @@ export function ShareModal({
   const [customNote, setCustomNote] = useState('');
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { triggerShareFeedback } = useShares();
 
   // Derive canonical or current URL
   const resolvedUrl = React.useMemo(() => {
@@ -149,6 +151,11 @@ export function ShareModal({
         document.body.removeChild(textArea);
       }
       setCopiedLink(true);
+      triggerShareFeedback({
+        title: 'Povezava uspešno kopirana!',
+        subtitle: title,
+        showConfetti: false,
+      });
       setTimeout(() => setCopiedLink(false), 2500);
     } catch (err) {
       console.error('Kopiranje povezave ni uspelo', err);
@@ -175,16 +182,30 @@ export function ShareModal({
         document.body.removeChild(textArea);
       }
       setCopiedNote(true);
+      triggerShareFeedback({
+        title: 'Besedilo za deljenje kopirano!',
+        subtitle: title,
+        showConfetti: false,
+      });
       setTimeout(() => setCopiedNote(false), 2500);
     } catch (err) {
       console.error('Kopiranje besedila ni uspelo', err);
     }
   };
 
+  const notifySocialShareSuccess = (networkLabel: string) => {
+    triggerShareFeedback({
+      title: `Deljeno prek ${networkLabel}!`,
+      subtitle: title ? `Hvala za deljenje objave: ${title}` : 'Hvala za deljenje na Portalko.',
+      showConfetti: true,
+    });
+  };
+
   // Social sharing handlers
   const handleFacebookShare = () => {
     const shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(resolvedUrl)}`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer,width=600,height=600');
+    notifySocialShareSuccess('Facebooka');
   };
 
   const handleXShare = () => {
@@ -193,6 +214,7 @@ export function ShareModal({
       : `${title}${highlightSnippet} | Portalko`;
     const shareUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(resolvedUrl)}&text=${encodeURIComponent(text)}&hashtags=Portalko,Slovenija`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer,width=600,height=600');
+    notifySocialShareSuccess('omrežja X');
   };
 
   const handleWhatsAppShare = () => {
@@ -201,6 +223,7 @@ export function ShareModal({
       : `*${title}*${highlightSnippet}\n${cleanExcerpt ? `${cleanExcerpt}\n` : ''}${resolvedUrl}`;
     const shareUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    notifySocialShareSuccess('WhatsAppa');
   };
 
   const handleViberShare = () => {
@@ -209,17 +232,20 @@ export function ShareModal({
       : `${title}${highlightSnippet} - ${resolvedUrl}`;
     const shareUrl = `viber://forward?text=${encodeURIComponent(message)}`;
     window.location.href = shareUrl;
+    notifySocialShareSuccess('Viberja');
   };
 
   const handleLinkedInShare = () => {
     const shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(resolvedUrl)}`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer,width=600,height=600');
+    notifySocialShareSuccess('LinkedIna');
   };
 
   const handleTelegramShare = () => {
     const text = customNote.trim() ? `${customNote.trim()} - ${title}` : title;
     const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(resolvedUrl)}&text=${encodeURIComponent(text)}`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer,width=600,height=600');
+    notifySocialShareSuccess('Telegrama');
   };
 
   const handleEmailShare = () => {
@@ -231,6 +257,7 @@ export function ShareModal({
       `Povezava:\n${resolvedUrl}\n\n` +
       `Lep pozdrav!`;
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    notifySocialShareSuccess('e-pošte');
   };
 
   const hasNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
@@ -242,6 +269,11 @@ export function ShareModal({
         title,
         text: customNote.trim() || cleanExcerpt || title,
         url: resolvedUrl,
+      });
+      triggerShareFeedback({
+        title: 'Objava uspešno deljena!',
+        subtitle: title,
+        showConfetti: true,
       });
     } catch (err: any) {
       if (err.name !== 'AbortError') {

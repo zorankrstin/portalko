@@ -25,7 +25,8 @@ import {
   EyeOff, 
   RotateCcw,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  Network
 } from 'lucide-react';
 import { ProfileMenuItem, DEFAULT_PROFILE_MENU } from '../../contexts/AuthContext';
 
@@ -48,6 +49,7 @@ export const AVAILABLE_MENU_ICONS: { name: string; label: string; icon: React.Re
   { name: 'Calendar', label: 'Dogodki / Urnik', icon: <Calendar className="w-4 h-4" /> },
   { name: 'Sparkles', label: 'Posebnosti / Zanimivosti', icon: <Sparkles className="w-4 h-4" /> },
   { name: 'Globe', label: 'Spletna stran / Vir', icon: <Globe className="w-4 h-4" /> },
+  { name: 'Network', label: 'Socialno omrežje', icon: <Network className="w-4 h-4" /> },
   { name: 'Link2', label: 'Povezava', icon: <Link2 className="w-4 h-4" /> },
   { name: 'Settings', label: 'Nastavitve', icon: <Settings className="w-4 h-4" /> },
 ];
@@ -65,6 +67,7 @@ export function getMenuTabIcon(iconName?: string, className = "w-4 h-4") {
     case 'Calendar': return <Calendar className={className} />;
     case 'Sparkles': return <Sparkles className={className} />;
     case 'Globe': return <Globe className={className} />;
+    case 'Network': return <Network className={className} />;
     case 'Link2': return <Link2 className={className} />;
     case 'Settings': return <Settings className={className} />;
     default: return <FileText className={className} />;

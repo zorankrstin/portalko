@@ -782,6 +782,7 @@ export default function App() {
                   scrollToSidebarsTop();
                 }}
                 onNavigatePost={handleNavigatePost}
+                onAuthorClick={handleAuthorClick}
               />
             )}
             {currentView === 'admin' && (

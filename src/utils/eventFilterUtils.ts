@@ -80,6 +80,165 @@ export function getUpcomingWeekendDates(): string[] {
   return [formatYmd(saturday), formatYmd(sunday)];
 }
 
+/**
+ * Returns the next 7 days (including today) formatted as YYYY-MM-DD.
+ */
+export function getNext7DaysDates(): string[] {
+  const todayStr = getTodayYmd();
+  const [y, m, d] = todayStr.split('-').map(n => parseInt(n, 10));
+  const base = !isNaN(y) && !isNaN(m) && !isNaN(d) ? new Date(y, m - 1, d) : new Date();
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(base);
+    dt.setDate(base.getDate() + i);
+    dates.push(formatYmd(dt));
+  }
+  return dates;
+}
+
+/**
+ * Returns all YYYY-MM-DD dates in a given year and 0-indexed month.
+ */
+export function getMonthDates(year: number, monthZeroIndexed: number): string[] {
+  const lastDay = new Date(year, monthZeroIndexed + 1, 0).getDate();
+  const dates: string[] = [];
+  for (let d = 1; d <= lastDay; d++) {
+    dates.push(formatYmd(new Date(year, monthZeroIndexed, d)));
+  }
+  return dates;
+}
+
+/**
+ * Parses a YYYY-MM-DD date string and optional time string (e.g. "20:00" or "18.30")
+ * into a local Date instance. Defaults to 09:00 if no time is specified.
+ */
+export function computeEventStartDate(dateYmd: string, eventTime?: string | null): Date {
+  const match = (dateYmd || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const now = new Date();
+  const year = match ? parseInt(match[1], 10) : now.getFullYear();
+  const month = match ? parseInt(match[2], 10) - 1 : now.getMonth();
+  const day = match ? parseInt(match[3], 10) : now.getDate();
+
+  let hour = 9;
+  let minute = 0;
+  if (eventTime && typeof eventTime === 'string') {
+    const timeMatch = eventTime.match(/(\d{1,2})[:.](\d{2})/);
+    if (timeMatch) {
+      const h = parseInt(timeMatch[1], 10);
+      const min = parseInt(timeMatch[2], 10);
+      if (!isNaN(h) && h >= 0 && h <= 23 && !isNaN(min) && min >= 0 && min <= 59) {
+        hour = h;
+        minute = min;
+      }
+    }
+  }
+
+  return new Date(year, month, day, hour, minute, 0, 0);
+}
+
+/**
+ * Computes the reminder trigger timestamp ISO string from event date, time, and lead minutes.
+ */
+export function computeRemindAtIso(
+  dateYmd: string,
+  eventTime: string | undefined | null,
+  leadMinutes: number
+): string {
+  const startDate = computeEventStartDate(dateYmd, eventTime);
+  const targetMs = startDate.getTime() - leadMinutes * 60_000;
+  const nowMs = Date.now();
+  // If event itself is still in the future but the lead window has just started, schedule within 15s
+  if (targetMs <= nowMs && startDate.getTime() > nowMs) {
+    return new Date(nowMs + 15_000).toISOString();
+  }
+  return new Date(targetMs).toISOString();
+}
+
+/**
+ * Builds a Google Calendar "Add Event" URL without using window.open.
+ */
+export function buildGoogleCalendarUrl(params: {
+  title: string;
+  dateYmd: string;
+  eventTime?: string;
+  location?: string;
+  description?: string;
+}): string {
+  const start = computeEventStartDate(params.dateYmd, params.eventTime);
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const toGCalStamp = (dt: Date) =>
+    dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+
+  const url = new URL('https://calendar.google.com/calendar/render');
+  url.searchParams.set('action', 'TEMPLATE');
+  url.searchParams.set('text', params.title || 'Dogodek na Portalko.net');
+  url.searchParams.set('dates', `${toGCalStamp(start)}/${toGCalStamp(end)}`);
+  if (params.location) url.searchParams.set('location', params.location);
+  if (params.description) url.searchParams.set('details', params.description.slice(0, 500));
+  return url.toString();
+}
+
+/**
+ * Downloads a standard .ics calendar file with a VALARM reminder trigger.
+ */
+export function downloadEventIcsFile(params: {
+  id: string;
+  title: string;
+  dateYmd: string;
+  eventTime?: string;
+  location?: string;
+  description?: string;
+  leadMinutes?: number;
+}): void {
+  const start = computeEventStartDate(params.dateYmd, params.eventTime);
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const toIcsStamp = (dt: Date) =>
+    dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+
+  const escapeIcs = (txt: string) =>
+    (txt || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+
+  const lead = Math.max(0, params.leadMinutes ?? 60);
+  const triggerLine = lead === 0 ? 'TRIGGER:PT0M' : `TRIGGER:-PT${lead}M`;
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Portalko.net//Koledar dogodkov//SL',
+    'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${escapeIcs(params.id)}@portalko.net`,
+    `DTSTAMP:${toIcsStamp(new Date())}`,
+    `DTSTART:${toIcsStamp(start)}`,
+    `DTEND:${toIcsStamp(end)}`,
+    `SUMMARY:${escapeIcs(params.title || 'Dogodek')}`,
+    params.location ? `LOCATION:${escapeIcs(params.location)}` : '',
+    params.description ? `DESCRIPTION:${escapeIcs(params.description.slice(0, 600))}` : '',
+    'BEGIN:VALARM',
+    'ACTION:DISPLAY',
+    `DESCRIPTION:${escapeIcs(`Opomnik: ${params.title || 'Dogodek'}`)}`,
+    triggerLine,
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].filter(Boolean);
+
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  const safeName = (params.title || 'dogodek')
+    .toLowerCase()
+    .replace(/[^a-z0-9čšž-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50) || 'dogodek';
+  link.download = `${safeName}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
 const MONTHS_SL_SHORT = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
 const MONTHS_SL_FULL = [
   'januar', 'februar', 'marec', 'april', 'maj', 'junij',

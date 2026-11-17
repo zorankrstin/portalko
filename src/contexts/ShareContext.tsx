@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import {
   ShareTargetType,
   computeCanonicalShareKey,
@@ -7,8 +7,15 @@ import {
   subscribeToShareCounts,
   incrementShareCountInFirestore,
 } from '../services/firestoreService';
+import { ShareFeedbackOverlay, ShareFeedbackPayload } from '../components/common/ShareFeedbackOverlay';
 
 export type { ShareTargetType };
+
+export interface TriggerShareFeedbackOptions {
+  title: string;
+  subtitle?: string;
+  showConfetti?: boolean;
+}
 
 interface ShareContextType {
   shareCounts: Record<string, number>;
@@ -20,12 +27,17 @@ interface ShareContextType {
     url?: string;
     initialCount?: number;
   }) => Promise<number>;
+  triggerShareFeedback: (options: TriggerShareFeedbackOptions) => void;
+  dismissShareFeedback: () => void;
 }
 
 const ShareContext = createContext<ShareContextType | undefined>(undefined);
 
 export function ShareProvider({ children }: { children: ReactNode }) {
   const [shareCounts, setShareCounts] = useState<Record<string, number>>(() => getCachedShareCounts());
+  const [shareFeedback, setShareFeedback] = useState<ShareFeedbackPayload | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const feedbackIdRef = useRef(0);
 
   useEffect(() => {
     const unsubscribe = subscribeToShareCounts((firestoreCounts) => {
@@ -43,7 +55,37 @@ export function ShareProvider({ children }: { children: ReactNode }) {
 
     return () => {
       unsubscribe();
+      if (feedbackTimerRef.current) {
+        clearTimeout(feedbackTimerRef.current);
+      }
     };
+  }, []);
+
+  const dismissShareFeedback = useCallback(() => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    setShareFeedback(null);
+  }, []);
+
+  const triggerShareFeedback = useCallback((options: TriggerShareFeedbackOptions) => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+    }
+    feedbackIdRef.current += 1;
+    const nextId = feedbackIdRef.current;
+
+    setShareFeedback({
+      id: nextId,
+      title: options.title,
+      subtitle: options.subtitle,
+      showConfetti: options.showConfetti ?? true,
+    });
+
+    feedbackTimerRef.current = setTimeout(() => {
+      setShareFeedback((current) => (current?.id === nextId ? null : current));
+    }, 3400);
   }, []);
 
   const getShareKey = useCallback((id?: string, type?: ShareTargetType | string, url?: string): string => {
@@ -112,9 +154,12 @@ export function ShareProvider({ children }: { children: ReactNode }) {
         getShareKey,
         getSharesCount,
         incrementShareCount,
+        triggerShareFeedback,
+        dismissShareFeedback,
       }}
     >
       {children}
+      <ShareFeedbackOverlay feedback={shareFeedback} onDismiss={dismissShareFeedback} />
     </ShareContext.Provider>
   );
 }
