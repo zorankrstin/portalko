@@ -1,19 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Cloud, 
-  Sun, 
-  CloudSun, 
-  CloudRain, 
-  CloudDrizzle, 
-  CloudLightning, 
-  Snowflake, 
-  CloudFog, 
-  Wind, 
-  Droplets, 
-  RefreshCw, 
-  MapPin, 
-  ChevronDown 
+import {
+  Wind,
+  Droplets,
+  RefreshCw,
+  MapPin,
+  ChevronDown,
 } from 'lucide-react';
+import { WeatherVisualIcon, getWeatherVisualMeta } from './WeatherVisualIcon';
 
 interface CityConfig {
   name: string;
@@ -47,36 +40,13 @@ interface WeatherData {
   updatedAt: string;
 }
 
-// Map WMO codes to Slovenian descriptions & Lucide icons
+// Map WMO codes to Slovenian descriptions & dynamic visual weather icons
 function getWeatherInfo(code: number): { description: string; icon: React.ReactNode } {
-  if (code === 0) {
-    return { description: 'Jasno', icon: <Sun className="w-[1em] h-[1em] text-amber-500" /> };
-  }
-  if (code === 1) {
-    return { description: 'Pretežno jasno', icon: <CloudSun className="w-[1em] h-[1em] text-amber-400" /> };
-  }
-  if (code === 2) {
-    return { description: 'Delno oblačno', icon: <CloudSun className="w-[1em] h-[1em] text-sky-500" /> };
-  }
-  if (code === 3) {
-    return { description: 'Pretežno oblačno', icon: <Cloud className="w-[1em] h-[1em] text-slate-500" /> };
-  }
-  if (code === 45 || code === 48) {
-    return { description: 'Megla', icon: <CloudFog className="w-[1em] h-[1em] text-slate-400" /> };
-  }
-  if (code >= 51 && code <= 57) {
-    return { description: 'Rahlo rosenje', icon: <CloudDrizzle className="w-[1em] h-[1em] text-blue-400" /> };
-  }
-  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) {
-    return { description: 'Dež / Plohe', icon: <CloudRain className="w-[1em] h-[1em] text-blue-500" /> };
-  }
-  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {
-    return { description: 'Sneženje', icon: <Snowflake className="w-[1em] h-[1em] text-cyan-400" /> };
-  }
-  if (code >= 95 && code <= 99) {
-    return { description: 'Nevihta', icon: <CloudLightning className="w-[1em] h-[1em] text-amber-600" /> };
-  }
-  return { description: 'Zmerno oblačno', icon: <Cloud className="w-[1em] h-[1em] text-slate-400" /> };
+  const meta = getWeatherVisualMeta(code, true);
+  return {
+    description: meta.description,
+    icon: <WeatherVisualIcon code={code} isDay={true} size="compact" animated={false} />,
+  };
 }
 
 function getDayLabel(dateStr: string, index: number): string {
@@ -274,8 +244,8 @@ export function Weather() {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="text-3xl text-primary flex items-center justify-center p-2 rounded-xl bg-surface-container-low">
-                {currentWeatherInfo?.icon}
+              <div className="flex items-center justify-center p-2 rounded-xl bg-surface-container-low">
+                <WeatherVisualIcon code={weather.weatherCode} isDay={true} size="hero" animated={true} />
               </div>
               <div>
                 <div className="flex items-baseline gap-1">

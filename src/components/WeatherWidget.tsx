@@ -1,13 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  Cloud,
-  Sun,
-  CloudSun,
-  CloudRain,
-  CloudDrizzle,
-  CloudLightning,
-  Snowflake,
-  CloudFog,
   Wind,
   Droplets,
   RefreshCw,
@@ -18,9 +10,18 @@ import {
   LocateFixed,
   Umbrella,
   Thermometer,
+  AlertTriangle,
+  Sun,
+  Snowflake,
+  CloudFog,
+  Star,
+  X,
+  Search,
 } from 'lucide-react';
 import { useEventFilter } from '../contexts/EventFilterContext';
+import { useAuth } from '../contexts/AuthContext';
 import { SLOVENIA_REGIONS } from '../services/categoryService';
+import { WeatherVisualIcon, getWeatherVisualMeta } from './WeatherVisualIcon';
 
 export interface SlovenianCityWeatherConfig {
   name: string;
@@ -42,6 +43,14 @@ export const SLOVENIAN_WEATHER_CITIES: SlovenianCityWeatherConfig[] = [
   { name: 'Ptuj', region: 'Podravska', lat: 46.4200, lon: 15.8700 },
   { name: 'Bled', region: 'Gorenjska', lat: 46.3683, lon: 14.1146 },
   { name: 'Portorož', region: 'Obalno-kraška', lat: 45.5143, lon: 13.5921 },
+  { name: 'Kamnik', region: 'Osrednjeslovenska', lat: 46.2259, lon: 14.6121 },
+  { name: 'Domžale', region: 'Osrednjeslovenska', lat: 46.1377, lon: 14.5937 },
+  { name: 'Škofja Loka', region: 'Gorenjska', lat: 46.1655, lon: 14.3063 },
+  { name: 'Postojna', region: 'Primorsko-notranjska', lat: 45.7744, lon: 14.2153 },
+  { name: 'Slovenj Gradec', region: 'Koroška', lat: 46.5103, lon: 15.0806 },
+  { name: 'Krško', region: 'Posavska', lat: 45.9592, lon: 15.4917 },
+  { name: 'Ajdovščina', region: 'Goriška', lat: 45.8860, lon: 13.9095 },
+  { name: 'Bovec', region: 'Goriška', lat: 46.3381, lon: 13.5524 },
 ];
 
 export interface ForecastDay {
@@ -69,10 +78,30 @@ export interface WeatherWidgetData {
   humidity: number;
   windSpeed: number;
   precipProbToday: number;
+  currentPrecipMm?: number;
+  uvIndexToday?: number;
   weatherCode: number;
+  isDay?: boolean;
   forecast: ForecastDay[];
   updatedAt: string;
   source: string;
+}
+
+export interface WeatherAlert {
+  id: string;
+  title: string;
+  metric?: string;
+  description: string;
+  severity: 'danger' | 'warning' | 'info';
+  kind: 'storm' | 'rain' | 'uv' | 'wind' | 'snow' | 'fog' | 'temp';
+}
+
+export interface SavedWeatherLocation {
+  id: string;
+  name: string;
+  region?: string;
+  lat: number;
+  lon: number;
 }
 
 export interface WeatherWidgetProps {
@@ -81,76 +110,72 @@ export interface WeatherWidgetProps {
 
 const LOCATION_STORAGE_KEY = 'portalko_weather_location_v2';
 const WEATHER_CACHE_PREFIX = 'portalko_weather_v2_';
+const FAVORITES_STORAGE_PREFIX = 'portalko_weather_favorites_v1_';
 
-// Map WMO codes to Slovenian descriptions & Lucide icons
-export function getWeatherInfo(code: number): { description: string; icon: React.ReactNode; colorClass: string } {
-  if (code === 0) {
-    return {
-      description: 'Jasno in sončno',
-      icon: <Sun className="w-5 h-5 text-amber-500" />,
-      colorClass: 'text-amber-500',
-    };
+const DEFAULT_FAVORITE_LOCATIONS: SavedWeatherLocation[] = [
+  { id: 'ljubljana', name: 'Ljubljana', region: 'Osrednjeslovenska', lat: 46.0569, lon: 14.5058 },
+  { id: 'maribor', name: 'Maribor', region: 'Podravska', lat: 46.5547, lon: 15.6459 },
+  { id: 'koper', name: 'Koper', region: 'Obalno-kraška', lat: 45.5481, lon: 13.7302 },
+];
+
+function makeSavedLocationId(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+function isSameWeatherLocation(
+  a: { name: string; lat: number; lon: number },
+  b: { name: string; lat: number; lon: number }
+): boolean {
+  if (a.name.trim().toLowerCase() === b.name.trim().toLowerCase()) return true;
+  return haversineDistanceKm(a.lat, a.lon, b.lat, b.lon) < 4;
+}
+
+function loadFavoriteLocations(storageKey: string): SavedWeatherLocation[] {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw === null) {
+      return DEFAULT_FAVORITE_LOCATIONS;
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (item): item is SavedWeatherLocation =>
+          Boolean(item && typeof item.name === 'string' && typeof item.lat === 'number' && typeof item.lon === 'number')
+      );
+    }
+  } catch {
+    // ignore storage errors
   }
-  if (code === 1) {
-    return {
-      description: 'Pretežno jasno',
-      icon: <CloudSun className="w-5 h-5 text-amber-400" />,
-      colorClass: 'text-amber-500',
-    };
+  return DEFAULT_FAVORITE_LOCATIONS;
+}
+
+function getCachedWeatherForCoords(lat: number, lon: number): WeatherWidgetData | null {
+  try {
+    const cacheKey = `${WEATHER_CACHE_PREFIX}${lat.toFixed(2)}_${lon.toFixed(2)}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && Array.isArray(parsed.forecast) && parsed.forecast.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
   }
-  if (code === 2) {
-    return {
-      description: 'Delno oblačno',
-      icon: <CloudSun className="w-5 h-5 text-sky-500" />,
-      colorClass: 'text-sky-500',
-    };
-  }
-  if (code === 3) {
-    return {
-      description: 'Pretežno oblačno',
-      icon: <Cloud className="w-5 h-5 text-slate-400" />,
-      colorClass: 'text-slate-400',
-    };
-  }
-  if (code === 45 || code === 48) {
-    return {
-      description: 'Megla',
-      icon: <CloudFog className="w-5 h-5 text-slate-400" />,
-      colorClass: 'text-slate-400',
-    };
-  }
-  if (code >= 51 && code <= 57) {
-    return {
-      description: 'Rahlo rosenje',
-      icon: <CloudDrizzle className="w-5 h-5 text-blue-400" />,
-      colorClass: 'text-blue-400',
-    };
-  }
-  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) {
-    return {
-      description: 'Dež / Plohe',
-      icon: <CloudRain className="w-5 h-5 text-blue-500" />,
-      colorClass: 'text-blue-500',
-    };
-  }
-  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {
-    return {
-      description: 'Sneženje',
-      icon: <Snowflake className="w-5 h-5 text-cyan-400" />,
-      colorClass: 'text-cyan-400',
-    };
-  }
-  if (code >= 95 && code <= 99) {
-    return {
-      description: 'Nevihta z grmenjem',
-      icon: <CloudLightning className="w-5 h-5 text-amber-600" />,
-      colorClass: 'text-amber-600',
-    };
-  }
+  return null;
+}
+
+// Map WMO codes to Slovenian descriptions & dynamic visual weather icons
+export function getWeatherInfo(
+  code: number,
+  isDay = true
+): { description: string; icon: React.ReactNode; colorClass: string; backdropClass: string } {
+  const meta = getWeatherVisualMeta(code, isDay);
   return {
-    description: 'Zmerno oblačno',
-    icon: <Cloud className="w-5 h-5 text-slate-400" />,
-    colorClass: 'text-slate-400',
+    description: meta.description,
+    icon: <WeatherVisualIcon code={code} isDay={isDay} size="compact" animated={false} />,
+    colorClass: meta.accentClass,
+    backdropClass: meta.backdropClass,
   };
 }
 
@@ -253,6 +278,123 @@ function getOutdoorEventTip(data: WeatherWidgetData): { text: string; tone: 'goo
   };
 }
 
+export function getWeatherAlerts(data: WeatherWidgetData): WeatherAlert[] {
+  const alerts: WeatherAlert[] = [];
+  const code = data.weatherCode;
+  const precipProb = data.precipProbToday ?? 0;
+  const precipMm = data.currentPrecipMm ?? 0;
+  const uv = data.uvIndexToday;
+
+  // 1. Thunderstorm warning
+  if (code >= 95 && code <= 99) {
+    alerts.push({
+      id: 'storm',
+      title: 'Nevihtno opozorilo',
+      metric: 'Grmenje',
+      description: 'V bližini so možne nevihte z močnejšimi sunki vetra in nalivi.',
+      severity: 'danger',
+      kind: 'storm',
+    });
+  }
+
+  // 2. Rain / precipitation warning
+  const isRainingNow = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || precipMm >= 0.2;
+  if (code < 95 && (isRainingNow || precipProb >= 50)) {
+    alerts.push({
+      id: 'rain',
+      title: isRainingNow ? 'Trenutno dežuje' : 'Napovedan dež',
+      metric: precipProb > 0 ? `${precipProb}%` : undefined,
+      description: isRainingNow
+        ? 'Padavine v vaši okolici – priporočamo dežnik ali zaščito pred dežjem.'
+        : `Danes je ${precipProb}% verjetnost padavin na izbrani lokaciji.`,
+      severity: 'warning',
+      kind: 'rain',
+    });
+  }
+
+  // 3. Snow / ice warning
+  const isSnowing = (code >= 71 && code <= 77) || (code >= 85 && code <= 86);
+  if (isSnowing) {
+    alerts.push({
+      id: 'snow',
+      title: 'Napovedano sneženje',
+      metric: `${data.currentTemp}°C`,
+      description: 'Pričakujte snežne razmere in prilagodite pot na dogodke.',
+      severity: 'warning',
+      kind: 'snow',
+    });
+  } else if (data.currentTemp <= 0 && (precipProb >= 40 || data.humidity >= 88)) {
+    alerts.push({
+      id: 'ice',
+      title: 'Nevarnost poledice',
+      metric: `${data.currentTemp}°C`,
+      description: 'Temperature pod lediščem ob povečani vlažnosti lahko povzročijo poledico.',
+      severity: 'warning',
+      kind: 'snow',
+    });
+  }
+
+  // 4. High UV index warning (WHO threshold >= 6)
+  if (typeof uv === 'number' && uv >= 6) {
+    const roundedUv = Math.round(uv * 10) / 10;
+    alerts.push({
+      id: 'uv',
+      title: uv >= 8 ? 'Zelo visoka UV stopnja' : 'Visoka UV stopnja',
+      metric: `UV ${Math.round(roundedUv)}`,
+      description: 'Priporočamo zaščito pred soncem (krema, očala, pokrivalo).',
+      severity: uv >= 8 ? 'danger' : 'warning',
+      kind: 'uv',
+    });
+  }
+
+  // 5. Strong wind warning
+  if (data.windSpeed >= 30) {
+    alerts.push({
+      id: 'wind',
+      title: 'Močnejši veter',
+      metric: `${data.windSpeed} km/h`,
+      description: 'Piha okrepljen veter – previdnost na odprtih prizoriščih.',
+      severity: data.windSpeed >= 50 ? 'danger' : 'warning',
+      kind: 'wind',
+    });
+  }
+
+  // 6. Fog / reduced visibility
+  if (code === 45 || code === 48) {
+    alerts.push({
+      id: 'fog',
+      title: 'Zmanjšana vidljivost',
+      metric: 'Megla',
+      description: 'Gosta megla v okolici lahko upočasni promet.',
+      severity: 'info',
+      kind: 'fog',
+    });
+  }
+
+  // 7. Extreme heat / cold
+  if (data.currentTemp >= 30) {
+    alerts.push({
+      id: 'heat',
+      title: 'Visoke temperature',
+      metric: `${data.currentTemp}°C`,
+      description: 'Poskrbite za zadostno hidracijo in senco na dogodkih na prostem.',
+      severity: 'warning',
+      kind: 'temp',
+    });
+  } else if (data.currentTemp <= -4) {
+    alerts.push({
+      id: 'cold',
+      title: 'Izrazit mraz',
+      metric: `${data.currentTemp}°C`,
+      description: 'Nizke temperature – priporočamo topla zimska oblačila.',
+      severity: 'info',
+      kind: 'temp',
+    });
+  }
+
+  return alerts.slice(0, 3);
+}
+
 function generateFallbackWeather(locationName: string): WeatherWidgetData {
   const baseTemps: Record<string, { temp: number; max: number; min: number; code: number; humidity: number; wind: number; precip: number }> = {
     'Ljubljana': { temp: 12, max: 15, min: 6, code: 2, humidity: 68, wind: 8, precip: 15 },
@@ -285,6 +427,7 @@ function generateFallbackWeather(locationName: string): WeatherWidgetData {
     };
   });
 
+  const hourNow = today.getHours();
   return {
     city: locationName,
     currentTemp: current.temp,
@@ -292,7 +435,10 @@ function generateFallbackWeather(locationName: string): WeatherWidgetData {
     humidity: current.humidity,
     windSpeed: current.wind,
     precipProbToday: current.precip,
+    currentPrecipMm: 0,
+    uvIndexToday: 3,
     weatherCode: current.code,
+    isDay: hourNow >= 6 && hourNow < 20,
     forecast,
     updatedAt: new Date().toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }),
     source: 'ARSO / Open-Meteo',
@@ -301,6 +447,8 @@ function generateFallbackWeather(locationName: string): WeatherWidgetData {
 
 export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
   const { locationFilter, selectedRegion } = useEventFilter();
+  const { currentUser } = useAuth();
+  const favStorageKey = `${FAVORITES_STORAGE_PREFIX}${currentUser?.id || 'guest'}`;
 
   const [locationState, setLocationState] = useState<WeatherLocationState>(() => {
     try {
@@ -339,31 +487,48 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
     };
   });
 
-  const [weatherData, setWeatherData] = useState<WeatherWidgetData>(() => {
-    try {
-      const cacheKey = `${WEATHER_CACHE_PREFIX}${locationState.lat.toFixed(2)}_${locationState.lon.toFixed(2)}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && Array.isArray(parsed.forecast) && parsed.forecast.length > 0) {
-          return parsed;
-        }
+  const [favoriteLocations, setFavoriteLocations] = useState<SavedWeatherLocation[]>(() =>
+    loadFavoriteLocations(favStorageKey)
+  );
+
+  // Sync favorites list if logged-in user changes
+  useEffect(() => {
+    setFavoriteLocations(loadFavoriteLocations(favStorageKey));
+  }, [favStorageKey]);
+
+  const persistFavorites = useCallback(
+    (next: SavedWeatherLocation[]) => {
+      setFavoriteLocations(next);
+      try {
+        localStorage.setItem(favStorageKey, JSON.stringify(next));
+      } catch {
+        // ignore storage errors
       }
-    } catch {
-      // ignore
-    }
-    return generateFallbackWeather(locationState.name);
+    },
+    [favStorageKey]
+  );
+
+  const [weatherData, setWeatherData] = useState<WeatherWidgetData>(() => {
+    return (
+      getCachedWeatherForCoords(locationState.lat, locationState.lon) ||
+      generateFallbackWeather(locationState.name)
+    );
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationStatusMsg, setLocationStatusMsg] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [citySearchQuery, setCitySearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const hasAutoLocatedRef = useRef(false);
 
   const persistLocationState = useCallback((next: WeatherLocationState) => {
     setLocationState(next);
+    const cached = getCachedWeatherForCoords(next.lat, next.lon);
+    if (cached) {
+      setWeatherData({ ...cached, city: next.name });
+    }
     try {
       localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(next));
       localStorage.setItem('portalko_weather_city', next.name);
@@ -374,8 +539,12 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
 
   const fetchLiveWeather = useCallback(async (loc: WeatherLocationState) => {
     setIsLoading(true);
+    const cached = getCachedWeatherForCoords(loc.lat, loc.lon);
+    if (cached) {
+      setWeatherData({ ...cached, city: loc.name });
+    }
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=4`;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max&timezone=auto&forecast_days=4`;
       const res = await fetch(url, { signal: AbortSignal.timeout(6500) });
       if (!res.ok) throw new Error('Weather API error');
       const data = await res.json();
@@ -394,6 +563,12 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
               : undefined,
         }));
 
+        const hourNow = new Date().getHours();
+        const isDayLive =
+          typeof data.current.is_day === 'number'
+            ? data.current.is_day === 1
+            : hourNow >= 6 && hourNow < 20;
+
         const fresh: WeatherWidgetData = {
           city: loc.name,
           currentTemp: Math.round(data.current.temperature_2m),
@@ -401,7 +576,14 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
           humidity: Math.round(data.current.relative_humidity_2m),
           windSpeed: Math.round(data.current.wind_speed_10m),
           precipProbToday: forecast[0]?.precipProb ?? 0,
+          currentPrecipMm:
+            typeof data.current.precipitation === 'number' ? data.current.precipitation : 0,
+          uvIndexToday:
+            typeof data.daily?.uv_index_max?.[0] === 'number'
+              ? data.daily.uv_index_max[0]
+              : undefined,
           weatherCode: data.current.weather_code,
+          isDay: isDayLive,
           forecast,
           updatedAt: new Date().toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }),
           source: 'Open-Meteo / ARSO',
@@ -527,10 +709,12 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
     if (isDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
+    } else {
+      setCitySearchQuery('');
     }
   }, [isDropdownOpen]);
 
-  const handleSelectCity = (city: SlovenianCityWeatherConfig) => {
+  const handleSelectCity = (city: { name: string; region?: string; lat: number; lon: number }) => {
     setIsDropdownOpen(false);
     setLocationStatusMsg(null);
     persistLocationState({
@@ -542,6 +726,45 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
       detectedVia: 'manual',
     });
   };
+
+  const isLocationFavorited = useCallback(
+    (loc: { name: string; lat: number; lon: number }) =>
+      favoriteLocations.some((fav) => isSameWeatherLocation(fav, loc)),
+    [favoriteLocations]
+  );
+
+  const toggleFavoriteLocation = useCallback(
+    (loc: { name: string; region?: string; lat: number; lon: number }) => {
+      const exists = favoriteLocations.some((fav) => isSameWeatherLocation(fav, loc));
+      if (exists) {
+        persistFavorites(
+          favoriteLocations.filter((fav) => !isSameWeatherLocation(fav, loc))
+        );
+      } else {
+        const entry: SavedWeatherLocation = {
+          id: makeSavedLocationId(loc.name),
+          name: loc.name,
+          region: loc.region,
+          lat: loc.lat,
+          lon: loc.lon,
+        };
+        persistFavorites([...favoriteLocations, entry]);
+      }
+    },
+    [favoriteLocations, persistFavorites]
+  );
+
+  const isCurrentFavorited = isLocationFavorited(locationState);
+
+  const filteredCities = useMemo(() => {
+    const q = citySearchQuery.trim().toLowerCase();
+    if (!q) return SLOVENIAN_WEATHER_CITIES;
+    return SLOVENIAN_WEATHER_CITIES.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.region.toLowerCase().includes(q)
+    );
+  }, [citySearchQuery]);
 
   // Optional quick match if user filtered events by a specific Slovenian city/region in Events section
   const activeEventCityMatch = useMemo(() => {
@@ -569,13 +792,22 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
     return matched;
   }, [variant, locationFilter, selectedRegion, locationState.name]);
 
-  const weatherInfo = getWeatherInfo(weatherData?.weatherCode ?? 1);
+  const currentIsDay =
+    typeof weatherData?.isDay === 'boolean'
+      ? weatherData.isDay
+      : (() => {
+          const h = new Date().getHours();
+          return h >= 6 && h < 20;
+        })();
+  const currentWeatherCode = weatherData?.weatherCode ?? 1;
+  const weatherInfo = getWeatherInfo(currentWeatherCode, currentIsDay);
   const safeForecast =
     weatherData && Array.isArray(weatherData.forecast) && weatherData.forecast.length > 0
       ? weatherData.forecast
       : generateFallbackWeather(locationState.name).forecast;
 
   const eventTip = useMemo(() => getOutdoorEventTip(weatherData), [weatherData]);
+  const weatherAlerts = useMemo(() => getWeatherAlerts(weatherData), [weatherData]);
 
   const locationBadgeText =
     locationState.detectedVia === 'gps'
@@ -612,7 +844,7 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
           </div>
 
           {isDropdownOpen && (
-            <div className="absolute left-0 top-full mt-1.5 w-56 bg-surface-container-lowest rounded-xl shadow-xl border border-surface-container py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 max-h-64 overflow-y-auto no-scrollbar">
+            <div className="absolute left-0 top-full mt-1.5 w-64 bg-surface-container-lowest rounded-xl shadow-xl border border-surface-container py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 max-h-72 overflow-y-auto no-scrollbar">
               <button
                 type="button"
                 onClick={() => {
@@ -624,30 +856,137 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
                 <LocateFixed className="w-3.5 h-3.5 shrink-0" />
                 <span>Uporabi mojo trenutno lokacijo</span>
               </button>
+
+              <div className="px-2.5 py-1.5 border-b border-surface-container-low">
+                <div className="flex items-center gap-1.5 bg-surface-container-low rounded-lg px-2 py-1">
+                  <Search className="w-3 h-3 text-outline shrink-0" />
+                  <input
+                    type="text"
+                    value={citySearchQuery}
+                    onChange={(e) => setCitySearchQuery(e.target.value)}
+                    placeholder="Išči slovenski kraj..."
+                    aria-label="Išči slovenski kraj"
+                    className="w-full bg-transparent text-xs text-on-surface placeholder:text-outline focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {favoriteLocations.length > 0 && !citySearchQuery.trim() && (
+                <>
+                  <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-outline uppercase border-b border-surface-container-low flex items-center justify-between">
+                    <span>Priljubljene lokacije</span>
+                    <span className="tabular-nums">{favoriteLocations.length}</span>
+                  </div>
+                  {favoriteLocations.map((fav) => {
+                    const isActive = isSameWeatherLocation(fav, locationState);
+                    return (
+                      <div
+                        key={`fav-${fav.id}`}
+                        className={`flex items-center justify-between pr-2 hover:bg-surface-container-low transition-colors ${
+                          isActive ? 'bg-primary/5' : ''
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleSelectCity(fav)}
+                          className={`flex-1 px-3 py-1.5 text-left text-xs flex items-center gap-1.5 min-w-0 cursor-pointer ${
+                            isActive ? 'text-primary font-bold' : 'text-on-surface'
+                          }`}
+                        >
+                          <MapPin className="w-3 h-3 text-primary/70 shrink-0" />
+                          <span className="truncate">{fav.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavoriteLocation(fav);
+                          }}
+                          className="p-1 rounded hover:bg-surface-container text-amber-500 cursor-pointer shrink-0"
+                          title={`Odstrani ${fav.name} iz priljubljenih`}
+                          aria-label={`Odstrani ${fav.name} iz priljubljenih`}
+                        >
+                          <Star className="w-3 h-3 fill-amber-400" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
               <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-outline uppercase border-b border-surface-container-low">
                 Slovenski kraji
               </div>
-              {SLOVENIAN_WEATHER_CITIES.map((c) => (
-                <button
-                  key={c.name}
-                  type="button"
-                  onClick={() => handleSelectCity(c)}
-                  className={`w-full px-3 py-1.5 text-left text-xs flex items-center justify-between hover:bg-surface-container-low transition-colors cursor-pointer ${
-                    c.name === locationState.name && locationState.mode === 'manual'
-                      ? 'text-primary font-bold bg-primary/5'
-                      : 'text-on-surface'
-                  }`}
-                >
-                  <span>{c.name}</span>
-                  <span className="text-[10px] text-outline truncate max-w-[90px]">{c.region}</span>
-                </button>
-              ))}
+              {filteredCities.length === 0 ? (
+                <div className="px-3 py-2.5 text-xs text-outline text-center">
+                  Ni najdenih krajev.
+                </div>
+              ) : (
+                filteredCities.map((c) => {
+                  const isActive = c.name === locationState.name && locationState.mode === 'manual';
+                  const isFav = isLocationFavorited(c);
+                  return (
+                    <div
+                      key={c.name}
+                      className={`flex items-center justify-between pr-2 hover:bg-surface-container-low transition-colors ${
+                        isActive ? 'bg-primary/5' : ''
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSelectCity(c)}
+                        className={`flex-1 px-3 py-1.5 text-left text-xs flex items-center justify-between gap-2 min-w-0 cursor-pointer ${
+                          isActive ? 'text-primary font-bold' : 'text-on-surface'
+                        }`}
+                      >
+                        <span className="truncate">{c.name}</span>
+                        <span className="text-[10px] text-outline truncate max-w-[80px]">{c.region}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavoriteLocation(c);
+                        }}
+                        className={`p-1 rounded hover:bg-surface-container cursor-pointer shrink-0 transition-colors ${
+                          isFav ? 'text-amber-500' : 'text-outline/50 hover:text-amber-500'
+                        }`}
+                        title={isFav ? `Odstrani ${c.name} iz priljubljenih` : `Shrani ${c.name} med priljubljene`}
+                        aria-label={isFav ? `Odstrani ${c.name} iz priljubljenih` : `Shrani ${c.name} med priljubljene`}
+                      >
+                        <Star className={`w-3 h-3 ${isFav ? 'fill-amber-400' : ''}`} />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
         </div>
 
-        {/* GPS Locate, Time & Refresh Controls */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Favorite Star, GPS Locate & Refresh Controls */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => toggleFavoriteLocation(locationState)}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              isCurrentFavorited
+                ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/15'
+                : 'text-outline hover:text-amber-500 hover:bg-surface-container-low'
+            }`}
+            title={
+              isCurrentFavorited
+                ? `Odstrani ${locationState.name} iz priljubljenih lokacij`
+                : `Shrani ${locationState.name} med priljubljene lokacije`
+            }
+            aria-label={
+              isCurrentFavorited
+                ? `Odstrani ${locationState.name} iz priljubljenih`
+                : `Shrani ${locationState.name} med priljubljene`
+            }
+          >
+            <Star className={`w-3.5 h-3.5 ${isCurrentFavorited ? 'fill-amber-400' : ''}`} />
+          </button>
           <button
             type="button"
             onClick={() => void detectUserLocation(true)}
@@ -675,6 +1014,66 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
         </div>
       </div>
 
+      {/* Saved Favorite Locations Quick Switcher */}
+      {favoriteLocations.length > 0 && (
+        <div
+          aria-label="Priljubljene vremenske lokacije"
+          className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5"
+        >
+          {favoriteLocations.map((fav) => {
+            const isActive = isSameWeatherLocation(fav, locationState);
+            const cachedFavWeather = isActive
+              ? weatherData
+              : getCachedWeatherForCoords(fav.lat, fav.lon);
+
+            return (
+              <div
+                key={`chip-${fav.id}`}
+                className={`group flex items-center rounded-lg border text-[11px] font-semibold transition-colors shrink-0 ${
+                  isActive
+                    ? 'bg-primary text-on-primary border-primary shadow-xs'
+                    : 'bg-surface-container-low/75 hover:bg-surface-container text-on-surface border-surface-container'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSelectCity(fav)}
+                  className="flex items-center gap-1 pl-2 pr-1.5 py-1 cursor-pointer"
+                  title={`Prikaži vreme za ${fav.name}`}
+                >
+                  <span className="truncate max-w-[96px]">{fav.name}</span>
+                  {cachedFavWeather && (
+                    <span
+                      className={`tabular-nums text-[10px] font-bold ${
+                        isActive ? 'text-on-primary/90' : 'text-outline'
+                      }`}
+                    >
+                      {cachedFavWeather.currentTemp}°
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFavoriteLocation(fav);
+                  }}
+                  className={`pr-1.5 pl-0.5 py-1 rounded-r-lg cursor-pointer transition-opacity ${
+                    isActive
+                      ? 'text-on-primary/75 hover:text-on-primary'
+                      : 'text-outline/60 hover:text-error'
+                  }`}
+                  title={`Odstrani ${fav.name} iz priljubljenih`}
+                  aria-label={`Odstrani ${fav.name} iz priljubljenih`}
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {locationStatusMsg && (
         <div className="text-[11px] text-outline bg-surface-container-low/70 rounded-lg px-2.5 py-1.5 leading-snug">
           {locationStatusMsg}
@@ -695,8 +1094,16 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
       {/* Current Temperature & Conditions */}
       <div className="flex items-center justify-between gap-2.5 pt-0.5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className="p-2.5 rounded-xl bg-surface-container-low border border-surface-container/60 shrink-0">
-            {weatherInfo.icon}
+          <div
+            className={`p-2 rounded-2xl border shrink-0 transition-colors duration-300 ${weatherInfo.backdropClass}`}
+            title={weatherInfo.description}
+          >
+            <WeatherVisualIcon
+              code={currentWeatherCode}
+              isDay={currentIsDay}
+              size="hero"
+              animated={true}
+            />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-1">
@@ -735,6 +1142,60 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
         </div>
       </div>
 
+      {/* Dynamic Weather Alerts (shown only when current location weather data contains warnings) */}
+      {weatherAlerts.length > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Vremenska opozorila za trenutno lokacijo"
+          className="flex flex-col gap-1.5"
+        >
+          {weatherAlerts.map((alert) => {
+            const AlertIcon =
+              alert.kind === 'rain'
+                ? Umbrella
+                : alert.kind === 'uv'
+                ? Sun
+                : alert.kind === 'wind'
+                ? Wind
+                : alert.kind === 'snow'
+                ? Snowflake
+                : alert.kind === 'fog'
+                ? CloudFog
+                : alert.kind === 'temp'
+                ? Thermometer
+                : AlertTriangle;
+
+            const styleClass =
+              alert.severity === 'danger'
+                ? 'bg-error/10 border-error/25 text-error'
+                : alert.severity === 'warning'
+                ? alert.kind === 'rain'
+                  ? 'bg-sky-500/10 border-sky-500/25 text-sky-700 dark:text-sky-300'
+                  : 'bg-amber-500/12 border-amber-500/30 text-amber-800 dark:text-amber-300'
+                : 'bg-surface-container-low border-surface-container text-on-surface-variant';
+
+            return (
+              <div
+                key={alert.id}
+                title={alert.description}
+                className={`rounded-xl border px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] leading-tight ${styleClass}`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <AlertIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="font-bold truncate">{alert.title}</span>
+                </div>
+                {alert.metric && (
+                  <span className="text-[10px] font-bold tabular-nums shrink-0 opacity-90">
+                    {alert.metric}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Outdoor Event Visitor Advisory */}
       {variant === 'events' && (
         <div
@@ -754,10 +1215,11 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
       {/* 4-Day Local Forecast */}
       <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-surface-container-low">
         {safeForecast.map((fc, i) => {
-          const info = getWeatherInfo(fc.weatherCode);
+          const info = getWeatherInfo(fc.weatherCode, i === 0 ? currentIsDay : true);
           return (
             <div
               key={fc.date || i}
+              title={info.description}
               className={`flex flex-col items-center justify-between p-1.5 rounded-xl border text-center gap-1 min-w-0 ${
                 i === 0
                   ? 'bg-primary/6 border-primary/20'
@@ -767,7 +1229,14 @@ export function WeatherWidget({ variant = 'default' }: WeatherWidgetProps) {
               <span className={`text-[10px] font-bold truncate w-full ${i === 0 ? 'text-primary' : 'text-on-surface'}`}>
                 {fc.dayLabel}
               </span>
-              <div className="scale-90">{info.icon}</div>
+              <div className="flex items-center justify-center">
+                <WeatherVisualIcon
+                  code={fc.weatherCode}
+                  isDay={i === 0 ? currentIsDay : true}
+                  size="compact"
+                  animated={false}
+                />
+              </div>
               <div className="flex items-center justify-center gap-0.5 text-[10px] tabular-nums">
                 <span className="font-bold text-on-surface">{fc.tempMax}°</span>
                 <span className="text-outline text-[9px]">{fc.tempMin}°</span>

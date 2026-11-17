@@ -219,7 +219,93 @@
   }
 }
 
+@keyframes weather-sun-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes weather-cloud-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+@keyframes weather-rain-fall {
+  0% {
+    opacity: 0.25;
+    transform: translate(1px, -2px);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-1px, 3px);
+  }
+  100% {
+    opacity: 0.2;
+    transform: translate(-2px, 6px);
+  }
+}
+
+@keyframes weather-snow-drift {
+  0%, 100% {
+    opacity: 0.7;
+    transform: translate(0px, -1px);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(2px, 3px);
+  }
+}
+
+@keyframes weather-lightning-flash {
+  0%, 72%, 100% {
+    opacity: 0.88;
+    filter: drop-shadow(0 0 0px rgba(251, 191, 36, 0));
+  }
+  76% {
+    opacity: 1;
+    filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.85));
+  }
+  82% {
+    opacity: 0.55;
+  }
+  86% {
+    opacity: 1;
+    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.9));
+  }
+}
+
 @layer utilities {
+  .weather-sun-spin {
+    animation: weather-sun-spin 28s linear infinite;
+  }
+  .weather-cloud-float {
+    animation: weather-cloud-float 4.2s ease-in-out infinite;
+  }
+  .weather-rain-drop-1 {
+    animation: weather-rain-fall 1.3s ease-in infinite;
+  }
+  .weather-rain-drop-2 {
+    animation: weather-rain-fall 1.3s ease-in 0.42s infinite;
+  }
+  .weather-rain-drop-3 {
+    animation: weather-rain-fall 1.3s ease-in 0.84s infinite;
+  }
+  .weather-snow-1 {
+    animation: weather-snow-drift 2.8s ease-in-out infinite;
+  }
+  .weather-snow-2 {
+    animation: weather-snow-drift 2.8s ease-in-out 1.4s infinite;
+  }
+  .weather-lightning-flash {
+    animation: weather-lightning-flash 3.2s ease-in-out infinite;
+  }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
@@ -279,7 +365,15 @@
   .animate-share-count-pop,
   .animate-share-delta-rise,
   .animate-share-toast-in,
-  .share-confetti-particle {
+  .share-confetti-particle,
+  .weather-sun-spin,
+  .weather-cloud-float,
+  .weather-rain-drop-1,
+  .weather-rain-drop-2,
+  .weather-rain-drop-3,
+  .weather-snow-1,
+  .weather-snow-2,
+  .weather-lightning-flash {
     animation: none;
   }
 }
