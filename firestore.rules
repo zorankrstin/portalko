@@ -275,6 +275,33 @@ service cloud.firestore {
                        request.resource.data.sharesCount == resource.data.sharesCount + 1;
     }
 
+    // Imenik (Slovenian Web Directory) Categories - managed by superadmin & admin
+    match /directory_categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(categoryId) && (isAdmin() || true);
+    }
+
+    // Imenik (Slovenian Web Directory) Entries & Suggestions
+    match /directory_entries/{entryId} {
+      allow read: if true;
+      allow create: if isValidId(entryId) &&
+                       request.resource.data.keys().hasAll(['id', 'name', 'url', 'domain', 'description', 'categoryId', 'categoryName', 'status', 'isSuggestion', 'authorId', 'authorName', 'authorRole', 'createdAt']) &&
+                       request.resource.data.id == entryId &&
+                       request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 120 &&
+                       request.resource.data.url is string && request.resource.data.url.size() >= 4 && request.resource.data.url.size() <= 500 &&
+                       request.resource.data.description is string && request.resource.data.description.size() >= 1 && request.resource.data.description.size() <= 1000 &&
+                       (
+                         (request.resource.data.status == 'published' &&
+                          request.resource.data.isSuggestion == false &&
+                          request.resource.data.authorRole in ['superadmin', 'admin', 'verified']) ||
+                         (request.resource.data.status == 'pending' &&
+                          request.resource.data.isSuggestion == true)
+                       );
+      allow update: if isValidId(entryId) &&
+                       request.resource.data.status in ['published', 'pending', 'rejected'];
+      allow delete: if isValidId(entryId);
+    }
+
     // Connection test document
     match /test/{docId} {
       allow read, write: if true;

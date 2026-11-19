@@ -14,6 +14,7 @@ import { DogodkiFeed } from './components/DogodkiFeed';
 import { NewsFeed } from './components/NewsFeed';
 import { BlogFeed } from './components/BlogFeed';
 import { DealsFeed } from './components/DealsFeed';
+import { DirectoryFeed } from './components/DirectoryFeed';
 import { UserProfile } from './components/UserProfile';
 import { RlsModal } from './components/RlsModal';
 import { BottomNav } from './components/BottomNav';
@@ -765,6 +766,12 @@ export default function App() {
                 onViewChange={handleViewChange} 
                 searchQuery={searchQuery} 
                 onNavigatePost={handleNavigatePost} 
+              />
+            )}
+            {currentView === 'directory' && (
+              <DirectoryFeed
+                searchQuery={searchQuery}
+                onOpenAdminDirectory={() => handleViewChange('admin')}
               />
             )}
             {currentView === 'profile' && (

@@ -96,12 +96,15 @@ export function LeftSidebar({ currentView, onViewChange }: LeftSidebarProps) {
             <span>Shranjeno</span>
           </span>
         </a>
-        <a className="flex items-center justify-between px-3 py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface font-label-lg text-label-lg transition-colors" href="#imenik">
+        <a
+          className={`flex items-center justify-between px-3 py-2.5 rounded-xl font-label-lg text-label-lg transition-colors cursor-pointer ${currentView === 'directory' ? 'bg-primary text-on-primary shadow-sm font-semibold' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+          onClick={(e) => { e.preventDefault(); onViewChange('directory'); }}
+          href="#imenik"
+        >
           <span className="flex items-center gap-2.5">
-            <Network className="w-[1em] h-[1em] text-lg text-outline" />
+            <Network className={`w-[1em] h-[1em] text-lg ${currentView === 'directory' ? 'text-on-primary' : 'text-primary'}`} />
             <span>Imenik</span>
           </span>
-          <span className="text-outline text-xs">↗</span>
         </a>
         {(role === 'admin' || role === 'superadmin') && (
           <a 

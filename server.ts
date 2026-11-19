@@ -4,6 +4,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { 
   getBaseSitemapEntries, 
@@ -2044,6 +2045,98 @@ async function startServer() {
       return res.json({ ok: false });
     } catch {
       return res.json({ ok: false });
+    }
+  });
+
+  // AI-powered suggested tagging & auto-categorization for Imenik directory entries
+  app.post("/api/directory/ai-suggest", async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "GEMINI_API_KEY ni nastavljen na strežniku." });
+      }
+
+      const { name, url, description, categories } = req.body || {};
+      if (!description && !name) {
+        return res.status(400).json({ error: "Vnesite naziv ali opis za AI analizo." });
+      }
+
+      const catList: Array<{ id: string; name: string; description?: string }> = Array.isArray(categories)
+        ? categories
+        : [];
+      if (catList.length === 0) {
+        return res.status(400).json({ error: "Seznam kategorij imenika je prazen." });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const categoriesContext = catList
+        .map((c) => `- id: "${c.id}", naziv: "${c.name}"${c.description ? ` (${c.description})` : ""}`)
+        .join("\n");
+
+      const prompt = `Si urednik slovenskega spletnega imenika blagovnih znamk in podjetij (Imenik).
+Na podlagi opisa spletne strani izberi najustreznejšo kategorijo iz spodnjega seznama ter predlagaj 3 do 5 kratkih slovenskih ključnih oznak (brez znaka #, male črke, 1–2 besedi na oznako).
+
+Vnos:
+- Naziv: ${String(name || "").slice(0, 120)}
+- URL: ${String(url || "").slice(0, 200)}
+- Opis: ${String(description || "").slice(0, 1000)}
+
+Razpoložljive kategorije:
+${categoriesContext}
+
+Vrni strogo JSON z natančnim ID-jem izbrane kategorije iz zgornjega seznama.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggestedCategoryId: {
+                type: Type.STRING,
+                description: "Exact id of the best matching category from the provided list",
+              },
+              suggestedTags: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "3 to 5 concise lowercase Slovenian tags without #",
+              },
+              reason: {
+                type: Type.STRING,
+                description: "Short one-sentence explanation in Slovenian",
+              },
+            },
+            required: ["suggestedCategoryId", "suggestedTags", "reason"],
+          },
+        },
+      });
+
+      const rawText = response.text || "{}";
+      const parsed = JSON.parse(rawText);
+      const matchedCat =
+        catList.find((c) => c.id === parsed.suggestedCategoryId) || catList[0];
+
+      const cleanTags: string[] = Array.isArray(parsed.suggestedTags)
+        ? parsed.suggestedTags
+            .map((t: unknown) => String(t).replace(/^#/, "").trim().toLowerCase())
+            .filter((t: string) => t.length >= 2 && t.length <= 28)
+            .slice(0, 5)
+        : [];
+
+      return res.json({
+        ok: true,
+        suggestedCategoryId: matchedCat.id,
+        suggestedCategoryName: matchedCat.name,
+        suggestedTags: cleanTags,
+        reason: typeof parsed.reason === "string" ? parsed.reason : "",
+      });
+    } catch (err: any) {
+      console.error("AI directory suggest error:", err);
+      return res.status(500).json({
+        error: err?.message || "Napaka pri AI predlogu kategorije in oznak.",
+      });
     }
   });
 

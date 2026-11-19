@@ -12,6 +12,7 @@ import { PortalSettingsManager } from './admin/PortalSettingsManager';
 import { SocialLinksManager } from './admin/SocialLinksManager';
 import { BannerManager } from './admin/BannerManager';
 import { AdminActivityLog } from './admin/AdminActivityLog';
+import { AdminDirectoryTab } from './admin/AdminDirectoryTab';
 import { EmailDeliveryTracker } from './admin/EmailDeliveryTracker';
 import { SeoManager } from './admin/SeoManager';
 import { VerifiedBadge } from './common/VerifiedBadge';
@@ -92,9 +93,34 @@ const MOCK_POSTS: AdminPost[] = [
   { id: 'p4', title: '-20% popust na pnevmatike', author: 'Vulkanizerstvo', type: 'deal', status: 'published', date: '09. Sep 2026' },
 ];
 
+function stripHtmlToPlainText(raw?: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      const doc = new DOMParser().parseFromString(raw, 'text/html');
+      const text = (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text) return text;
+    } catch {
+      // fallback to regex stripping
+    }
+  }
+  return raw
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: AdminDashboardProps = {}) {
   const { users, currentUser, updateUser, deleteUser, register, resendVerificationEmail } = useAuth();
-  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings' | 'social' | 'emails' | 'seo'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'categories' | 'directory' | 'banners' | 'rss' | 'reports' | 'logs' | 'settings' | 'social' | 'emails' | 'seo'>('posts');
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -1122,6 +1148,15 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
         <span>Kategorije & Podkategorije</span>
       </button>
       <button 
+        onClick={() => setActiveTab('directory')}
+        className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+          activeTab === 'directory' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+      >
+        <Globe className="w-4 h-4" />
+        <span>Imenik</span>
+      </button>
+      <button 
         onClick={() => setActiveTab('banners')}
         className={`px-4 py-2 rounded-xl font-label-md text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
           activeTab === 'banners' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
@@ -2143,7 +2178,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                     className="font-bold text-sm text-on-surface hover:text-primary transition-colors flex items-center gap-1 group truncate"
                                     title="Odpri objavo v novem oknu"
                                   >
-                                    <span className="truncate">{post.title}</span>
+                                    <span className="truncate">{stripHtmlToPlainText(post.title) || post.title}</span>
                                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
                                   </a>
                                   {post.isPromoted && (
@@ -2154,7 +2189,7 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
                                     />
                                   )}
                                 </div>
-                                <span className="text-xs text-outline truncate">{post.content || 'Brez opisa'}</span>
+                                <span className="text-xs text-outline truncate">{stripHtmlToPlainText(post.content) || 'Brez opisa'}</span>
                                 {post.tags && Array.isArray(post.tags) && post.tags.length > 0 && (
                                   <div className="flex items-center gap-1 flex-wrap mt-0.5">
                                     {post.tags.slice(0, 3).map((t, idx) => (
@@ -2316,6 +2351,11 @@ export function AdminDashboard({ onAuthorClick, onViewChange, onNavigatePost }: 
             onDeleteCategory={handleAdminDeleteCategory}
             onDeleteSubcategory={handleAdminDeleteSubcategory}
           />
+        )}
+
+        {/* Tab Content: Imenik (Slovenian Web Directory) */}
+        {activeTab === 'directory' && (
+          <AdminDirectoryTab />
         )}
 
         {/* Tab Content: RSS */}
