@@ -561,6 +561,14 @@ export function SocialNetworkGraph({
     const zoomBehavior = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.45, 2.8])
+      .filter((event: Event) => {
+        if (event.type === 'wheel') {
+          const wheelEvent = event as WheelEvent;
+          return wheelEvent.ctrlKey || wheelEvent.metaKey;
+        }
+        const mouseEvent = event as MouseEvent;
+        return !mouseEvent.button;
+      })
       .on('zoom', (event) => {
         viewport.attr('transform', event.transform.toString());
       });
@@ -940,14 +948,14 @@ export function SocialNetworkGraph({
       <div className="relative flex flex-col lg:flex-row">
         <div
           ref={containerRef}
-          className="relative flex-1 bg-surface-container-low/35 min-h-[360px] lg:min-h-[440px]"
+          className="relative flex-1 bg-surface-container-low/35 h-[360px] lg:h-[440px] overflow-hidden"
         >
           <svg
             ref={svgRef}
             width={canvasSize.width}
             height={canvasSize.height}
             viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
-            className="w-full h-full block touch-none"
+            className="w-full h-full block touch-pan-y"
           />
 
           {/* Zoom Controls */}
@@ -997,7 +1005,8 @@ export function SocialNetworkGraph({
         </div>
 
         {/* Right / Bottom Inspector Panel */}
-        <aside className="lg:w-72 border-t lg:border-t-0 lg:border-l border-surface-container-low bg-surface-container-lowest p-4 flex flex-col justify-between gap-4">
+        <aside className="lg:w-72 lg:h-[440px] lg:overflow-y-auto no-scrollbar border-t lg:border-t-0 lg:border-l border-surface-container-low bg-surface-container-lowest p-4 flex flex-col justify-between gap-4 shrink-0">
+          <div className="min-h-[210px] flex flex-col justify-start">
           {inspectedNode ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
@@ -1082,6 +1091,7 @@ export function SocialNetworkGraph({
               </p>
             </div>
           )}
+          </div>
 
           {/* Community Discovery Chips when user can add more connections */}
           {suggestedUsers.length > 0 && (
