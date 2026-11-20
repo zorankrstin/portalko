@@ -30,6 +30,7 @@ import { DirectoryQrModal } from './DirectoryQrModal';
 import { DirectoryDetailPage } from './DirectoryDetailPage';
 import { DirectoryEditModal } from './DirectoryEditModal';
 import { useAuth } from '../contexts/AuthContext';
+import { scrollToPageTop } from '../utils/scrollUtils';
 import {
   DirectoryCategory,
   DirectoryEntry,
@@ -125,6 +126,23 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       .slice(0, 4);
   }, [publishedEntries, activeDetailEntry]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePopState = () => {
+      const slug = new URLSearchParams(window.location.search).get('imenik');
+      setActiveDetailSlug(slug);
+      scrollToPageTop();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (activeDetailEntry?.id) {
+      scrollToPageTop();
+    }
+  }, [activeDetailEntry?.id]);
+
   const handleOpenDetail = (entry: DirectoryEntry) => {
     const slug = getDirectoryEntrySlug(entry);
     setActiveDetailSlug(slug);
@@ -134,6 +152,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       url.searchParams.set('imenik', slug);
       window.history.pushState({}, '', url.toString());
     }
+    scrollToPageTop();
   };
 
   const handleCloseDetail = () => {
@@ -144,6 +163,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       url.searchParams.delete('imenik');
       window.history.pushState({}, '', url.toString());
     }
+    scrollToPageTop();
   };
 
   const featuredEntries = useMemo(() => {
@@ -326,6 +346,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
     return (
       <>
         <DirectoryDetailPage
+          key={activeDetailEntry.id}
           entry={activeDetailEntry}
           relatedEntries={relatedEntriesForDetail}
           canEdit={isAdminUser}

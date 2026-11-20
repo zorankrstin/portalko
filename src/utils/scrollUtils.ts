@@ -61,6 +61,13 @@ export function scrollToSidebarsTop(behavior: ScrollBehavior = 'instant') {
 export function scrollToPageTop() {
   if (typeof window === 'undefined') return;
 
+  // Release focus from clicked cards/related links near the bottom of the page
+  // so browser focus-scrolling or overflow-anchor doesn't pull the viewport back down
+  const active = document.activeElement as HTMLElement | null;
+  if (active && (active.tagName === 'A' || active.tagName === 'BUTTON')) {
+    active.blur();
+  }
+
   const performReset = () => {
     // 1. Native window scroll
     try {
@@ -96,21 +103,15 @@ export function scrollToPageTop() {
   // Immediate execution
   performReset();
 
-  // Next animation frame (handles DOM paint)
+  // Next two animation frames (handles React DOM commit + layout paint)
   requestAnimationFrame(() => {
     performReset();
+    requestAnimationFrame(() => {
+      performReset();
+    });
   });
 
-  // Safe delayed execution: only resets if the user is still at or near the top (< 120px)
-  // This prevents any unwanted jerk/scroll-hijacking when the user has already begun scrolling down!
-  const safeReset = () => {
-    const currentY = window.scrollY || document.documentElement?.scrollTop || document.body?.scrollTop || 0;
-    if (currentY < 120) {
-      performReset();
-    }
-  };
-
-  setTimeout(safeReset, 25);
-  setTimeout(safeReset, 80);
+  // Delayed fallback pass to defeat async content height shifts
+  setTimeout(performReset, 40);
 }
 

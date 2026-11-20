@@ -23,6 +23,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { scrollToPageTop } from '../utils/scrollUtils';
 import {
   DirectoryEntry,
   DirectoryReview,
@@ -86,6 +87,10 @@ export function DirectoryDetailPage({
   const [newComment, setNewComment] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    scrollToPageTop();
+  }, [entry.id]);
 
   useEffect(() => {
     const unsub = subscribeToDirectoryReviews(entry.id, setReviews);
@@ -755,7 +760,11 @@ export function DirectoryDetailPage({
               <button
                 key={rel.id}
                 type="button"
-                onClick={() => onSelectEntry(rel)}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  scrollToPageTop();
+                  onSelectEntry(rel);
+                }}
                 className="text-left p-3 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-low border border-surface-container/60 hover:border-primary/35 transition-all flex items-center justify-between gap-2 cursor-pointer group"
               >
                 <div className="min-w-0">

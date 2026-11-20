@@ -715,6 +715,7 @@ export default function App() {
 
             {currentView === 'post-detail' && selectedPostTarget && (
               <PostDetailPage 
+                key={`${selectedPostTarget.type}-${selectedPostTarget.id}`}
                 target={selectedPostTarget}
                 onBack={handleBackFromPost}
                 onNavigatePost={handleNavigatePost}
