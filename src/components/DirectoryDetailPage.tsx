@@ -14,6 +14,10 @@ import {
   Star,
   Tag,
   Calendar,
+  Phone,
+  Mail,
+  Clock,
+  Pencil,
 } from 'lucide-react';
 import {
   DirectoryEntry,
@@ -23,9 +27,11 @@ import {
 interface DirectoryDetailPageProps {
   entry: DirectoryEntry;
   relatedEntries: DirectoryEntry[];
+  canEdit?: boolean;
   onBack: () => void;
   onSelectEntry: (entry: DirectoryEntry) => void;
   onOpenQr: (entry: DirectoryEntry) => void;
+  onEdit?: (entry: DirectoryEntry) => void;
 }
 
 function upsertMetaTag(
@@ -58,9 +64,11 @@ function upsertMetaTag(
 export function DirectoryDetailPage({
   entry,
   relatedEntries,
+  canEdit = false,
   onBack,
   onSelectEntry,
   onOpenQr,
+  onEdit,
 }: DirectoryDetailPageProps) {
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -151,8 +159,12 @@ export function DirectoryDetailPage({
           image:
             entry.logoUrl ||
             `https://www.google.com/s2/favicons?domain=${encodeURIComponent(entry.domain)}&sz=128`,
+          ...(entry.phone?.trim() ? { telephone: entry.phone.trim() } : {}),
+          ...(entry.email?.trim() ? { email: entry.email.trim() } : {}),
+          ...(entry.workingHours?.trim() ? { openingHours: entry.workingHours.trim() } : {}),
           address: {
             '@type': 'PostalAddress',
+            ...(entry.address?.trim() ? { streetAddress: entry.address.trim() } : {}),
             addressLocality: entry.location || 'Slovenija',
             addressCountry: 'SI',
           },
@@ -353,6 +365,16 @@ export function DirectoryDetailPage({
           </div>
 
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {canEdit && onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(entry)}
+                className="px-3.5 py-2 rounded-xl bg-surface-container-low hover:bg-primary/10 text-on-surface hover:text-primary text-xs font-bold border border-surface-container inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>Uredi vnos</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onOpenQr(entry)}
@@ -429,6 +451,59 @@ export function DirectoryDetailPage({
           </div>
         )}
       </header>
+
+      {/* Contact Details Section */}
+      {(entry.phone || entry.email || entry.address || entry.workingHours) && (
+        <section className="bg-surface-container-lowest rounded-2xl p-5 border border-surface-container/60 shadow-xs flex flex-col gap-3">
+          <h2 className="text-sm font-bold text-on-surface">Kontaktni podatki</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {entry.phone && (
+              <a
+                href={`tel:${entry.phone.replace(/\s+/g, '')}`}
+                itemProp="telephone"
+                className="p-3 rounded-xl bg-surface-container-low/70 hover:bg-surface-container-low border border-surface-container/60 flex items-center gap-2.5 transition-colors"
+              >
+                <Phone className="w-4 h-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold text-outline">Telefon</div>
+                  <div className="text-xs font-bold text-on-surface truncate">{entry.phone}</div>
+                </div>
+              </a>
+            )}
+            {entry.email && (
+              <a
+                href={`mailto:${entry.email}`}
+                itemProp="email"
+                className="p-3 rounded-xl bg-surface-container-low/70 hover:bg-surface-container-low border border-surface-container/60 flex items-center gap-2.5 transition-colors"
+              >
+                <Mail className="w-4 h-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold text-outline">E-pošta</div>
+                  <div className="text-xs font-bold text-on-surface truncate">{entry.email}</div>
+                </div>
+              </a>
+            )}
+            {entry.address && (
+              <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60 flex items-center gap-2.5">
+                <MapPin className="w-4 h-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold text-outline">Naslov</div>
+                  <div className="text-xs font-bold text-on-surface">{entry.address}</div>
+                </div>
+              </div>
+            )}
+            {entry.workingHours && (
+              <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60 flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold text-outline">Delovni čas</div>
+                  <div className="text-xs font-bold text-on-surface">{entry.workingHours}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* GEO-Optimized FAQ Section (Matches FAQPage JSON-LD) */}
       <section className="bg-surface-container-lowest rounded-2xl p-5 border border-surface-container/60 shadow-xs flex flex-col gap-3">

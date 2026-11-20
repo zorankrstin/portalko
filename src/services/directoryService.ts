@@ -36,6 +36,10 @@ export interface DirectoryEntry {
   categoryId: string;
   categoryName: string;
   location?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  workingHours?: string;
   logoUrl?: string;
   tags?: string[];
   status: DirectoryEntryStatus;
@@ -490,6 +494,49 @@ export async function createDirectoryEntry(input: {
 
   await setDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, id), entry);
   return entry;
+}
+
+export async function updateDirectoryEntry(
+  id: string,
+  updates: {
+    name: string;
+    url: string;
+    description: string;
+    categoryId: string;
+    categoryName: string;
+    location?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    workingHours?: string;
+    tags?: string[];
+    isVerified?: boolean;
+    isFeatured?: boolean;
+  }
+): Promise<void> {
+  const { url, domain } = normalizeDirectoryUrl(updates.url);
+  const cleanTags = Array.isArray(updates.tags)
+    ? updates.tags.map((t) => t.replace(/^#/, '').trim().toLowerCase()).filter(Boolean).slice(0, 8)
+    : [];
+
+  await updateDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, id), {
+    name: updates.name.trim(),
+    slug: slugifyDirectoryCategory(updates.name),
+    url,
+    domain,
+    description: updates.description.trim(),
+    categoryId: updates.categoryId,
+    categoryName: updates.categoryName,
+    location: updates.location?.trim() || 'Slovenija',
+    address: updates.address?.trim() || '',
+    phone: updates.phone?.trim() || '',
+    email: updates.email?.trim() || '',
+    workingHours: updates.workingHours?.trim() || '',
+    tags: cleanTags,
+    ...(typeof updates.isVerified === 'boolean' ? { isVerified: updates.isVerified } : {}),
+    ...(typeof updates.isFeatured === 'boolean' ? { isFeatured: updates.isFeatured } : {}),
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 export async function updateDirectoryEntryMetadata(

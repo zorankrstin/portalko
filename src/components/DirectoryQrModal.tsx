@@ -26,10 +26,20 @@ function buildBusinessVCard(entry: DirectoryEntry): string {
     `ORG:${escapeVCardValue(entry.name)}`,
     `URL:${entry.url}`,
   ];
-  if (entry.location?.trim()) {
-    lines.push(`ADR;TYPE=WORK:;;${escapeVCardValue(entry.location.trim())};;;;Slovenija`);
+  if (entry.phone?.trim()) {
+    lines.push(`TEL;TYPE=WORK,VOICE:${escapeVCardValue(entry.phone.trim())}`);
   }
-  const noteParts = [entry.categoryName, entry.description].filter(Boolean);
+  if (entry.email?.trim()) {
+    lines.push(`EMAIL;TYPE=INTERNET:${escapeVCardValue(entry.email.trim())}`);
+  }
+  if (entry.address?.trim() || entry.location?.trim()) {
+    lines.push(
+      `ADR;TYPE=WORK:;;${escapeVCardValue(entry.address?.trim() || '')};${escapeVCardValue(
+        entry.location?.trim() || ''
+      )};;;Slovenija`
+    );
+  }
+  const noteParts = [entry.categoryName, entry.workingHours, entry.description].filter(Boolean);
   if (noteParts.length > 0) {
     lines.push(`NOTE:${escapeVCardValue(noteParts.join(' — ').slice(0, 180))}`);
   }

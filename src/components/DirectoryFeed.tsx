@@ -22,9 +22,11 @@ import {
   ChevronLeft,
   ChevronRight,
   QrCode,
+  Pencil,
 } from 'lucide-react';
 import { DirectoryQrModal } from './DirectoryQrModal';
 import { DirectoryDetailPage } from './DirectoryDetailPage';
+import { DirectoryEditModal } from './DirectoryEditModal';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DirectoryCategory,
@@ -67,6 +69,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   // Modal state for adding or suggesting an entry
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [qrEntry, setQrEntry] = useState<DirectoryEntry | null>(null);
+  const [editingEntry, setEditingEntry] = useState<DirectoryEntry | null>(null);
   const [activeDetailSlug, setActiveDetailSlug] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return new URLSearchParams(window.location.search).get('imenik');
@@ -320,11 +323,24 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
         <DirectoryDetailPage
           entry={activeDetailEntry}
           relatedEntries={relatedEntriesForDetail}
+          canEdit={isAdminUser}
           onBack={handleCloseDetail}
           onSelectEntry={handleOpenDetail}
           onOpenQr={(entry) => setQrEntry(entry)}
+          onEdit={(entry) => setEditingEntry(entry)}
         />
         <DirectoryQrModal entry={qrEntry} onClose={() => setQrEntry(null)} />
+        <DirectoryEditModal
+          entry={editingEntry}
+          categories={categories}
+          onClose={() => setEditingEntry(null)}
+          onSaved={(name) =>
+            setFeedbackMsg({
+              type: 'success',
+              text: `Vnos »${name}« je bil uspešno posodobljen.`,
+            })
+          }
+        />
       </>
     );
   }
@@ -770,15 +786,26 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                   </div>
 
                   {isAdminUser && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteEntry(entry)}
-                      className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer shrink-0"
-                      title={`Izbriši vnos ${entry.name}`}
-                      aria-label={`Izbriši vnos ${entry.name}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setEditingEntry(entry)}
+                        className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                        title={`Uredi vnos ${entry.name}`}
+                        aria-label={`Uredi vnos ${entry.name}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEntry(entry)}
+                        className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                        title={`Izbriši vnos ${entry.name}`}
+                        aria-label={`Izbriši vnos ${entry.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -1024,6 +1051,19 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       )}
       {/* QR Code Contact Modal */}
       <DirectoryQrModal entry={qrEntry} onClose={() => setQrEntry(null)} />
+
+      {/* Admin Edit Modal */}
+      <DirectoryEditModal
+        entry={editingEntry}
+        categories={categories}
+        onClose={() => setEditingEntry(null)}
+        onSaved={(name) =>
+          setFeedbackMsg({
+            type: 'success',
+            text: `Vnos »${name}« je bil uspešno posodobljen.`,
+          })
+        }
+      />
     </div>
   );
 }

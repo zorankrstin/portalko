@@ -17,6 +17,7 @@ import {
   Star,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { DirectoryEditModal } from '../DirectoryEditModal';
 import {
   DirectoryCategory,
   DirectoryEntry,
@@ -73,6 +74,7 @@ export function AdminDirectoryTab() {
   const [notifyCustomNote, setNotifyCustomNote] = useState('');
   const [isSendingNotifications, setIsSendingNotifications] = useState(false);
   const [aiProcessingEntryId, setAiProcessingEntryId] = useState<string | null>(null);
+  const [editingEntry, setEditingEntry] = useState<DirectoryEntry | null>(null);
 
   useEffect(() => {
     const unsubCats = subscribeToDirectoryCategories((cats) => {
@@ -876,6 +878,15 @@ export function AdminDirectoryTab() {
                 <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                   <button
                     type="button"
+                    onClick={() => setEditingEntry(entry)}
+                    className="px-2.5 py-1.5 rounded-lg bg-surface-container-low hover:bg-primary/10 text-on-surface hover:text-primary text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Uredi vnos in kontaktne podatke"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Uredi</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleToggleVerified(entry)}
                     className={`px-2.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer ${
                       entry.isVerified
@@ -953,6 +964,13 @@ export function AdminDirectoryTab() {
           )}
         </div>
       </div>
+
+      <DirectoryEditModal
+        entry={editingEntry}
+        categories={categories}
+        onClose={() => setEditingEntry(null)}
+        onSaved={(name) => setBulkFeedback(`Vnos »${name}« je bil uspešno posodobljen.`)}
+      />
     </div>
   );
 }
