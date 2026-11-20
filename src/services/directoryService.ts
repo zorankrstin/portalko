@@ -28,6 +28,7 @@ export type DirectoryEntryStatus = 'published' | 'pending' | 'rejected';
 
 export interface DirectoryEntry {
   id: string;
+  slug?: string;
   name: string;
   url: string;
   domain: string;
@@ -331,6 +332,17 @@ export function slugifyDirectoryCategory(name: string): string {
     .replace(/^-+|-+$/g, '') || `cat-${Date.now()}`;
 }
 
+export function getDirectoryEntrySlug(entry: Pick<DirectoryEntry, 'id' | 'name' | 'slug'>): string {
+  if (entry.slug && entry.slug.trim()) return entry.slug.trim();
+  const base = entry.name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return base || entry.id;
+}
+
 export function subscribeToDirectoryCategories(
   callback: (categories: DirectoryCategory[]) => void
 ): () => void {
@@ -457,6 +469,7 @@ export async function createDirectoryEntry(input: {
 
   const entry: DirectoryEntry = {
     id,
+    slug: slugifyDirectoryCategory(input.name),
     name: input.name.trim(),
     url,
     domain,

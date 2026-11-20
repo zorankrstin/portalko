@@ -24,6 +24,7 @@ import {
   QrCode,
 } from 'lucide-react';
 import { DirectoryQrModal } from './DirectoryQrModal';
+import { DirectoryDetailPage } from './DirectoryDetailPage';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DirectoryCategory,
@@ -35,6 +36,7 @@ import {
   canPublishDirectoryEntry,
   canManageDirectory,
   requestAiDirectorySuggestions,
+  getDirectoryEntrySlug,
 } from '../services/directoryService';
 
 interface DirectoryFeedProps {
@@ -65,6 +67,10 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   // Modal state for adding or suggesting an entry
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [qrEntry, setQrEntry] = useState<DirectoryEntry | null>(null);
+  const [activeDetailSlug, setActiveDetailSlug] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('imenik');
+  });
   const [formName, setFormName] = useState('');
   const [formUrl, setFormUrl] = useState('');
   const [formCategoryId, setFormCategoryId] = useState('');
@@ -94,6 +100,43 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
     () => entries.filter((e) => e.status === 'published'),
     [entries]
   );
+
+  const activeDetailEntry = useMemo(() => {
+    if (!activeDetailSlug) return null;
+    return (
+      publishedEntries.find(
+        (e) => getDirectoryEntrySlug(e) === activeDetailSlug || e.id === activeDetailSlug
+      ) || null
+    );
+  }, [publishedEntries, activeDetailSlug]);
+
+  const relatedEntriesForDetail = useMemo(() => {
+    if (!activeDetailEntry) return [];
+    return publishedEntries
+      .filter(
+        (e) => e.id !== activeDetailEntry.id && e.categoryId === activeDetailEntry.categoryId
+      )
+      .slice(0, 4);
+  }, [publishedEntries, activeDetailEntry]);
+
+  const handleOpenDetail = (entry: DirectoryEntry) => {
+    const slug = getDirectoryEntrySlug(entry);
+    setActiveDetailSlug(slug);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('imenik', slug);
+      window.history.pushState({}, '', url.toString());
+    }
+  };
+
+  const handleCloseDetail = () => {
+    setActiveDetailSlug(null);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('imenik');
+      window.history.pushState({}, '', url.toString());
+    }
+  };
 
   const featuredEntries = useMemo(() => {
     const explicit = publishedEntries.filter((e) => e.isFeatured);
@@ -270,6 +313,21 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       console.error('Failed to delete directory entry:', err);
     }
   };
+
+  if (activeDetailEntry) {
+    return (
+      <>
+        <DirectoryDetailPage
+          entry={activeDetailEntry}
+          relatedEntries={relatedEntriesForDetail}
+          onBack={handleCloseDetail}
+          onSelectEntry={handleOpenDetail}
+          onOpenQr={(entry) => setQrEntry(entry)}
+        />
+        <DirectoryQrModal entry={qrEntry} onClose={() => setQrEntry(null)} />
+      </>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-8">
@@ -565,9 +623,13 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1 min-w-0">
-                          <h3 className="text-xs font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDetail(entry)}
+                            className="text-xs font-bold text-on-surface group-hover:text-primary transition-colors truncate text-left cursor-pointer hover:underline"
+                          >
                             {entry.name}
-                          </h3>
+                          </button>
                           {entry.isVerified && (
                             <BadgeCheck
                               className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0"
@@ -678,9 +740,13 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <h2 className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDetail(entry)}
+                          className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors truncate text-left cursor-pointer hover:underline"
+                        >
                           {entry.name}
-                        </h2>
+                        </button>
                         {entry.isVerified && (
                           <span
                             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 text-[10px] font-bold shrink-0"
@@ -747,6 +813,13 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDetail(entry)}
+                    className="px-2 py-1 rounded-lg bg-surface-container-low hover:bg-primary/10 text-on-surface-variant hover:text-primary text-[11px] font-bold transition-colors cursor-pointer"
+                  >
+                    Podrobnosti
+                  </button>
                   <button
                     type="button"
                     onClick={() => setQrEntry(entry)}
