@@ -18,10 +18,18 @@ import {
   Mail,
   Clock,
   Pencil,
+  MessageSquare,
+  Send,
+  Trash2,
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import {
   DirectoryEntry,
+  DirectoryReview,
   getDirectoryEntrySlug,
+  subscribeToDirectoryReviews,
+  addDirectoryReview,
+  deleteDirectoryReview,
 } from '../services/directoryService';
 
 interface DirectoryDetailPageProps {
@@ -70,7 +78,55 @@ export function DirectoryDetailPage({
   onOpenQr,
   onEdit,
 }: DirectoryDetailPageProps) {
+  const { currentUser } = useAuth();
   const [copiedLink, setCopiedLink] = useState(false);
+  const [reviews, setReviews] = useState<DirectoryReview[]>([]);
+  const [newRating, setNewRating] = useState<number>(5);
+  const [hoverRating, setHoverRating] = useState<number>(0);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewFeedback, setReviewFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsub = subscribeToDirectoryReviews(entry.id, setReviews);
+    return () => unsub();
+  }, [entry.id]);
+
+  const { averageRating, reviewCount } = useMemo(() => {
+    if (reviews.length > 0) {
+      const avg =
+        Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length) * 10) / 10;
+      return { averageRating: avg, reviewCount: reviews.length };
+    }
+    return {
+      averageRating: entry.ratingAverage || 0,
+      reviewCount: entry.ratingCount || 0,
+    };
+  }, [reviews, entry.ratingAverage, entry.ratingCount]);
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    setIsSubmittingReview(true);
+    setReviewFeedback(null);
+    try {
+      await addDirectoryReview(entry.id, {
+        rating: newRating,
+        comment: newComment,
+        authorId: currentUser?.id || `guest-${Date.now()}`,
+        authorName: currentUser?.name || 'Obiskovalec',
+        authorAvatar: currentUser?.avatar,
+      });
+      setNewComment('');
+      setNewRating(5);
+      setReviewFeedback('Hvala! Vaša ocena in komentar sta bila uspešno objavljena.');
+    } catch (err) {
+      console.error('Failed to add review:', err);
+      setReviewFeedback('Pri objavi ocene je prišlo do napake. Poskusite znova.');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   const slug = useMemo(() => getDirectoryEntrySlug(entry), [entry]);
 
@@ -174,6 +230,17 @@ export function DirectoryDetailPage({
           },
           knowsAbout: [entry.categoryName, ...(entry.tags || [])],
           sameAs: [entry.url],
+          ...(reviewCount > 0
+            ? {
+                aggregateRating: {
+                  '@type': 'AggregateRating',
+                  ratingValue: averageRating,
+                  reviewCount,
+                  bestRating: 5,
+                  worstRating: 1,
+                },
+              }
+            : {}),
         },
         {
           '@type': 'BreadcrumbList',
@@ -231,7 +298,7 @@ export function DirectoryDetailPage({
       }
       document.getElementById(scriptId)?.remove();
     };
-  }, [entry, canonicalUrl, seoTitle, seoDescription, geoFaqs]);
+  }, [entry, canonicalUrl, seoTitle, seoDescription, geoFaqs, averageRating, reviewCount]);
 
   const handleCopyCanonical = async () => {
     try {
@@ -504,6 +571,157 @@ export function DirectoryDetailPage({
           </div>
         </section>
       )}
+
+      {/* User Ratings & Comments Section */}
+      <section className="bg-surface-container-lowest rounded-2xl p-5 border border-surface-container/60 shadow-xs flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-surface-container-low pb-3">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-bold text-on-surface">
+              Ocene in komentarji uporabnikov ({reviewCount})
+            </h2>
+          </div>
+
+          {reviewCount > 0 && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/12 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-xs font-bold">
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-3.5 h-3.5 ${
+                      star <= Math.round(averageRating)
+                        ? 'fill-amber-500 text-amber-500'
+                        : 'text-outline/40'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="tabular-nums">{averageRating.toFixed(1)} / 5</span>
+            </div>
+          )}
+        </div>
+
+        {/* Add Review Form */}
+        <form
+          onSubmit={handleSubmitReview}
+          className="p-3.5 rounded-xl bg-surface-container-low/65 border border-surface-container flex flex-col gap-3"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="text-xs font-bold text-on-surface">
+              Ocenite svojo izkušnjo z {entry.name}:
+            </span>
+            <div className="flex items-center gap-1" role="radiogroup" aria-label="Ocena z zvezdicami">
+              {[1, 2, 3, 4, 5].map((star) => {
+                const active = star <= (hoverRating || newRating);
+                return (
+                  <button
+                    key={star}
+                    type="button"
+                    onMouseEnter={() => setHoverRating(star)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    onClick={() => setNewRating(star)}
+                    className="p-0.5 cursor-pointer transition-transform hover:scale-110"
+                    aria-label={`${star} od 5 zvezdic`}
+                  >
+                    <Star
+                      className={`w-5 h-5 ${
+                        active ? 'fill-amber-500 text-amber-500' : 'text-outline/40'
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+              <span className="ml-1.5 text-xs font-bold text-on-surface tabular-nums">
+                {newRating}/5
+              </span>
+            </div>
+          </div>
+
+          <textarea
+            required
+            rows={2}
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder="Delite svojo izkušnjo, kakovost storitev ali priporočilo za druge uporabnike..."
+            className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary resize-none"
+          />
+
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-outline">
+              Objavljate kot <strong className="text-on-surface">{currentUser?.name || 'Obiskovalec'}</strong>
+            </span>
+            <button
+              type="submit"
+              disabled={isSubmittingReview || !newComment.trim()}
+              className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isSubmittingReview ? 'Objavljam...' : 'Objavi oceno'}</span>
+            </button>
+          </div>
+
+          {reviewFeedback && (
+            <p className="text-xs font-semibold text-secondary">{reviewFeedback}</p>
+          )}
+        </form>
+
+        {/* Reviews List */}
+        {reviews.length === 0 ? (
+          <p className="text-xs text-outline text-center py-4">
+            Za to podjetje še ni ocen. Bodite prvi in delite svojo izkušnjo!
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {reviews.map((rev) => {
+              const canDelete =
+                canEdit || (currentUser?.id && currentUser.id === rev.authorId);
+              return (
+                <div
+                  key={rev.id}
+                  className="p-3.5 rounded-xl bg-surface-container-low/50 border border-surface-container/60 flex flex-col gap-1.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-on-surface">
+                        {rev.authorName}
+                      </span>
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={`w-3 h-3 ${
+                              star <= rev.rating
+                                ? 'fill-amber-500 text-amber-500'
+                                : 'text-outline/30'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-outline">
+                        {new Date(rev.createdAt).toLocaleDateString('sl-SI')}
+                      </span>
+                    </div>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => deleteDirectoryReview(entry.id, rev.id)}
+                        className="p-1 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                        title="Izbriši komentar"
+                        aria-label="Izbriši komentar"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    {rev.comment}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* GEO-Optimized FAQ Section (Matches FAQPage JSON-LD) */}
       <section className="bg-surface-container-lowest rounded-2xl p-5 border border-surface-container/60 shadow-xs flex flex-col gap-3">

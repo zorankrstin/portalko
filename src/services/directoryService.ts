@@ -55,8 +55,21 @@ export interface DirectoryEntry {
   verifiedBy?: string;
   verifiedAt?: string;
   isFeatured?: boolean;
+  ratingAverage?: number;
+  ratingCount?: number;
   notifiedStatus?: 'published' | 'rejected';
   notifiedAt?: string;
+}
+
+export interface DirectoryReview {
+  id: string;
+  entryId: string;
+  rating: number;
+  comment: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  createdAt: string;
 }
 
 export interface AiDirectorySuggestion {
@@ -772,4 +785,85 @@ export async function notifyAllReviewedDirectorySuggesters(
   }
 
   return { sentCount, skippedCount };
+}
+
+export function subscribeToDirectoryReviews(
+  entryId: string,
+  callback: (reviews: DirectoryReview[]) => void
+): () => void {
+  const q = query(
+    collection(db, DIRECTORY_ENTRIES_COLLECTION, entryId, 'reviews'),
+    orderBy('createdAt', 'desc')
+  );
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: DirectoryReview[] = snapshot.docs.map((d) => ({
+        ...(d.data() as DirectoryReview),
+        id: d.id,
+      }));
+      callback(list);
+    },
+    (error) => {
+      console.error('Error subscribing to directory reviews:', error);
+      callback([]);
+    }
+  );
+}
+
+async function recalculateDirectoryEntryRating(entryId: string): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, DIRECTORY_ENTRIES_COLLECTION, entryId, 'reviews'));
+    const ratings = snap.docs
+      .map((d) => Number((d.data() as DirectoryReview).rating))
+      .filter((n) => Number.isFinite(n) && n >= 1 && n <= 5);
+    const ratingCount = ratings.length;
+    const ratingAverage =
+      ratingCount > 0
+        ? Math.round((ratings.reduce((sum, r) => sum + r, 0) / ratingCount) * 10) / 10
+        : 0;
+    await updateDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, entryId), {
+      ratingAverage,
+      ratingCount,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch {
+    // Parent document may be a seed entry not yet materialized in Firestore
+  }
+}
+
+export async function addDirectoryReview(
+  entryId: string,
+  input: {
+    rating: number;
+    comment: string;
+    authorId: string;
+    authorName: string;
+    authorAvatar?: string;
+  }
+): Promise<DirectoryReview> {
+  const clampedRating = Math.min(5, Math.max(1, Math.round(input.rating)));
+  const id = `rev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const review: DirectoryReview = {
+    id,
+    entryId,
+    rating: clampedRating,
+    comment: input.comment.trim(),
+    authorId: input.authorId,
+    authorName: input.authorName.trim() || 'Uporabnik',
+    ...(input.authorAvatar ? { authorAvatar: input.authorAvatar } : {}),
+    createdAt: new Date().toISOString(),
+  };
+
+  await setDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, entryId, 'reviews', id), review);
+  await recalculateDirectoryEntryRating(entryId);
+  return review;
+}
+
+export async function deleteDirectoryReview(
+  entryId: string,
+  reviewId: string
+): Promise<void> {
+  await deleteDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, entryId, 'reviews', reviewId));
+  await recalculateDirectoryEntryRating(entryId);
 }

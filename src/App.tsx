@@ -210,6 +210,8 @@ export default function App() {
         window.history.replaceState(null, '', '#akcije');
       } else if (window.location.pathname.toLowerCase() === '/ugodnosti') {
         window.history.replaceState(null, '', '/akcije');
+      } else if (window.location.pathname.toLowerCase() === '/directory') {
+        window.history.replaceState(null, '', `/imenik${window.location.search}${window.location.hash}`);
       }
 
       const parsed = parseUrlPath(window.location.pathname, window.location.hash, window.location.search);

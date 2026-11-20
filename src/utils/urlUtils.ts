@@ -50,6 +50,7 @@ export const SECTION_TO_SLUG: Record<string, string> = {
   blog: 'blog',
   post: 'blog',
   saved: 'shranjeno',
+  directory: 'imenik',
   admin: 'admin',
   profile: 'profil',
 };
@@ -87,6 +88,8 @@ export const SLUG_TO_VIEW: Record<string, ViewMode> = {
   shranjeno: 'saved',
   zaznamki: 'saved',
   saved: 'saved',
+  imenik: 'directory',
+  directory: 'directory',
   admin: 'admin',
   'nadzorna-plosca': 'admin',
   profil: 'profile',

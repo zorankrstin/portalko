@@ -23,6 +23,8 @@ import {
   ChevronRight,
   QrCode,
   Pencil,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { DirectoryQrModal } from './DirectoryQrModal';
 import { DirectoryDetailPage } from './DirectoryDetailPage';
@@ -60,6 +62,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [sortMode, setSortMode] = useState<DirectorySortMode>('az');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery);
 
   useEffect(() => {
@@ -127,6 +130,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
     setActiveDetailSlug(slug);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
+      url.pathname = '/imenik';
       url.searchParams.set('imenik', slug);
       window.history.pushState({}, '', url.toString());
     }
@@ -136,6 +140,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
     setActiveDetailSlug(null);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
+      url.pathname = '/imenik';
       url.searchParams.delete('imenik');
       window.history.pushState({}, '', url.toString());
     }
@@ -548,25 +553,60 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
             ))}
           </div>
 
-          {/* Active Filter Status Bar */}
-          <div className="flex items-center justify-between gap-2 text-[11px] text-outline pt-1 border-t border-surface-container-low">
-            <span className="flex items-center gap-1.5 tabular-nums">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-primary/70" />
-              <span>
-                Prikazanih <strong className="text-on-surface">{filteredEntries.length}</strong> od{' '}
-                <strong className="text-on-surface">{publishedEntries.length}</strong> vnosov
+          {/* Active Filter Status Bar + List/Grid View Toggle */}
+          <div className="flex items-center justify-between gap-2 text-[11px] text-outline pt-1 border-t border-surface-container-low flex-wrap">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 tabular-nums">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-primary/70" />
+                <span>
+                  Prikazanih <strong className="text-on-surface">{filteredEntries.length}</strong> od{' '}
+                  <strong className="text-on-surface">{publishedEntries.length}</strong> vnosov
+                </span>
               </span>
-            </span>
-            {hasActiveFilters && (
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-1 text-primary hover:underline font-semibold cursor-pointer"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Počisti filtre</span>
+                </button>
+              )}
+            </div>
+
+            <div
+              className="inline-flex items-center p-0.5 rounded-lg bg-surface-container-low border border-surface-container"
+              role="group"
+              aria-label="Način prikaza imenika"
+            >
               <button
                 type="button"
-                onClick={handleResetFilters}
-                className="inline-flex items-center gap-1 text-primary hover:underline font-semibold cursor-pointer"
+                onClick={() => setViewMode('list')}
+                className={`px-2 py-1 rounded-md text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer ${
+                  viewMode === 'list'
+                    ? 'bg-surface-container-lowest text-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+                title="Prikaz seznama"
               >
-                <RotateCcw className="w-3 h-3" />
-                <span>Počisti filtre</span>
+                <List className="w-3.5 h-3.5" />
+                <span>Seznam</span>
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`px-2 py-1 rounded-md text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-surface-container-lowest text-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+                title="Mrežni prikaz"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Mreža</span>
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -721,7 +761,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
         </section>
       )}
 
-      {/* Directory Entries Grid */}
+      {/* Directory Entries (List View or Grid View) */}
       {filteredEntries.length === 0 ? (
         <div className="bg-surface-container-lowest rounded-2xl p-8 text-center border border-surface-container/60 flex flex-col items-center gap-2">
           <Globe className="w-8 h-8 text-outline/60" />
@@ -729,6 +769,148 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
           <p className="text-xs text-on-surface-variant max-w-sm">
             Poskusite z drugim iskalnim pojmom ali izberite drugo kategorijo.
           </p>
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="flex flex-col gap-2.5">
+          {filteredEntries.map((entry) => (
+            <article
+              key={entry.id}
+              className="bg-surface-container-lowest rounded-2xl p-3.5 sm:p-4 shadow-xs border border-surface-container/60 hover:border-primary/35 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+            >
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-surface-container-low border border-surface-container flex items-center justify-center shrink-0 overflow-hidden mt-0.5">
+                  <img
+                    src={
+                      entry.logoUrl ||
+                      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(entry.domain)}&sz=64`
+                    }
+                    alt={entry.name}
+                    className="w-6 h-6 object-contain"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+
+                <div className="min-w-0 flex-1 flex flex-col gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDetail(entry)}
+                      className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors text-left cursor-pointer hover:underline truncate"
+                    >
+                      {entry.name}
+                    </button>
+                    {entry.isVerified && (
+                      <span
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 text-[10px] font-bold shrink-0"
+                        title="Uradno preverjeno in potrjeno podjetje s strani uredništva"
+                      >
+                        <BadgeCheck className="w-3 h-3 shrink-0" />
+                        <span>Preverjeno</span>
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/8 text-primary border border-primary/15">
+                      {entry.categoryName}
+                    </span>
+                    {entry.ratingCount && entry.ratingCount > 0 ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/12 text-amber-700 dark:text-amber-300 border border-amber-500/25 text-[10px] font-bold tabular-nums">
+                        <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                        <span>{(entry.ratingAverage || 0).toFixed(1)}</span>
+                        <span className="opacity-75">({entry.ratingCount})</span>
+                      </span>
+                    ) : null}
+                    {entry.location && (
+                      <span className="text-[10px] text-outline inline-flex items-center gap-0.5">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span>{entry.location}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-on-surface-variant leading-relaxed line-clamp-1">
+                    {entry.description}
+                  </p>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <a
+                      href={entry.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      <span>{entry.domain}</span>
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                    </a>
+                    {entry.tags && entry.tags.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {entry.tags.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-surface-container-low text-on-surface-variant border border-surface-container"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => handleOpenDetail(entry)}
+                  className="px-2.5 py-1.5 rounded-lg bg-surface-container-low hover:bg-primary/10 text-on-surface-variant hover:text-primary text-[11px] font-bold transition-colors cursor-pointer"
+                >
+                  Podrobnosti
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQrEntry(entry)}
+                  className="px-2 py-1.5 rounded-lg bg-surface-container-low hover:bg-primary/10 text-on-surface-variant hover:text-primary text-[11px] font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                  title={`Prikaži QR kodo za ${entry.name}`}
+                  aria-label={`Prikaži QR kodo za ${entry.name}`}
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>QR</span>
+                </button>
+                <a
+                  href={entry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary text-[11px] font-bold transition-colors inline-flex items-center gap-1 shrink-0"
+                >
+                  <span>Obišči</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+                {isAdminUser && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditingEntry(entry)}
+                      className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                      title={`Uredi vnos ${entry.name}`}
+                      aria-label={`Uredi vnos ${entry.name}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEntry(entry)}
+                      className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                      title={`Izbriši vnos ${entry.name}`}
+                      aria-label={`Izbriši vnos ${entry.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </article>
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -831,6 +1013,13 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/8 text-primary border border-primary/15 truncate max-w-[160px]">
                     {entry.categoryName}
                   </span>
+                  {entry.ratingCount && entry.ratingCount > 0 ? (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/12 text-amber-700 dark:text-amber-300 border border-amber-500/25 text-[10px] font-bold tabular-nums">
+                      <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                      <span>{(entry.ratingAverage || 0).toFixed(1)}</span>
+                      <span className="opacity-75">({entry.ratingCount})</span>
+                    </span>
+                  ) : null}
                   {entry.location && (
                     <span className="text-[10px] text-outline flex items-center gap-0.5 truncate">
                       <MapPin className="w-3 h-3 shrink-0" />

@@ -300,6 +300,18 @@ service cloud.firestore {
       allow update: if isValidId(entryId) &&
                        request.resource.data.status in ['published', 'pending', 'rejected'];
       allow delete: if isValidId(entryId);
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow create: if isValidId(reviewId) &&
+                         request.resource.data.rating is number &&
+                         request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+                         request.resource.data.comment is string &&
+                         request.resource.data.comment.size() >= 1 && request.resource.data.comment.size() <= 1500 &&
+                         request.resource.data.authorName is string &&
+                         request.resource.data.authorName.size() >= 1;
+        allow delete: if isValidId(reviewId);
+      }
     }
 
     // Connection test document
