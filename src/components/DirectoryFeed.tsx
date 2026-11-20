@@ -21,7 +21,9 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  QrCode,
 } from 'lucide-react';
+import { DirectoryQrModal } from './DirectoryQrModal';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DirectoryCategory,
@@ -62,6 +64,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
 
   // Modal state for adding or suggesting an entry
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [qrEntry, setQrEntry] = useState<DirectoryEntry | null>(null);
   const [formName, setFormName] = useState('');
   const [formUrl, setFormUrl] = useState('');
   const [formCategoryId, setFormCategoryId] = useState('');
@@ -593,15 +596,26 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                   <span className="text-[10px] font-semibold text-outline truncate">
                     {entry.categoryName}
                   </span>
-                  <a
-                    href={entry.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-2 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary text-[10px] font-bold transition-colors inline-flex items-center gap-1 shrink-0"
-                  >
-                    <span>Obišči</span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setQrEntry(entry)}
+                      className="p-1.5 rounded-lg bg-surface-container-lowest hover:bg-primary/10 text-on-surface-variant hover:text-primary border border-surface-container transition-colors cursor-pointer"
+                      title={`Prikaži QR kodo za ${entry.name}`}
+                      aria-label={`Prikaži QR kodo za ${entry.name}`}
+                    >
+                      <QrCode className="w-3 h-3" />
+                    </button>
+                    <a
+                      href={entry.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary text-[10px] font-bold transition-colors inline-flex items-center gap-1 shrink-0"
+                    >
+                      <span>Obišči</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
                 </div>
               </article>
             ))}
@@ -732,15 +746,27 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                   )}
                 </div>
 
-                <a
-                  href={entry.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-primary hover:text-on-primary text-on-surface text-[11px] font-bold transition-colors inline-flex items-center gap-1 shrink-0"
-                >
-                  <span>Obišči</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setQrEntry(entry)}
+                    className="px-2 py-1 rounded-lg bg-surface-container-low hover:bg-primary/10 text-on-surface-variant hover:text-primary text-[11px] font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                    title={`Prikaži QR kodo za ${entry.name}`}
+                    aria-label={`Prikaži QR kodo za ${entry.name}`}
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>QR</span>
+                  </button>
+                  <a
+                    href={entry.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-primary hover:text-on-primary text-on-surface text-[11px] font-bold transition-colors inline-flex items-center gap-1 shrink-0"
+                  >
+                    <span>Obišči</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
               </div>
             </article>
           ))}
@@ -923,6 +949,8 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
           </div>
         </div>
       )}
+      {/* QR Code Contact Modal */}
+      <DirectoryQrModal entry={qrEntry} onClose={() => setQrEntry(null)} />
     </div>
   );
 }
