@@ -443,6 +443,15 @@ html, body {
 .tiptap u {
   text-decoration: underline;
 }
+.tiptap h1 {
+  font-size: 1.6rem;
+  line-height: 1.25;
+  font-weight: 900;
+  letter-spacing: -0.015em;
+  color: var(--color-on-surface, inherit);
+  margin-top: 1.4rem;
+  margin-bottom: 0.6rem;
+}
 .tiptap h2 {
   font-size: 1.35rem;
   line-height: 1.3;
@@ -467,6 +476,7 @@ html, body {
   margin-top: 0.85rem;
   margin-bottom: 0.35rem;
 }
+.tiptap h1:first-child,
 .tiptap h2:first-child,
 .tiptap h3:first-child,
 .tiptap h4:first-child {

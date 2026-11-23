@@ -9,8 +9,10 @@ import {
   query,
   orderBy,
   getDocs,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { getCleanHtml, getPlainTextSnippet } from '../utils/textUtils';
 import type { Role } from '../types';
 
 export interface DirectoryCategory {
@@ -26,6 +28,11 @@ export interface DirectoryCategory {
 
 export type DirectoryEntryStatus = 'published' | 'pending' | 'rejected';
 
+export interface DirectoryFaqItem {
+  q: string;
+  a: string;
+}
+
 export interface DirectoryEntry {
   id: string;
   slug?: string;
@@ -33,6 +40,7 @@ export interface DirectoryEntry {
   url: string;
   domain: string;
   description: string;
+  richContent?: string;
   categoryId: string;
   categoryName: string;
   location?: string;
@@ -42,6 +50,13 @@ export interface DirectoryEntry {
   workingHours?: string;
   logoUrl?: string;
   tags?: string[];
+  seoTitle?: string;
+  metaDescription?: string;
+  focusKeyword?: string;
+  geoAreaServed?: string;
+  priceRange?: string;
+  foundingYear?: string;
+  faqItems?: DirectoryFaqItem[];
   status: DirectoryEntryStatus;
   isSuggestion: boolean;
   authorId: string;
@@ -327,6 +342,43 @@ export function canManageDirectory(role?: Role | null): boolean {
   return role === 'superadmin' || role === 'admin';
 }
 
+export function canEditDirectoryEntry(
+  entry?: Pick<DirectoryEntry, 'authorId'> | null,
+  user?: { id?: string; role?: Role | null } | null
+): boolean {
+  if (canManageDirectory(user?.role)) return true;
+  if (!entry || !user?.id || user.role === 'guest') return false;
+  if (!entry.authorId || entry.authorId === 'system' || entry.authorId.startsWith('guest-')) {
+    return false;
+  }
+  return entry.authorId === user.id;
+}
+
+function hasMeaningfulRichHtml(html?: string): boolean {
+  if (!html || typeof html !== 'string') return false;
+  const plain = getPlainTextSnippet(html);
+  if (plain.length > 0) return true;
+  return /<(img|iframe|video)\b/i.test(html);
+}
+
+function buildPlainDescription(description?: string, richContent?: string, fallbackName?: string): string {
+  const fromDesc = getPlainTextSnippet(description || '').trim();
+  const fromRich = getPlainTextSnippet(richContent || '').trim();
+  const base = fromDesc || fromRich || (fallbackName ? `${fallbackName.trim()} – spletna stran` : 'Spletna stran v imeniku');
+  return base.length > 950 ? `${base.slice(0, 947).trim()}...` : base;
+}
+
+function sanitizeFaqItems(items?: DirectoryFaqItem[]): DirectoryFaqItem[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => ({
+      q: (item?.q || '').trim().slice(0, 220),
+      a: (item?.a || '').trim().slice(0, 1200),
+    }))
+    .filter((item) => item.q.length > 0 && item.a.length > 0)
+    .slice(0, 10);
+}
+
 export function normalizeDirectoryUrl(rawUrl: string): { url: string; domain: string } {
   const trimmed = rawUrl.trim();
   const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
@@ -462,40 +514,108 @@ export async function deleteDirectoryCategory(id: string): Promise<void> {
   await deleteDoc(doc(db, DIRECTORY_CATEGORIES_COLLECTION, id));
 }
 
+export async function ensureDirectoryEntriesSeeded(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, DIRECTORY_ENTRIES_COLLECTION));
+    if (!snap.empty) return;
+    await Promise.all(
+      SEED_DIRECTORY_ENTRIES.map((seed) =>
+        setDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, seed.id), seed)
+      )
+    );
+  } catch (err) {
+    console.warn('Could not seed directory entries:', err);
+  }
+}
+
+async function upsertDirectoryDoc(id: string, fields: Record<string, unknown>): Promise<void> {
+  const docRef = doc(db, DIRECTORY_ENTRIES_COLLECTION, id);
+  const seedMatch = SEED_DIRECTORY_ENTRIES.find((s) => s.id === id);
+  if (seedMatch) {
+    await ensureDirectoryEntriesSeeded();
+    const existingSnap = await getDoc(docRef);
+    if (!existingSnap.exists()) {
+      await setDoc(docRef, { ...seedMatch, ...fields }, { merge: true });
+      return;
+    }
+  }
+  await setDoc(docRef, fields, { merge: true });
+}
+
 export async function createDirectoryEntry(input: {
   name: string;
   url: string;
   description: string;
+  richContent?: string;
   categoryId: string;
   categoryName: string;
   location?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  workingHours?: string;
   logoUrl?: string;
   tags?: string[];
+  seoTitle?: string;
+  metaDescription?: string;
+  focusKeyword?: string;
+  geoAreaServed?: string;
+  priceRange?: string;
+  foundingYear?: string;
+  faqItems?: DirectoryFaqItem[];
   isVerified?: boolean;
   authorId: string;
   authorName: string;
   authorRole: Role;
 }): Promise<DirectoryEntry> {
   const canPublish = canPublishDirectoryEntry(input.authorRole);
+  if (canPublish) {
+    await ensureDirectoryEntriesSeeded();
+  }
   const { url, domain } = normalizeDirectoryUrl(input.url);
   const id = `dir-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
   const cleanTags = Array.isArray(input.tags)
-    ? input.tags.map((t) => t.replace(/^#/, '').trim().toLowerCase()).filter(Boolean).slice(0, 6)
+    ? input.tags.map((t) => t.replace(/^#/, '').trim().toLowerCase()).filter(Boolean).slice(0, 8)
     : [];
+  const sanitizedRich = hasMeaningfulRichHtml(input.richContent)
+    ? getCleanHtml(input.richContent)
+    : '';
+  const cleanDescription = buildPlainDescription(input.description, sanitizedRich, input.name);
+  const cleanFaqs = sanitizeFaqItems(input.faqItems);
 
   const entry: DirectoryEntry = {
     id,
     slug: slugifyDirectoryCategory(input.name),
-    name: input.name.trim(),
-    url,
+    name: input.name.trim().slice(0, 120),
+    url: url.slice(0, 500),
     domain,
-    description: input.description.trim(),
+    description: cleanDescription,
+    ...(sanitizedRich ? { richContent: sanitizedRich } : {}),
     categoryId: input.categoryId,
     categoryName: input.categoryName,
     location: input.location?.trim() || 'Slovenija',
+    ...(input.address?.trim() ? { address: input.address.trim() } : {}),
+    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+    ...(input.workingHours?.trim() ? { workingHours: input.workingHours.trim() } : {}),
     ...(input.logoUrl?.trim() ? { logoUrl: input.logoUrl.trim() } : {}),
     ...(cleanTags.length > 0 ? { tags: cleanTags } : {}),
+    ...(input.seoTitle?.trim() ? { seoTitle: input.seoTitle.trim().slice(0, 160) } : {}),
+    ...(input.metaDescription?.trim()
+      ? { metaDescription: input.metaDescription.trim().slice(0, 320) }
+      : {}),
+    ...(input.focusKeyword?.trim()
+      ? { focusKeyword: input.focusKeyword.trim().slice(0, 120) }
+      : {}),
+    ...(input.geoAreaServed?.trim()
+      ? { geoAreaServed: input.geoAreaServed.trim().slice(0, 200) }
+      : {}),
+    ...(input.priceRange?.trim() ? { priceRange: input.priceRange.trim().slice(0, 20) } : {}),
+    ...(input.foundingYear?.trim()
+      ? { foundingYear: input.foundingYear.trim().slice(0, 20) }
+      : {}),
+    ...(cleanFaqs.length > 0 ? { faqItems: cleanFaqs } : {}),
     ...(input.isVerified ? { isVerified: true, verifiedBy: input.authorName, verifiedAt: now } : {}),
     status: canPublish ? 'published' : 'pending',
     isSuggestion: !canPublish,
@@ -515,6 +635,7 @@ export async function updateDirectoryEntry(
     name: string;
     url: string;
     description: string;
+    richContent?: string;
     categoryId: string;
     categoryName: string;
     location?: string;
@@ -523,6 +644,13 @@ export async function updateDirectoryEntry(
     email?: string;
     workingHours?: string;
     tags?: string[];
+    seoTitle?: string;
+    metaDescription?: string;
+    focusKeyword?: string;
+    geoAreaServed?: string;
+    priceRange?: string;
+    foundingYear?: string;
+    faqItems?: DirectoryFaqItem[];
     isVerified?: boolean;
     isFeatured?: boolean;
   }
@@ -531,13 +659,19 @@ export async function updateDirectoryEntry(
   const cleanTags = Array.isArray(updates.tags)
     ? updates.tags.map((t) => t.replace(/^#/, '').trim().toLowerCase()).filter(Boolean).slice(0, 8)
     : [];
+  const sanitizedRich = hasMeaningfulRichHtml(updates.richContent)
+    ? getCleanHtml(updates.richContent)
+    : '';
+  const cleanDescription = buildPlainDescription(updates.description, sanitizedRich, updates.name);
+  const cleanFaqs = sanitizeFaqItems(updates.faqItems);
 
-  await updateDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, id), {
-    name: updates.name.trim(),
+  await upsertDirectoryDoc(id, {
+    name: updates.name.trim().slice(0, 120),
     slug: slugifyDirectoryCategory(updates.name),
-    url,
+    url: url.slice(0, 500),
     domain,
-    description: updates.description.trim(),
+    description: cleanDescription,
+    richContent: sanitizedRich,
     categoryId: updates.categoryId,
     categoryName: updates.categoryName,
     location: updates.location?.trim() || 'Slovenija',
@@ -546,6 +680,13 @@ export async function updateDirectoryEntry(
     email: updates.email?.trim() || '',
     workingHours: updates.workingHours?.trim() || '',
     tags: cleanTags,
+    seoTitle: updates.seoTitle?.trim().slice(0, 160) || '',
+    metaDescription: updates.metaDescription?.trim().slice(0, 320) || '',
+    focusKeyword: updates.focusKeyword?.trim().slice(0, 120) || '',
+    geoAreaServed: updates.geoAreaServed?.trim().slice(0, 200) || '',
+    priceRange: updates.priceRange?.trim().slice(0, 20) || '',
+    foundingYear: updates.foundingYear?.trim().slice(0, 20) || '',
+    faqItems: cleanFaqs,
     ...(typeof updates.isVerified === 'boolean' ? { isVerified: updates.isVerified } : {}),
     ...(typeof updates.isFeatured === 'boolean' ? { isFeatured: updates.isFeatured } : {}),
     updatedAt: new Date().toISOString(),
@@ -608,7 +749,7 @@ export async function updateDirectoryEntryStatus(
   approvedBy?: string
 ): Promise<void> {
   const now = new Date().toISOString();
-  await updateDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, id), {
+  await upsertDirectoryDoc(id, {
     status,
     isSuggestion: status === 'pending',
     updatedAt: now,
@@ -622,7 +763,7 @@ export async function updateDirectoryEntryVerified(
   adminName?: string
 ): Promise<void> {
   const now = new Date().toISOString();
-  await updateDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, id), {
+  await upsertDirectoryDoc(id, {
     isVerified,
     updatedAt: now,
     ...(isVerified ? { verifiedBy: adminName || 'Admin', verifiedAt: now } : {}),
@@ -638,7 +779,7 @@ export async function bulkUpdateDirectoryEntriesVerified(
   const now = new Date().toISOString();
   await Promise.all(
     ids.map((id) =>
-      updateDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, id), {
+      upsertDirectoryDoc(id, {
         isVerified,
         updatedAt: now,
         ...(isVerified ? { verifiedBy: adminName || 'Admin', verifiedAt: now } : {}),
@@ -651,7 +792,7 @@ export async function updateDirectoryEntryFeatured(
   id: string,
   isFeatured: boolean
 ): Promise<void> {
-  await updateDoc(doc(db, DIRECTORY_ENTRIES_COLLECTION, id), {
+  await upsertDirectoryDoc(id, {
     isFeatured,
     updatedAt: new Date().toISOString(),
   });

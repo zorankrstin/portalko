@@ -7,7 +7,7 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Node } from '@tiptap/core';
 import { 
-  Bold, Italic, Underline as UnderlineIcon, Heading3, Heading4, List, ListOrdered, Link as LinkIcon, Unlink, 
+  Bold, Italic, Underline as UnderlineIcon, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, Link as LinkIcon, Unlink, 
   Image as ImageIcon, Smile, X, Check, ExternalLink, Share2, 
   Video, Code, Sparkles, AlertCircle, Upload, Loader2 
 } from 'lucide-react';
@@ -134,7 +134,7 @@ export interface RichTextEditorRef {
   toggleBold: () => void;
   toggleItalic: () => void;
   toggleUnderline: () => void;
-  toggleHeading: (level: 2 | 3 | 4) => void;
+  toggleHeading: (level: 1 | 2 | 3 | 4) => void;
 }
 
 interface RichTextEditorProps {
@@ -398,12 +398,13 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     toggleBold: () => editor?.chain().focus().toggleBold().run(),
     toggleItalic: () => editor?.chain().focus().toggleItalic().run(),
     toggleUnderline: () => editor?.chain().focus().toggleUnderline().run(),
-    toggleHeading: (level: 2 | 3 | 4) => editor?.chain().focus().toggleHeading({ level }).run(),
+    toggleHeading: (level: 1 | 2 | 3 | 4) => editor?.chain().focus().toggleHeading({ level }).run(),
   }));
 
   useEffect(() => {
-    if (editor && initialContent !== editor.getHTML()) {
-      editor.commands.setContent(initialContent);
+    const normalized = initialContent || '';
+    if (editor && normalized !== editor.getHTML()) {
+      editor.commands.setContent(normalized);
     }
   }, [editor, initialContent]);
 
@@ -440,6 +441,26 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         
         <div className="w-px h-4 bg-surface-container-high mx-1"></div>
 
+        <button
+          type="button"
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          className={`px-1.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5 ${editor.isActive('heading', { level: 1 }) ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
+          title="Naslov H1 (Ctrl+Alt+1)"
+          aria-label="Naslov H1"
+          aria-pressed={editor.isActive('heading', { level: 1 })}
+        >
+          <Heading1 className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          className={`px-1.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5 ${editor.isActive('heading', { level: 2 }) ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
+          title="Podnaslov H2 (Ctrl+Alt+2)"
+          aria-label="Podnaslov H2"
+          aria-pressed={editor.isActive('heading', { level: 2 })}
+        >
+          <Heading2 className="w-4 h-4" />
+        </button>
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}

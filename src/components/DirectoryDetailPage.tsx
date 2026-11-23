@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { scrollToPageTop } from '../utils/scrollUtils';
+import { getCleanHtml, getPlainTextSnippet } from '../utils/textUtils';
 import {
   DirectoryEntry,
   DirectoryReview,
@@ -143,18 +144,52 @@ export function DirectoryDetailPage({
   }, [slug]);
 
   const seoTitle = useMemo(() => {
+    if (entry.seoTitle && entry.seoTitle.trim()) {
+      return entry.seoTitle.trim();
+    }
     const loc = entry.location?.trim() || 'Slovenija';
     return `${entry.name} (${loc}) – ${entry.categoryName} | Imenik Portalko`;
-  }, [entry.name, entry.location, entry.categoryName]);
+  }, [entry.seoTitle, entry.name, entry.location, entry.categoryName]);
+
+  const plainRichSummary = useMemo(() => {
+    const richPlain = getPlainTextSnippet(entry.richContent || '');
+    return richPlain || entry.description;
+  }, [entry.richContent, entry.description]);
 
   const seoDescription = useMemo(() => {
+    if (entry.metaDescription && entry.metaDescription.trim()) {
+      return entry.metaDescription.trim();
+    }
     const loc = entry.location?.trim() || 'Slovenija';
-    const base = `${entry.name} (${entry.domain}) – ${entry.categoryName}, ${loc}. ${entry.description}`;
+    const base = `${entry.name} (${entry.domain}) – ${entry.categoryName}, ${loc}. ${plainRichSummary}`;
     return base.length > 158 ? `${base.slice(0, 155).trim()}...` : base;
-  }, [entry.name, entry.domain, entry.categoryName, entry.location, entry.description]);
+  }, [entry.metaDescription, entry.name, entry.domain, entry.categoryName, entry.location, plainRichSummary]);
+
+  const seoKeywords = useMemo(() => {
+    const parts = [
+      entry.focusKeyword?.trim(),
+      entry.name,
+      entry.categoryName,
+      entry.location?.trim() || 'Slovenija',
+      ...(entry.tags || []),
+    ].filter(Boolean) as string[];
+    return Array.from(new Set(parts)).join(', ');
+  }, [entry.focusKeyword, entry.name, entry.categoryName, entry.location, entry.tags]);
+
+  const cleanRichHtml = useMemo(() => {
+    if (!entry.richContent || !entry.richContent.trim()) return '';
+    return getCleanHtml(entry.richContent);
+  }, [entry.richContent]);
 
   const geoFaqs = useMemo(() => {
-    const loc = entry.location?.trim() || 'Slovenija';
+    const customFaqs = (entry.faqItems || []).filter(
+      (f) => f?.q?.trim() && f?.a?.trim()
+    );
+    if (customFaqs.length > 0) {
+      return customFaqs;
+    }
+
+    const loc = entry.geoAreaServed?.trim() || entry.location?.trim() || 'Slovenija';
     const tagsText =
       entry.tags && entry.tags.length > 0
         ? ` Ključna področja delovanja vključujejo: ${entry.tags.join(', ')}.`
@@ -162,11 +197,11 @@ export function DirectoryDetailPage({
     return [
       {
         q: `Kaj ponuja ${entry.name}?`,
-        a: `${entry.description}${tagsText}`,
+        a: `${plainRichSummary}${tagsText}`,
       },
       {
         q: `Kje deluje ${entry.name} in v katero kategorijo spada?`,
-        a: `${entry.name} je uvrščen v kategorijo »${entry.categoryName}« v slovenskem spletnem imeniku Portalko in deluje na območju: ${loc}, Slovenija.`,
+        a: `${entry.name} je uvrščen v kategorijo »${entry.categoryName}« v slovenskem spletnem imeniku Portalko in deluje na območju: ${loc}.`,
       },
       {
         q: `Kateri je uradni spletni naslov podjetja ${entry.name}?`,
@@ -177,7 +212,7 @@ export function DirectoryDetailPage({
         }`,
       },
     ];
-  }, [entry]);
+  }, [entry, plainRichSummary]);
 
   // Inject dynamic SEO meta tags, OpenGraph, Twitter Cards, Canonical URL, and JSON-LD (LocalBusiness + BreadcrumbList + FAQPage)
   useEffect(() => {
@@ -186,6 +221,9 @@ export function DirectoryDetailPage({
 
     const cleanups: Array<() => void> = [
       upsertMetaTag('meta[name="description"]', 'name', 'description', seoDescription),
+      ...(seoKeywords
+        ? [upsertMetaTag('meta[name="keywords"]', 'name', 'keywords', seoKeywords)]
+        : []),
       upsertMetaTag('meta[property="og:type"]', 'property', 'og:type', 'article'),
       upsertMetaTag('meta[property="og:title"]', 'property', 'og:title', seoTitle),
       upsertMetaTag('meta[property="og:description"]', 'property', 'og:description', seoDescription),
@@ -216,13 +254,16 @@ export function DirectoryDetailPage({
           '@id': `${canonicalUrl}#business`,
           name: entry.name,
           url: entry.url,
-          description: entry.description,
+          description: entry.metaDescription?.trim() || plainRichSummary,
           image:
             entry.logoUrl ||
             `https://www.google.com/s2/favicons?domain=${encodeURIComponent(entry.domain)}&sz=128`,
           ...(entry.phone?.trim() ? { telephone: entry.phone.trim() } : {}),
           ...(entry.email?.trim() ? { email: entry.email.trim() } : {}),
           ...(entry.workingHours?.trim() ? { openingHours: entry.workingHours.trim() } : {}),
+          ...(entry.priceRange?.trim() ? { priceRange: entry.priceRange.trim() } : {}),
+          ...(entry.foundingYear?.trim() ? { foundingDate: entry.foundingYear.trim() } : {}),
+          ...(seoKeywords ? { keywords: seoKeywords } : {}),
           address: {
             '@type': 'PostalAddress',
             ...(entry.address?.trim() ? { streetAddress: entry.address.trim() } : {}),
@@ -230,10 +271,14 @@ export function DirectoryDetailPage({
             addressCountry: 'SI',
           },
           areaServed: {
-            '@type': 'Country',
-            name: 'Slovenija',
+            '@type': 'Place',
+            name: entry.geoAreaServed?.trim() || entry.location?.trim() || 'Slovenija',
           },
-          knowsAbout: [entry.categoryName, ...(entry.tags || [])],
+          knowsAbout: [
+            entry.categoryName,
+            ...(entry.focusKeyword?.trim() ? [entry.focusKeyword.trim()] : []),
+            ...(entry.tags || []),
+          ],
           sameAs: [entry.url],
           ...(reviewCount > 0
             ? {
@@ -303,7 +348,7 @@ export function DirectoryDetailPage({
       }
       document.getElementById(scriptId)?.remove();
     };
-  }, [entry, canonicalUrl, seoTitle, seoDescription, geoFaqs, averageRating, reviewCount]);
+  }, [entry, canonicalUrl, seoTitle, seoDescription, seoKeywords, plainRichSummary, geoFaqs, averageRating, reviewCount]);
 
   const handleCopyCanonical = async () => {
     try {
@@ -467,17 +512,25 @@ export function DirectoryDetailPage({
           </div>
         </div>
 
-        {/* Structured Editorial Description (GEO-ready clear summary) */}
+        {/* Structured Editorial Description (Rich HTML with H1/H2/H3 or clean summary) */}
         <div className="flex flex-col gap-2 pt-4 border-t border-surface-container-low">
           <h2 className="text-xs font-bold uppercase tracking-wider text-outline">
             Predstavitev podjetja / spletne strani
           </h2>
-          <p
-            itemProp="description"
-            className="text-sm text-on-surface leading-relaxed"
-          >
-            {entry.description}
-          </p>
+          {cleanRichHtml ? (
+            <div
+              itemProp="description"
+              className="tiptap text-sm text-on-surface leading-relaxed max-w-none"
+              dangerouslySetInnerHTML={{ __html: cleanRichHtml }}
+            />
+          ) : (
+            <p
+              itemProp="description"
+              className="text-sm text-on-surface leading-relaxed"
+            >
+              {entry.description}
+            </p>
+          )}
         </div>
 
         {/* Key Facts Grid (Structured for users & AI/search engines) */}
@@ -487,9 +540,11 @@ export function DirectoryDetailPage({
             <dd className="text-xs font-bold text-on-surface">{entry.categoryName}</dd>
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60">
-            <dt className="text-[11px] font-semibold text-outline mb-0.5">Lokacija / Območje</dt>
+            <dt className="text-[11px] font-semibold text-outline mb-0.5">
+              {entry.geoAreaServed?.trim() ? 'GEO območje pokritosti' : 'Lokacija / Območje'}
+            </dt>
             <dd className="text-xs font-bold text-on-surface">
-              {entry.location || 'Slovenija'}, Slovenija
+              {entry.geoAreaServed?.trim() || `${entry.location || 'Slovenija'}, Slovenija`}
             </dd>
           </div>
           <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60">
@@ -506,6 +561,18 @@ export function DirectoryDetailPage({
               <span>{formattedDate || 'Aktivno'}</span>
             </dd>
           </div>
+          {entry.priceRange?.trim() && (
+            <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60">
+              <dt className="text-[11px] font-semibold text-outline mb-0.5">Cenovni razred</dt>
+              <dd className="text-xs font-bold text-on-surface">{entry.priceRange.trim()}</dd>
+            </div>
+          )}
+          {entry.foundingYear?.trim() && (
+            <div className="p-3 rounded-xl bg-surface-container-low/70 border border-surface-container/60">
+              <dt className="text-[11px] font-semibold text-outline mb-0.5">Leto ustanovitve</dt>
+              <dd className="text-xs font-bold text-on-surface">{entry.foundingYear.trim()}</dd>
+            </div>
+          )}
         </dl>
 
         {/* Semantic Tags */}

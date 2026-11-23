@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DirectoryEditModal } from '../DirectoryEditModal';
+import { RichTextEditor } from '../RichTextEditor';
+import { DirectorySeoGeoFields, DirectorySeoGeoState } from '../DirectorySeoGeoFields';
+import { getPlainTextSnippet } from '../../utils/textUtils';
 import {
   DirectoryCategory,
   DirectoryEntry,
@@ -62,6 +65,17 @@ export function AdminDirectoryTab() {
   const [entryCatId, setEntryCatId] = useState('');
   const [entryLocation, setEntryLocation] = useState('Slovenija');
   const [entryDesc, setEntryDesc] = useState('');
+  const [entryRichContent, setEntryRichContent] = useState('');
+  const [entrySeoGeo, setEntrySeoGeo] = useState<DirectorySeoGeoState>({
+    seoTitle: '',
+    metaDescription: '',
+    focusKeyword: '',
+    geoAreaServed: '',
+    priceRange: '',
+    foundingYear: '',
+    faqItems: [],
+  });
+  const [entryFormKey, setEntryFormKey] = useState(0);
   const [entryVerified, setEntryVerified] = useState(true);
 
   // Bulk selection & actions state
@@ -350,13 +364,23 @@ export function AdminDirectoryTab() {
     e.preventDefault();
     const cat = categories.find((c) => c.id === entryCatId) || categories[0];
     if (!cat || !entryName.trim() || !entryUrl.trim()) return;
+    const plainRich = getPlainTextSnippet(entryRichContent);
+    const effectiveDesc = entryDesc.trim() || plainRich || `${entryName} – spletna stran`;
     await createDirectoryEntry({
       name: entryName,
       url: entryUrl,
-      description: entryDesc || `${entryName} – spletna stran`,
+      description: effectiveDesc,
+      richContent: entryRichContent,
       categoryId: cat.id,
       categoryName: cat.name,
       location: entryLocation,
+      seoTitle: entrySeoGeo.seoTitle,
+      metaDescription: entrySeoGeo.metaDescription,
+      focusKeyword: entrySeoGeo.focusKeyword,
+      geoAreaServed: entrySeoGeo.geoAreaServed,
+      priceRange: entrySeoGeo.priceRange,
+      foundingYear: entrySeoGeo.foundingYear,
+      faqItems: entrySeoGeo.faqItems,
       isVerified: entryVerified,
       authorId: currentUser?.id || 'admin',
       authorName: currentUser?.name || 'Administrator',
@@ -365,6 +389,17 @@ export function AdminDirectoryTab() {
     setEntryName('');
     setEntryUrl('');
     setEntryDesc('');
+    setEntryRichContent('');
+    setEntrySeoGeo({
+      seoTitle: '',
+      metaDescription: '',
+      focusKeyword: '',
+      geoAreaServed: '',
+      priceRange: '',
+      foundingYear: '',
+      faqItems: [],
+    });
+    setEntryFormKey((k) => k + 1);
     setEntryVerified(true);
     setShowAddEntry(false);
   };
@@ -565,11 +600,12 @@ export function AdminDirectoryTab() {
         {showAddEntry && (
           <form
             onSubmit={handleAddEntry}
-            className="p-3.5 rounded-xl bg-surface-container-low/70 border border-surface-container grid grid-cols-1 sm:grid-cols-2 gap-2.5"
+            className="p-4 rounded-xl bg-surface-container-low/70 border border-surface-container grid grid-cols-1 sm:grid-cols-2 gap-3"
           >
             <input
               type="text"
               required
+              maxLength={120}
               value={entryName}
               onChange={(e) => setEntryName(e.target.value)}
               placeholder="Naziv podjetja / znamke *"
@@ -578,6 +614,7 @@ export function AdminDirectoryTab() {
             <input
               type="text"
               required
+              maxLength={500}
               value={entryUrl}
               onChange={(e) => setEntryUrl(e.target.value)}
               placeholder="URL (npr. https://www.primer.si) *"
@@ -601,14 +638,41 @@ export function AdminDirectoryTab() {
               placeholder="Kraj (npr. Ljubljana)"
               className="px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface"
             />
+            <div className="sm:col-span-2 flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-on-surface">
+                Podrobna predstavitev (Rich Text: H1, H2, H3, povezave, slike)
+              </label>
+              <RichTextEditor
+                key={`admin-add-dir-${entryFormKey}`}
+                initialContent={entryRichContent}
+                onChange={setEntryRichContent}
+                placeholder="Uporabite H1, H2, H3 naslove, sezname in povezave za predstavitev..."
+                minHeight="min-h-[150px]"
+              />
+            </div>
             <input
               type="text"
+              maxLength={950}
               value={entryDesc}
               onChange={(e) => setEntryDesc(e.target.value)}
-              placeholder="Kratek opis spletne strani"
+              placeholder="Kratek povzetek za prikaz v seznamu (neobvezno – sicer iz besedila zgoraj)"
               className="sm:col-span-2 px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface"
             />
-            <div className="sm:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="sm:col-span-2">
+              <DirectorySeoGeoFields
+                value={entrySeoGeo}
+                onChange={setEntrySeoGeo}
+                entryName={entryName}
+                entryDomainOrUrl={entryUrl}
+                entryCategoryName={
+                  categories.find((c) => c.id === entryCatId)?.name || ''
+                }
+                entryLocation={entryLocation}
+                richContent={entryRichContent}
+                shortDescription={entryDesc}
+              />
+            </div>
+            <div className="sm:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
               <label className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface cursor-pointer select-none">
                 <input
                   type="checkbox"

@@ -26,14 +26,20 @@ import {
   Pencil,
   LayoutGrid,
   List,
+  Phone,
+  Mail,
+  Tag,
 } from 'lucide-react';
 import { DirectoryQrModal } from './DirectoryQrModal';
 import { DirectoryDetailPage } from './DirectoryDetailPage';
 import { DirectoryEditModal } from './DirectoryEditModal';
+import { RichTextEditor } from './RichTextEditor';
+import { DirectorySeoGeoFields, DirectorySeoGeoState } from './DirectorySeoGeoFields';
 import { useAuth } from '../contexts/AuthContext';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { parseSearchQuery } from '../utils/searchUtils';
 import { getFeedCardAnimationClass } from '../utils/animationUtils';
+import { getPlainTextSnippet } from '../utils/textUtils';
 import {
   DirectoryCategory,
   DirectoryEntry,
@@ -43,6 +49,7 @@ import {
   deleteDirectoryEntry,
   canPublishDirectoryEntry,
   canManageDirectory,
+  canEditDirectoryEntry,
   requestAiDirectorySuggestions,
   getDirectoryEntrySlug,
 } from '../services/directoryService';
@@ -95,7 +102,23 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   const [formCategoryId, setFormCategoryId] = useState('');
   const [formLocation, setFormLocation] = useState('Slovenija');
   const [formDescription, setFormDescription] = useState('');
+  const [formRichContent, setFormRichContent] = useState('');
+  const [formAddress, setFormAddress] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formWorkingHours, setFormWorkingHours] = useState('');
+  const [formTagDraft, setFormTagDraft] = useState('');
   const [formTags, setFormTags] = useState<string[]>([]);
+  const [formSeoGeo, setFormSeoGeo] = useState<DirectorySeoGeoState>({
+    seoTitle: '',
+    metaDescription: '',
+    focusKeyword: '',
+    geoAreaServed: '',
+    priceRange: '',
+    foundingYear: '',
+    faqItems: [],
+  });
+  const [formModalKey, setFormModalKey] = useState(0);
   const [isAiSuggesting, setIsAiSuggesting] = useState(false);
   const [aiSuggestionNote, setAiSuggestionNote] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -229,6 +252,11 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
         entry.name,
         entry.domain,
         entry.description,
+        getPlainTextSnippet(entry.richContent),
+        entry.seoTitle || '',
+        entry.metaDescription || '',
+        entry.focusKeyword || '',
+        entry.geoAreaServed || '',
         entry.categoryName,
         entry.location || '',
         entry.address || '',
@@ -260,6 +288,11 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
           e.name,
           e.domain,
           e.description,
+          getPlainTextSnippet(e.richContent),
+          e.seoTitle || '',
+          e.metaDescription || '',
+          e.focusKeyword || '',
+          e.geoAreaServed || '',
           e.categoryName,
           e.location || '',
           e.address || '',
@@ -306,8 +339,11 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
 
   const handleSubmitEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !formUrl.trim() || !formDescription.trim()) {
-      setFeedbackMsg({ type: 'error', text: 'Prosimo, izpolnite naziv, spletni naslov in opis.' });
+    const richPlain = getPlainTextSnippet(formRichContent);
+    const effectiveDesc = formDescription.trim() || richPlain;
+
+    if (!formName.trim() || !formUrl.trim() || !effectiveDesc) {
+      setFeedbackMsg({ type: 'error', text: 'Prosimo, izpolnite naziv, spletni naslov in predstavitev.' });
       return;
     }
     const chosenCat = categories.find((c) => c.id === formCategoryId) || categories[0];
@@ -316,17 +352,39 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       return;
     }
 
+    const combinedTags = Array.from(
+      new Set([
+        ...formTags,
+        ...formTagDraft
+          .split(',')
+          .map((t) => t.replace(/^#/, '').trim().toLowerCase())
+          .filter(Boolean),
+      ])
+    ).slice(0, 8);
+
     setIsSubmitting(true);
     setFeedbackMsg(null);
     try {
       await createDirectoryEntry({
         name: formName,
         url: formUrl,
-        description: formDescription,
+        description: effectiveDesc,
+        richContent: formRichContent,
         categoryId: chosenCat.id,
         categoryName: chosenCat.name,
         location: formLocation,
-        tags: formTags,
+        address: formAddress,
+        phone: formPhone,
+        email: formEmail,
+        workingHours: formWorkingHours,
+        tags: combinedTags,
+        seoTitle: formSeoGeo.seoTitle,
+        metaDescription: formSeoGeo.metaDescription,
+        focusKeyword: formSeoGeo.focusKeyword,
+        geoAreaServed: formSeoGeo.geoAreaServed,
+        priceRange: formSeoGeo.priceRange,
+        foundingYear: formSeoGeo.foundingYear,
+        faqItems: formSeoGeo.faqItems,
         authorId: currentUser?.id || `guest-${Date.now()}`,
         authorName: currentUser?.name || 'Obiskovalec',
         authorRole: role,
@@ -335,7 +393,23 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       setFormName('');
       setFormUrl('');
       setFormDescription('');
+      setFormRichContent('');
+      setFormAddress('');
+      setFormPhone('');
+      setFormEmail('');
+      setFormWorkingHours('');
+      setFormTagDraft('');
       setFormTags([]);
+      setFormSeoGeo({
+        seoTitle: '',
+        metaDescription: '',
+        focusKeyword: '',
+        geoAreaServed: '',
+        priceRange: '',
+        foundingYear: '',
+        faqItems: [],
+      });
+      setFormModalKey((k) => k + 1);
       setAiSuggestionNote(null);
       setFormLocation('Slovenija');
       setIsModalOpen(false);
@@ -373,7 +447,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
           key={activeDetailEntry.id}
           entry={activeDetailEntry}
           relatedEntries={relatedEntriesForDetail}
-          canEdit={isAdminUser}
+          canEdit={canEditDirectoryEntry(activeDetailEntry, currentUser)}
           onBack={handleCloseDetail}
           onSelectEntry={handleOpenDetail}
           onOpenQr={(entry) => setQrEntry(entry)}
@@ -383,6 +457,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
         <DirectoryEditModal
           entry={editingEntry}
           categories={categories}
+          isAdmin={isAdminUser}
           onClose={() => setEditingEntry(null)}
           onSaved={(name) =>
             setFeedbackMsg({
@@ -954,27 +1029,27 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                   <span>Obišči</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
+                {canEditDirectoryEntry(entry, currentUser) && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingEntry(entry)}
+                    className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                    title={`Uredi vnos ${entry.name}`}
+                    aria-label={`Uredi vnos ${entry.name}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {isAdminUser && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setEditingEntry(entry)}
-                      className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
-                      title={`Uredi vnos ${entry.name}`}
-                      aria-label={`Uredi vnos ${entry.name}`}
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteEntry(entry)}
-                      className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
-                      title={`Izbriši vnos ${entry.name}`}
-                      aria-label={`Izbriši vnos ${entry.name}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteEntry(entry)}
+                    className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                    title={`Izbriši vnos ${entry.name}`}
+                    aria-label={`Izbriši vnos ${entry.name}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
             </article>
@@ -1036,26 +1111,30 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                     </div>
                   </div>
 
-                  {isAdminUser && (
+                  {(canEditDirectoryEntry(entry, currentUser) || isAdminUser) && (
                     <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setEditingEntry(entry)}
-                        className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
-                        title={`Uredi vnos ${entry.name}`}
-                        aria-label={`Uredi vnos ${entry.name}`}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteEntry(entry)}
-                        className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
-                        title={`Izbriši vnos ${entry.name}`}
-                        aria-label={`Izbriši vnos ${entry.name}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canEditDirectoryEntry(entry, currentUser) && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingEntry(entry)}
+                          className="p-1.5 rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                          title={`Uredi vnos ${entry.name}`}
+                          aria-label={`Uredi vnos ${entry.name}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {isAdminUser && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteEntry(entry)}
+                          className="p-1.5 rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                          title={`Izbriši vnos ${entry.name}`}
+                          aria-label={`Izbriši vnos ${entry.name}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1139,10 +1218,10 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-surface-container-lowest rounded-2xl border border-surface-container shadow-2xl w-full max-w-lg p-5 flex flex-col gap-4"
+            className="bg-surface-container-lowest rounded-2xl border border-surface-container shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-surface-container-low pb-3">
+            <div className="flex items-center justify-between border-b border-surface-container-low px-5 py-4 shrink-0">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
                 <h2 className="text-base font-bold text-on-surface">
@@ -1159,31 +1238,33 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
               </button>
             </div>
 
-            {!canPublish && (
-              <div className="rounded-xl bg-primary/8 border border-primary/20 px-3 py-2 text-xs text-on-surface-variant leading-relaxed">
-                Vaš predlog bo posredovan administratorjem portala. Po potrditvi bo spletna stran javno prikazana v imeniku.
-              </div>
-            )}
-
-            <form onSubmit={handleSubmitEntry} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface">Naziv blagovne znamke ali podjetja *</label>
-                <input
-                  type="text"
-                  required
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="npr. Gorenje, Akrapovič, RTV Slovenija..."
-                  className="px-3 py-2 rounded-xl bg-surface-container-low border border-surface-container text-sm text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
+            <form onSubmit={handleSubmitEntry} className="p-5 overflow-y-auto flex flex-col gap-4">
+              {!canPublish && (
+                <div className="rounded-xl bg-primary/8 border border-primary/20 px-3 py-2 text-xs text-on-surface-variant leading-relaxed">
+                  Vaš predlog bo posredovan administratorjem portala. Po potrditvi bo spletna stran javno prikazana v imeniku.
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-on-surface">Naziv blagovne znamke ali podjetja *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={120}
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="npr. Gorenje, Akrapovič, RTV Slovenija..."
+                    className="px-3 py-2 rounded-xl bg-surface-container-low border border-surface-container text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-on-surface">Spletni naslov (URL) *</label>
                   <input
                     type="text"
                     required
+                    maxLength={500}
                     value={formUrl}
                     onChange={(e) => setFormUrl(e.target.value)}
                     placeholder="https://www.primer.si"
@@ -1205,25 +1286,31 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                     ))}
                   </select>
                 </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-on-surface">Kraj / Regija</label>
+                  <input
+                    type="text"
+                    value={formLocation}
+                    onChange={(e) => setFormLocation(e.target.value)}
+                    placeholder="npr. Ljubljana, Maribor, Slovenija"
+                    className="px-3 py-2 rounded-xl bg-surface-container-low border border-surface-container text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface">Kraj / Regija</label>
-                <input
-                  type="text"
-                  value={formLocation}
-                  onChange={(e) => setFormLocation(e.target.value)}
-                  placeholder="npr. Ljubljana, Maribor, Slovenija"
-                  className="px-3 py-2 rounded-xl bg-surface-container-low border border-surface-container text-sm text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs font-bold text-on-surface">Kratek opis spletne strani *</label>
+              {/* Rich Text Editor (H1, H2, H3, links, images, embeds) */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="text-xs font-bold text-on-surface">
+                    Podrobna predstavitev (Rich Text: H1, H2, H3, povezave, slike) *
+                  </label>
                   <button
                     type="button"
-                    disabled={isAiSuggesting || (!formDescription.trim() && !formName.trim())}
+                    disabled={
+                      isAiSuggesting ||
+                      (!formDescription.trim() && !getPlainTextSnippet(formRichContent) && !formName.trim())
+                    }
                     onClick={async () => {
                       setIsAiSuggesting(true);
                       setAiSuggestionNote(null);
@@ -1231,7 +1318,8 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                         const res = await requestAiDirectorySuggestions({
                           name: formName,
                           url: formUrl,
-                          description: formDescription,
+                          description:
+                            formDescription.trim() || getPlainTextSnippet(formRichContent),
                           categories,
                         });
                         setFormCategoryId(res.suggestedCategoryId);
@@ -1251,19 +1339,127 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                     <span>{isAiSuggesting ? 'AI analizira...' : 'AI predlagaj kategorijo in oznake'}</span>
                   </button>
                 </div>
-                <textarea
-                  required
-                  rows={3}
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Opišite ponudbo, storitve ali vsebino spletne strani..."
-                  className="px-3 py-2 rounded-xl bg-surface-container-low border border-surface-container text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
+
+                <RichTextEditor
+                  key={`add-dir-${formModalKey}`}
+                  initialContent={formRichContent}
+                  onChange={setFormRichContent}
+                  placeholder="Opišite ponudbo, storitve ali vsebino spletne strani z uporabo naslovov H1, H2, H3, seznamov in povezav..."
+                  minHeight="min-h-[180px]"
                 />
                 {aiSuggestionNote && (
                   <p className="text-[11px] text-primary font-medium mt-0.5">{aiSuggestionNote}</p>
                 )}
+              </div>
+
+              {/* Short Excerpt */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-on-surface">
+                    Kratek povzetek za prikaz na karticah (neobvezno)
+                  </label>
+                  <span className="text-[10px] text-outline tabular-nums">
+                    {formDescription.trim().length}/950
+                  </span>
+                </div>
+                <textarea
+                  rows={2}
+                  maxLength={950}
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="Če pustite prazno, se bo kratek povzetek samodejno ustvaril iz zgornjega besedila."
+                  className="px-3 py-2 rounded-xl bg-surface-container-low border border-surface-container text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
+                />
+              </div>
+
+              {/* Contact Details */}
+              <div className="rounded-xl p-3.5 bg-surface-container-low/60 border border-surface-container/70 flex flex-col gap-3">
+                <div className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-primary" />
+                  <span>Kontaktni podatki (neobvezno)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      <span>Naslov</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formAddress}
+                      onChange={(e) => setFormAddress(e.target.value)}
+                      placeholder="npr. Slovenska cesta 1, 1000 Ljubljana"
+                      className="px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-1">
+                      <Phone className="w-3 h-3" />
+                      <span>Telefon</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formPhone}
+                      onChange={(e) => setFormPhone(e.target.value)}
+                      placeholder="npr. +386 1 234 56 78"
+                      className="px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-1">
+                      <Mail className="w-3 h-3" />
+                      <span>E-pošta</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={formEmail}
+                      onChange={(e) => setFormEmail(e.target.value)}
+                      placeholder="npr. info@podjetje.si"
+                      className="px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      <span>Delovni čas</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formWorkingHours}
+                      onChange={(e) => setFormWorkingHours(e.target.value)}
+                      placeholder="npr. Pon–Pet: 8:00–17:00"
+                      className="px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container text-xs text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Tags */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-on-surface flex items-center gap-1">
+                  <Tag className="w-3.5 h-3.5 text-primary" />
+                  <span>Oznake (ločene z vejico ali Enter)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formTagDraft}
+                  onChange={(e) => setFormTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && formTagDraft.trim()) {
+                      e.preventDefault();
+                      const added = formTagDraft
+                        .split(',')
+                        .map((t) => t.replace(/^#/, '').trim().toLowerCase())
+                        .filter(Boolean);
+                      setFormTags((prev) => Array.from(new Set([...prev, ...added])).slice(0, 8));
+                      setFormTagDraft('');
+                    }
+                  }}
+                  placeholder="npr. spletna trgovina, elektronika, dostava"
+                  className="px-3 py-2 rounded-xl bg-surface-container-low border border-surface-container text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
                 {formTags.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                     {formTags.map((tag) => (
                       <span
                         key={tag}
@@ -1284,7 +1480,21 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                 )}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              {/* SEO & GEO Settings */}
+              <DirectorySeoGeoFields
+                value={formSeoGeo}
+                onChange={setFormSeoGeo}
+                entryName={formName}
+                entryDomainOrUrl={formUrl}
+                entryCategoryName={
+                  categories.find((c) => c.id === formCategoryId)?.name || ''
+                }
+                entryLocation={formLocation}
+                richContent={formRichContent}
+                shortDescription={formDescription}
+              />
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-container-low">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
@@ -1311,10 +1521,11 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       {/* QR Code Contact Modal */}
       <DirectoryQrModal entry={qrEntry} onClose={() => setQrEntry(null)} />
 
-      {/* Admin Edit Modal */}
+      {/* Admin / Author Edit Modal */}
       <DirectoryEditModal
         entry={editingEntry}
         categories={categories}
+        isAdmin={isAdminUser}
         onClose={() => setEditingEntry(null)}
         onSaved={(name) =>
           setFeedbackMsg({

@@ -350,6 +350,76 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "userId", "eventId", "eventTitle", "eventDate", "leadMinutes", "remindAt", "triggered", "createdAt"]
+    },
+    "DirectoryCategory": {
+      "title": "Directory Category",
+      "description": "Category for Slovenian Web Directory (Imenik)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "slug": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 500 },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "name", "slug", "order", "createdAt"]
+    },
+    "DirectoryEntry": {
+      "title": "Directory Entry",
+      "description": "Single business or website entry in Imenik with rich text (H1-H3) and SEO/GEO metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "slug": { "type": "string", "maxLength": 160 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "url": { "type": "string", "minLength": 4, "maxLength": 500 },
+        "domain": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "richContent": { "type": "string", "maxLength": 1000000 },
+        "categoryId": { "type": "string", "maxLength": 128 },
+        "categoryName": { "type": "string", "maxLength": 120 },
+        "location": { "type": "string", "maxLength": 120 },
+        "address": { "type": "string", "maxLength": 250 },
+        "phone": { "type": "string", "maxLength": 80 },
+        "email": { "type": "string", "maxLength": 120 },
+        "workingHours": { "type": "string", "maxLength": 200 },
+        "logoUrl": { "type": "string", "maxLength": 500 },
+        "tags": { "type": "array" },
+        "seoTitle": { "type": "string", "maxLength": 160 },
+        "metaDescription": { "type": "string", "maxLength": 320 },
+        "focusKeyword": { "type": "string", "maxLength": 120 },
+        "geoAreaServed": { "type": "string", "maxLength": 200 },
+        "priceRange": { "type": "string", "maxLength": 20 },
+        "foundingYear": { "type": "string", "maxLength": 20 },
+        "faqItems": { "type": "array" },
+        "status": { "type": "string", "enum": ["published", "pending", "rejected"] },
+        "isSuggestion": { "type": "boolean" },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorRole": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "url", "domain", "description", "categoryId", "categoryName", "status", "isSuggestion", "authorId", "authorName", "authorRole", "createdAt"]
+    },
+    "DirectoryReview": {
+      "title": "Directory Entry Review",
+      "description": "User rating (1-5 stars) and review comment for a directory business",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "entryId": { "type": "string", "maxLength": 128 },
+        "rating": { "type": "number" },
+        "comment": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorAvatar": { "type": "string", "maxLength": 500000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "entryId", "rating", "comment", "authorName", "createdAt"]
     }
   },
   "firestore": {
@@ -432,6 +502,18 @@
     "/share_counts/{targetKey}": {
       "schema": "ShareCount",
       "description": "Public share counters for news items and blog/community posts"
+    },
+    "/directory_categories/{categoryId}": {
+      "schema": "DirectoryCategory",
+      "description": "Slovenian Web Directory (Imenik) categories managed by admins"
+    },
+    "/directory_entries/{entryId}": {
+      "schema": "DirectoryEntry",
+      "description": "Slovenian Web Directory (Imenik) single entries with rich text and SEO/GEO metadata"
+    },
+    "/directory_entries/{entryId}/reviews/{reviewId}": {
+      "schema": "DirectoryReview",
+      "description": "5-star user ratings and comments for individual Imenik directory entries"
     }
   }
 }
