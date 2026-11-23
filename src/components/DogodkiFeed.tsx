@@ -23,15 +23,17 @@ import { useAuth } from '../contexts/AuthContext';
 import { slugify } from '../utils/urlUtils';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { usePageSeo } from '../services/seoSettingsService';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
 interface DogodkiFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
   onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
 }
 
-export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, onAuthorClick }: DogodkiFeedProps) {
+export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, onTagClick, onAuthorClick }: DogodkiFeedProps) {
   const { users, currentUser } = useAuth();
   const { currentSeo } = usePageSeo('events');
   const [page, setPage] = useState(1);
@@ -465,44 +467,47 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
             );
 
             return (
-              <EventPost
-                key={`fe-${event.id}-${idx}`}
-                id={event.id}
-                title={event.title}
-                organizer={eventAuthorName}
-                authorName={eventAuthorName}
-                authorId={event.authorId}
-                authorAvatar={resolvedAvatar}
-                authorRole={event.authorRole || authorUser?.role}
-                onAuthorClick={onAuthorClick}
-                category={event.category}
-                categoryName={event.categoryName || event.category || 'Dogodek'}
-                subcategory={event.subcategory}
-                subcategoryName={event.subcategoryName}
-                location={resolvedDate.location || event.location || event.region || 'Slovenija'}
-                region={event.region}
-                date={resolvedDate.dateInfo.fullDate}
-                eventTime={resolvedDate.eventTime || event.eventTime}
-                eventDates={event.eventDates}
-                eventSchedule={event.eventSchedule}
-                month={resolvedDate.dateInfo.month}
-                day={resolvedDate.dateInfo.day}
-                price={event.price || 'Vstop prost'}
-                ticketUrl={event.ticketUrl}
-                description={event.description}
-                image={event.imageUrl}
-                interestedCount={event.interestedCount}
-                likesCount={event.likesCount || 0}
-                isPromoted={isPromoted}
-                promotionBadgeType={badgeType}
-                onNavigatePost={onNavigatePost}
-                onCategoryClick={(cat, catName, sub, subName) => {
-                  filterByEventCategory(cat || 'all', catName, sub, subName, false);
-                }}
-                onLocationClick={(loc, reg) => {
-                  filterByEventLocation(loc || '', reg, false);
-                }}
-              />
+              <div key={`fe-${event.id}-${idx}`} className={getFeedCardAnimationClass(idx)}>
+                <EventPost
+                  id={event.id}
+                  title={event.title}
+                  organizer={eventAuthorName}
+                  authorName={eventAuthorName}
+                  authorId={event.authorId}
+                  authorAvatar={resolvedAvatar}
+                  authorRole={event.authorRole || authorUser?.role}
+                  onAuthorClick={onAuthorClick}
+                  category={event.category}
+                  categoryName={event.categoryName || event.category || 'Dogodek'}
+                  subcategory={event.subcategory}
+                  subcategoryName={event.subcategoryName}
+                  location={resolvedDate.location || event.location || event.region || 'Slovenija'}
+                  region={event.region}
+                  date={resolvedDate.dateInfo.fullDate}
+                  eventTime={resolvedDate.eventTime || event.eventTime}
+                  eventDates={event.eventDates}
+                  eventSchedule={event.eventSchedule}
+                  month={resolvedDate.dateInfo.month}
+                  day={resolvedDate.dateInfo.day}
+                  price={event.price || 'Vstop prost'}
+                  ticketUrl={event.ticketUrl}
+                  description={event.description}
+                  image={event.imageUrl}
+                  interestedCount={event.interestedCount}
+                  likesCount={event.likesCount || 0}
+                  tags={event.tags}
+                  isPromoted={isPromoted}
+                  promotionBadgeType={badgeType}
+                  onNavigatePost={onNavigatePost}
+                  onTagClick={onTagClick}
+                  onCategoryClick={(cat, catName, sub, subName) => {
+                    filterByEventCategory(cat || 'all', catName, sub, subName, false);
+                  }}
+                  onLocationClick={(loc, reg) => {
+                    filterByEventLocation(loc || '', reg, false);
+                  }}
+                />
+              </div>
             );
           })
         )}

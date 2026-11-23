@@ -9,6 +9,7 @@ import { RssPost } from './posts/RssPost';
 import { Bookmark, ShoppingBag, Newspaper, Calendar, FileText, Percent, Inbox } from 'lucide-react';
 import { matchesSearchAndCategory, parseSearchQuery } from '../utils/searchUtils';
 import { usePageSeo } from '../services/seoSettingsService';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
 export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
   const { savedIds, savedItems, getItemData } = useBookmarks();
@@ -278,7 +279,11 @@ export function SavedPostsTab({ searchQuery = '' }: { searchQuery?: string }) {
         </div>
       ) : (
         <div className="flex flex-col gap-space-md">
-          {filteredItems.map((item, idx) => renderSavedItem(item, idx))}
+          {filteredItems.map((item, idx) => (
+            <div key={`saved-wrap-${item.id}-${idx}`} className={getFeedCardAnimationClass(idx)}>
+              {renderSavedItem(item, idx)}
+            </div>
+          ))}
         </div>
       )}
     </div>

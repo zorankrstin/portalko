@@ -32,6 +32,7 @@ import { VerifiedBadge } from '../common/VerifiedBadge';
 import { isUserVerified } from '../../utils/userVerificationUtils';
 import { FollowAuthorButton } from '../common/FollowAuthorButton';
 import { SocialNetworkGraph } from './SocialNetworkGraph';
+import { getFeedCardAnimationClass } from '../../utils/animationUtils';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
@@ -848,11 +849,14 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
         ) : (
           <div className="flex flex-col gap-3">
             {filteredItems.map((item, idx) => (
-              <article
+              <div
                 key={`author-item-${item.type}-${item.id}-${idx}`}
-                onClick={() => handleCardClick(item)}
-                className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:scale-[1.01] hover:border-primary/40 transition-all duration-300 ease-out cursor-pointer flex flex-col sm:flex-row gap-4 justify-between group"
+                className={getFeedCardAnimationClass(idx)}
               >
+                <article
+                  onClick={() => handleCardClick(item)}
+                  className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:scale-[1.01] hover:border-primary/40 transition-all duration-300 ease-out cursor-pointer flex flex-col sm:flex-row gap-4 justify-between group"
+                >
                 <div className="flex items-start gap-3.5 flex-1 min-w-0">
                   {item.imageUrl ? (
                     <img
@@ -950,6 +954,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                   </span>
                 </div>
               </article>
+              </div>
             ))}
           </div>
         )}

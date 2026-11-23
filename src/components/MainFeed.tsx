@@ -19,6 +19,7 @@ import { parseEventDateInfo, resolveEventDisplayDate, resolveItemEntryTimestamp,
 import { slugify } from '../utils/urlUtils';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { usePageSeo } from '../services/seoSettingsService';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
 type FeedItemKind = 
   | { type: 'firestore'; data: FirestorePost }
@@ -34,10 +35,11 @@ interface MainFeedProps {
   searchQuery?: string;
   onViewChange?: (view: ViewMode) => void;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
   onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
 }
 
-export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAuthorClick }: MainFeedProps) {
+export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTagClick, onAuthorClick }: MainFeedProps) {
   const { currentUser, users } = useAuth();
   const { currentSeo } = usePageSeo('main');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -411,8 +413,17 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
           </div>
         ) : (
           visibleItems.map((item, idx) => {
+            const cardKey = `main-${item.type}-${String((item.data as any)?.id || idx)}-${idx}`;
+            const wrapCard = (node: React.ReactNode) => (
+              <div key={cardKey} className={getFeedCardAnimationClass(idx, PAGE_SIZE)}>
+                {node}
+              </div>
+            );
+
             if (item.type === 'firestore') {
-              return <FirestorePostCard key={`fp-${item.data.id}-${idx}`} post={item.data} onNavigatePost={onNavigatePost} />;
+              return wrapCard(
+                <FirestorePostCard post={item.data} onNavigatePost={onNavigatePost} onTagClick={onTagClick} />
+              );
             }
             if (item.type === 'firestore_ad') {
               const ad = item.data;
@@ -421,9 +432,8 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   ? isItemActivelyPromoted(ad.promotion, 'oglasi')
                   : (ad.isPromoted && (!ad.promotedUntil || new Date(ad.promotedUntil).getTime() > Date.now()))
               );
-              return (
+              return wrapCard(
                 <AdPost
-                  key={`f-ad-${ad.id}-${idx}`}
                   id={ad.id}
                   title={ad.title}
                   price={ad.price}
@@ -439,9 +449,11 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   category="oglasi"
                   image={ad.imageUrl}
                   likesCount={ad.likesCount || 0}
+                  tags={ad.tags}
                   isPromoted={isPromoted}
                   promotionBadgeType={ad.promotionBadgeType || ad.promotion?.badgeType}
                   onNavigatePost={onNavigatePost}
+                  onTagClick={onTagClick}
                 />
               );
             }
@@ -461,9 +473,8 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
               );
               const resolvedAvatar = resolveUserUploadedAvatar(ev.authorAvatar, ev.authorId, eventAuthorName, users, currentUser);
 
-              return (
+              return wrapCard(
                 <EventPost
-                  key={`f-ev-${ev.id}-${idx}`}
                   id={ev.id}
                   title={ev.title}
                   organizer={eventAuthorName}
@@ -486,17 +497,18 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   image={ev.imageUrl}
                   interestedCount={ev.interestedCount}
                   likesCount={ev.likesCount || 0}
+                  tags={ev.tags}
                   isPromoted={isPromoted}
                   promotionBadgeType={ev.promotionBadgeType || ev.promotion?.badgeType}
                   onNavigatePost={onNavigatePost}
+                  onTagClick={onTagClick}
                 />
               );
             }
             if (item.type === 'news') {
               const news = item.data;
-              return (
+              return wrapCard(
                 <RssPost
-                  key={`news-${news.id}-${idx}`}
                   id={news.id}
                   title={news.title}
                   link={news.link}
@@ -509,9 +521,8 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
             }
             if (item.type === 'blog') {
               const blog = item.data;
-              return (
+              return wrapCard(
                 <BlogPost
-                  key={`blog-post-${blog.id}-${idx}`}
                   id={blog.id}
                   title={blog.title}
                   author={blog.author}
@@ -530,14 +541,14 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   sharesCount={blog.sharesCount || 0}
                   tags={blog.tags}
                   onNavigatePost={onNavigatePost}
+                  onTagClick={onTagClick}
                 />
               );
             }
             if (item.type === 'ad') {
               const ad = item.data;
-              return (
+              return wrapCard(
                 <AdPost
-                  key={`ad-post-${ad.id}-${idx}`}
                   id={ad.id}
                   title={ad.title}
                   price={ad.price}
@@ -552,15 +563,16 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   categoryName={ad.categoryName}
                   category="oglasi"
                   image={ad.image}
+                  tags={ad.tags}
                   onNavigatePost={onNavigatePost}
+                  onTagClick={onTagClick}
                 />
               );
             }
             if (item.type === 'deal') {
               const deal = item.data;
-              return (
+              return wrapCard(
                 <DealPost
-                  key={`deal-post-${deal.id}-${idx}`}
                   id={deal.id}
                   title={deal.title}
                   discount={deal.discount}
@@ -577,9 +589,11 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   category="ugodnosti"
                   region={deal.region}
                   verifiedText={deal.verifiedText}
+                  tags={deal.tags}
                   featured={deal.featured}
                   votesCount={deal.votes}
                   onNavigatePost={onNavigatePost}
+                  onTagClick={onTagClick}
                 />
               );
             }
@@ -593,9 +607,8 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
               );
               const resolvedAvatar = resolveUserUploadedAvatar(ev.authorAvatar, ev.authorId || ev.organizerId, evAuthorName, users);
 
-              return (
+              return wrapCard(
                 <EventPost
-                  key={`event-post-${ev.id}-${idx}`}
                   id={ev.id}
                   title={ev.title}
                   organizer={evAuthorName}
@@ -613,7 +626,9 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onAut
                   description={ev.description}
                   image={ev.image}
                   interestedCount={ev.interestedCount}
+                  tags={ev.tags}
                   onNavigatePost={onNavigatePost}
+                  onTagClick={onTagClick}
                 />
               );
             }

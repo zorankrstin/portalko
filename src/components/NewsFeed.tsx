@@ -11,6 +11,7 @@ import {
   RssFeedConfig 
 } from '../services/rssService';
 import { usePageSeo } from '../services/seoSettingsService';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
 interface NewsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -117,17 +118,6 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
     { id: 'all', label: 'Vse novice' },
     ...activeFeeds.map(feed => ({ id: feed.name, label: feed.name })),
   ];
-
-  const FEED_DELAY_CLASSES = [
-    'animate-feed-delay-0',
-    'animate-feed-delay-1',
-    'animate-feed-delay-2',
-    'animate-feed-delay-3',
-    'animate-feed-delay-4',
-    'animate-feed-delay-5',
-    'animate-feed-delay-6',
-    'animate-feed-delay-7',
-  ] as const;
 
   return (
     <div className="flex flex-col gap-space-md animate-feed-item">
@@ -274,25 +264,22 @@ export function NewsFeed({ onViewChange, searchQuery = '' }: NewsFeedProps) {
                 </span>
               </div>
             )}
-            {visibleNews.map((item, idx) => {
-              const delayClass = FEED_DELAY_CLASSES[Math.min(idx % PAGE_SIZE, FEED_DELAY_CLASSES.length - 1)];
-              return (
-                <div
-                  key={`${selectedCategory}-rss-${item.id}-${idx}`}
-                  className={`animate-feed-item ${delayClass}`}
-                >
-                  <RssPost
-                    id={item.id}
-                    title={item.title}
-                    link={item.link}
-                    description={item.description}
-                    pubDate={item.pubDate}
-                    sourceName={item.sourceName}
-                    thumbnail={item.thumbnail}
-                  />
-                </div>
-              );
-            })}
+            {visibleNews.map((item, idx) => (
+              <div
+                key={`${selectedCategory}-rss-${item.id}-${idx}`}
+                className={getFeedCardAnimationClass(idx, PAGE_SIZE)}
+              >
+                <RssPost
+                  id={item.id}
+                  title={item.title}
+                  link={item.link}
+                  description={item.description}
+                  pubDate={item.pubDate}
+                  sourceName={item.sourceName}
+                  thumbnail={item.thumbnail}
+                />
+              </div>
+            ))}
           </>
         )}
       </div>

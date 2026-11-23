@@ -8,7 +8,8 @@ import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { getActiveFallbackImage } from "../../services/portalSettingsService";
-import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
+import { parseTags } from "../../utils/tagUtils";
 import { UserAvatar } from "../common/UserAvatar";
 import { isUserUploadedAvatar } from "../../utils/avatarUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
@@ -43,10 +44,12 @@ export interface DealPostProps {
   subcategoryName?: string;
   region?: string;
   verifiedText?: string;
+  tags?: string[] | string;
   featured?: boolean;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 export const DealPost: React.FC<DealPostProps> = ({ 
@@ -77,11 +80,14 @@ export const DealPost: React.FC<DealPostProps> = ({
   subcategoryName,
   region = "Vsa Slovenija",
   verifiedText = "",
+  tags,
   featured = false,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
+  onTagClick,
 }) => {
+  const normalizedTags = parseTags(tags);
   const [copied, setCopied] = useState(false);
   const [votes, setVotes] = useState(votesCount);
   const [hasVoted, setHasVoted] = useState(false);
@@ -131,6 +137,7 @@ export const DealPost: React.FC<DealPostProps> = ({
           code: hasValidCode ? code!.trim() : undefined,
           link,
           region,
+          tags: normalizedTags.length > 0 ? normalizedTags : undefined,
           votes: votesCount || 0,
           votesCount: votesCount || 0,
           likesCount: votesCount || 0,
@@ -375,6 +382,29 @@ export const DealPost: React.FC<DealPostProps> = ({
           <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
             {cleanDescription}
           </p>
+          {normalizedTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {normalizedTags.slice(0, 4).map((tag, idx) => (
+                <a
+                  key={`${tag}-${idx}`}
+                  href={buildTagUrl(tag)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onTagClick) {
+                      onTagClick(tag);
+                    } else {
+                      navigateApp(buildTagUrl(tag));
+                    }
+                  }}
+                  className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
+                  title={`Prikaži vse objave z oznako #${tag}`}
+                >
+                  #{tag}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Metadata & Actions Row */}

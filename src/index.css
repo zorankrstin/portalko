@@ -136,6 +136,17 @@
   }
 }
 
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes share-button-bounce {
   0% {
     transform: scale(1);
@@ -316,6 +327,9 @@
   .animate-feed-item {
     animation: feed-item-fade-scale 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+  .animate-fade-in-up {
+    animation: fade-in-up 440ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
   .animate-share-bounce {
     animation:
       share-button-bounce 480ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -350,17 +364,20 @@
   .share-confetti-14 { --cx: 95px;   --cy: -55px;  --cr: 210deg;  animation-delay: 22ms; }
   .share-confetti-15 { --cx: -10px;  --cy: -175px; --cr: 360deg;  animation-delay: 8ms; }
   .animate-feed-delay-0 { animation-delay: 0ms; }
-  .animate-feed-delay-1 { animation-delay: 40ms; }
-  .animate-feed-delay-2 { animation-delay: 80ms; }
-  .animate-feed-delay-3 { animation-delay: 120ms; }
-  .animate-feed-delay-4 { animation-delay: 160ms; }
-  .animate-feed-delay-5 { animation-delay: 200ms; }
-  .animate-feed-delay-6 { animation-delay: 240ms; }
-  .animate-feed-delay-7 { animation-delay: 280ms; }
+  .animate-feed-delay-1 { animation-delay: 45ms; }
+  .animate-feed-delay-2 { animation-delay: 90ms; }
+  .animate-feed-delay-3 { animation-delay: 135ms; }
+  .animate-feed-delay-4 { animation-delay: 180ms; }
+  .animate-feed-delay-5 { animation-delay: 225ms; }
+  .animate-feed-delay-6 { animation-delay: 270ms; }
+  .animate-feed-delay-7 { animation-delay: 315ms; }
+  .animate-feed-delay-8 { animation-delay: 360ms; }
+  .animate-feed-delay-9 { animation-delay: 405ms; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-feed-item,
+  .animate-fade-in-up,
   .animate-share-bounce,
   .animate-share-count-pop,
   .animate-share-delta-rise,

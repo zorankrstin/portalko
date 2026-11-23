@@ -8,7 +8,8 @@ import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget, EventScheduleSlot } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { getActiveFallbackImage } from "../../services/portalSettingsService";
-import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
+import { parseTags } from "../../utils/tagUtils";
 import { useEventFilter } from "../../contexts/EventFilterContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { isDummyAvatar, isUserUploadedAvatar, resolveUserUploadedAvatar, KNOWN_ADMIN_IDS } from "../../utils/avatarUtils";
@@ -49,9 +50,11 @@ export interface EventPostProps {
   likesCount?: number | string;
   lovesCount?: number | string;
   dislikesCount?: number | string;
+  tags?: string[] | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
   onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
   onCategoryClick?: (category?: string, categoryName?: string, subcategory?: string, subcategoryName?: string) => void;
   onLocationClick?: (location?: string, region?: string) => void;
@@ -81,20 +84,23 @@ export const EventPost: React.FC<EventPostProps> = ({
   day = "20",
   price,
   ticketUrl,
-  description = "Vabljeni v dvorano Mestne knjižnice Kranj na predstavitev novih pesniških zbirk gorenjskih avtorjev.",
+  description = "Vabljeni v dvorano Mestna knjižnice Kranj na predstavitev novih pesniških zbirk gorenjskih avtorjev.",
   image,
   images,
   interestedCount = 86,
   likesCount = 0,
   lovesCount = 0,
   dislikesCount = 0,
+  tags,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
+  onTagClick,
   onAuthorClick,
   onCategoryClick,
   onLocationClick,
 }) => {
+  const normalizedTags = parseTags(tags);
   const { filterByEventLocation } = useEventFilter();
   const { users, currentUser } = useAuth();
 
@@ -196,6 +202,7 @@ export const EventPost: React.FC<EventPostProps> = ({
           price,
           ticketUrl,
           description,
+          tags: normalizedTags.length > 0 ? normalizedTags : undefined,
           likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
           interestedCount,
         },
@@ -402,6 +409,29 @@ export const EventPost: React.FC<EventPostProps> = ({
           <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
             {cleanDescription || 'Vabljeni na prireditev v prijetnem vzdušju.'}
           </p>
+          {normalizedTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {normalizedTags.slice(0, 4).map((tag, idx) => (
+                <a
+                  key={`${tag}-${idx}`}
+                  href={buildTagUrl(tag)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onTagClick) {
+                      onTagClick(tag);
+                    } else {
+                      navigateApp(buildTagUrl(tag));
+                    }
+                  }}
+                  className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
+                  title={`Prikaži vse objave z oznako #${tag}`}
+                >
+                  #{tag}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
           <div className="flex items-center gap-1.5 flex-wrap">

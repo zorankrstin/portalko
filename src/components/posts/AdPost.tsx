@@ -8,7 +8,8 @@ import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType, PostDetailTarget } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { getActiveFallbackImage } from "../../services/portalSettingsService";
-import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
+import { parseTags } from "../../utils/tagUtils";
 import { UserAvatar } from "../common/UserAvatar";
 import { isUserUploadedAvatar } from "../../utils/avatarUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
@@ -38,9 +39,11 @@ export interface AdPostProps {
   likesCount?: number | string;
   lovesCount?: number | string;
   dislikesCount?: number | string;
+  tags?: string[] | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 export const AdPost: React.FC<AdPostProps> = ({ 
@@ -66,10 +69,13 @@ export const AdPost: React.FC<AdPostProps> = ({
   likesCount = 0,
   lovesCount = 0,
   dislikesCount = 0,
+  tags,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
+  onTagClick,
 }) => {
+  const normalizedTags = parseTags(tags);
   const postUrl = buildPostUrl({
     type: 'ad',
     id,
@@ -108,6 +114,7 @@ export const AdPost: React.FC<AdPostProps> = ({
           location,
           date,
           description,
+          tags: normalizedTags.length > 0 ? normalizedTags : undefined,
           likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
         },
       });
@@ -243,6 +250,29 @@ export const AdPost: React.FC<AdPostProps> = ({
             )}
           </a>
           <p className="font-body-md text-xs sm:text-sm text-on-surface-variant line-clamp-2 mt-1">{cleanDescription}</p>
+          {normalizedTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {normalizedTags.slice(0, 4).map((tag, idx) => (
+                <a
+                  key={`${tag}-${idx}`}
+                  href={buildTagUrl(tag)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onTagClick) {
+                      onTagClick(tag);
+                    } else {
+                      navigateApp(buildTagUrl(tag));
+                    }
+                  }}
+                  className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
+                  title={`Prikaži vse objave z oznako #${tag}`}
+                >
+                  #{tag}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low text-xs text-outline">
           <div className="flex items-center gap-2 flex-wrap">

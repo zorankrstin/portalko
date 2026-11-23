@@ -16,10 +16,12 @@ import {
   Search,
   X,
   Tag,
-  Layers
+  Layers,
+  Network
 } from 'lucide-react';
 import { ViewMode, PostDetailTarget, AuthorProfileTarget } from '../types';
-import { slugify } from '../utils/urlUtils';
+import { buildTagUrl, slugify } from '../utils/urlUtils';
+import { parseSearchQuery } from '../utils/searchUtils';
 
 export interface BreadcrumbCrumb {
   id: string;
@@ -40,6 +42,7 @@ export interface BreadcrumbsProps {
   subcategoryName?: string;
   postUrl?: string;
   selectedAuthorProfile: AuthorProfileTarget | null;
+  selectedTag?: string;
   searchQuery?: string;
   onViewChange: (view: ViewMode) => void;
   onHomeClick: () => void;
@@ -57,6 +60,7 @@ export function Breadcrumbs({
   subcategoryName,
   postUrl,
   selectedAuthorProfile,
+  selectedTag,
   searchQuery,
   onViewChange,
   onHomeClick,
@@ -174,6 +178,35 @@ export function Breadcrumbs({
         isCurrent: true,
       });
     }
+  } else if (currentView === 'directory') {
+    const parsed = parseSearchQuery(searchQuery || '');
+    const cleanSearchText = parsed.text || (parsed.directoryCategory ? parsed.directoryCategory.replace(/^cat-/, '') : '');
+    crumbs.push({
+      id: 'directory',
+      label: 'Imenik',
+      href: '/imenik',
+      icon: Network,
+      isCurrent: !cleanSearchText,
+      onClick: () => onViewChange('directory'),
+    });
+    if (cleanSearchText) {
+      crumbs.push({
+        id: 'search',
+        label: `Iskanje: "${cleanSearchText}"`,
+        icon: Search,
+        isCurrent: true,
+      });
+    }
+  } else if (currentView === 'tag') {
+    const cleanTag = (selectedTag || '').replace(/^#+/, '').trim();
+    crumbs.push({
+      id: 'tag-feed',
+      label: cleanTag ? `Oznaka: #${cleanTag}` : 'Oznake',
+      href: cleanTag ? buildTagUrl(cleanTag) : '/oznaka',
+      icon: Tag,
+      isCurrent: true,
+      fullTitle: cleanTag ? `Objave z oznako #${cleanTag}` : 'Oznake',
+    });
   } else if (currentView === 'saved') {
     crumbs.push({
       id: 'saved',

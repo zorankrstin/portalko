@@ -50,7 +50,8 @@ import { parseSocialEmbed } from '../utils/embedUtils';
 import { getActiveFallbackImage, handleImageFallbackError } from '../services/portalSettingsService';
 import { buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { updatePageSeo } from '../utils/seoUtils';
-import { buildPostUrl, slugify, isCurrentPathValidForPost } from '../utils/urlUtils';
+import { buildPostUrl, buildTagUrl, navigateApp, slugify, isCurrentPathValidForPost } from '../utils/urlUtils';
+import { parseTags } from '../utils/tagUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
 import { DEFAULT_CATEGORIES } from '../services/categoryService';
 import { UserAvatar } from './common/UserAvatar';
@@ -142,6 +143,7 @@ interface PostDetailPageProps {
   onBack: () => void;
   onNavigatePost: (target: PostDetailTarget) => void;
   onViewChange: (view: ViewMode) => void;
+  onTagClick?: (tag: string) => void;
   searchQuery?: string;
   onSearchChange?: (q: string) => void;
   onAuthorClick?: (author: AuthorProfileTarget) => void;
@@ -166,6 +168,7 @@ export function PostDetailPage({
   onBack, 
   onNavigatePost, 
   onViewChange, 
+  onTagClick,
   searchQuery, 
   onSearchChange,
   onAuthorClick,
@@ -200,8 +203,15 @@ export function PostDetailPage({
   };
 
   const handleTagClick = (tag: string) => {
-    const cleanTag = tag.replace(/^#/, '').trim();
-    handleExecuteSearch(cleanTag, targetCategory);
+    const cleanTag = tag.replace(/^#+/, '').trim();
+    if (!cleanTag) return;
+    if (onTagClick) {
+      onTagClick(cleanTag);
+    } else {
+      navigateApp(buildTagUrl(cleanTag));
+    }
+    scrollToPageTop();
+    scrollToSidebarsTop();
   };
 
   const quickKeywords = target.type === 'ad'
@@ -689,11 +699,16 @@ export function PostDetailPage({
     };
 
     const matchedDoc = resolveMatchedDoc();
+    const resolvedTagsFromInitial = parseTags(initialData?.tags);
+    const resolvedTagsFromMatched = parseTags((matchedDoc as any)?.tags);
+    const mergedTags = resolvedTagsFromMatched.length > 0 ? resolvedTagsFromMatched : resolvedTagsFromInitial;
+
     const resolvedItem = initialData ? (
       matchedDoc ? {
         ...matchedDoc,
         ...initialData,
         id: matchedDoc.id || initialData.id || target.id,
+        tags: mergedTags.length > 0 ? mergedTags : undefined,
         likesCount: (matchedDoc as any).likesCount ?? initialData.likesCount ?? 0,
         votes: (matchedDoc as any).votes ?? initialData.votes ?? (matchedDoc as any).likesCount ?? initialData.likesCount ?? 0,
         image: initialData.image || matchedDoc.image || (matchedDoc as any).imageUrl,
@@ -704,6 +719,7 @@ export function PostDetailPage({
       } : {
         ...initialData,
         id: initialData.id || target.id,
+        tags: resolvedTagsFromInitial.length > 0 ? resolvedTagsFromInitial : undefined,
         likesCount: initialData.likesCount ?? 0,
         votes: initialData.votes ?? initialData.likesCount ?? 0,
       }
@@ -2850,29 +2866,36 @@ export function PostDetailPage({
             </div>
           )}
 
-          {/* Tags & Metadata - Only render real user/admin defined tags */}
-          {itemData.tags && Array.isArray(itemData.tags) && itemData.tags.filter((t: string) => t && t.trim().length > 0).length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-surface-container-low text-xs">
-              <span className="text-outline font-semibold">Oznake:</span>
-              {itemData.tags
-                .filter((tag: string) => tag && tag.trim().length > 0)
-                .map((tag: string, idx: number) => {
-                  const cleanTag = tag.replace(/^#/, '').trim();
+          {/* Tags & Metadata - Linkable tags across all categories (mali oglasi, dogodki, blog, akcije) */}
+          {(() => {
+            const normalizedItemTags = parseTags(itemData.tags);
+            if (normalizedItemTags.length === 0) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-surface-container-low text-xs">
+                <span className="text-outline font-semibold flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-primary/80" />
+                  <span>Oznake:</span>
+                </span>
+                {normalizedItemTags.map((cleanTag, idx) => {
+                  const tagHref = buildTagUrl(cleanTag);
                   return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleTagClick(cleanTag)}
-                      className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-on-primary font-medium transition-colors cursor-pointer flex items-center gap-1"
-                      title={`Išči objave z oznako #${cleanTag}`}
+                    <a
+                      key={`${cleanTag}-${idx}`}
+                      href={tagHref}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleTagClick(cleanTag);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-on-primary border border-primary/15 font-medium transition-colors cursor-pointer inline-flex items-center gap-1"
+                      title={`Prikaži vse objave z oznako #${cleanTag}`}
                     >
-                      <Search className="w-2.5 h-2.5 opacity-70" />
                       <span>#{cleanTag}</span>
-                    </button>
+                    </a>
                   );
                 })}
-            </div>
-          )}
+              </div>
+            );
+          })()}
         </div>
       </article>
 

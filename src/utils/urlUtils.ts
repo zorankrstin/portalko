@@ -51,6 +51,7 @@ export const SECTION_TO_SLUG: Record<string, string> = {
   post: 'blog',
   saved: 'shranjeno',
   directory: 'imenik',
+  tag: 'oznaka',
   admin: 'admin',
   profile: 'profil',
 };
@@ -90,6 +91,10 @@ export const SLUG_TO_VIEW: Record<string, ViewMode> = {
   saved: 'saved',
   imenik: 'directory',
   directory: 'directory',
+  oznaka: 'tag',
+  oznake: 'tag',
+  tag: 'tag',
+  tags: 'tag',
   admin: 'admin',
   'nadzorna-plosca': 'admin',
   profil: 'profile',
@@ -236,10 +241,21 @@ export function buildCategoryUrl(section: string, subcategory?: string): string 
   return `/${secSlug}/${slugify(subcategory)}`;
 }
 
+/**
+ * Builds a clean tag feed URL: /oznaka/<tag-slug>
+ */
+export function buildTagUrl(tag: string): string {
+  const clean = (tag || '').replace(/^#+/, '').trim();
+  if (!clean) return '/oznaka';
+  const slug = slugify(clean);
+  return `/oznaka/${slug || encodeURIComponent(clean.toLowerCase())}`;
+}
+
 export interface ParsedRouteResult {
   view: ViewMode;
   target?: PostDetailTarget;
   author?: AuthorProfileTarget;
+  tag?: string;
   categorySlug?: string;
   subcategorySlug?: string;
   titleSlug?: string;
@@ -306,6 +322,18 @@ export function parseUrlPath(pathname: string, hash: string = '', search: string
       };
     }
 
+    // Tag feed hash e.g. #oznaka-izleti or #tag-izleti
+    const tagHashMatch = rawHash.match(/^(oznaka|oznake|tag|tags)-(.+)$/i);
+    if (tagHashMatch) {
+      const decodedTag = decodeURIComponent(tagHashMatch[2]).trim();
+      return {
+        view: 'tag',
+        tag: decodedTag,
+        isPostDetail: false,
+        isAmp: isAmpRoute,
+      };
+    }
+
     // Standard view hash
     if (SLUG_TO_VIEW[lowerHash]) {
       return { view: SLUG_TO_VIEW[lowerHash], isPostDetail: false, isAmp: isAmpRoute };
@@ -330,6 +358,17 @@ export function parseUrlPath(pathname: string, hash: string = '', search: string
     if (SLUG_TO_VIEW[seg0]) {
       return { view: SLUG_TO_VIEW[seg0], isPostDetail: false };
     }
+  }
+
+  // Check Tag Feed routes: /oznaka/:tagSlug, /oznake/:tagSlug, /tag/:tagSlug, /tags/:tagSlug
+  if (segments.length === 2 && ['oznaka', 'oznake', 'tag', 'tags'].includes(segments[0].toLowerCase())) {
+    const tagPart = segments[1].trim();
+    return {
+      view: 'tag',
+      tag: tagPart,
+      isPostDetail: false,
+      isAmp: isAmpRoute,
+    };
   }
 
   // Check Author / Profile routes: /avtor/:name or /profil/:name

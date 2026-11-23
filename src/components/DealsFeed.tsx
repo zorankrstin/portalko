@@ -58,7 +58,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { subscribeToPosts, createPostInFirestore } from '../services/firestoreService';
 import { PostDetailTarget } from '../types';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
-import { slugify, buildPostUrl } from '../utils/urlUtils';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
+import { slugify, buildPostUrl, buildTagUrl, navigateApp } from '../utils/urlUtils';
+import { parseTags } from '../utils/tagUtils';
 import { getPlainTextSnippet } from '../utils/textUtils';
 import { useCategories } from '../hooks/useCategories';
 import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categoryService';
@@ -74,6 +76,7 @@ interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 const CATEGORY_IMAGE_FALLBACKS: Record<string, string> = {
@@ -85,7 +88,7 @@ const CATEGORY_IMAGE_FALLBACKS: Record<string, string> = {
   avto: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80',
 };
 
-export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: DealsFeedProps) {
+export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTagClick }: DealsFeedProps) {
   const { currentUser } = useAuth();
   const { currentSeo } = usePageSeo('deals');
   
@@ -206,6 +209,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
           image: p.imageUrl || (p.images && p.images[0]) || CATEGORY_IMAGE_FALLBACKS.tehnika,
           images: p.images || p.imageUrls || (p.imageUrl ? [p.imageUrl] : undefined),
           embedCode: p.embedCode,
+          tags: parseTags(p.tags),
           isPromoted: p.isPromoted,
           promotedUntil: p.promotedUntil,
           promotionBadgeType: p.promotionBadgeType,
@@ -380,7 +384,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
         const dealTitle = (deal.title || '').toLowerCase();
         const dealPartner = (deal.partner || '').toLowerCase();
         const dealDesc = (deal.description || '').toLowerCase();
-        const dealTags = ((deal as any).tags || '').toLowerCase();
+        const dealTags = parseTags((deal as any).tags).join(' ').toLowerCase();
         const dealThird = ((deal as any).thirdLevelCategory || (deal as any).store || '').toLowerCase();
 
         const matchesTertiary = 
@@ -1045,6 +1049,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     region: deal.region,
                     description: deal.description || cleanDescription,
                     verified: (deal as any).verified,
+                    tags: parseTags((deal as any).tags).length > 0 ? parseTags((deal as any).tags) : undefined,
                     isPromoted,
                     likesCount: (deal as any).likesCount || (deal as any).votes || 0,
                     dealType: deal.dealType,
@@ -1056,12 +1061,12 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
             };
 
             return (
-              <article 
-                key={`deal-${deal.id}-${idx}`}
-                className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row group ${
-                  isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60 hover:border-surface-container-high'
-                }`}
-              >
+              <div key={`deal-${deal.id}-${idx}`} className={getFeedCardAnimationClass(idx, PAGE_SIZE)}>
+                <article
+                  className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row group ${
+                    isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60 hover:border-surface-container-high'
+                  }`}
+                >
                 {/* PHOTO CONTAINER */}
                 <a 
                   href={dealUrl}
@@ -1215,6 +1220,29 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
                     <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
                       {cleanDescription}
                     </p>
+                    {parseTags((deal as any).tags).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {parseTags((deal as any).tags).slice(0, 4).map((tag, tagIdx) => (
+                          <a
+                            key={`${tag}-${tagIdx}`}
+                            href={buildTagUrl(tag)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (onTagClick) {
+                                onTagClick(tag);
+                              } else {
+                                navigateApp(buildTagUrl(tag));
+                              }
+                            }}
+                            className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
+                            title={`Prikaži vse objave z oznako #${tag}`}
+                          >
+                            #{tag}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Metadata & Actions Row */}
@@ -1301,6 +1329,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost }: De
 
                 </div>
               </article>
+              </div>
             );
           })
         )}

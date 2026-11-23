@@ -18,15 +18,18 @@ import { isItemActivelyPromoted } from "../../services/promotionService";
 import { parseEventDateInfo, resolveEventDisplayDate, formatSlovenianDate } from "../../utils/dateUtils";
 import { getPlainTextSnippet, formatViewsCount } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
-import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
+import { parseTags } from "../../utils/tagUtils";
 import type { PostDetailTarget } from "../../types";
 
 export interface FirestorePostCardProps {
   post: FirestorePost;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
 }
 
-export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNavigatePost }) => {
+export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNavigatePost, onTagClick }) => {
+  const normalizedTags = parseTags(post.tags);
   const { currentUser, users } = useAuth();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -127,6 +130,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     ticketUrl: post.ticketUrl,
     embedCode: post.embedCode,
     embedOrientation: post.embedOrientation,
+    tags: normalizedTags.length > 0 ? normalizedTags : undefined,
     rejectionReason: post.rejectionReason,
   };
 
@@ -195,9 +199,11 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           category="oglasi"
           image={post.imageUrl}
           likesCount={post.likesCount || 0}
+          tags={normalizedTags}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
           onNavigatePost={onNavigatePost}
+          onTagClick={onTagClick}
         />
         {isEditModalOpen && (
           <EditPostModal
@@ -238,9 +244,11 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           region={post.location || "Slovenija"}
           verifiedText="Preverjeno"
           votesCount={post.likesCount ?? (post as any).votes ?? 0}
+          tags={normalizedTags}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
           onNavigatePost={onNavigatePost}
+          onTagClick={onTagClick}
         />
         {isEditModalOpen && (
           <EditPostModal
@@ -284,9 +292,11 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           description={post.content}
           image={post.imageUrl}
           likesCount={post.likesCount || 0}
+          tags={normalizedTags}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
           onNavigatePost={onNavigatePost}
+          onTagClick={onTagClick}
         />
         {isEditModalOpen && (
           <EditPostModal
@@ -363,6 +373,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           votes: post.likesCount || 0,
           commentsCount: post.commentsCount || 0,
           viewsCount: post.viewsCount || 0,
+          tags: normalizedTags.length > 0 ? normalizedTags : undefined,
         },
       });
     } else {
@@ -588,15 +599,26 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         </a>
       )}
 
-      {post.tags && post.tags.length > 0 && (
+      {normalizedTags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pt-0.5">
-          {post.tags.slice(0, 5).map((tag, idx) => (
-            <span
-              key={idx}
-              className="text-xs font-label-md font-medium text-primary/90 bg-primary/5 px-2.5 py-0.5 rounded-lg border border-primary/10"
+          {normalizedTags.slice(0, 5).map((tag, idx) => (
+            <a
+              key={`${tag}-${idx}`}
+              href={buildTagUrl(tag)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (onTagClick) {
+                  onTagClick(tag);
+                } else {
+                  navigateApp(buildTagUrl(tag));
+                }
+              }}
+              className="text-xs font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/5 hover:bg-primary px-2.5 py-0.5 rounded-lg border border-primary/15 transition-colors cursor-pointer"
+              title={`Prikaži vse objave z oznako #${tag}`}
             >
-              #{tag.replace(/^#/, '')}
-            </span>
+              #{tag}
+            </a>
           ))}
         </div>
       )}

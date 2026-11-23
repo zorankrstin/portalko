@@ -13,7 +13,8 @@ import { SLOVENIA_REGIONS, POPULAR_SLOVENIA_TOWNS } from '../services/categorySe
 import { PromotedBadge } from './common/PromotedBadge';
 import { isItemActivelyPromoted } from '../services/promotionService';
 import { AdsCategoryLocationFilter } from './ads/AdsCategoryLocationFilter';
-import { slugify } from '../utils/urlUtils';
+import { slugify, buildTagUrl, navigateApp } from '../utils/urlUtils';
+import { parseTags } from '../utils/tagUtils';
 import { getPlainTextSnippet } from '../utils/textUtils';
 import { UserAvatar } from './common/UserAvatar';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
@@ -21,14 +22,16 @@ import { useAuth } from '../contexts/AuthContext';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { isUserVerified } from '../utils/userVerificationUtils';
 import { usePageSeo } from '../services/seoSettingsService';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
 }
 
-export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost }: MaliOglasiFeedProps) {
+export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost, onTagClick }: MaliOglasiFeedProps) {
   const { users } = useAuth();
   const { currentSeo } = usePageSeo('ads');
   const [page, setPage] = useState(1);
@@ -386,9 +389,10 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
             const cleanDescription = getPlainTextSnippet(ad.description);
 
               return (
-                <article key={`fs-ad-${ad.id}-${idx}`} className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row ${
-                  isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
-                }`}>
+                <div key={`fs-ad-${ad.id}-${idx}`} className={getFeedCardAnimationClass(idx, PAGE_SIZE)}>
+                  <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row ${
+                    isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
+                  }`}>
                   {ad.imageUrl && (
                     <a 
                       href={`#ad-${ad.id}`}
@@ -469,6 +473,29 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                       <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
                         {cleanDescription}
                       </p>
+                      {parseTags(ad.tags).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {parseTags(ad.tags).slice(0, 4).map((tag, tagIdx) => (
+                            <a
+                              key={`${tag}-${tagIdx}`}
+                              href={buildTagUrl(tag)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (onTagClick) {
+                                  onTagClick(tag);
+                                } else {
+                                  navigateApp(buildTagUrl(tag));
+                                }
+                              }}
+                              className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
+                              title={`Prikaži vse objave z oznako #${tag}`}
+                            >
+                              #{tag}
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low">
@@ -542,6 +569,7 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost 
                     </div>
                   </div>
                 </article>
+                </div>
               );
           })
         )}

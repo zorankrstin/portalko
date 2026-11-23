@@ -3,6 +3,7 @@ import { RssPost } from './posts/RssPost';
 import { parseRssDate } from '../utils/dateUtils';
 import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { fetchRealRssNews, getCachedRssNews, RealNewsItem } from '../services/rssService';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
 export function RssFeedViewer({ searchQuery = '' }: { searchQuery?: string }) {
   const [items, setItems] = useState<RealNewsItem[]>(() => getCachedRssNews());
@@ -72,16 +73,17 @@ export function RssFeedViewer({ searchQuery = '' }: { searchQuery?: string }) {
   return (
     <div className="flex flex-col gap-space-md">
       {filteredItems.map((item, idx) => (
-        <RssPost 
-          key={`rss-viewer-${item.id}-${idx}`}
-          id={item.id}
-          title={item.title}
-          link={item.link}
-          description={item.description}
-          pubDate={item.pubDate}
-          sourceName={item.sourceName}
-          thumbnail={item.thumbnail}
-        />
+        <div key={`rss-viewer-${item.id}-${idx}`} className={getFeedCardAnimationClass(idx)}>
+          <RssPost
+            id={item.id}
+            title={item.title}
+            link={item.link}
+            description={item.description}
+            pubDate={item.pubDate}
+            sourceName={item.sourceName}
+            thumbnail={item.thumbnail}
+          />
+        </div>
       ))}
     </div>
   );

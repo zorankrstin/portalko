@@ -12,14 +12,16 @@ import { isItemActivelyPromoted } from '../services/promotionService';
 import { BlogCategoryLocationFilter } from './blog/BlogCategoryLocationFilter';
 import { slugify } from '../utils/urlUtils';
 import { usePageSeo } from '../services/seoSettingsService';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
 interface BlogFeedProps {
   onViewChange: (view: 'main') => void;
   searchQuery?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
 }
 
-export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: BlogFeedProps) {
+export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost, onTagClick }: BlogFeedProps) {
   const { currentSeo } = usePageSeo('blog');
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -301,17 +303,6 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
     }, 450);
   };
 
-  const FEED_DELAY_CLASSES = [
-    'animate-feed-delay-0',
-    'animate-feed-delay-1',
-    'animate-feed-delay-2',
-    'animate-feed-delay-3',
-    'animate-feed-delay-4',
-    'animate-feed-delay-5',
-    'animate-feed-delay-6',
-    'animate-feed-delay-7',
-  ] as const;
-
   return (
     <div className="flex flex-col gap-space-md animate-feed-item">
       {/* Header section */}
@@ -506,20 +497,18 @@ export function BlogFeed({ onViewChange, searchQuery = '', onNavigatePost }: Blo
             Ni najdenih blog člankov za izbrane kriterije.
           </div>
         ) : (
-          visibleItems.map((item, idx) => {
-            const delayClass = FEED_DELAY_CLASSES[Math.min(idx % PAGE_SIZE, FEED_DELAY_CLASSES.length - 1)];
-            return (
-              <div
-                key={`${selectedCategory}-${selectedSubcategory}-${selectedTertiaryCategory}-${selectedRegion}-${sortOption}-fs-post-${item.data.id}-${idx}`}
-                className={`animate-feed-item ${delayClass}`}
-              >
-                <FirestorePostCard
-                  post={item.data}
-                  onNavigatePost={onNavigatePost}
-                />
-              </div>
-            );
-          })
+          visibleItems.map((item, idx) => (
+            <div
+              key={`${selectedCategory}-${selectedSubcategory}-${selectedTertiaryCategory}-${selectedRegion}-${sortOption}-fs-post-${item.data.id}-${idx}`}
+              className={getFeedCardAnimationClass(idx, PAGE_SIZE)}
+            >
+              <FirestorePostCard
+                post={item.data}
+                onNavigatePost={onNavigatePost}
+                onTagClick={onTagClick}
+              />
+            </div>
+          ))
         )}
       </div>
 

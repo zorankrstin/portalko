@@ -15,6 +15,7 @@ import { NewsFeed } from './components/NewsFeed';
 import { BlogFeed } from './components/BlogFeed';
 import { DealsFeed } from './components/DealsFeed';
 import { DirectoryFeed } from './components/DirectoryFeed';
+import { TagFeed } from './components/TagFeed';
 import { UserProfile } from './components/UserProfile';
 import { RlsModal } from './components/RlsModal';
 import { BottomNav } from './components/BottomNav';
@@ -33,7 +34,7 @@ import { parseSearchQuery, SearchCategory } from './utils/searchUtils';
 import { updatePageSeo } from './utils/seoUtils';
 import { usePageSeo, DEFAULT_PAGE_SEO } from './services/seoSettingsService';
 import { initAnalyticsNavigationTracker } from './utils/analyticsUtils';
-import { parseUrlPath, buildPostUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } from './utils/urlUtils';
+import { parseUrlPath, buildPostUrl, buildTagUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } from './utils/urlUtils';
 import { openCookieSettingsModal } from './services/cookieConsentService';
 
 export { VIEW_HASH_MAP };
@@ -45,6 +46,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>('main');
   const [selectedPostTarget, setSelectedPostTarget] = useState<PostDetailTarget | null>(null);
   const [selectedAuthorProfile, setSelectedAuthorProfile] = useState<AuthorProfileTarget | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string>('');
   const [previousView, setPreviousView] = useState<ViewMode>('main');
   const [postDetailTitle, setPostDetailTitle] = useState<string>('');
   const [postDetailMeta, setPostDetailMeta] = useState<{
@@ -218,6 +220,7 @@ export default function App() {
 
       if (parsed.isPostDetail && parsed.target) {
         setSelectedAuthorProfile(null);
+        setSelectedTag('');
         setSelectedPostTarget(parsed.target);
         setCurrentView('post-detail');
         scrollToPageTop();
@@ -227,6 +230,7 @@ export default function App() {
 
       if (parsed.author) {
         setSelectedPostTarget(null);
+        setSelectedTag('');
         setSelectedAuthorProfile(parsed.author);
         setCurrentView('profile');
         scrollToPageTop();
@@ -234,8 +238,21 @@ export default function App() {
         return;
       }
 
+      if (parsed.view === 'tag') {
+        setSelectedPostTarget(null);
+        setSelectedAuthorProfile(null);
+        setPostDetailMeta({});
+        setPostDetailTitle('');
+        setSelectedTag(parsed.tag ? parsed.tag.replace(/^#+/, '').trim() : '');
+        setCurrentView('tag');
+        scrollToPageTop();
+        scrollToSidebarsTop();
+        return;
+      }
+
       setSelectedPostTarget(null);
       setSelectedAuthorProfile(null);
+      setSelectedTag('');
       setPostDetailMeta({});
       setPostDetailTitle('');
       setCurrentView(parsed.view);
@@ -274,6 +291,22 @@ export default function App() {
       return;
     }
 
+    if (currentView === 'tag') {
+      const cleanTag = (selectedTag || '').replace(/^#+/, '').trim();
+      const tagPath = cleanTag ? buildTagUrl(cleanTag) : '/oznaka';
+      const tagUrl = `${window.location.origin}${tagPath}`;
+      updatePageSeo({
+        title: cleanTag ? `Oznaka #${cleanTag} – Objave | Portalko` : 'Oznake | Portalko',
+        description: cleanTag
+          ? `Vse objave iz kategorij Mali oglasi, Dogodki, Blog in Akcije, označene z oznako #${cleanTag} na portalu Portalko.`
+          : 'Brskajte po označenih objavah na portalu Portalko.',
+        url: tagUrl,
+        canonicalUrl: tagUrl,
+        type: 'website',
+      });
+      return;
+    }
+
     if (currentView === 'admin') {
       updatePageSeo({
         title: 'Nadzorna plošča – Administracija portala | Portalko',
@@ -298,7 +331,7 @@ export default function App() {
         type: 'website',
       });
     }
-  }, [currentView, selectedAuthorProfile, currentUser, seoMap]);
+  }, [currentView, selectedAuthorProfile, selectedTag, currentUser, seoMap]);
 
   // Global click handler for internal links across the portal
   useEffect(() => {
@@ -422,6 +455,11 @@ export default function App() {
           });
           return;
         }
+        if (parsed.view === 'tag' && parsed.tag) {
+          e.preventDefault();
+          handleTagClick(parsed.tag);
+          return;
+        }
         if (pathPart !== window.location.pathname || (hashPart && hashPart !== window.location.hash)) {
           if (parsed.view) {
             e.preventDefault();
@@ -497,7 +535,42 @@ export default function App() {
     scrollToSidebarsTop();
   };
 
+  const handleTagClick = (tag: string) => {
+    const cleanTag = (tag || '').replace(/^#+/, '').trim();
+    if (!cleanTag) return;
+    if (currentView !== 'tag' && currentView !== 'post-detail') {
+      setPreviousView(currentView);
+    }
+    setSelectedPostTarget(null);
+    setSelectedAuthorProfile(null);
+    setPostDetailTitle('');
+    setPostDetailMeta({});
+    setSelectedTag(cleanTag);
+    setCurrentView('tag');
+
+    const tagPath = buildTagUrl(cleanTag);
+    if (window.location.pathname !== tagPath || window.location.hash) {
+      window.history.pushState({ tag: cleanTag }, '', tagPath);
+    }
+    scrollToPageTop();
+    scrollToSidebarsTop();
+  };
+
   const handleBackFromPost = () => {
+    if (previousView === 'tag' && selectedTag) {
+      setSelectedPostTarget(null);
+      setPostDetailTitle('');
+      setPostDetailMeta({});
+      const tagPath = buildTagUrl(selectedTag);
+      if (window.location.pathname !== tagPath || window.location.hash) {
+        window.history.pushState({ tag: selectedTag }, '', tagPath);
+      }
+      setCurrentView('tag');
+      scrollToPageTop();
+      scrollToSidebarsTop();
+      return;
+    }
+
     const isDeal = selectedPostTarget?.type === 'deal' || 
                    selectedPostTarget?.initialData?.type === 'deal' ||
                    selectedPostTarget?.initialData?.category === 'deal' ||
@@ -541,6 +614,9 @@ export default function App() {
     if (view !== 'profile') {
       setSelectedAuthorProfile(null);
     }
+    if (view !== 'tag') {
+      setSelectedTag('');
+    }
     if (view !== 'post-detail') {
       setPostDetailTitle('');
       setPostDetailMeta({});
@@ -548,6 +624,12 @@ export default function App() {
     if (view === 'profile') {
       setSelectedPostTarget(null);
       const cleanUrl = '/profil';
+      if (window.location.pathname !== cleanUrl || window.location.hash) {
+        window.history.pushState(null, '', cleanUrl);
+      }
+    } else if (view === 'tag') {
+      setSelectedPostTarget(null);
+      const cleanUrl = selectedTag ? buildTagUrl(selectedTag) : '/oznaka';
       if (window.location.pathname !== cleanUrl || window.location.hash) {
         window.history.pushState(null, '', cleanUrl);
       }
@@ -568,6 +650,7 @@ export default function App() {
 
   const handleHomeClick = () => {
     setSearchQuery('');
+    setSelectedTag('');
     setSelectedAuthorProfile(null);
     setSelectedPostTarget(null);
     setPostDetailTitle('');
@@ -586,10 +669,22 @@ export default function App() {
        (selectedPostTarget.type === 'blog' || selectedPostTarget.type === 'post') ? 'blog' : previousView || 'main')
     : currentView;
 
-  // Handle search changes with automatic execution from single post pages
+  // Handle search changes with automatic execution from single post pages or Imenik category switch
   const handleSearchChange = (newQuery: string) => {
     setSearchQuery(newQuery);
     const { category, text } = parseSearchQuery(newQuery);
+
+    if (category === 'directory' && currentView !== 'directory') {
+      setSelectedPostTarget(null);
+      setSelectedAuthorProfile(null);
+      if (window.location.pathname !== '/imenik' || window.location.hash) {
+        window.history.pushState(null, '', '/imenik');
+      }
+      setCurrentView('directory');
+      scrollToPageTop();
+      scrollToSidebarsTop();
+      return;
+    }
 
     // If on a single post page and a search query or category is selected
     if (currentView === 'post-detail') {
@@ -618,6 +713,18 @@ export default function App() {
   const handleSearchSubmit = (submittedQuery: string) => {
     setSearchQuery(submittedQuery);
     const { category } = parseSearchQuery(submittedQuery);
+
+    if (category === 'directory') {
+      setSelectedPostTarget(null);
+      setSelectedAuthorProfile(null);
+      if (window.location.pathname !== '/imenik' || window.location.hash) {
+        window.history.pushState(null, '', '/imenik');
+      }
+      setCurrentView('directory');
+      scrollToPageTop();
+      scrollToSidebarsTop();
+      return;
+    }
 
     if (currentView === 'post-detail') {
       const targetCategoryView: ViewMode = category !== 'all'
@@ -701,6 +808,7 @@ export default function App() {
               subcategoryName={postDetailMeta.subcategoryName}
               postUrl={postDetailMeta.cleanUrl}
               selectedAuthorProfile={selectedAuthorProfile}
+              selectedTag={selectedTag}
               searchQuery={searchQuery}
               onViewChange={handleViewChange}
               onHomeClick={handleHomeClick}
@@ -720,6 +828,7 @@ export default function App() {
                 onBack={handleBackFromPost}
                 onNavigatePost={handleNavigatePost}
                 onViewChange={handleViewChange}
+                onTagClick={handleTagClick}
                 searchQuery={searchQuery}
                 onSearchChange={handleSearchChange}
                 onAuthorClick={handleAuthorClick}
@@ -736,6 +845,7 @@ export default function App() {
                 searchQuery={searchQuery} 
                 onViewChange={handleViewChange} 
                 onNavigatePost={handleNavigatePost}
+                onTagClick={handleTagClick}
                 onAuthorClick={handleAuthorClick}
               />
             )}
@@ -747,6 +857,7 @@ export default function App() {
                 onViewChange={handleViewChange} 
                 searchQuery={searchQuery} 
                 onNavigatePost={handleNavigatePost} 
+                onTagClick={handleTagClick}
               />
             )}
             {currentView === 'ads' && (
@@ -754,6 +865,7 @@ export default function App() {
                 onViewChange={handleViewChange} 
                 searchQuery={searchQuery} 
                 onNavigatePost={handleNavigatePost} 
+                onTagClick={handleTagClick}
               />
             )}
             {currentView === 'events' && (
@@ -761,6 +873,7 @@ export default function App() {
                 onViewChange={handleViewChange} 
                 searchQuery={searchQuery} 
                 onNavigatePost={handleNavigatePost} 
+                onTagClick={handleTagClick}
                 onAuthorClick={handleAuthorClick}
               />
             )}
@@ -769,6 +882,17 @@ export default function App() {
                 onViewChange={handleViewChange} 
                 searchQuery={searchQuery} 
                 onNavigatePost={handleNavigatePost} 
+                onTagClick={handleTagClick}
+              />
+            )}
+            {currentView === 'tag' && (
+              <TagFeed
+                tag={selectedTag}
+                onTagClick={handleTagClick}
+                onViewChange={handleViewChange}
+                onNavigatePost={handleNavigatePost}
+                onAuthorClick={handleAuthorClick}
+                searchQuery={searchQuery}
               />
             )}
             {currentView === 'directory' && (

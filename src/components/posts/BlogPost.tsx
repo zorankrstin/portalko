@@ -8,7 +8,8 @@ import { PromotedBadge } from "../common/PromotedBadge";
 import { PromotionBadgeType } from "../../types";
 import { getPlainTextSnippet } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
-import { buildPostUrl, slugify } from "../../utils/urlUtils";
+import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
+import { parseTags } from "../../utils/tagUtils";
 import { UserAvatar } from "../common/UserAvatar";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
@@ -41,10 +42,11 @@ export interface BlogPostProps {
   commentsCount?: string;
   viewsCount?: string;
   sharesCount?: number;
-  tags?: string[];
+  tags?: string[] | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
   onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 export const BlogPost: React.FC<BlogPostProps> = ({ 
@@ -77,8 +79,10 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   isPromoted = false,
   promotionBadgeType = 'PROMO',
   onNavigatePost,
+  onTagClick,
 }) => {
   const { users } = useAuth();
+  const normalizedTags = parseTags(tags);
   const finalDesc = excerpt || description;
 
   const isAuthorVerified = isUserVerified({
@@ -149,6 +153,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
           viewsCount,
           commentsCount,
+          tags: normalizedTags.length > 0 ? normalizedTags : undefined,
         },
       });
     } else {
@@ -317,12 +322,26 @@ export const BlogPost: React.FC<BlogPostProps> = ({
         </a>
       )}
       
-      {tags && tags.length > 0 && (
+      {normalizedTags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pt-0.5">
-          {tags.slice(0, 5).map((tag, idx) => (
-            <span key={idx} className="text-xs font-label-md font-medium text-primary/90 bg-primary/5 px-2.5 py-0.5 rounded-lg border border-primary/10">
-              #{tag.replace(/^#/, '')}
-            </span>
+          {normalizedTags.slice(0, 5).map((tag, idx) => (
+            <a
+              key={`${tag}-${idx}`}
+              href={buildTagUrl(tag)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (onTagClick) {
+                  onTagClick(tag);
+                } else {
+                  navigateApp(buildTagUrl(tag));
+                }
+              }}
+              className="text-xs font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/5 hover:bg-primary px-2.5 py-0.5 rounded-lg border border-primary/15 transition-colors cursor-pointer"
+              title={`Prikaži vse objave z oznako #${tag}`}
+            >
+              #{tag}
+            </a>
           ))}
         </div>
       )}

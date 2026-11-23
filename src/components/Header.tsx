@@ -1,4 +1,4 @@
-import { Search, ChevronDown, Bookmark, X, Filter, LogOut, User as UserIcon, Shield, Settings, Crown, UserCheck, Bell } from 'lucide-react';
+import { Search, ChevronDown, Bookmark, X, Filter, LogOut, User as UserIcon, Shield, Settings, Crown, UserCheck, Bell, FolderTree, Globe } from 'lucide-react';
 import { NotificationCenter } from './NotificationCenter';
 import { useBookmarks } from '../contexts/BookmarkContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,6 +8,13 @@ import { UserAvatar } from './common/UserAvatar';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { parseSearchQuery, buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { subscribeToPosts, FirestorePost } from '../services/firestoreService';
+import {
+  DirectoryCategory,
+  DirectoryEntry,
+  subscribeToDirectoryCategories,
+  subscribeToDirectoryEntries,
+  getDirectoryEntrySlug,
+} from '../services/directoryService';
 import { PostDetailTarget, ViewMode } from '../types';
 
 export function Header({
@@ -36,10 +43,20 @@ export function Header({
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [userCategoryOverride, setUserCategoryOverride] = useState<SearchCategory | null>(null);
+  const [userDirectoryCategoryOverride, setUserDirectoryCategoryOverride] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const desktopSearchRef = useRef<HTMLDivElement>(null);
 
   const [allPosts, setAllPosts] = useState<FirestorePost[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [directoryCategories, setDirectoryCategories] = useState<DirectoryCategory[]>([]);
+  const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>([]);
+  const [suggestions, setSuggestions] = useState<
+    Array<
+      | { kind: 'post'; label: string }
+      | { kind: 'directory-category'; cat: DirectoryCategory; label: string }
+      | { kind: 'directory-entry'; entry: DirectoryEntry; label: string }
+    >
+  >([]);
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
 
   const { currentUser, logout } = useAuth();
@@ -81,18 +98,35 @@ export function Header({
     activeView === 'deals' ? 'deals' :
     activeView === 'events' ? 'events' :
     activeView === 'blog' ? 'blog' :
+    activeView === 'directory' ? 'directory' :
     activeView === 'news' ? 'news' : 'all';
 
   const category: SearchCategory = parsedSearch.category !== 'all'
     ? parsedSearch.category
     : (userCategoryOverride ?? activeViewCategory);
 
+  const directoryCategoryId =
+    parsedSearch.directoryCategory ??
+    (category === 'directory' ? userDirectoryCategoryOverride : null) ??
+    '';
+
+  const selectValue =
+    category === 'directory' && directoryCategoryId
+      ? `directory:${directoryCategoryId}`
+      : category;
+
   const text = parsedSearch.text;
 
-  // Close dropdown on click outside
+  // Close dropdown on click outside & subscribe to posts + directory metadata
   useEffect(() => {
-    const unsub = subscribeToPosts(setAllPosts);
-    return () => unsub();
+    const unsubPosts = subscribeToPosts(setAllPosts);
+    const unsubDirCats = subscribeToDirectoryCategories(setDirectoryCategories);
+    const unsubDirEntries = subscribeToDirectoryEntries(setDirectoryEntries);
+    return () => {
+      unsubPosts();
+      unsubDirCats();
+      unsubDirEntries();
+    };
   }, []);
 
   // Listen for open_auth_modal event
@@ -106,35 +140,111 @@ export function Header({
   }, []);
 
   useEffect(() => {
-    if (text.length < 2) {
+    const q = text.trim().toLowerCase();
+
+    if (category === 'directory') {
+      const catMatches = directoryCategories
+        .filter((c) => !q || c.name.toLowerCase().includes(q))
+        .slice(0, 4)
+        .map((cat) => ({
+          kind: 'directory-category' as const,
+          cat,
+          label: cat.name,
+        }));
+
+      const entryMatches = q.length >= 1
+        ? directoryEntries
+            .filter(
+              (e) =>
+                e.status === 'published' &&
+                (!directoryCategoryId || e.categoryId === directoryCategoryId) &&
+                (e.name.toLowerCase().includes(q) ||
+                  e.domain.toLowerCase().includes(q) ||
+                  e.categoryName.toLowerCase().includes(q))
+            )
+            .slice(0, 5)
+            .map((entry) => ({
+              kind: 'directory-entry' as const,
+              entry,
+              label: entry.name,
+            }))
+        : [];
+
+      setSuggestions([...catMatches, ...entryMatches]);
+      return;
+    }
+
+    if (q.length < 2) {
       setSuggestions([]);
       setIsSuggestionsOpen(false);
       return;
     }
 
-    const filtered = allPosts
-      .filter(p => p.status !== 'osnutek' && p.status !== 'rejected' && p.status !== 'archived' && p.title.toLowerCase().includes(text.toLowerCase()))
+    const postMatches = allPosts
+      .filter(p => p.status !== 'osnutek' && p.status !== 'rejected' && p.status !== 'archived' && p.title.toLowerCase().includes(q))
       .map(p => p.title);
-    
-    // Unique suggestions
-    setSuggestions([...new Set(filtered)].slice(0, 5));
+
+    const uniquePosts = [...new Set(postMatches)].slice(0, 4).map((label) => ({
+      kind: 'post' as const,
+      label,
+    }));
+
+    const matchingDirCats = category === 'all'
+      ? directoryCategories
+          .filter((c) => c.name.toLowerCase().includes(q))
+          .slice(0, 2)
+          .map((cat) => ({
+            kind: 'directory-category' as const,
+            cat,
+            label: cat.name,
+          }))
+      : [];
+
+    const matchingDirEntries = category === 'all'
+      ? directoryEntries
+          .filter(
+            (e) =>
+              e.status === 'published' &&
+              (e.name.toLowerCase().includes(q) || e.domain.toLowerCase().includes(q))
+          )
+          .slice(0, 2)
+          .map((entry) => ({
+            kind: 'directory-entry' as const,
+            entry,
+            label: entry.name,
+          }))
+      : [];
+
+    setSuggestions([...matchingDirCats, ...matchingDirEntries, ...uniquePosts].slice(0, 6));
     setIsSuggestionsOpen(true);
-  }, [text, allPosts]);
+  }, [text, allPosts, category, directoryCategoryId, directoryCategories, directoryEntries]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
       }
-      // Close suggestions
-      const searchInput = document.getElementById('search-input');
-      if (searchInput && !searchInput.contains(event.target as Node)) {
+      if (desktopSearchRef.current && !desktopSearchRef.current.contains(event.target as Node)) {
         setIsSuggestionsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleCategorySelectChange = (val: string) => {
+    if (val.startsWith('directory:')) {
+      const subId = val.slice('directory:'.length);
+      setUserCategoryOverride('directory');
+      setUserDirectoryCategoryOverride(subId);
+      onSearchChange?.(buildSearchQuery('directory', text, subId));
+    } else {
+      const newCat = val as SearchCategory;
+      setUserCategoryOverride(newCat);
+      setUserDirectoryCategoryOverride(null);
+      onSearchChange?.(buildSearchQuery(newCat, text));
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -194,18 +304,14 @@ export function Header({
           />
           <span className="sr-only">Portalko.net - Domov</span>
         </a>
-        <div className="hidden md:flex items-center flex-1 max-w-xl mx-space-md">
+        <div ref={desktopSearchRef} className="hidden md:flex items-center flex-1 max-w-xl mx-space-md">
           <div className="relative w-full flex items-center bg-surface-container-low rounded-lg border border-transparent focus-within:border-outline-variant focus-within:bg-surface-container-lowest transition-all">
             {/* Category filter selector */}
-            <div className="relative flex items-center border-r border-surface-container pr-1 pl-2.5">
+            <div className="relative flex items-center border-r border-surface-container pr-1 pl-2.5 max-w-[175px]">
               <select
-                value={category}
-                onChange={(e) => {
-                  const newCat = e.target.value as SearchCategory;
-                  setUserCategoryOverride(newCat);
-                  onSearchChange?.(buildSearchQuery(newCat, text));
-                }}
-                className="appearance-none bg-transparent py-2 pr-6 pl-1 font-label-md text-xs font-semibold text-on-surface cursor-pointer focus:outline-none hover:text-primary transition-colors"
+                value={selectValue}
+                onChange={(e) => handleCategorySelectChange(e.target.value)}
+                className="appearance-none bg-transparent py-2 pr-6 pl-1 font-label-md text-xs font-semibold text-on-surface cursor-pointer focus:outline-none hover:text-primary transition-colors truncate max-w-full"
                 aria-label="Filtriraj iskanje po kategoriji"
               >
                 <option value="all">Vse kategorije</option>
@@ -214,6 +320,16 @@ export function Header({
                 <option value="deals">Akcije</option>
                 <option value="events">Dogodki</option>
                 <option value="blog">Blog</option>
+                <option value="directory">Imenik (vse)</option>
+                {directoryCategories.length > 0 && (
+                  <optgroup label="Imenik – po kategorijah">
+                    {directoryCategories.map((cat) => (
+                      <option key={cat.id} value={`directory:${cat.id}`}>
+                        Imenik: {cat.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               <ChevronDown className="w-3 h-3 text-outline absolute right-2 pointer-events-none" />
             </div>
@@ -225,12 +341,12 @@ export function Header({
                 id="search-input"
                 value={text}
                 onChange={(e) => {
-                  onSearchChange?.(buildSearchQuery(category, e.target.value));
+                  onSearchChange?.(buildSearchQuery(category, e.target.value, directoryCategoryId || undefined));
                 }}
                 onFocus={() => setIsSuggestionsOpen(true)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    onSearchSubmit?.(buildSearchQuery(category, text));
+                    onSearchSubmit?.(buildSearchQuery(category, text, directoryCategoryId || undefined));
                     setIsSuggestionsOpen(false);
                   }
                 }}
@@ -241,33 +357,91 @@ export function Header({
                   category === 'deals' ? 'Išči po ugodnostih in popustih...' :
                   category === 'events' ? 'Išči po dogodkih...' :
                   category === 'blog' ? 'Išči po blog zapisih...' :
-                  'Išči po objavah, novicah, oglasih, ugodnostih, dogodkih...'
+                  category === 'directory' ? 'Išči po imeniku podjetij in kategorijah...' :
+                  'Išči po objavah, novicah, oglasih, ugodnostih, imeniku...'
                 }
                 type="text" 
               />
               
               {/* Suggestions Dropdown */}
               {isSuggestionsOpen && suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-container-lowest rounded-lg border border-surface-container shadow-lg z-50 py-1">
-                  {suggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      className="w-full text-left px-4 py-2 text-xs text-on-surface hover:bg-surface-container-low transition-colors"
-                      onClick={() => {
-                        onSearchChange?.(buildSearchQuery(category, suggestion));
-                        setIsSuggestionsOpen(false);
-                      }}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
+                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-container-lowest rounded-xl border border-surface-container shadow-lg z-50 py-1.5 overflow-hidden">
+                  {suggestions.map((item, index) => {
+                    if (item.kind === 'directory-category') {
+                      return (
+                        <button
+                          key={`dir-cat-${item.cat.id}-${index}`}
+                          type="button"
+                          className="w-full text-left px-3.5 py-2 text-xs text-on-surface hover:bg-surface-container-low transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                          onClick={() => {
+                            setUserCategoryOverride('directory');
+                            setUserDirectoryCategoryOverride(item.cat.id);
+                            const nextQuery = buildSearchQuery('directory', '', item.cat.id);
+                            onSearchChange?.(nextQuery);
+                            onSearchSubmit?.(nextQuery);
+                            setIsSuggestionsOpen(false);
+                          }}
+                        >
+                          <span className="flex items-center gap-2 min-w-0 font-semibold">
+                            <FolderTree className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span className="truncate">{item.cat.name}</span>
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+                            Kategorija Imenika
+                          </span>
+                        </button>
+                      );
+                    }
+                    if (item.kind === 'directory-entry') {
+                      return (
+                        <button
+                          key={`dir-entry-${item.entry.id}-${index}`}
+                          type="button"
+                          className="w-full text-left px-3.5 py-2 text-xs text-on-surface hover:bg-surface-container-low transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                          onClick={() => {
+                            const slug = getDirectoryEntrySlug(item.entry);
+                            if (typeof window !== 'undefined') {
+                              const url = new URL(window.location.href);
+                              url.pathname = '/imenik';
+                              url.searchParams.set('imenik', slug);
+                              window.history.pushState({}, '', url.toString());
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }
+                            setIsSuggestionsOpen(false);
+                          }}
+                        >
+                          <span className="flex items-center gap-2 min-w-0 font-semibold">
+                            <Globe className="w-3.5 h-3.5 text-secondary shrink-0" />
+                            <span className="truncate">{item.entry.name}</span>
+                          </span>
+                          <span className="text-[10px] font-medium text-outline truncate max-w-[140px]">
+                            Imenik • {item.entry.categoryName}
+                          </span>
+                        </button>
+                      );
+                    }
+                    return (
+                      <button
+                        key={`post-${index}`}
+                        type="button"
+                        className="w-full text-left px-3.5 py-2 text-xs text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer"
+                        onClick={() => {
+                          onSearchChange?.(buildSearchQuery(category, item.label, directoryCategoryId || undefined));
+                          setIsSuggestionsOpen(false);
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
-              {(text || (parsedSearch.category !== 'all' && parsedSearch.category !== activeViewCategory)) && (
+              {(text || (parsedSearch.category !== 'all' && parsedSearch.category !== activeViewCategory) || Boolean(directoryCategoryId)) && (
                 <button 
                   onClick={() => {
                     setUserCategoryOverride(null);
+                    setUserDirectoryCategoryOverride(null);
                     onSearchChange?.('');
                   }}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors p-0.5 rounded-full hover:bg-surface-container-high"
@@ -483,15 +657,11 @@ export function Header({
       {isMobileSearchOpen && (
         <div className="md:hidden px-4 pb-3 pt-1 border-t border-surface-container/60 bg-surface-container-lowest animate-in slide-in-from-top-2 duration-150">
           <div className="flex items-center bg-surface-container-low rounded-xl border border-surface-container focus-within:border-primary focus-within:bg-surface-container-lowest transition-all">
-            <div className="relative flex items-center border-r border-surface-container pr-1 pl-2.5">
+            <div className="relative flex items-center border-r border-surface-container pr-1 pl-2.5 max-w-[155px]">
               <select
-                value={category}
-                onChange={(e) => {
-                  const newCat = e.target.value as SearchCategory;
-                  setUserCategoryOverride(newCat);
-                  onSearchChange?.(buildSearchQuery(newCat, text));
-                }}
-                className="appearance-none bg-transparent py-2.5 pr-6 pl-1 font-label-md text-xs font-semibold text-on-surface cursor-pointer focus:outline-none hover:text-primary transition-colors"
+                value={selectValue}
+                onChange={(e) => handleCategorySelectChange(e.target.value)}
+                className="appearance-none bg-transparent py-2.5 pr-6 pl-1 font-label-md text-xs font-semibold text-on-surface cursor-pointer focus:outline-none hover:text-primary transition-colors truncate max-w-full"
                 aria-label="Filtriraj iskanje po kategoriji"
               >
                 <option value="all">Vse</option>
@@ -500,6 +670,16 @@ export function Header({
                 <option value="deals">Akcije</option>
                 <option value="events">Dogodki</option>
                 <option value="blog">Blog</option>
+                <option value="directory">Imenik (vse)</option>
+                {directoryCategories.length > 0 && (
+                  <optgroup label="Imenik – kategorije">
+                    {directoryCategories.map((cat) => (
+                      <option key={cat.id} value={`directory:${cat.id}`}>
+                        Imenik: {cat.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               <ChevronDown className="w-3 h-3 text-outline absolute right-2 pointer-events-none" />
             </div>
@@ -509,11 +689,11 @@ export function Header({
               <input 
                 value={text}
                 onChange={(e) => {
-                  onSearchChange?.(buildSearchQuery(category, e.target.value));
+                  onSearchChange?.(buildSearchQuery(category, e.target.value, directoryCategoryId || undefined));
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    onSearchSubmit?.(buildSearchQuery(category, text));
+                    onSearchSubmit?.(buildSearchQuery(category, text, directoryCategoryId || undefined));
                     setIsMobileSearchOpen(false);
                   }
                 }}
@@ -524,15 +704,17 @@ export function Header({
                   category === 'deals' ? 'Išči ugodnosti...' :
                   category === 'events' ? 'Išči dogodke...' :
                   category === 'blog' ? 'Išči blog zapise...' :
+                  category === 'directory' ? 'Išči po imeniku...' :
                   'Išči po celotnem portalu...'
                 }
                 type="text" 
                 autoFocus
               />
-              {text && (
+              {(text || Boolean(directoryCategoryId)) && (
                 <button 
                   onClick={() => {
                     setUserCategoryOverride(null);
+                    setUserDirectoryCategoryOverride(null);
                     onSearchChange?.('');
                   }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface p-1 rounded-full hover:bg-surface-container-high"

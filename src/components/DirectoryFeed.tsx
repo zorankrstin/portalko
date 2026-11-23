@@ -21,6 +21,7 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   QrCode,
   Pencil,
   LayoutGrid,
@@ -31,6 +32,8 @@ import { DirectoryDetailPage } from './DirectoryDetailPage';
 import { DirectoryEditModal } from './DirectoryEditModal';
 import { useAuth } from '../contexts/AuthContext';
 import { scrollToPageTop } from '../utils/scrollUtils';
+import { parseSearchQuery } from '../utils/searchUtils';
+import { getFeedCardAnimationClass } from '../utils/animationUtils';
 import {
   DirectoryCategory,
   DirectoryEntry,
@@ -64,10 +67,19 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [sortMode, setSortMode] = useState<DirectorySortMode>('az');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [searchQuery, setSearchQuery] = useState(externalSearchQuery);
+  const [searchQuery, setSearchQuery] = useState(() => parseSearchQuery(externalSearchQuery).text);
 
   useEffect(() => {
-    setSearchQuery(externalSearchQuery);
+    const parsed = parseSearchQuery(externalSearchQuery);
+    setSearchQuery(parsed.text);
+    if (parsed.category === 'directory' && parsed.directoryCategory) {
+      setSelectedCategoryId(parsed.directoryCategory);
+      setActiveDetailSlug(null);
+    } else if (parsed.category === 'directory' && parsed.text.length > 0) {
+      setActiveDetailSlug(null);
+    } else if (parsed.category === 'directory' && externalSearchQuery.trim() === 'kategorija:imenik') {
+      setSelectedCategoryId('all');
+    }
   }, [externalSearchQuery]);
 
   // Modal state for adding or suggesting an entry
@@ -244,7 +256,8 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
           e.domain.toLowerCase().includes(q) ||
           e.description.toLowerCase().includes(q) ||
           e.categoryName.toLowerCase().includes(q) ||
-          (e.location || '').toLowerCase().includes(q)
+          (e.location || '').toLowerCase().includes(q) ||
+          (e.tags || []).some((t) => t.toLowerCase().includes(q))
         )
       ) {
         continue;
@@ -470,30 +483,49 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
           </div>
         )}
 
-        {/* Search + Location/Sort Controls + Category Filters */}
+        {/* Search + Category Selector inside Search Bar + Location/Sort Controls */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Išči blagovno znamko, podjetje, domeno ali kraj..."
-                aria-label="Išči v spletnem imeniku"
-                className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-surface-container-low border border-surface-container text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary transition-colors"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
-                  aria-label="Počisti iskanje"
-                  title="Počisti iskanje"
+            <div className="flex-1 flex items-center bg-surface-container-low rounded-xl border border-surface-container focus-within:border-primary focus-within:bg-surface-container-lowest transition-colors">
+              <div className="relative flex items-center border-r border-surface-container pl-2.5 pr-1 max-w-[175px] shrink-0">
+                <FolderTree className="w-3.5 h-3.5 text-primary shrink-0 mr-1" />
+                <select
+                  value={selectedCategoryId}
+                  onChange={(e) => setSelectedCategoryId(e.target.value)}
+                  aria-label="Išči po kategoriji Imenika"
+                  className="appearance-none bg-transparent py-2.5 pr-5 pl-0.5 text-xs font-bold text-on-surface cursor-pointer focus:outline-none truncate max-w-full"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+                  <option value="all">Vse kategorije</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-outline absolute right-2 pointer-events-none" />
+              </div>
+              <div className="relative flex-1 flex items-center">
+                <Search className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Išči blagovno znamko, podjetje, kategorijo ali kraj..."
+                  aria-label="Išči v spletnem imeniku"
+                  className="w-full pl-9 pr-9 py-2.5 bg-transparent text-sm text-on-surface placeholder:text-outline focus:outline-none"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
+                    aria-label="Počisti iskanje"
+                    title="Počisti iskanje"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -676,11 +708,14 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
             ref={featuredCarouselRef}
             className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 scroll-smooth"
           >
-            {featuredEntries.map((entry) => (
-              <article
+            {featuredEntries.map((entry, idx) => (
+              <div
                 key={entry.id}
-                className="min-w-[260px] max-w-[280px] shrink-0 snap-start rounded-xl p-3.5 bg-surface-container-low/65 border border-amber-500/20 hover:border-primary/40 transition-all flex flex-col justify-between gap-2.5 group"
+                className={`min-w-[260px] max-w-[280px] shrink-0 snap-start flex ${getFeedCardAnimationClass(idx)}`}
               >
+                <article
+                  className="w-full rounded-xl p-3.5 bg-surface-container-low/65 border border-amber-500/20 hover:border-primary/40 transition-all flex flex-col justify-between gap-2.5 group"
+                >
                 <div className="flex flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
@@ -757,6 +792,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                   </div>
                 </div>
               </article>
+              </div>
             ))}
           </div>
         </section>
@@ -793,11 +829,11 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
         </div>
       ) : viewMode === 'list' ? (
         <div className="flex flex-col gap-2.5">
-          {filteredEntries.map((entry) => (
-            <article
-              key={entry.id}
-              className="bg-surface-container-lowest rounded-2xl p-3.5 sm:p-4 shadow-xs border border-surface-container/60 hover:border-primary/35 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
-            >
+          {filteredEntries.map((entry, idx) => (
+            <div key={entry.id} className={getFeedCardAnimationClass(idx)}>
+              <article
+                className="bg-surface-container-lowest rounded-2xl p-3.5 sm:p-4 shadow-xs border border-surface-container/60 hover:border-primary/35 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+              >
               <div className="flex items-start gap-3 min-w-0 flex-1">
                 <div className="w-10 h-10 rounded-xl bg-surface-container-low border border-surface-container flex items-center justify-center shrink-0 overflow-hidden mt-0.5">
                   <img
@@ -931,15 +967,16 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                 )}
               </div>
             </article>
+            </div>
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filteredEntries.map((entry) => (
-            <article
-              key={entry.id}
-              className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-surface-container/60 hover:border-primary/35 transition-all flex flex-col justify-between gap-3 group"
-            >
+          {filteredEntries.map((entry, idx) => (
+            <div key={entry.id} className={getFeedCardAnimationClass(idx)}>
+              <article
+                className="h-full bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-surface-container/60 hover:border-primary/35 transition-all flex flex-col justify-between gap-3 group"
+              >
               <div className="flex flex-col gap-2.5">
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -1079,6 +1116,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
                 </div>
               </div>
             </article>
+            </div>
           ))}
         </div>
       )}
