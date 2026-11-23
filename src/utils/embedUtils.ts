@@ -4,6 +4,17 @@
  * Fully supports and distinguishes between Horizontal (16:9) and Vertical (9:16 portrait) embeds.
  */
 
+export type VideoPlatform = 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'iframe';
+
+export interface VideoEmbedMeta {
+  platform: VideoPlatform;
+  platformName: string;
+  embedUrl: string;
+  originalUrl: string;
+  isVertical: boolean;
+  title: string;
+}
+
 export interface ParsedEmbed {
   platform: 'youtube' | 'twitter' | 'instagram' | 'facebook' | 'tiktok' | 'iframe' | 'generic';
   platformName: string;
@@ -12,6 +23,23 @@ export interface ParsedEmbed {
   embedUrl?: string;
   previewTitle?: string;
   isVertical?: boolean;
+}
+
+export function detectVideoPlatformFromUrl(urlOrHtml: string): VideoPlatform {
+  const lower = (urlOrHtml || '').toLowerCase();
+  if (lower.includes('youtube.com') || lower.includes('youtube-nocookie.com') || lower.includes('youtu.be')) {
+    return 'youtube';
+  }
+  if (lower.includes('tiktok.com')) {
+    return 'tiktok';
+  }
+  if (lower.includes('instagram.com')) {
+    return 'instagram';
+  }
+  if (lower.includes('facebook.com') || lower.includes('fb.watch')) {
+    return 'facebook';
+  }
+  return 'iframe';
 }
 
 /**
@@ -179,12 +207,12 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
   }
 
   // 2. YouTube URLs (Standard 16:9 vs Vertical Shorts 9:16)
-  // Standard: https://www.youtube.com/watch?v=dQw4w9WgXcQ, https://youtu.be/dQw4w9WgXcQ
+  // Standard: https://www.youtube.com/watch?v=dQw4w9WgXcQ, https://youtu.be/dQw4w9WgXcQ, /live/
   // Shorts: https://www.youtube.com/shorts/XYZ, https://youtu.be/shorts/XYZ
-  const ytMatch = input.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+  const ytMatch = input.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
   if (ytMatch && ytMatch[1]) {
     const videoId = ytMatch[1];
-    const detectedShort = input.includes('/shorts/') || input.includes('shorts?v=');
+    const detectedShort = /\/shorts\/|shorts\?v=/i.test(input);
     const isShort = isUserForcedVertical ? true : (isUserForcedHorizontal ? false : detectedShort);
     const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
 
@@ -227,11 +255,11 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
   }
 
   // 4. Instagram URLs (Reels / Stories vs Posts)
-  // https://www.instagram.com/p/C_abc123/ or /reel/C_abc123/ or /reels/C_abc123/
-  const igMatch = input.match(/instagram\.com\/(?:p|reel|reels|tv)\/([a-zA-Z0-9_-]+)/i);
+  // https://www.instagram.com/p/C_abc123/ or /reel/C_abc123/ or /reels/C_abc123/ or /user/reel/C_abc123/
+  const igMatch = input.match(/instagram\.com\/(?:[a-zA-Z0-9._]+\/)?(?:p|reel|reels|tv)\/([a-zA-Z0-9_-]+)/i);
   if (igMatch) {
     const postId = igMatch[1];
-    const detectedReel = input.includes('/reel/') || input.includes('/reels/');
+    const detectedReel = /\/reel\/|\/reels\//i.test(input);
     // Instagram posts and reels are both vertical in layout; user can force horizontal if desired
     const isVertical = isUserForcedHorizontal ? false : true;
     const cleanUrl = detectedReel ? `https://www.instagram.com/reel/${postId}/` : `https://www.instagram.com/p/${postId}/`;
@@ -283,7 +311,7 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
 
   // 6. TikTok URLs (Always Vertical 9:16)
   // https://www.tiktok.com/@user/video/1234567890
-  const tiktokMatch = input.match(/(?:tiktok\.com\/@([^/]+)\/video\/([0-9]+)|(?:vm|vt)\.tiktok\.com\/([a-zA-Z0-9]+))/i);
+  const tiktokMatch = input.match(/(?:tiktok\.com\/@([^/?#]+)\/(?:video|photo)\/([0-9]+)|(?:vm|vt)\.tiktok\.com\/([a-zA-Z0-9]+))/i);
   if (tiktokMatch) {
     const user = tiktokMatch[1] || 'tiktok';
     const videoId = tiktokMatch[2] || tiktokMatch[3];
@@ -323,3 +351,85 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
 
   return null;
 }
+
+/**
+ * Parses a video URL or iframe snippet specifically for the Tiptap Video Embed Extension.
+ * Supports YouTube (standard 16:9 & Shorts 9:16), TikTok (9:16), Instagram Reels (9:16),
+ * Facebook Reels/Video, and raw iframe HTML.
+ */
+export function parseVideoLinkForEditor(
+  rawInput: string,
+  forceOrientation?: 'vertical' | 'horizontal'
+): VideoEmbedMeta | null {
+  const input = rawInput.trim();
+  if (!input) return null;
+
+  // Reject multi-line prose with spaces unless it contains <iframe or <blockquote
+  if (!input.includes('<iframe') && !input.includes('<blockquote') && /\s/.test(input)) {
+    return null;
+  }
+
+  // Raw iframe snippet -> extract src directly
+  if (input.includes('<iframe')) {
+    const srcMatch = input.match(/src=["']([^"']+)["']/i);
+    if (!srcMatch || !srcMatch[1]) return null;
+    const src = srcMatch[1];
+    const platform = detectVideoPlatformFromUrl(src);
+    const autoVertical = isIframeOrHtmlVertical(input) || isIframeOrHtmlVertical(src);
+    const isVertical =
+      forceOrientation === 'vertical'
+        ? true
+        : forceOrientation === 'horizontal'
+        ? false
+        : autoVertical;
+
+    return {
+      platform,
+      platformName:
+        platform === 'youtube'
+          ? isVertical
+            ? 'YouTube Shorts (9:16)'
+            : 'YouTube (16:9)'
+          : platform === 'tiktok'
+          ? 'TikTok (9:16)'
+          : platform === 'instagram'
+          ? 'Instagram Reels (9:16)'
+          : isVertical
+          ? 'Navpični video (9:16)'
+          : 'Vdelan video (16:9)',
+      embedUrl: src,
+      originalUrl: src,
+      isVertical,
+      title: isVertical ? 'Navpični video (9:16)' : 'Vdelan video (16:9)',
+    };
+  }
+
+  const parsed = parseSocialEmbed(input, forceOrientation);
+  if (!parsed) return null;
+
+  if (
+    parsed.platform !== 'youtube' &&
+    parsed.platform !== 'tiktok' &&
+    parsed.platform !== 'instagram' &&
+    parsed.platform !== 'facebook' &&
+    parsed.platform !== 'iframe'
+  ) {
+    return null;
+  }
+
+  // Extract iframe src from parsed embedHtml if embedUrl is a page link (Instagram/TikTok/Facebook)
+  const iframeSrcMatch = parsed.embedHtml.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+  const resolvedEmbedUrl = iframeSrcMatch?.[1] || parsed.embedUrl;
+  if (!resolvedEmbedUrl) return null;
+
+  const isVertical = Boolean(parsed.isVertical);
+  return {
+    platform: parsed.platform,
+    platformName: parsed.platformName,
+    embedUrl: resolvedEmbedUrl,
+    originalUrl: parsed.originalInput,
+    isVertical,
+    title: parsed.previewTitle || parsed.platformName,
+  };
+}
+

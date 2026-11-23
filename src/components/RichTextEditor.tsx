@@ -5,130 +5,32 @@ import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Node } from '@tiptap/core';
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import { 
   Bold, Italic, Underline as UnderlineIcon, Heading1, Heading2, Heading3, Heading4, List, ListOrdered, Link as LinkIcon, Unlink, 
-  Image as ImageIcon, Smile, X, Check, ExternalLink, Share2, 
-  Video, Code, Sparkles, AlertCircle, Upload, Loader2 
+  Image as ImageIcon, ImagePlus, Smile, X, Check, ExternalLink, Share2, 
+  Video, Code, Sparkles, AlertCircle, Upload, Loader2,
+  Table2, Trash2, Merge, Split, Plus, Minus, Columns3, Rows3
 } from 'lucide-react';
-import { parseSocialEmbed, ParsedEmbed, isIframeOrHtmlVertical } from '../utils/embedUtils';
+import { parseSocialEmbed, ParsedEmbed, parseVideoLinkForEditor, VideoEmbedMeta } from '../utils/embedUtils';
+import { VideoEmbedExtension } from '../extensions/VideoEmbedExtension';
 import { uploadImageFileToStorage, MAX_STORAGE_FILE_BYTES } from '../services/storageService';
-
-// Custom Tiptap Node for Iframe Embeds (Fully responsive with vertical and horizontal orientation support)
-const IframeNode = Node.create({
-  name: 'iframe',
-  group: 'block',
-  selectable: true,
-  draggable: true,
-  atom: true,
-
-  addAttributes() {
-    return {
-      src: {
-        default: null,
-      },
-      frameborder: {
-        default: '0',
-      },
-      allowfullscreen: {
-        default: 'true',
-      },
-      allow: {
-        default: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
-      },
-      class: {
-        default: 'w-full h-full border-0',
-      },
-      scrolling: {
-        default: 'no',
-      },
-      title: {
-        default: 'Vdelana vsebina',
-      },
-      'data-vertical': {
-        default: 'false',
-        parseHTML: element => {
-          const direct = element.getAttribute('data-vertical');
-          if (direct === 'true') return 'true';
-          if (direct === 'false') return 'false';
-          const parentContainer = element.closest('.embed-vertical-container');
-          if (parentContainer) return 'true';
-          const src = element.getAttribute('src') || '';
-          return isIframeOrHtmlVertical(element.outerHTML) || isIframeOrHtmlVertical(src) ? 'true' : 'false';
-        },
-        renderHTML: attributes => {
-          return {
-            'data-vertical': attributes['data-vertical'] || 'false',
-          };
-        },
-      },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: 'iframe',
-        getAttrs: (element: HTMLElement) => {
-          const src = element.getAttribute('src') || '';
-          const parentContainer = element.closest('.embed-vertical-container');
-          const isVertical = element.getAttribute('data-vertical') === 'true' || 
-                             Boolean(parentContainer) || 
-                             isIframeOrHtmlVertical(element.outerHTML) || 
-                             isIframeOrHtmlVertical(src);
-          return {
-            src,
-            frameborder: element.getAttribute('frameborder') || '0',
-            allowfullscreen: element.getAttribute('allowfullscreen') || 'true',
-            allow: element.getAttribute('allow') || 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
-            scrolling: element.getAttribute('scrolling') || 'no',
-            title: element.getAttribute('title') || (isVertical ? 'Navpični video (9:16)' : 'Vdelana vsebina'),
-            'data-vertical': isVertical ? 'true' : 'false',
-          };
-        },
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    const src = String(HTMLAttributes.src || '');
-    const isVertical = HTMLAttributes['data-vertical'] === 'true' || isIframeOrHtmlVertical(src);
-
-    if (isVertical) {
-      return [
-        'div',
-        { class: 'embed-vertical-container my-4 w-full flex justify-center' },
-        [
-          'div',
-          { 
-            class: 'w-full max-w-[360px] aspect-[9/16] min-h-[580px] max-h-[740px] rounded-2xl overflow-hidden border border-surface-container shadow-md bg-black relative flex justify-center',
-            style: 'aspect-ratio: 9/16; min-height: 580px;'
-          },
-          ['iframe', { ...HTMLAttributes, 'data-vertical': 'true', class: 'w-full h-full border-0' }]
-        ]
-      ];
-    }
-
-    return [
-      'div',
-      { 
-        class: 'embed-horizontal-container relative w-full max-w-3xl mx-auto aspect-video my-3 overflow-hidden rounded-xl shadow-xs border border-surface-container',
-        style: 'aspect-ratio: 16/9;'
-      },
-      ['iframe', { ...HTMLAttributes, 'data-vertical': 'false', class: 'w-full h-full border-0' }]
-    ];
-  },
-});
+import { auth } from '../lib/firebase';
 
 export interface RichTextEditorRef {
   setLink: () => void;
   unsetLink: () => void;
   addImage: () => void;
+  openFilePicker: () => void;
   openLinkDialog: () => void;
   openImageDialog: () => void;
   openEmbedDialog: () => void;
+  openVideoDialog: () => void;
   insertEmbed: (embedHtml: string) => void;
+  insertVideo: (urlOrHtml: string, orientation?: 'auto' | 'vertical' | 'horizontal') => boolean;
   insertContent: (content: string) => void;
+  insertTable: (options?: { rows?: number; cols?: number; withHeaderRow?: boolean }) => void;
+  openTableDialog: () => void;
   getContent: () => string;
   setContent: (content: string) => void;
   toggleBold: () => void;
@@ -143,6 +45,8 @@ interface RichTextEditorProps {
   initialContent?: string;
   className?: string;
   minHeight?: string;
+  uploadFolder?: string;
+  authorId?: string;
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({ 
@@ -150,7 +54,9 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
   onChange, 
   initialContent = '',
   className = '',
-  minHeight = 'min-h-[140px]'
+  minHeight = 'min-h-[140px]',
+  uploadFolder = 'posts/inline',
+  authorId,
 }, ref) => {
   // Modal states for non-blocking in-app inputs
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
@@ -162,7 +68,9 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadPercent, setImageUploadPercent] = useState(0);
   const [imageUploadFileName, setImageUploadFileName] = useState('');
+  const [imageUploadCountLabel, setImageUploadCountLabel] = useState('');
   const [imageUploadError, setImageUploadError] = useState('');
+  const [isDragOverImage, setIsDragOverImage] = useState(false);
   
   // Embed dialog state
   const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
@@ -171,15 +79,32 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
   const [parsedPreview, setParsedPreview] = useState<ParsedEmbed | null>(null);
   const [embedOrientation, setEmbedOrientation] = useState<'auto' | 'vertical' | 'horizontal'>('auto');
 
+  // Video link dialog state
+  const [isVideoDialogOpen, setIsVideoDialogOpen] = useState(false);
+  const [videoInput, setVideoInput] = useState('');
+  const [videoError, setVideoError] = useState('');
+  const [videoPreview, setVideoPreview] = useState<VideoEmbedMeta | null>(null);
+  const [videoOrientation, setVideoOrientation] = useState<'auto' | 'vertical' | 'horizontal'>('auto');
+
+  // Table insertion dialog state
+  const [isTableDialogOpen, setIsTableDialogOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
+  const [tableWithHeader, setTableWithHeader] = useState(true);
+  const [hoverTableGrid, setHoverTableGrid] = useState<{ rows: number; cols: number } | null>(null);
+
   const linkInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const embedInputRef = useRef<HTMLTextAreaElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const uploadFilesHandlerRef = useRef<(files: File[], insertPos?: number) => Promise<void>>(async () => {});
 
   const editor = useEditor({
     extensions: [
       StarterKit,
       Underline,
-      IframeNode,
+      VideoEmbedExtension,
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
@@ -189,10 +114,22 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         },
       }),
       Image.configure({
+        inline: false,
+        allowBase64: true,
         HTMLAttributes: {
           class: 'rounded-xl max-w-full my-3 border border-surface-container shadow-xs',
         },
       }),
+      Table.configure({
+        resizable: true,
+        renderWrapper: true,
+        HTMLAttributes: {
+          class: 'tiptap-table',
+        },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       Placeholder.configure({
         placeholder: placeholder,
         emptyEditorClass: 'is-editor-empty',
@@ -205,6 +142,27 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     editorProps: {
       attributes: {
         class: `tiptap w-full bg-surface-container-low px-4 py-3 ${minHeight} rounded-b-xl font-body-md text-sm text-on-surface focus:outline-none focus:border-primary border border-transparent transition-colors`,
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved || !event.dataTransfer?.files?.length) return false;
+        const imageFiles = Array.from(event.dataTransfer.files).filter((f) =>
+          f.type.startsWith('image/')
+        );
+        if (imageFiles.length === 0) return false;
+        event.preventDefault();
+        setIsDragOverImage(false);
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        void uploadFilesHandlerRef.current(imageFiles, coords?.pos);
+        return true;
+      },
+      handlePaste: (_view, event) => {
+        const files = event.clipboardData?.files;
+        if (!files || files.length === 0) return false;
+        const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+        if (imageFiles.length === 0) return false;
+        event.preventDefault();
+        void uploadFilesHandlerRef.current(imageFiles);
+        return true;
       },
     },
   });
@@ -220,7 +178,9 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     setLinkText(selectedText || '');
     setIsLinkDialogOpen(true);
     setIsEmbedDialogOpen(false);
+    setIsVideoDialogOpen(false);
     setIsImageDialogOpen(false);
+    setIsTableDialogOpen(false);
     setTimeout(() => linkInputRef.current?.focus(), 80);
   };
 
@@ -273,32 +233,73 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     setIsImageDialogOpen(true);
     setIsLinkDialogOpen(false);
     setIsEmbedDialogOpen(false);
+    setIsVideoDialogOpen(false);
+    setIsTableDialogOpen(false);
     setTimeout(() => imageInputRef.current?.focus(), 80);
   };
 
-  const handleInlineImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !editor) return;
-    if (!file.type.startsWith('image/')) {
-      setImageUploadError('Izbrana datoteka ni veljavna slika.');
-      e.target.value = '';
-      return;
+  const uploadImageFilesToEditor = async (files: File[], insertPos?: number) => {
+    if (!editor || files.length === 0) return;
+
+    const validFiles: File[] = [];
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        setImageUploadError(`Datoteka »${file.name}« ni veljavna slika.`);
+        continue;
+      }
+      if (file.size > MAX_STORAGE_FILE_BYTES) {
+        setImageUploadError(
+          `Slika »${file.name}« presega omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB.`
+        );
+        continue;
+      }
+      validFiles.push(file);
     }
-    if (file.size > MAX_STORAGE_FILE_BYTES) {
-      setImageUploadError(`Slika presega omejitev ${Math.round(MAX_STORAGE_FILE_BYTES / (1024 * 1024))} MB.`);
-      e.target.value = '';
-      return;
-    }
+
+    if (validFiles.length === 0) return;
+
+    const uploaderUid = authorId || auth.currentUser?.uid || 'editor';
     setIsUploadingImage(true);
     setImageUploadPercent(0);
-    setImageUploadFileName(file.name);
     setImageUploadError('');
+
     try {
-      const uploadedUrl = await uploadImageFileToStorage(file, 'posts/inline', 'editor', (pct) => {
-        setImageUploadPercent(pct);
-      });
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        setImageUploadFileName(file.name);
+        setImageUploadCountLabel(
+          validFiles.length > 1 ? `(${i + 1}/${validFiles.length})` : ''
+        );
+
+        const uploadedUrl = await uploadImageFileToStorage(
+          file,
+          uploadFolder,
+          uploaderUid,
+          (pct) => {
+            setImageUploadPercent(pct);
+          }
+        );
+
+        const chain =
+          typeof insertPos === 'number' && i === 0
+            ? editor.chain().focus(insertPos)
+            : editor.chain().focus();
+
+        chain
+          .insertContent([
+            {
+              type: 'image',
+              attrs: {
+                src: uploadedUrl,
+                alt: file.name.replace(/\.[^.]+$/, ''),
+              },
+            },
+            { type: 'paragraph' },
+          ])
+          .run();
+      }
+
       setImageUploadPercent(100);
-      editor.chain().focus().setImage({ src: uploadedUrl }).run();
       setIsImageDialogOpen(false);
       setImageUrl('');
     } catch (err: any) {
@@ -307,8 +308,18 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       setIsUploadingImage(false);
       setImageUploadPercent(0);
       setImageUploadFileName('');
-      e.target.value = '';
+      setImageUploadCountLabel('');
     }
+  };
+
+  uploadFilesHandlerRef.current = uploadImageFilesToEditor;
+
+  const handleInlineImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    e.target.value = '';
+    await uploadImageFilesToEditor(files);
   };
 
   const handleApplyImage = () => {
@@ -335,7 +346,106 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     setIsEmbedDialogOpen(true);
     setIsLinkDialogOpen(false);
     setIsImageDialogOpen(false);
+    setIsVideoDialogOpen(false);
+    setIsTableDialogOpen(false);
     setTimeout(() => embedInputRef.current?.focus(), 80);
+  };
+
+  // Video link dialog handlers
+  const openVideoDialog = () => {
+    setVideoInput('');
+    setVideoError('');
+    setVideoPreview(null);
+    setVideoOrientation('auto');
+    setIsVideoDialogOpen((prev) => !prev);
+    setIsLinkDialogOpen(false);
+    setIsImageDialogOpen(false);
+    setIsEmbedDialogOpen(false);
+    setIsTableDialogOpen(false);
+    setTimeout(() => videoInputRef.current?.focus(), 80);
+  };
+
+  const handleVideoInputChange = (
+    val: string,
+    forcedOri?: 'auto' | 'vertical' | 'horizontal'
+  ) => {
+    setVideoInput(val);
+    setVideoError('');
+    const targetOri = forcedOri !== undefined ? forcedOri : videoOrientation;
+    if (val.trim()) {
+      const parsed = parseVideoLinkForEditor(
+        val.trim(),
+        targetOri === 'auto' ? undefined : targetOri
+      );
+      setVideoPreview(parsed);
+      if (forcedOri === undefined && targetOri === 'auto' && parsed) {
+        setVideoOrientation(parsed.isVertical ? 'vertical' : 'horizontal');
+      }
+    } else {
+      setVideoPreview(null);
+    }
+  };
+
+  const handleVideoOrientationChange = (newOri: 'vertical' | 'horizontal') => {
+    setVideoOrientation(newOri);
+    if (videoInput.trim()) {
+      const parsed = parseVideoLinkForEditor(videoInput.trim(), newOri);
+      setVideoPreview(parsed);
+    }
+  };
+
+  const handleApplyVideo = () => {
+    if (!editor) return;
+    const trimmed = videoInput.trim();
+    if (!trimmed) {
+      setVideoError('Vnesite povezavo do videa (YouTube, TikTok ali Instagram Reels).');
+      return;
+    }
+
+    const ok = editor.chain().focus().setVideoEmbed({
+      urlOrHtml: trimmed,
+      orientation: videoOrientation,
+    }).run();
+
+    if (!ok) {
+      setVideoError(
+        'Povezave ni bilo mogoče prepoznati. Podprti so YouTube, YouTube Shorts, TikTok, Instagram Reels ter <iframe> koda.'
+      );
+      return;
+    }
+
+    setIsVideoDialogOpen(false);
+    setVideoInput('');
+    setVideoPreview(null);
+    setVideoError('');
+    setVideoOrientation('auto');
+  };
+
+  // Table dialog handlers
+  const openTableDialog = () => {
+    setHoverTableGrid(null);
+    setIsTableDialogOpen((prev) => !prev);
+    setIsLinkDialogOpen(false);
+    setIsImageDialogOpen(false);
+    setIsEmbedDialogOpen(false);
+    setIsVideoDialogOpen(false);
+  };
+
+  const handleInsertTable = (
+    rows = tableRows,
+    cols = tableCols,
+    withHeaderRow = tableWithHeader
+  ) => {
+    if (!editor) return;
+    const safeRows = Math.max(1, Math.min(20, Math.floor(Number(rows) || 3)));
+    const safeCols = Math.max(1, Math.min(10, Math.floor(Number(cols) || 3)));
+    editor
+      .chain()
+      .focus()
+      .insertTable({ rows: safeRows, cols: safeCols, withHeaderRow })
+      .run();
+    setIsTableDialogOpen(false);
+    setHoverTableGrid(null);
   };
 
   const handleEmbedInputChange = (val: string, forcedOri?: 'auto' | 'vertical' | 'horizontal') => {
@@ -389,10 +499,28 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     openLinkDialog,
     unsetLink: () => editor?.chain().focus().unsetLink().run(),
     addImage: openImageDialog,
+    openFilePicker: () => fileInputRef.current?.click(),
     openImageDialog,
     openEmbedDialog,
+    openVideoDialog,
     insertEmbed: (embedHtml: string) => editor?.chain().focus().insertContent(embedHtml).run(),
+    insertVideo: (urlOrHtml: string, orientation: 'auto' | 'vertical' | 'horizontal' = 'auto') =>
+      Boolean(editor?.chain().focus().setVideoEmbed({ urlOrHtml, orientation }).run()),
     insertContent: (content: string) => editor?.chain().focus().insertContent(content).run(),
+    insertTable: (options) => {
+      const safeRows = Math.max(1, Math.min(20, Math.floor(options?.rows ?? 3)));
+      const safeCols = Math.max(1, Math.min(10, Math.floor(options?.cols ?? 3)));
+      editor
+        ?.chain()
+        .focus()
+        .insertTable({
+          rows: safeRows,
+          cols: safeCols,
+          withHeaderRow: options?.withHeaderRow ?? true,
+        })
+        .run();
+    },
+    openTableDialog,
     getContent: () => editor?.getHTML() || '',
     setContent: (content: string) => editor?.commands.setContent(content),
     toggleBold: () => editor?.chain().focus().toggleBold().run(),
@@ -531,12 +659,28 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
 
         <div className="w-px h-4 bg-surface-container-high mx-1"></div>
 
+        {/* Quick Video Link Button (YouTube, TikTok, Instagram Reels) */}
+        <button
+          type="button"
+          onClick={openVideoDialog}
+          className={`p-1.5 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 border ${
+            isVideoDialogOpen || editor.isActive('iframe')
+              ? 'bg-primary text-on-primary border-primary font-bold shadow-xs'
+              : 'text-primary hover:bg-primary/10 bg-primary/5 border-primary/20'
+          }`}
+          title="Vstavi video povezavo (YouTube, YouTube Shorts, TikTok, Instagram Reels)"
+          aria-pressed={isVideoDialogOpen || editor.isActive('iframe')}
+        >
+          <Video className="w-3.5 h-3.5" />
+          <span className="text-[11px] font-bold">Video</span>
+        </button>
+
         {/* Embed Post from Social Media Button */}
         <button 
           type="button" 
           onClick={openEmbedDialog} 
           className="p-1.5 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 text-secondary hover:bg-secondary/10 bg-secondary/5 border border-secondary/20" 
-          title="Vdelaj objavo z družbenih omrežij (YouTube, X, Instagram, Facebook, TikTok) ali video"
+          title="Vdelaj objavo z družbenih omrežij (YouTube, X, Instagram, Facebook, TikTok) ali kodo"
         >
           <Share2 className="w-3.5 h-3.5 text-secondary" />
           <span className="text-[11px] font-bold text-secondary">Vdelaj objavo</span>
@@ -544,13 +688,59 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         
         <div className="w-px h-4 bg-surface-container-high mx-1"></div>
         
+        {/* Direct Image File Upload Input & Toolbar Button */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          disabled={isUploadingImage}
+          onChange={handleInlineImageFileUpload}
+          className="hidden"
+          aria-label="Naloži sliko v besedilo"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploadingImage}
+          className="p-1.5 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 text-primary hover:bg-primary/10 bg-primary/5 border border-primary/20 disabled:opacity-50"
+          title="Naloži sliko z naprave neposredno v besedilo"
+        >
+          {isUploadingImage ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+          ) : (
+            <ImagePlus className="w-3.5 h-3.5 text-primary" />
+          )}
+          <span className="text-[11px] font-bold text-primary">
+            {isUploadingImage ? `${imageUploadPercent}%` : 'Dodaj sliko'}
+          </span>
+        </button>
+
         <button 
           type="button" 
           onClick={openImageDialog} 
           className="p-1.5 rounded-lg transition-colors text-on-surface-variant hover:bg-surface-container-high cursor-pointer" 
-          title="Vstavi spletno sliko v besedilo"
+          title="Vstavi sliko preko spletnega naslova (URL)"
+          aria-label="Vstavi sliko preko URL"
         >
           <ImageIcon className="w-4 h-4" />
+        </button>
+
+        {/* Table Button */}
+        <button
+          type="button"
+          onClick={openTableDialog}
+          className={`p-1.5 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+            editor.isActive('table') || isTableDialogOpen
+              ? 'bg-primary text-on-primary font-bold shadow-xs'
+              : 'text-on-surface-variant hover:bg-surface-container-high'
+          }`}
+          title="Vstavi ali uredi tabelo"
+          aria-label="Tabela"
+          aria-pressed={editor.isActive('table') || isTableDialogOpen}
+        >
+          <Table2 className="w-4 h-4" />
+          <span className="text-[11px] font-semibold">Tabela</span>
         </button>
 
         <button 
@@ -562,6 +752,186 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           <Smile className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Contextual Table Editing Sub-Toolbar (Shown when cursor is inside a table) */}
+      {editor.isActive('table') && (
+        <div
+          className="bg-primary/5 border-b border-primary/20 px-2.5 py-1.5 flex items-center gap-1 flex-wrap text-[11px]"
+          role="toolbar"
+          aria-label="Orodja za urejanje tabele"
+        >
+          <span className="inline-flex items-center gap-1 font-bold text-primary mr-1">
+            <Table2 className="w-3.5 h-3.5" />
+            <span>Tabela:</span>
+          </span>
+
+          {/* Rows controls */}
+          <div className="inline-flex items-center gap-0.5 bg-surface-container-lowest border border-surface-container rounded-lg p-0.5">
+            <Rows3 className="w-3 h-3 text-outline mx-1" />
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().addRowBefore().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer flex items-center gap-0.5"
+              title="Dodaj vrstico zgoraj"
+            >
+              <Plus className="w-3 h-3 text-primary" />
+              <span>Zgoraj</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().addRowAfter().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer flex items-center gap-0.5"
+              title="Dodaj vrstico spodaj"
+            >
+              <Plus className="w-3 h-3 text-primary" />
+              <span>Spodaj</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().deleteRow().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-error/10 text-error font-medium cursor-pointer flex items-center gap-0.5"
+              title="Izbriši trenutno vrstico"
+            >
+              <Minus className="w-3 h-3" />
+              <span>Vrstica</span>
+            </button>
+          </div>
+
+          {/* Columns controls */}
+          <div className="inline-flex items-center gap-0.5 bg-surface-container-lowest border border-surface-container rounded-lg p-0.5">
+            <Columns3 className="w-3 h-3 text-outline mx-1" />
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().addColumnBefore().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer flex items-center gap-0.5"
+              title="Dodaj stolpec levo"
+            >
+              <Plus className="w-3 h-3 text-primary" />
+              <span>Levo</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().addColumnAfter().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer flex items-center gap-0.5"
+              title="Dodaj stolpec desno"
+            >
+              <Plus className="w-3 h-3 text-primary" />
+              <span>Desno</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().deleteColumn().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-error/10 text-error font-medium cursor-pointer flex items-center gap-0.5"
+              title="Izbriši trenutni stolpec"
+            >
+              <Minus className="w-3 h-3" />
+              <span>Stolpec</span>
+            </button>
+          </div>
+
+          {/* Header & Cell merge controls */}
+          <div className="inline-flex items-center gap-0.5 bg-surface-container-lowest border border-surface-container rounded-lg p-0.5">
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleHeaderRow().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer"
+              title="Preklopi naslovno vrstico"
+            >
+              Glava vrstice
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleHeaderColumn().run()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer"
+              title="Preklopi naslovni stolpec"
+            >
+              Glava stolpca
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().mergeCells().run()}
+              disabled={!editor.can().mergeCells()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Združi izbrane celice"
+            >
+              <Merge className="w-3 h-3" />
+              <span>Združi</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().splitCell().run()}
+              disabled={!editor.can().splitCell()}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-container text-on-surface font-medium cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Razdeli združeno celico"
+            >
+              <Split className="w-3 h-3" />
+              <span>Razdeli</span>
+            </button>
+          </div>
+
+          {/* Delete Table */}
+          <button
+            type="button"
+            onClick={() => editor.chain().focus().deleteTable().run()}
+            className="ml-auto px-2 py-1 rounded-lg bg-error/10 hover:bg-error/20 text-error font-semibold cursor-pointer flex items-center gap-1 transition-colors"
+            title="Izbriši celotno tabelo"
+          >
+            <Trash2 className="w-3 h-3" />
+            <span>Izbriši tabelo</span>
+          </button>
+        </div>
+      )}
+
+      {/* Inline Upload Progress & Error Bar (Visible even when Image URL popover is closed) */}
+      {(isUploadingImage || (imageUploadError && !isImageDialogOpen)) && (
+        <div className="bg-surface-container-lowest border-b border-primary/25 px-3 py-2 flex flex-col gap-1.5">
+          {isUploadingImage && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-2 text-xs font-semibold text-primary">
+                <span className="flex items-center gap-1.5 truncate min-w-0">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span className="truncate">
+                    Nalagam sliko {imageUploadCountLabel}
+                    {imageUploadFileName ? `: ${imageUploadFileName}` : '...'}
+                  </span>
+                </span>
+                <span className="font-mono font-bold text-[11px] shrink-0">
+                  {imageUploadPercent}%
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={imageUploadPercent}
+                aria-label="Napredek nalaganja slike"
+                className="w-full h-1.5 bg-primary/15 rounded-full overflow-hidden"
+              >
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-150 ease-out"
+                  style={{ width: `${Math.max(4, imageUploadPercent)}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {imageUploadError && !isImageDialogOpen && (
+            <div className="text-[11px] text-error bg-error/10 px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 min-w-0">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{imageUploadError}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setImageUploadError('')}
+                className="p-0.5 rounded hover:bg-error/15 cursor-pointer shrink-0"
+                aria-label="Zapri napako nalaganja"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Inline Link Dialog Popover */}
       {isLinkDialogOpen && (
@@ -831,6 +1201,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             <input
               type="file"
               accept="image/*"
+              multiple
               disabled={isUploadingImage}
               onChange={handleInlineImageFileUpload}
               className="hidden"
@@ -886,8 +1257,281 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         </div>
       )}
 
-      {/* Editor Content Area */}
-      <EditorContent editor={editor} />
+      {/* Inline Table Insertion Dialog Popover */}
+      {isTableDialogOpen && (
+        <div className="bg-surface-container-lowest border-b border-primary/30 p-3 flex flex-col gap-3 animate-in fade-in duration-150 shadow-sm z-10">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-primary flex items-center gap-1.5">
+              <Table2 className="w-3.5 h-3.5" />
+              Vstavi novo tabelo
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsTableDialogOpen(false)}
+              className="p-1 text-outline hover:text-on-surface rounded-md hover:bg-surface-container transition-colors cursor-pointer"
+              aria-label="Zapri pogovorno okno za tabelo"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 items-start">
+            {/* Visual 6x6 Interactive Grid Picker */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-outline">
+                Hitri izbor ({hoverTableGrid ? `${hoverTableGrid.rows} × ${hoverTableGrid.cols}` : `${tableRows} × ${tableCols}`})
+              </span>
+              <div
+                className="grid grid-cols-6 gap-1 p-1.5 rounded-lg bg-surface-container border border-surface-container-high"
+                onMouseLeave={() => setHoverTableGrid(null)}
+              >
+                {Array.from({ length: 6 }).map((_, rIdx) =>
+                  Array.from({ length: 6 }).map((__, cIdx) => {
+                    const r = rIdx + 1;
+                    const c = cIdx + 1;
+                    const activeRows = hoverTableGrid ? hoverTableGrid.rows : tableRows;
+                    const activeCols = hoverTableGrid ? hoverTableGrid.cols : tableCols;
+                    const isHighlighted = r <= activeRows && c <= activeCols;
+                    return (
+                      <button
+                        key={`${r}-${c}`}
+                        type="button"
+                        onMouseEnter={() => setHoverTableGrid({ rows: r, cols: c })}
+                        onClick={() => handleInsertTable(r, c, tableWithHeader)}
+                        aria-label={`Vstavi tabelo ${r} krat ${c}`}
+                        className={`w-5 h-5 rounded-sm border transition-colors cursor-pointer ${
+                          isHighlighted
+                            ? 'bg-primary/80 border-primary'
+                            : 'bg-surface-container-lowest border-surface-container-high hover:border-primary/50'
+                        }`}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Custom Dimensions, Presets & Header Option */}
+            <div className="flex-1 flex flex-col gap-2.5 w-full">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] font-semibold text-outline mr-1">Predloge:</span>
+                {[
+                  { rows: 2, cols: 2 },
+                  { rows: 3, cols: 3 },
+                  { rows: 4, cols: 3 },
+                  { rows: 5, cols: 4 },
+                ].map((preset) => (
+                  <button
+                    key={`${preset.rows}x${preset.cols}`}
+                    type="button"
+                    onClick={() => {
+                      setTableRows(preset.rows);
+                      setTableCols(preset.cols);
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
+                      tableRows === preset.rows && tableCols === preset.cols
+                        ? 'bg-primary/15 border-primary/40 text-primary'
+                        : 'bg-surface-container border-surface-container-high text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    {preset.rows} × {preset.cols}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-outline">Število vrstic</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={tableRows}
+                    onChange={(e) => setTableRows(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-surface-container text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary border border-surface-container-high"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-outline">Število stolpcev</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={tableCols}
+                    onChange={(e) => setTableCols(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-surface-container text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary border border-surface-container-high"
+                  />
+                </div>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-on-surface cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={tableWithHeader}
+                  onChange={(e) => setTableWithHeader(e.target.checked)}
+                  className="rounded border-surface-container-high text-primary focus:ring-primary"
+                />
+                <span>Vključi naslovno vrstico (glava tabele)</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1 border-t border-surface-container-high/40">
+            <button
+              type="button"
+              onClick={() => setIsTableDialogOpen(false)}
+              className="px-3 py-1 text-xs font-medium text-outline hover:text-on-surface rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
+            >
+              Prekliči
+            </button>
+            <button
+              type="button"
+              onClick={() => handleInsertTable()}
+              className="px-3 py-1 text-xs font-semibold bg-primary hover:bg-primary/90 text-on-primary rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Vstavi tabelo ({tableRows} × {tableCols})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Inline Video Link Insertion Dialog (YouTube, TikTok, Instagram Reels) */}
+      {isVideoDialogOpen && (
+        <div className="bg-surface-container-lowest border-b border-primary/30 p-3.5 flex flex-col gap-3 animate-in fade-in duration-150 shadow-sm z-10">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Video className="w-4 h-4 text-primary shrink-0" />
+              <div>
+                <span className="text-xs font-bold text-on-surface block">
+                  Vstavi video povezavo (samodejno zaznavanje)
+                </span>
+                <span className="text-[10px] text-outline">
+                  YouTube (16:9), YouTube Shorts (9:16), TikTok (9:16) in Instagram Reels (9:16). Nasvet: povezavo lahko tudi neposredno prilepite v besedilo!
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsVideoDialogOpen(false)}
+              className="p-1 text-outline hover:text-on-surface rounded-md hover:bg-surface-container transition-colors cursor-pointer"
+              aria-label="Zapri pogovorno okno za video"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-outline">
+              URL povezava do videa (YouTube, TikTok, Instagram Reels) *
+            </label>
+            <input
+              ref={videoInputRef}
+              type="text"
+              value={videoInput}
+              onChange={(e) => handleVideoInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleApplyVideo();
+                }
+                if (e.key === 'Escape') {
+                  setIsVideoDialogOpen(false);
+                }
+              }}
+              placeholder="https://www.youtube.com/watch?v=... ali https://www.tiktok.com/@.../video/... ali https://www.instagram.com/reel/..."
+              className="w-full px-3 py-2 rounded-xl bg-surface-container font-mono text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary border border-surface-container-high"
+            />
+          </div>
+
+          {videoError && (
+            <div className="flex items-center gap-1.5 text-xs text-error font-medium bg-error/10 p-2 rounded-lg">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{videoError}</span>
+            </div>
+          )}
+
+          {videoPreview && (
+            <div className="p-2.5 rounded-xl bg-surface-container-low border border-primary/20 flex flex-col gap-2 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded bg-primary/15 text-primary font-bold text-[10px] uppercase">
+                    {videoPreview.platformName}
+                  </span>
+                  <span className="font-semibold text-on-surface truncate max-w-[240px]">
+                    {videoPreview.title}
+                  </span>
+                </div>
+                <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-bold shrink-0">
+                  Zaznano ✓
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1.5 border-t border-surface-container/60 flex-wrap">
+                <span className="text-[11px] font-semibold text-outline">Odzivni format:</span>
+                <div className="inline-flex rounded-lg p-0.5 bg-surface-container border border-surface-container-high text-xs">
+                  <button
+                    type="button"
+                    onClick={() => handleVideoOrientationChange('vertical')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                      videoPreview.isVertical
+                        ? 'bg-amber-500 text-black shadow-xs font-extrabold'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    Navpično (9:16)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleVideoOrientationChange('horizontal')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                      !videoPreview.isVertical
+                        ? 'bg-primary text-on-primary shadow-xs font-extrabold'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    Vodoravno (16:9)
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-1 border-t border-surface-container-high/40">
+            <button
+              type="button"
+              onClick={() => setIsVideoDialogOpen(false)}
+              className="px-3 py-1.5 text-xs font-medium text-outline hover:text-on-surface rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
+            >
+              Prekliči
+            </button>
+            <button
+              type="button"
+              onClick={handleApplyVideo}
+              disabled={!videoInput.trim()}
+              className="px-3.5 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 text-on-primary rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Vstavi video</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Editor Content Area with Drag-and-Drop highlight */}
+      <div
+        className={`relative ${isDragOverImage ? 'ring-2 ring-primary ring-inset bg-primary/5' : ''}`}
+        onDragOver={(e) => {
+          if (e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault();
+            setIsDragOverImage(true);
+          }
+        }}
+        onDragLeave={() => setIsDragOverImage(false)}
+        onDrop={() => setIsDragOverImage(false)}
+      >
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 });

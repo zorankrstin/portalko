@@ -1322,8 +1322,8 @@ export function PostDetailPage({
         }
         candidates.push({
           id: p.id,
-          title: p.title,
-          description: p.content,
+          title: getPlainTextSnippet(p.title) || p.title,
+          description: getPlainTextSnippet(p.content),
           author: p.authorName,
           authorAvatar: p.authorAvatar,
           image: p.imageUrl || getActiveFallbackImage(true, 'blog') || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
@@ -1352,8 +1352,8 @@ export function PostDetailPage({
 
       candidates.push({
         id: b.id,
-        title: b.title,
-        description: b.description,
+        title: getPlainTextSnippet(b.title) || b.title,
+        description: getPlainTextSnippet(b.description),
         author: b.author,
         authorAvatar: b.authorAvatar,
         image: b.image,
@@ -2916,21 +2916,21 @@ export function PostDetailPage({
         /* Dedicated Related Articles Section for Blog Posts (suggests 3-4 posts from the same category) */
         <section 
           id="related-articles-section"
-          className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-4"
+          className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container/60 shadow-sm flex flex-col gap-5"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-surface-container-low pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 border-b border-surface-container-low pb-3.5">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0 mt-0.5">
                 <BookOpen className="w-5 h-5" />
               </div>
-              <div>
-                <h3 className="font-headline-md text-base sm:text-lg font-bold text-on-surface flex flex-wrap items-center gap-2">
-                  <span>Sorodne objave</span>
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                    {itemData.categoryName || resolveBlogCategory(itemData).name}
-                  </span>
+              <div className="min-w-0">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-primary block mb-0.5">
+                  {itemData.categoryName || resolveBlogCategory(itemData).name}
+                </span>
+                <h3 className="font-headline-md text-base sm:text-lg font-bold text-on-surface leading-tight">
+                  Sorodne objave
                 </h3>
-                <p className="text-xs text-on-surface-variant">
+                <p className="text-xs text-on-surface-variant mt-0.5">
                   Priporočeni članki iz iste kategorije za nadaljnje branje
                 </p>
               </div>
@@ -2943,15 +2943,15 @@ export function PostDetailPage({
                 onViewChange('blog');
                 scrollToPageTop();
               }}
-              className="text-xs text-primary font-bold hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+              className="text-xs text-primary font-bold hover:underline inline-flex items-center gap-1 cursor-pointer self-start sm:self-end shrink-0 whitespace-nowrap"
               title={`Prikaži vse članke v kategoriji ${itemData.categoryName || resolveBlogCategory(itemData).name}`}
             >
               <span>Vsi članki v kategoriji</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <ArrowRight className="w-3.5 h-3.5 shrink-0" />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {relatedArticles.map((article, idx) => {
               const postUrl = buildPostUrl({
                 type: 'blog',
@@ -2960,6 +2960,8 @@ export function PostDetailPage({
                 categoryName: article.categoryName,
                 category: article.categoryId
               });
+              const plainTitle = getPlainTextSnippet(article.title);
+              const plainDescription = getPlainTextSnippet(article.description);
 
               return (
                 <a
@@ -2971,15 +2973,15 @@ export function PostDetailPage({
                     scrollToPageTop();
                     onNavigatePost({ type: 'blog', id: article.id });
                   }}
-                  className="group flex flex-col bg-surface-container-low/50 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-primary/40 transition-all duration-300 ease-out overflow-hidden shadow-2xs hover:shadow-md hover:scale-[1.01] cursor-pointer"
-                  title={article.title}
+                  className="group flex flex-col bg-surface-container-low/40 hover:bg-surface-container-low rounded-2xl border border-surface-container/70 hover:border-primary/40 transition-all duration-300 ease-out overflow-hidden shadow-2xs hover:shadow-md cursor-pointer"
+                  title={plainTitle}
                 >
                   {/* Thumbnail container */}
-                  <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
+                  <div className="relative aspect-16/9 w-full overflow-hidden bg-surface-container">
                     {article.image ? (
                       <img 
                         src={article.image} 
-                        alt={article.title} 
+                        alt={plainTitle} 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                         loading="lazy"
                         onError={handleImageFallbackError}
@@ -2989,45 +2991,45 @@ export function PostDetailPage({
                         <BookOpen className="w-8 h-8" />
                       </div>
                     )}
-                    
-                    {/* Category Pill */}
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-surface-container-lowest/90 backdrop-blur-xs text-[10px] font-bold text-primary shadow-2xs border border-surface-container/40">
-                      {article.categoryName}
-                    </span>
-
-                    {/* Read Time Pill */}
-                    {article.readTime && (
-                      <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{article.readTime}</span>
-                      </span>
-                    )}
                   </div>
 
                   {/* Content */}
-                  <div className="p-3.5 flex-1 flex flex-col gap-1.5">
-                    <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
-                      {article.title}
+                  <div className="p-4 flex-1 flex flex-col gap-2 min-w-0">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-primary min-w-0">
+                      <span className="uppercase tracking-wide truncate">{article.categoryName}</span>
+                      {article.date && (
+                        <>
+                          <span className="text-outline" aria-hidden="true">·</span>
+                          <span className="text-on-surface-variant font-normal shrink-0">{article.date}</span>
+                        </>
+                      )}
+                    </div>
+
+                    <h4 className="font-bold text-sm sm:text-[15px] text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                      {plainTitle}
                     </h4>
-                    {article.description && (
-                      <p className="text-[11px] text-on-surface-variant line-clamp-2 leading-relaxed">
-                        {article.description}
+
+                    {plainDescription && (
+                      <p className="text-xs text-on-surface-variant line-clamp-2 leading-relaxed">
+                        {plainDescription}
                       </p>
                     )}
 
-                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-on-surface-variant truncate max-w-[65%]">
+                    <div className="mt-auto pt-3 border-t border-surface-container/50 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                         <UserAvatar
                           src={article.authorAvatar}
                           name={article.author}
                           size="xs"
-                          className="w-4 h-4 shrink-0 ring-1 ring-black/5 text-[9px]"
+                          className="w-5 h-5 shrink-0 ring-1 ring-black/5 text-[9px]"
                         />
-                        <span className="truncate text-[11px] font-medium">{article.author || 'Portalko avtor'}</span>
+                        <span className="truncate text-xs font-medium text-on-surface-variant">
+                          {article.author || 'Portalko avtor'}
+                        </span>
                       </div>
-                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                      <span className="font-bold text-primary text-xs inline-flex items-center gap-1 shrink-0 whitespace-nowrap group-hover:underline">
                         <span>Preberi</span>
-                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        <ArrowRight className="w-3.5 h-3.5 shrink-0 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     </div>
                   </div>
@@ -3152,14 +3154,14 @@ export function PostDetailPage({
                     <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
                       {deal.title}
                     </h4>
-                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1 text-[11px] text-outline truncate max-w-[65%]">
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1 text-[11px] text-outline min-w-0 flex-1 overflow-hidden">
                         <Store className="w-3.5 h-3.5 text-outline shrink-0" />
                         <span className="truncate font-medium">{deal.partner}</span>
                       </div>
-                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                      <span className="font-bold text-primary text-xs inline-flex items-center gap-0.5 shrink-0 whitespace-nowrap group-hover:underline">
                         <span>Odpri</span>
-                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        <ArrowRight className="w-3 h-3 shrink-0 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     </div>
                   </div>
@@ -3207,14 +3209,14 @@ export function PostDetailPage({
                     <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
                       {evt.title}
                     </h4>
-                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1 text-[11px] text-outline truncate max-w-[65%]">
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1 text-[11px] text-outline min-w-0 flex-1 overflow-hidden">
                         <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
                         <span className="truncate">{evt.city || evt.location}</span>
                       </div>
-                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                      <span className="font-bold text-primary text-xs inline-flex items-center gap-0.5 shrink-0 whitespace-nowrap group-hover:underline">
                         <span>Odpri</span>
-                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        <ArrowRight className="w-3 h-3 shrink-0 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     </div>
                   </div>
@@ -3272,14 +3274,14 @@ export function PostDetailPage({
                     <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
                       {ad.title}
                     </h4>
-                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1 text-[11px] text-outline truncate max-w-[65%]">
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1 text-[11px] text-outline min-w-0 flex-1 overflow-hidden">
                         <MapPin className="w-3.5 h-3.5 text-outline shrink-0" />
                         <span className="truncate">{ad.location}</span>
                       </div>
-                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                      <span className="font-bold text-primary text-xs inline-flex items-center gap-0.5 shrink-0 whitespace-nowrap group-hover:underline">
                         <span>Odpri</span>
-                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        <ArrowRight className="w-3 h-3 shrink-0 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     </div>
                   </div>
@@ -3433,10 +3435,10 @@ export function PostDetailPage({
                       </p>
                     )}
 
-                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-on-surface-variant truncate max-w-[65%]">
+                    <div className="mt-auto pt-2 border-t border-surface-container/50 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 text-on-surface-variant min-w-0 flex-1 overflow-hidden">
                         {post.location ? (
-                          <div className="flex items-center gap-1 text-[11px] text-outline truncate">
+                          <div className="flex items-center gap-1 text-[11px] text-outline min-w-0 w-full">
                             <MapPin className="w-3.5 h-3.5 text-outline shrink-0" />
                             <span className="truncate">{post.location}</span>
                           </div>
@@ -3446,9 +3448,9 @@ export function PostDetailPage({
                           <span className="text-[11px] text-outline truncate">{authorDisplayName}</span>
                         )}
                       </div>
-                      <span className="font-bold text-primary text-xs flex items-center gap-0.5 group-hover:underline">
+                      <span className="font-bold text-primary text-xs inline-flex items-center gap-0.5 shrink-0 whitespace-nowrap group-hover:underline">
                         <span>{post.type === 'event' || post.type === 'ad' ? 'Odpri' : 'Preberi'}</span>
-                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        <ArrowRight className="w-3 h-3 shrink-0 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     </div>
                   </div>

@@ -8,20 +8,25 @@ import DOMPurify from 'dompurify';
 export function getPlainTextSnippet(htmlOrText?: string): string {
   if (!htmlOrText || typeof htmlOrText !== 'string') return '';
   try {
+    const addBlockSpacing = (input: string) =>
+      input
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/<\/(p|div|h[1-6]|li|tr|td|th|blockquote|section|article)>/gi, ' </$1>');
+
     const parser = new DOMParser();
     // First pass
-    const doc1 = parser.parseFromString(htmlOrText, 'text/html');
+    const doc1 = parser.parseFromString(addBlockSpacing(htmlOrText), 'text/html');
     let text = doc1.body.textContent || '';
     
     // If it was double-encoded or contains residual tags like &lt;p&gt;
     if (text.includes('<') && text.includes('>')) {
-      const doc2 = parser.parseFromString(text, 'text/html');
+      const doc2 = parser.parseFromString(addBlockSpacing(text), 'text/html');
       text = doc2.body.textContent || text;
     }
-    // Clean up excessive whitespace
-    return text.replace(/\s+/g, ' ').trim();
+    // Clean up excessive whitespace and non-breaking spaces
+    return text.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   } catch {
-    return htmlOrText.replace(/<[^>]+>/g, '').trim();
+    return htmlOrText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 }
 
@@ -56,7 +61,7 @@ export function getCleanHtml(html?: string): string {
   );
 
   return DOMPurify.sanitize(content, {
-    ADD_TAGS: ['iframe', 'blockquote', 'u'],
+    ADD_TAGS: ['iframe', 'blockquote', 'u', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col'],
     ADD_ATTR: [
       'allow', 
       'allowfullscreen', 
@@ -71,8 +76,14 @@ export function getCleanHtml(html?: string): string {
       'target', 
       'rel', 
       'title',
+      'colspan',
+      'rowspan',
+      'colwidth',
       'data-vertical',
       'data-orientation',
+      'data-video-embed',
+      'data-platform',
+      'data-original-url',
       'data-aspect',
       'data-dnt',
       'loading',

@@ -1955,7 +1955,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           )}
 
           <div className="flex flex-col gap-1.5">
-            <RichTextEditor ref={editorRef} placeholder="Podrobnejši opis objave..." onChange={setContent} />
+            <RichTextEditor
+              ref={editorRef}
+              placeholder="Podrobnejši opis objave..."
+              onChange={setContent}
+              uploadFolder={postType === 'ad' ? 'ads/inline' : postType === 'event' ? 'events/inline' : 'posts/inline'}
+              authorId={authorId}
+            />
           </div>
 
           <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-surface-container-low/60 border border-surface-container">

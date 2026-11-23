@@ -483,7 +483,85 @@ html, body {
   margin-top: 0;
 }
 
-/* Responsive Social Media & Video Embeds (Horizontal & Vertical 9:16) */
+/* Tiptap Table Extension Styles (Editor & Post Rendering) */
+.tiptap .tableWrapper {
+  overflow-x: auto;
+  margin: 0.9rem 0;
+  border-radius: 0.75rem;
+}
+
+.tiptap table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+
+.tiptap td,
+.tiptap th {
+  min-width: 72px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+  text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.tiptap td > p,
+.tiptap th > p {
+  margin-bottom: 0.25rem;
+}
+
+.tiptap td > p:last-child,
+.tiptap th > p:last-child {
+  margin-bottom: 0;
+}
+
+.tiptap th {
+  font-weight: 700;
+  background-color: rgba(148, 163, 184, 0.14);
+  color: var(--color-on-surface, inherit);
+}
+
+.tiptap .selectedCell::after {
+  z-index: 2;
+  position: absolute;
+  content: "";
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(59, 130, 246, 0.14);
+  pointer-events: none;
+}
+
+.tiptap .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background-color: var(--color-primary, #2563eb);
+  pointer-events: none;
+}
+
+.tiptap.resize-cursor {
+  cursor: col-resize;
+}
+
+/* Responsive Social Media & Video Embeds (Horizontal 16:9 & Vertical 9:16) */
+.video-embed-wrapper,
+.embed-vertical-container,
+.embed-horizontal-container {
+  max-width: 100%;
+}
+
+.video-embed-vertical,
 .embed-vertical-container {
   display: flex;
   justify-content: center;
@@ -493,14 +571,24 @@ html, body {
   margin-bottom: 1rem;
 }
 
+.video-embed-frame--vertical,
 .embed-vertical-container > div {
   width: 100%;
   max-width: 380px;
-  min-height: 580px;
+  min-height: 540px;
   max-height: 760px;
   aspect-ratio: 9 / 16;
 }
 
+@media (max-width: 420px) {
+  .video-embed-frame--vertical,
+  .embed-vertical-container > div {
+    min-height: 460px;
+    max-height: 78vh;
+  }
+}
+
+.video-embed-vertical iframe,
 .embed-vertical-container iframe {
   width: 100% !important;
   height: 100% !important;
@@ -508,6 +596,8 @@ html, body {
   display: block;
 }
 
+.video-embed-horizontal,
+.responsive-video-embed,
 .embed-horizontal-container {
   width: 100%;
   max-width: 48rem;
@@ -518,6 +608,8 @@ html, body {
   aspect-ratio: 16 / 9;
 }
 
+.video-embed-horizontal iframe,
+.responsive-video-embed iframe,
 .embed-horizontal-container iframe {
   width: 100% !important;
   height: 100% !important;
@@ -532,7 +624,7 @@ html, body {
 .embed-horizontal-container:has(iframe[src*="tiktok.com"]) {
   aspect-ratio: auto !important;
   max-width: 380px !important;
-  min-height: 580px !important;
+  min-height: 540px !important;
   display: flex;
   justify-content: center;
 }
@@ -542,11 +634,12 @@ html, body {
 .embed-horizontal-container:has(iframe[src*="reel"]) iframe,
 .embed-horizontal-container:has(iframe[src*="tiktok.com"]) iframe {
   aspect-ratio: 9 / 16 !important;
-  min-height: 580px !important;
+  min-height: 540px !important;
   max-height: 740px !important;
 }
 
-.tiptap iframe {
+.tiptap iframe,
+.video-embed-iframe {
   max-width: 100%;
 }
 

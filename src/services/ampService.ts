@@ -373,6 +373,27 @@ ${JSON.stringify(schemaJsonLd, null, 2)}
         font-style: italic;
         color: #475569;
       }
+      .amp-body .tableWrapper {
+        overflow-x: auto;
+        margin: 16px 0;
+      }
+      .amp-body table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      .amp-body th,
+      .amp-body td {
+        border: 1px solid var(--border);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .amp-body th {
+        background: #f1f5f9;
+        font-weight: 700;
+        color: var(--text);
+      }
       .amp-tags {
         display: flex;
         flex-wrap: wrap;
