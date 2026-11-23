@@ -19,6 +19,16 @@ import {
   SiteRssFeedType,
   SiteRssItem,
 } from "./src/utils/rssFeedGenerator";
+import {
+  OgCollectionName as ServiceOgCollectionName,
+  ResolvedOgMetadata,
+  isSocialPreviewCrawler,
+  extractFirstDataImageUri,
+  resolveBestOgImageUrl,
+  resolveOgMetadataFromLookup,
+  injectOgTagsIntoSpaHtml,
+  buildPreRenderedCrawlerHtml,
+} from "./src/services/ogMetaGeneratorService";
 import { isMaliciousSecurityPath, verifyIncomingRequestSecurity } from "./src/utils/securityGuard";
 
 dotenv.config();
@@ -58,9 +68,29 @@ let lastSitemapTime = 0;
 const SITEMAP_CACHE_DURATION = 15 * 60 * 1000;
 
 // Real-time published posts cache & generated RSS XML cache for external news aggregators
-let realtimeSitePostDocs: Array<{ id: string; data: any }> = [];
+type OgCollectionName = "posts" | "ads" | "events" | "directory";
+interface CachedServerDoc {
+  id: string;
+  data: any;
+}
+
+let realtimeSitePostDocs: CachedServerDoc[] = [];
 let hasRealtimePostsSnapshot = false;
 let isRealtimePostsListenerActive = false;
+
+const collectionDocsCache: Record<Exclude<OgCollectionName, "posts">, {
+  docs: CachedServerDoc[];
+  hasSnapshot: boolean;
+  listenerActive: boolean;
+}> = {
+  ads: { docs: [], hasSnapshot: false, listenerActive: false },
+  events: { docs: [], hasSnapshot: false, listenerActive: false },
+  directory: { docs: [], hasSnapshot: false, listenerActive: false },
+};
+
+let realtimePortalFallbackImage = "";
+let isPortalSettingsListenerActive = false;
+
 const cachedSiteRssXmlMap = new Map<string, { xml: string; etag: string; lastModified: string }>();
 
 function invalidateSiteFeedCaches() {
@@ -69,32 +99,145 @@ function invalidateSiteFeedCaches() {
   lastSitemapTime = 0;
 }
 
+async function withServerTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function startSiteRssRealtimeSync(): Promise<void> {
-  if (isRealtimePostsListenerActive) return;
   try {
     const db = await getServerFirestoreDb();
     if (!db) return;
 
-    const { collection, onSnapshot } = await import("firebase/firestore");
-    isRealtimePostsListenerActive = true;
-    onSnapshot(
-      collection(db, "posts"),
-      (snapshot) => {
-        realtimeSitePostDocs = snapshot.docs.map((d) => ({
-          id: d.id,
-          data: d.data(),
-        }));
-        hasRealtimePostsSnapshot = true;
-        invalidateSiteFeedCaches();
-      },
-      (err) => {
-        isRealtimePostsListenerActive = false;
-        console.warn("[Site RSS] Firestore realtime listener notice:", err?.message || err);
+    const { collection, doc: fsDoc, onSnapshot } = await import("firebase/firestore");
+
+    if (!isRealtimePostsListenerActive) {
+      isRealtimePostsListenerActive = true;
+      onSnapshot(
+        collection(db, "posts"),
+        (snapshot) => {
+          realtimeSitePostDocs = snapshot.docs.map((d) => ({
+            id: d.id,
+            data: d.data(),
+          }));
+          hasRealtimePostsSnapshot = true;
+          invalidateSiteFeedCaches();
+        },
+        (err) => {
+          isRealtimePostsListenerActive = false;
+          console.warn("[Site RSS] Firestore realtime listener notice:", err?.message || err);
+        }
+      );
+    }
+
+    for (const colName of ["ads", "events", "directory"] as const) {
+      const slot = collectionDocsCache[colName];
+      if (!slot.listenerActive) {
+        slot.listenerActive = true;
+        onSnapshot(
+          collection(db, colName),
+          (snapshot) => {
+            slot.docs = snapshot.docs.map((d) => ({
+              id: d.id,
+              data: d.data(),
+            }));
+            slot.hasSnapshot = true;
+          },
+          () => {
+            slot.listenerActive = false;
+          }
+        );
       }
-    );
+    }
+
+    if (!isPortalSettingsListenerActive) {
+      isPortalSettingsListenerActive = true;
+      onSnapshot(
+        fsDoc(db, "settings", "portal"),
+        (snap) => {
+          if (snap.exists()) {
+            const d = snap.data() as any;
+            if (d?.useFallbackForMissingImages && typeof d?.fallbackImageUrl === "string") {
+              realtimePortalFallbackImage = d.fallbackImageUrl.trim();
+            } else {
+              realtimePortalFallbackImage = "";
+            }
+          }
+        },
+        () => {
+          isPortalSettingsListenerActive = false;
+        }
+      );
+    }
   } catch (err: any) {
     isRealtimePostsListenerActive = false;
     console.warn("[Site RSS] Could not initialize realtime posts listener:", err?.message || err);
+  }
+}
+
+async function getServerCollectionDocs(colName: OgCollectionName): Promise<CachedServerDoc[]> {
+  if (colName === "posts") {
+    if (hasRealtimePostsSnapshot) return realtimeSitePostDocs;
+    return withServerTimeout(getPublishedSitePostsDocs(), 2500, realtimeSitePostDocs);
+  }
+
+  const slot = collectionDocsCache[colName];
+  if (slot.hasSnapshot) return slot.docs;
+
+  try {
+    const db = await getServerFirestoreDb();
+    if (!db) return slot.docs;
+    const { collection, getDocs } = await import("firebase/firestore");
+    const docs = await withServerTimeout(
+      getDocs(collection(db, colName)).then((snap) =>
+        snap.docs.map((d) => ({ id: d.id, data: d.data() }))
+      ),
+      2500,
+      slot.docs
+    );
+    if (docs.length > 0) {
+      slot.docs = docs;
+      slot.hasSnapshot = true;
+    }
+    return docs;
+  } catch {
+    return slot.docs;
+  }
+}
+
+async function rehydrateServerDocIfSharded(colName: OgCollectionName, docId: string, data: any): Promise<any> {
+  if (!data || !data.hasChunkedContent || colName === "directory") return data;
+  try {
+    const db = await getServerFirestoreDb();
+    if (!db) return data;
+    const { collection, getDocs } = await import("firebase/firestore");
+    const chunkSnap = await withServerTimeout(
+      getDocs(collection(db, colName, docId, "chunks")),
+      1500,
+      null as any
+    );
+    if (!chunkSnap || chunkSnap.empty) return data;
+
+    const pieces = chunkSnap.docs
+      .map((d: any) => d.data())
+      .sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
+      .map((c: any) => String(c.data || ""))
+      .join("");
+    if (!pieces) return data;
+
+    const parsedOverflow = JSON.parse(pieces);
+    return { ...data, ...parsedOverflow };
+  } catch {
+    return data;
   }
 }
 
@@ -238,121 +381,40 @@ async function getOrGenerateSitemap(): Promise<string> {
   return xml;
 }
 
+function resolveRequestOrigin(req: express.Request): string {
+  const xfHost = (req.headers["x-forwarded-host"] as string)?.split(",")[0]?.trim();
+  const host = xfHost || req.get("host") || "";
+  if (!host) return SITE_URL;
+  const xfProto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim();
+  const proto =
+    xfProto ||
+    req.protocol ||
+    (host.includes("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+async function resolveOgMetadataForTargetUrl(
+  rawUrl: string,
+  origin: string
+): Promise<ResolvedOgMetadata> {
+  return resolveOgMetadataFromLookup(rawUrl, origin, {
+    siteUrl: SITE_URL,
+    portalFallbackImage: realtimePortalFallbackImage,
+    getCollectionDocs: (colName) => getServerCollectionDocs(colName as OgCollectionName),
+    rehydrateShardedDoc: (colName, docId, data) =>
+      rehydrateServerDocIfSharded(colName as OgCollectionName, docId, data),
+  });
+}
+
 /**
- * Injects Google Analytics tag at the very beginning of <head>,
- * along with route-specific SEO titles and meta descriptions.
+ * Injects Google Analytics tag and dynamic Firestore-resolved SEO / OpenGraph / Twitter metadata
+ * into the full SPA HTML document.
  */
-function preparePageHtml(rawHtml: string, reqUrl: string): string {
-  let html = rawHtml;
-
-  // Determine metadata based on URL path
-  const parsedUrl = new URL(reqUrl, "https://portalko.net");
-  const pathname = parsedUrl.pathname.replace(/\/+$/, "") || "/";
-  const segments = pathname.split("/").filter(Boolean);
-
-  let title = "Portalko – Slovenski portal za novice, male oglase in dogodke";
-  let description = "Portalko je osrednji slovenski spletni portal za novice, brezplačne male oglase, lokalne dogodke, ugodnosti in popuste ter skupnost po vsej Sloveniji.";
-  let ogType = "website";
-  const canonicalUrl = `https://portalko.net${pathname === "/" ? "" : pathname}`;
-
-  if (pathname === "/novice") {
-    title = "Aktualne novice v Sloveniji – RSS viri v živo | Portalko";
-    description = "Zadnje novice iz osrednjih slovenskih medijev in RSS virov v živo. Preverite aktualna dogajanja v Sloveniji in po svetu na portalu Portalko.";
-  } else if (pathname === "/mali-oglasi") {
-    title = "Mali oglasi Slovenija – Brezplačni spletni oglasi | Portalko";
-    description = "Brezplačni mali oglasi v Sloveniji. Poiščite rabljena in nova vozila, nepremičnine, elektroniko, dom in storitve po slovenskih regijah.";
-  } else if (pathname === "/dogodki") {
-    title = "Dogodki in prireditve v Sloveniji – Koledar dogodkov | Portalko";
-    description = "Koledar prireditev, koncertov, festivalov, športnih in kulturnih dogodkov po celotni Sloveniji na enem mestu na portalu Portalko.";
-  } else if (pathname === "/akcije") {
-    title = "Akcije, popusti in ugodnosti v Sloveniji | Portalko";
-    description = "Preverjene akcije, promocijske kode, ugodnosti in popusti v slovenskih trgovinah ter na spletu. Prihranite z vsakodnevnimi popusti na Portalko.";
-  } else if (pathname === "/blog") {
-    title = "Blog & Zgodbe slovenske skupnosti | Portalko";
-    description = "Avtorske zgodbe, potopisi, lokalni vodiči in razmišljanja članov slovenske spletne skupnosti na uradnem blogu portala Portalko.";
-  } else if (pathname === "/shranjeno") {
-    title = "Shranjene objave in zaznamki | Portalko";
-    description = "Vaše shranjene novice, mali oglasi, dogodki in ugodnosti na enem mestu za hiter in enostaven dostop na slovenskem portalu Portalko.";
-  } else if (pathname === "/o-nas") {
-    title = "O portalu Portalko – Slovenski portal za novice, male oglase in dogodke | Portalko";
-    description = "Spoznajte portal Portalko, osrednjo slovensko skupnost za novice, male oglase, lokalne prireditve in ugodnosti.";
-  } else if (pathname === "/pogoji-uporabe") {
-    title = "Pogoji uporabe portala | Portalko";
-    description = "Pogoji uporabe in pravna pravila za uporabnike spletnega portala Portalko.";
-  } else if (pathname === "/zasebnost") {
-    title = "Politika zasebnosti | Portalko";
-    description = "Informacije o varstvu osebnih podatkov in zasebnosti na portalu Portalko.";
-  } else if (pathname === "/kontakt") {
-    title = "Kontakt | Portalko";
-    description = "Stopite v stik z uredništvom in podporo portala Portalko.";
-  } else if (pathname === "/pravila-objavljanja") {
-    title = "Pravila objavljanja vsebin | Portalko";
-    description = "Smernice in pravila za varno objavljanje malih oglasov, dogodkov in prispevkov na portalu Portalko.";
-  } else if (segments.length >= 2) {
-    // Category or Post page (e.g. /dogodki/glasba-koncerti/... or /novice/slovenija)
-    const section = segments[0];
-    const lastSegment = segments[segments.length - 1];
-    let humanTitle = lastSegment
-      .split("-")
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
-
-    if (lastSegment === "noc-carovnic-za-otroke-v-kranjski-gori") {
-      humanTitle = "Noč čarovnic za otroke v Kranjski Gori";
-    }
-
-    if (segments.length >= 3 || (section !== "novice" && segments.length === 2 && !["slovenija", "svet", "gospodarstvo", "sport", "kultura", "tehnologija"].includes(segments[1]))) {
-      // Looks like an individual post or deep subcategory
-      title = `${humanTitle} | Portalko`;
-      if (section === "dogodki") {
-        description = `Podrobnosti, datum, lokacija in program za dogodek ${humanTitle} v Sloveniji na portalu Portalko.`;
-        ogType = "event";
-      } else if (section === "mali-oglasi") {
-        description = `Oglejte si oglas ${humanTitle}, fotografije, ceno in kontakt prodajalca na malih oglasih Portalko.`;
-        ogType = "product";
-      } else if (section === "akcije") {
-        description = `Preverite ugodnost, popust, ceno in promocijsko kodo za ${humanTitle} na portalu Portalko.`;
-        ogType = "product";
-      } else if (section === "blog") {
-        description = `Preberite celoten blog članek ${humanTitle}, zgodbe in praktične nasvete slovenske skupnosti na Portalko.`;
-        ogType = "article";
-      } else {
-        description = `Preberite podrobnosti novice ${humanTitle} in aktualno dogajanje na slovenskem portalu Portalko.`;
-        ogType = "article";
-      }
-    } else {
-      const sectionName = section === "mali-oglasi" ? "Mali oglasi" : section === "dogodki" ? "Dogodki" : section === "akcije" ? "Akcije" : section === "blog" ? "Blog" : "Novice";
-      title = `${humanTitle} – ${sectionName} | Portalko`;
-      description = `Pregled aktualnih objav v kategoriji ${humanTitle} na portalu Portalko v rubriki ${sectionName}.`;
-    }
-  }
-
-  // Update Title
-  html = html.replace(/<title>.*?<\/title>/i, `<title>${title}</title>`);
-  
-  // Update Meta Description
-  html = html.replace(/<meta\s+name=["']description["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta name="description" content="${description}" />`);
-
-  // Update Canonical
-  html = html.replace(/<link\s+rel=["']canonical["']\s+href=["'][^"']*["']\s*\/?>/i, `<link rel="canonical" href="${canonicalUrl}" />`);
-
-  // Update OpenGraph
-  html = html.replace(/<meta\s+property=["']og:title["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta property="og:title" content="${title}" />`);
-  html = html.replace(/<meta\s+property=["']og:description["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta property="og:description" content="${description}" />`);
-  html = html.replace(/<meta\s+property=["']og:url["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta property="og:url" content="${canonicalUrl}" />`);
-  html = html.replace(/<meta\s+property=["']og:type["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta property="og:type" content="${ogType}" />`);
-
-  // Update Twitter Cards
-  html = html.replace(/<meta\s+name=["']twitter:title["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta name="twitter:title" content="${title}" />`);
-  html = html.replace(/<meta\s+name=["']twitter:description["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta name="twitter:description" content="${description}" />`);
-  html = html.replace(/<meta\s+name=["']twitter:url["']\s+content=["'][^"']*["']\s*\/?>/i, `<meta name="twitter:url" content="${canonicalUrl}" />`);
-
-  // Ensure Google Analytics is present in <head> if not already included
-  if (!html.includes("G-DYZSLZ29C4")) {
-    html = html.replace(/(<\/head>)/i, `${GA_TAG_HTML}\n$1`);
-  }
-
-  return html;
+async function preparePageHtml(rawHtml: string, req: express.Request): Promise<string> {
+  const origin = resolveRequestOrigin(req);
+  const rawUrl = req.originalUrl || req.url || "/";
+  const meta = await resolveOgMetadataForTargetUrl(rawUrl, origin);
+  return injectOgTagsIntoSpaHtml(rawHtml, meta, GA_TAG_HTML);
 }
 
 async function startServer() {
@@ -377,7 +439,11 @@ async function startServer() {
   // Allow external RSS news aggregators, feed readers & search crawlers on public syndication endpoints (/rss.xml, /sitemap.xml, etc.)
   app.use((req, res, next) => {
     const cleanReqPath = (req.path || "").toLowerCase().replace(/\/+$/, "") || "/";
-    if (PUBLIC_SYNDICATION_PATHS.has(cleanReqPath)) {
+    if (
+      PUBLIC_SYNDICATION_PATHS.has(cleanReqPath) ||
+      cleanReqPath.startsWith("/api/og-image/") ||
+      cleanReqPath.startsWith("/api/meta/")
+    ) {
       if (isMaliciousSecurityPath(req.path, req.originalUrl || req.url)) {
         return res.status(404).type("text/plain").send("Not Found");
       }
@@ -394,6 +460,96 @@ async function startServer() {
   });
 
   app.use(express.json());
+
+  // Hidden meta-tag generator & pre-render endpoints (JSON inspection + pre-rendered HTML proxy)
+  app.get("/api/meta/og", async (req, res) => {
+    try {
+      const origin = resolveRequestOrigin(req);
+      const targetParam = String(req.query.url || req.query.path || "/").trim();
+      const meta = await resolveOgMetadataForTargetUrl(targetParam, origin);
+      return res.status(200).json({ ok: true, meta });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err?.message || "Meta resolution error" });
+    }
+  });
+
+  app.get("/api/meta/prerender", async (req, res) => {
+    try {
+      const origin = resolveRequestOrigin(req);
+      const targetParam = String(req.query.url || req.query.path || "/").trim();
+      const meta = await resolveOgMetadataForTargetUrl(targetParam, origin);
+      const html = buildPreRenderedCrawlerHtml(meta, origin);
+      return res
+        .status(200)
+        .set({
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+          "Vary": "User-Agent",
+          "X-OG-Prerender": "1",
+        })
+        .send(html);
+    } catch (err: any) {
+      return res.status(500).type("text/plain").send(err?.message || "Prerender failed");
+    }
+  });
+
+  // Dynamic binary OpenGraph image endpoint for posts whose cover/inline image is stored as a base64 data URI
+  app.get("/api/og-image/:collectionName/:docId", async (req, res) => {
+    try {
+      const colRaw = String(req.params.collectionName || "").trim();
+      const docId = decodeURIComponent(String(req.params.docId || "")).trim();
+      const allowedCols: ServiceOgCollectionName[] = ["posts", "ads", "events", "directory"];
+      if (!allowedCols.includes(colRaw as ServiceOgCollectionName) || !docId) {
+        return res.status(404).end();
+      }
+      const colName = colRaw as OgCollectionName;
+      const docs = await getServerCollectionDocs(colName);
+      const matched = docs.find((d) => d.id === docId);
+
+      let data = matched?.data;
+      if (!data) {
+        const db = await getServerFirestoreDb();
+        if (db) {
+          const { doc: fsDoc, getDoc } = await import("firebase/firestore");
+          const snap = await withServerTimeout(getDoc(fsDoc(db, colName, docId)), 2000, null as any);
+          if (snap?.exists?.()) {
+            data = snap.data();
+          }
+        }
+      }
+
+      if (data?.hasChunkedContent && !extractFirstDataImageUri(data)) {
+        data = await rehydrateServerDocIfSharded(colName, docId, data);
+      }
+
+      const dataUri = data ? extractFirstDataImageUri(data) : null;
+      if (dataUri) {
+        const match = dataUri.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
+        if (match) {
+          const mimeType = match[1];
+          const buffer = Buffer.from(match[2], "base64");
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader("Cache-Control", "public, max-age=3600");
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          return res.status(200).send(buffer);
+        }
+      }
+
+      const origin = resolveRequestOrigin(req);
+      const fallbackUrl = data ? resolveBestOgImageUrl(colName, docId, data, origin) : null;
+      if (fallbackUrl && !fallbackUrl.includes("/api/og-image/")) {
+        return res.redirect(302, fallbackUrl);
+      }
+
+      const faviconPath = path.join(process.cwd(), "public", "favicon.png");
+      if (fs.existsSync(faviconPath)) {
+        return res.sendFile(faviconPath);
+      }
+      return res.status(404).end();
+    } catch {
+      return res.status(404).end();
+    }
+  });
 
   // CORS middleware for /api routes
   app.use("/api", (req, res, next) => {
@@ -2161,6 +2317,43 @@ Vrni strogo JSON z natančnim ID-jem izbrane kategorije iz zgornjega seznama.`;
     next();
   });
 
+  // Hidden server-side pre-render proxy middleware for social media crawlers (Facebook, X, WhatsApp, LinkedIn, etc.)
+  // Intercepts page requests before Vite or static SPA handlers so scrapers receive clean, head-first OG HTML immediately.
+  app.get("*", async (req, res, next) => {
+    const pathname = req.path || "/";
+    if (
+      pathname.startsWith("/api") ||
+      pathname.startsWith("/@") ||
+      pathname.startsWith("/src") ||
+      /\.(js|css|png|jpe?g|gif|svg|ico|json|woff2?|ttf|eot|webp|avif|map|xml|txt)$/i.test(pathname)
+    ) {
+      return next();
+    }
+
+    const ua = req.headers["user-agent"] || "";
+    const forcePrerender = req.query._prerender === "1";
+    if (!forcePrerender && !isSocialPreviewCrawler(ua)) {
+      return next();
+    }
+
+    try {
+      const origin = resolveRequestOrigin(req);
+      const meta = await resolveOgMetadataForTargetUrl(req.originalUrl || req.url || "/", origin);
+      const crawlerHtml = buildPreRenderedCrawlerHtml(meta, origin);
+      return res
+        .status(200)
+        .set({
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+          "Vary": "User-Agent",
+          "X-OG-Prerender": "1",
+        })
+        .send(crawlerHtml);
+    } catch {
+      return next();
+    }
+  });
+
   // Page serving & Vite middleware
   const isProduction = 
     process.env.NODE_ENV === "production" || 
@@ -2198,12 +2391,13 @@ Vrni strogo JSON z natančnim ID-jem izbrane kategorije iz zgornjega seznama.`;
         const indexHtmlPath = path.resolve(process.cwd(), "index.html");
         let template = fs.readFileSync(indexHtmlPath, "utf-8");
         template = await vite.transformIndexHtml(url, template);
-        const html = preparePageHtml(template, url);
+        const html = await preparePageHtml(template, req);
         res
           .status(200)
           .set({
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Vary": "User-Agent",
           })
           .send(html);
       } catch (e: any) {
@@ -2223,11 +2417,11 @@ Vrni strogo JSON z natančnim ID-jem izbrane kategorije iz zgornjega seznama.`;
     const resolvedDistPath = candidateDirs.find(d => fs.existsSync(path.join(d, "index.html"))) || path.join(process.cwd(), "dist");
     const distIndexPath = path.join(resolvedDistPath, "index.html");
 
-    // Serve static assets from dist
-    app.use(express.static(resolvedDistPath));
+    // Serve static assets from dist (disable default index.html auto-serve on '/' so dynamic OG tags apply to root too)
+    app.use(express.static(resolvedDistPath, { index: false }));
 
-    // Fallback for all SPA page routes - handles browser refreshes in production
-    app.get("*", (req, res) => {
+    // Fallback for all SPA page routes - handles browser refreshes & social link previews in production
+    app.get("*", async (req, res) => {
       // Don't intercept API requests
       if (req.path.startsWith("/api")) {
         return res.status(404).json({ error: "API endpoint ni bil najden." });
@@ -2237,8 +2431,15 @@ Vrni strogo JSON z natančnim ID-jem izbrane kategorije iz zgornjega seznama.`;
       if (fs.existsSync(distIndexPath)) {
         try {
           const template = fs.readFileSync(distIndexPath, "utf-8");
-          const html = preparePageHtml(template, req.originalUrl);
-          return res.status(200).set({ "Content-Type": "text/html; charset=utf-8" }).send(html);
+          const html = await preparePageHtml(template, req);
+          return res
+            .status(200)
+            .set({
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-store, no-cache, must-revalidate",
+              "Vary": "User-Agent",
+            })
+            .send(html);
         } catch (err) {
           return res.sendFile(distIndexPath);
         }

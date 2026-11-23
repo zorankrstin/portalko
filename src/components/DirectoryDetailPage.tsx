@@ -3,8 +3,6 @@ import {
   ArrowLeft,
   BadgeCheck,
   ChevronRight,
-  Copy,
-  Check,
   ExternalLink,
   Globe,
   HelpCircle,
@@ -21,7 +19,9 @@ import {
   MessageSquare,
   Send,
   Trash2,
+  Share2,
 } from 'lucide-react';
+import { ShareModal } from './common/ShareModal';
 import { useAuth } from '../contexts/AuthContext';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { getCleanHtml, getPlainTextSnippet } from '../utils/textUtils';
@@ -81,7 +81,7 @@ export function DirectoryDetailPage({
   onEdit,
 }: DirectoryDetailPageProps) {
   const { currentUser } = useAuth();
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [reviews, setReviews] = useState<DirectoryReview[]>([]);
   const [newRating, setNewRating] = useState<number>(5);
   const [hoverRating, setHoverRating] = useState<number>(0);
@@ -350,16 +350,6 @@ export function DirectoryDetailPage({
     };
   }, [entry, canonicalUrl, seoTitle, seoDescription, seoKeywords, plainRichSummary, geoFaqs, averageRating, reviewCount]);
 
-  const handleCopyCanonical = async () => {
-    try {
-      await navigator.clipboard.writeText(canonicalUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    } catch {
-      // ignore clipboard errors
-    }
-  };
-
   const formattedDate = useMemo(() => {
     try {
       return new Date(entry.createdAt).toLocaleDateString('sl-SI', {
@@ -400,21 +390,12 @@ export function DirectoryDetailPage({
 
         <button
           type="button"
-          onClick={handleCopyCanonical}
+          onClick={() => setIsShareModalOpen(true)}
           className="px-2.5 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface text-[11px] font-bold inline-flex items-center gap-1.5 border border-surface-container transition-colors cursor-pointer shrink-0"
-          title="Kopiraj povezavo do te strani"
+          title="Deli stran in preveri predogled za družbena omrežja"
         >
-          {copiedLink ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Kopirano</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5 text-primary" />
-              <span>Deli stran</span>
-            </>
-          )}
+          <Share2 className="w-3.5 h-3.5 text-primary" />
+          <span>Deli stran</span>
         </button>
       </nav>
 
@@ -852,6 +833,19 @@ export function DirectoryDetailPage({
             ))}
           </div>
         </section>
+      )}
+      {/* Share Overlay with Social Media Preview */}
+      {isShareModalOpen && (
+        <ShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          title={seoTitle}
+          url={canonicalUrl}
+          description={seoDescription}
+          imageUrl={entry.logoUrl}
+          category={entry.categoryName}
+          location={entry.location}
+        />
       )}
     </article>
   );

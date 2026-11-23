@@ -81,20 +81,32 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   setMetaTag('name', 'geo.country', 'SI');
 
   // 4. OpenGraph Tags
+  const resolvedOgImage = (() => {
+    const raw = (image || '').trim();
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://portalko.net';
+    if (!raw || raw.startsWith('data:')) {
+      return `${origin}/favicon.png`;
+    }
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
+    }
+    return `${origin}${raw.startsWith('/') ? raw : `/${raw}`}`;
+  })();
+
   setMetaTag('property', 'og:title', title);
   setMetaTag('property', 'og:description', description);
   setMetaTag('property', 'og:url', canonicalUrl);
   setMetaTag('property', 'og:type', ogType);
   setMetaTag('property', 'og:site_name', 'Portalko');
   setMetaTag('property', 'og:locale', 'sl_SI');
-  setMetaTag('property', 'og:image', image.startsWith('http') ? image : (typeof window !== 'undefined' ? `${window.location.origin}${image}` : image));
+  setMetaTag('property', 'og:image', resolvedOgImage);
 
   // 5. Twitter Cards
   setMetaTag('name', 'twitter:card', 'summary_large_image');
   setMetaTag('name', 'twitter:title', title);
   setMetaTag('name', 'twitter:description', description);
   setMetaTag('name', 'twitter:url', canonicalUrl);
-  setMetaTag('name', 'twitter:image', image.startsWith('http') ? image : (typeof window !== 'undefined' ? `${window.location.origin}${image}` : image));
+  setMetaTag('name', 'twitter:image', resolvedOgImage);
 
   // 6. Canonical Link
   let canonicalLink = document.querySelector('link[rel="canonical"]');

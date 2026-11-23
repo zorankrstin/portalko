@@ -143,6 +143,38 @@ const SUSPICIOUS_BOT_UA_PATTERNS: (string | RegExp)[] = [
 ];
 
 /**
+ * Legitimate social media link-preview scrapers and major search engine crawlers.
+ * Must NEVER be blocked so shared links on Facebook, WhatsApp, X, Viber, etc.
+ * always fetch OpenGraph metadata and preview images cleanly.
+ */
+const ALLOWED_CRAWLER_UA_PATTERNS: (string | RegExp)[] = [
+  /facebookexternalhit/i,
+  /facebot/i,
+  /meta-externalagent/i,
+  /meta-externalfetcher/i,
+  /twitterbot/i,
+  /linkedinbot/i,
+  /whatsapp/i,
+  /viber/i,
+  /telegrambot/i,
+  /discordbot/i,
+  /slackbot/i,
+  /pinterest/i,
+  /redditbot/i,
+  /skypeuripreview/i,
+  /snapchat/i,
+  /applebot/i,
+  /googlebot/i,
+  /adsbot-google/i,
+  /mediapartners-google/i,
+  /google-inspectiontool/i,
+  /feedfetcher-google/i,
+  /bingbot/i,
+  /msnbot/i,
+  /duckduckbot/i,
+];
+
+/**
  * Checks whether a given path or URL matches known malicious or scanner patterns.
  */
 export function isMaliciousSecurityPath(pathname?: string, queryOrUrl?: string): boolean {
@@ -176,6 +208,17 @@ export function isSuspiciousBotUserAgent(userAgent?: string | null): boolean {
   // Excessively short or placeholder UA strings
   if (cleanUa.length < 5 || cleanUa.toLowerCase() === 'user' || cleanUa.toLowerCase() === 'test') {
     return true;
+  }
+
+  // Always allow trusted social preview bots (Facebook, WhatsApp, X, etc.) and search crawlers
+  for (const allowedPattern of ALLOWED_CRAWLER_UA_PATTERNS) {
+    if (typeof allowedPattern === 'string') {
+      if (cleanUa.toLowerCase().includes(allowedPattern.toLowerCase())) {
+        return false;
+      }
+    } else if (allowedPattern.test(cleanUa)) {
+      return false;
+    }
   }
 
   for (const pattern of SUSPICIOUS_BOT_UA_PATTERNS) {

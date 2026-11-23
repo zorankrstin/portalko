@@ -14,6 +14,9 @@ export type { ShareTargetType };
 export interface TriggerShareFeedbackOptions {
   title: string;
   subtitle?: string;
+  url?: string;
+  imageUrl?: string;
+  domain?: string;
   showConfetti?: boolean;
 }
 
@@ -80,12 +83,15 @@ export function ShareProvider({ children }: { children: ReactNode }) {
       id: nextId,
       title: options.title,
       subtitle: options.subtitle,
+      url: options.url,
+      imageUrl: options.imageUrl,
+      domain: options.domain,
       showConfetti: options.showConfetti ?? true,
     });
 
     feedbackTimerRef.current = setTimeout(() => {
       setShareFeedback((current) => (current?.id === nextId ? null : current));
-    }, 3400);
+    }, 3800);
   }, []);
 
   const getShareKey = useCallback((id?: string, type?: ShareTargetType | string, url?: string): string => {

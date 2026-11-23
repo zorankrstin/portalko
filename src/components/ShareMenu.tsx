@@ -91,6 +91,8 @@ export function ShareMenu({
           type: cleanType,
           id,
           title,
+          category,
+          categoryName: category,
         });
         return `${origin}${cleanPath}`;
       }
@@ -105,6 +107,8 @@ export function ShareMenu({
           type: cleanType,
           id: match[2],
           title,
+          category,
+          categoryName: category,
         });
         return `${origin}${cleanPath}`;
       }
