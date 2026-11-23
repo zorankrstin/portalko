@@ -154,7 +154,7 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
   // Filter real Firestore events
   const filteredFirestore = useMemo(() => {
     return firestoreEvents.filter(event => {
-      const textToMatch = `${event.title} ${event.description || ''} ${event.category || ''} ${event.categoryName || ''} ${event.subcategory || ''} ${event.subcategoryName || ''} ${event.location || ''} ${event.region || ''}`;
+      const textToMatch = `${event.title} ${event.description || ''} ${event.authorName || ''} ${(event as any).organizer || ''} ${event.category || ''} ${event.categoryName || ''} ${event.subcategory || ''} ${event.subcategoryName || ''} ${event.location || ''} ${event.region || ''} ${(event.tags || []).join(' ')}`;
       const matchesSearch = matchesSearchAndCategory(textToMatch, 'events', searchQuery);
       
       const evCatLower = (event.category || '').toLowerCase().trim();

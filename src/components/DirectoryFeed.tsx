@@ -67,11 +67,11 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [sortMode, setSortMode] = useState<DirectorySortMode>('az');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [searchQuery, setSearchQuery] = useState(() => parseSearchQuery(externalSearchQuery).text);
+  const [searchQuery, setSearchQuery] = useState(() => parseSearchQuery(externalSearchQuery).inputText);
 
   useEffect(() => {
     const parsed = parseSearchQuery(externalSearchQuery);
-    setSearchQuery(parsed.text);
+    setSearchQuery(parsed.inputText);
     if (parsed.category === 'directory' && parsed.directoryCategory) {
       setSelectedCategoryId(parsed.directoryCategory);
       setActiveDetailSlug(null);
@@ -213,7 +213,7 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   }, [publishedEntries]);
 
   const filteredEntries = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const terms = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const list = publishedEntries.filter((entry) => {
       if (selectedCategoryId !== 'all' && entry.categoryId !== selectedCategoryId) {
         return false;
@@ -224,15 +224,21 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
       if (verifiedOnly && !entry.isVerified) {
         return false;
       }
-      if (!q) return true;
-      return (
-        entry.name.toLowerCase().includes(q) ||
-        entry.domain.toLowerCase().includes(q) ||
-        entry.description.toLowerCase().includes(q) ||
-        entry.categoryName.toLowerCase().includes(q) ||
-        (entry.location || '').toLowerCase().includes(q) ||
-        (entry.tags || []).some((t) => t.toLowerCase().includes(q))
-      );
+      if (terms.length === 0) return true;
+      const searchable = [
+        entry.name,
+        entry.domain,
+        entry.description,
+        entry.categoryName,
+        entry.location || '',
+        entry.address || '',
+        entry.phone || '',
+        entry.email || '',
+        ...(entry.tags || []),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return terms.every((term) => searchable.includes(term));
     });
 
     return [...list].sort((a, b) => {
@@ -243,24 +249,29 @@ export function DirectoryFeed({ onOpenAdminDirectory, searchQuery: externalSearc
   }, [publishedEntries, selectedCategoryId, selectedLocation, verifiedOnly, searchQuery, sortMode]);
 
   const categoryCounts = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const terms = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const counts: Record<string, number> = {};
     for (const e of publishedEntries) {
       if (selectedLocation !== 'all' && (e.location || '').trim() !== selectedLocation) {
         continue;
       }
-      if (
-        q &&
-        !(
-          e.name.toLowerCase().includes(q) ||
-          e.domain.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q) ||
-          e.categoryName.toLowerCase().includes(q) ||
-          (e.location || '').toLowerCase().includes(q) ||
-          (e.tags || []).some((t) => t.toLowerCase().includes(q))
-        )
-      ) {
-        continue;
+      if (terms.length > 0) {
+        const searchable = [
+          e.name,
+          e.domain,
+          e.description,
+          e.categoryName,
+          e.location || '',
+          e.address || '',
+          e.phone || '',
+          e.email || '',
+          ...(e.tags || []),
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!terms.every((term) => searchable.includes(term))) {
+          continue;
+        }
       }
       counts[e.categoryId] = (counts[e.categoryId] || 0) + 1;
     }

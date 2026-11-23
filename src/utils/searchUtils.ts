@@ -4,6 +4,7 @@ export interface ParsedSearchQuery {
   category: SearchCategory;
   directoryCategory?: string;
   text: string;
+  inputText: string;
   terms: string[];
   rawQuery: string;
 }
@@ -51,6 +52,26 @@ const CATEGORY_MAP: Record<string, SearchCategory> = {
   'all': 'all',
 };
 
+function stripTokenPreservingSpacing(
+  source: string,
+  match: RegExpMatchArray
+): string {
+  if (match.index === undefined) return source;
+  const start = match.index;
+  const end = start + match[0].length;
+  const before = source.slice(0, start);
+  const after = source.slice(end);
+
+  if (before.length === 0) {
+    return after.startsWith(' ') ? after.slice(1) : after;
+  }
+  if (after.length === 0) {
+    return before;
+  }
+  const needsSpace = !before.endsWith(' ') && !after.startsWith(' ');
+  return needsSpace ? `${before} ${after}` : `${before}${after}`;
+}
+
 /**
  * Parses a search query string for category tags such as:
  * - "kategorija:oglasi avto"
@@ -64,10 +85,10 @@ export function parseSearchQuery(query: string = ''): ParsedSearchQuery {
   const rawQuery = query || '';
   let category: SearchCategory = 'all';
   let directoryCategory: string | undefined;
-  let text = rawQuery;
+  let workingText = rawQuery;
 
   // 1. Match prefix like "kategorija:xyz", "kategorija:imenik/cat-id", "category:xyz", "cat:xyz"
-  const colonMatch = text.match(/(?:^|\s)(?:kategorija|category|cat):([a-z0-9_-]+)(?:\/([a-z0-9_-]+))?/i);
+  const colonMatch = workingText.match(/(?:^|\s)(?:kategorija|category|cat):([a-z0-9_-]+)(?:\/([a-z0-9_-]+))?/i);
   if (colonMatch) {
     const catKey = colonMatch[1].toLowerCase();
     if (CATEGORY_MAP[catKey]) {
@@ -75,37 +96,38 @@ export function parseSearchQuery(query: string = ''): ParsedSearchQuery {
       if (category === 'directory' && colonMatch[2]) {
         directoryCategory = colonMatch[2];
       }
+      workingText = stripTokenPreservingSpacing(workingText, colonMatch);
     }
-    text = text.replace(colonMatch[0], ' ');
   }
 
   // 2. Match bracket syntax like "[oglasi]", "[novice]", "[imenik]"
-  const bracketMatch = text.match(/(?:^|\s)\[([a-z0-9_-]+)\]/i);
+  const bracketMatch = workingText.match(/(?:^|\s)\[([a-z0-9_-]+)\]/i);
   if (bracketMatch && category === 'all') {
     const catKey = bracketMatch[1].toLowerCase();
     if (CATEGORY_MAP[catKey]) {
       category = CATEGORY_MAP[catKey];
+      workingText = stripTokenPreservingSpacing(workingText, bracketMatch);
     }
-    text = text.replace(bracketMatch[0], ' ');
   }
 
   // 3. Match hashtag syntax like "#oglasi", "#novice", "#popusti", "#imenik"
-  const hashMatch = text.match(/(?:^|\s)#(oglasi|novice|dogodki|blog|popusti|ugodnosti|imenik|ads|news|events|deals|directory)\b/i);
+  const hashMatch = workingText.match(/(?:^|\s)#(oglasi|novice|dogodki|blog|popusti|ugodnosti|imenik|ads|news|events|deals|directory)\b/i);
   if (hashMatch && category === 'all') {
     const catKey = hashMatch[1].toLowerCase();
     if (CATEGORY_MAP[catKey]) {
       category = CATEGORY_MAP[catKey];
+      workingText = stripTokenPreservingSpacing(workingText, hashMatch);
     }
-    text = text.replace(hashMatch[0], ' ');
   }
 
-  const cleanedText = text.trim();
+  const cleanedText = workingText.trim();
   const terms = cleanedText ? cleanedText.toLowerCase().split(/\s+/).filter(Boolean) : [];
 
   return {
     category,
     ...(directoryCategory ? { directoryCategory } : {}),
     text: cleanedText,
+    inputText: workingText,
     terms,
     rawQuery,
   };
@@ -113,15 +135,16 @@ export function parseSearchQuery(query: string = ''): ParsedSearchQuery {
 
 /**
  * Re-constructs a search query string given a category, text, and optional Imenik subcategory ID.
+ * Preserves whitespace within `text` so users can type multi-word queries with the spacebar.
  */
 export function buildSearchQuery(
   category: SearchCategory,
   text: string = '',
   directoryCategory?: string
 ): string {
-  const cleanText = text.trim();
+  const rawText = text ?? '';
   if (category === 'all') {
-    return cleanText;
+    return rawText;
   }
   
   const categoryTokenMap: Record<SearchCategory, string> = {
@@ -138,9 +161,9 @@ export function buildSearchQuery(
   if (category === 'directory' && directoryCategory && directoryCategory !== 'all') {
     token = `${token}/${directoryCategory}`;
   }
-  if (!token) return cleanText;
+  if (!token) return rawText;
 
-  return cleanText ? `${token} ${cleanText}` : token;
+  return rawText.length > 0 ? `${token} ${rawText}` : token;
 }
 
 /**
@@ -151,7 +174,7 @@ export function matchesSearchAndCategory(
   itemCategory?: string,
   searchQuery: string = ''
 ): boolean {
-  if (!searchQuery) return true;
+  if (!searchQuery || !searchQuery.trim()) return true;
 
   const parsed = parseSearchQuery(searchQuery);
 
@@ -164,7 +187,7 @@ export function matchesSearchAndCategory(
     }
   }
 
-  // Text terms check
+  // Text terms check (supports 2+ word queries matching anywhere in item text)
   if (parsed.terms.length > 0) {
     const lowerItemText = itemText.toLowerCase();
     const allTermsMatch = parsed.terms.every(term => lowerItemText.includes(term));

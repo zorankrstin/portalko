@@ -116,6 +116,7 @@ export function Header({
       : category;
 
   const text = parsedSearch.text;
+  const inputText = parsedSearch.inputText;
 
   // Close dropdown on click outside & subscribe to posts + directory metadata
   useEffect(() => {
@@ -141,10 +142,16 @@ export function Header({
 
   useEffect(() => {
     const q = text.trim().toLowerCase();
+    const terms = q ? q.split(/\s+/).filter(Boolean) : [];
+    const matchesTerms = (haystack: string) => {
+      if (terms.length === 0) return true;
+      const lower = haystack.toLowerCase();
+      return terms.every((t) => lower.includes(t));
+    };
 
     if (category === 'directory') {
       const catMatches = directoryCategories
-        .filter((c) => !q || c.name.toLowerCase().includes(q))
+        .filter((c) => matchesTerms(c.name))
         .slice(0, 4)
         .map((cat) => ({
           kind: 'directory-category' as const,
@@ -152,15 +159,13 @@ export function Header({
           label: cat.name,
         }));
 
-      const entryMatches = q.length >= 1
+      const entryMatches = terms.length > 0
         ? directoryEntries
             .filter(
               (e) =>
                 e.status === 'published' &&
                 (!directoryCategoryId || e.categoryId === directoryCategoryId) &&
-                (e.name.toLowerCase().includes(q) ||
-                  e.domain.toLowerCase().includes(q) ||
-                  e.categoryName.toLowerCase().includes(q))
+                matchesTerms(`${e.name} ${e.domain} ${e.categoryName} ${e.location || ''} ${e.description}`)
             )
             .slice(0, 5)
             .map((entry) => ({
@@ -181,7 +186,13 @@ export function Header({
     }
 
     const postMatches = allPosts
-      .filter(p => p.status !== 'osnutek' && p.status !== 'rejected' && p.status !== 'archived' && p.title.toLowerCase().includes(q))
+      .filter(
+        (p) =>
+          p.status !== 'osnutek' &&
+          p.status !== 'rejected' &&
+          p.status !== 'archived' &&
+          matchesTerms(`${p.title} ${p.categoryName || ''} ${(p.tags || []).join(' ')} ${p.location || ''}`)
+      )
       .map(p => p.title);
 
     const uniquePosts = [...new Set(postMatches)].slice(0, 4).map((label) => ({
@@ -191,7 +202,7 @@ export function Header({
 
     const matchingDirCats = category === 'all'
       ? directoryCategories
-          .filter((c) => c.name.toLowerCase().includes(q))
+          .filter((c) => matchesTerms(c.name))
           .slice(0, 2)
           .map((cat) => ({
             kind: 'directory-category' as const,
@@ -205,7 +216,7 @@ export function Header({
           .filter(
             (e) =>
               e.status === 'published' &&
-              (e.name.toLowerCase().includes(q) || e.domain.toLowerCase().includes(q))
+              matchesTerms(`${e.name} ${e.domain} ${e.categoryName} ${e.location || ''}`)
           )
           .slice(0, 2)
           .map((entry) => ({
@@ -339,7 +350,7 @@ export function Header({
               <Search className="w-4 h-4 text-outline ml-3 shrink-0" />
               <input 
                 id="search-input"
-                value={text}
+                value={inputText}
                 onChange={(e) => {
                   onSearchChange?.(buildSearchQuery(category, e.target.value, directoryCategoryId || undefined));
                 }}
@@ -437,7 +448,7 @@ export function Header({
                 </div>
               )}
 
-              {(text || (parsedSearch.category !== 'all' && parsedSearch.category !== activeViewCategory) || Boolean(directoryCategoryId)) && (
+              {(inputText || (parsedSearch.category !== 'all' && parsedSearch.category !== activeViewCategory) || Boolean(directoryCategoryId)) && (
                 <button 
                   onClick={() => {
                     setUserCategoryOverride(null);
@@ -687,7 +698,7 @@ export function Header({
             <div className="relative flex-1 flex items-center">
               <Search className="w-4 h-4 text-outline ml-2.5 shrink-0" />
               <input 
-                value={text}
+                value={inputText}
                 onChange={(e) => {
                   onSearchChange?.(buildSearchQuery(category, e.target.value, directoryCategoryId || undefined));
                 }}
@@ -710,7 +721,7 @@ export function Header({
                 type="text" 
                 autoFocus
               />
-              {(text || Boolean(directoryCategoryId)) && (
+              {(inputText || Boolean(directoryCategoryId)) && (
                 <button 
                   onClick={() => {
                     setUserCategoryOverride(null);

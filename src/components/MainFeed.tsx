@@ -181,28 +181,28 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTag
       let cat = 'all';
 
       if (item.type === 'firestore') {
-        textToMatch = `${item.data.title} ${item.data.content} ${item.data.authorName} ${item.data.category || ''}`;
+        textToMatch = `${item.data.title} ${item.data.content} ${item.data.authorName} ${item.data.category || ''} ${item.data.categoryName || ''} ${item.data.subcategoryName || ''} ${item.data.location || ''} ${item.data.region || ''} ${(item.data.tags || []).join(' ')}`;
         cat = item.data.category || 'all';
       } else if (item.type === 'firestore_ad') {
-        textToMatch = `${item.data.title} ${item.data.description} ${item.data.authorName} ${item.data.category || ''} ${item.data.location || ''}`;
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.authorName} ${item.data.category || ''} ${item.data.categoryName || ''} ${item.data.subcategoryName || ''} ${item.data.location || ''} ${item.data.region || ''} ${item.data.price || ''} ${(item.data.tags || []).join(' ')}`;
         cat = 'ads';
       } else if (item.type === 'firestore_event') {
-        textToMatch = `${item.data.title} ${item.data.description} ${item.data.authorName} ${item.data.category || ''} ${item.data.location || ''}`;
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.authorName} ${item.data.category || ''} ${item.data.categoryName || ''} ${item.data.subcategoryName || ''} ${item.data.location || ''} ${item.data.region || ''} ${(item.data.tags || []).join(' ')}`;
         cat = 'events';
       } else if (item.type === 'news') {
         textToMatch = `${item.data.title} ${item.data.description} ${item.data.sourceName} ${item.data.category || ''}`;
         cat = 'news';
       } else if (item.type === 'blog') {
-        textToMatch = `${item.data.title} ${item.data.description} ${item.data.author} ${item.data.location} ${item.data.tags.join(' ')}`;
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.author} ${item.data.location || ''} ${(item.data.tags || []).join(' ')}`;
         cat = 'blog';
       } else if (item.type === 'ad') {
-        textToMatch = `${item.data.title} ${item.data.description} ${item.data.categoryName} ${item.data.location}`;
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.categoryName} ${item.data.location || ''} ${item.data.author || ''} ${item.data.price || ''} ${(item.data.tags || []).join(' ')}`;
         cat = 'ads';
       } else if (item.type === 'deal') {
-        textToMatch = `${item.data.title} ${item.data.description} ${item.data.partner} ${item.data.code}`;
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.partner} ${item.data.code || ''} ${item.data.categoryName || ''} ${item.data.region || ''} ${(item.data.tags || []).join(' ')}`;
         cat = 'deals';
       } else if (item.type === 'event') {
-        textToMatch = `${item.data.title} ${item.data.description} ${item.data.categoryName} ${item.data.location} ${item.data.organizer}`;
+        textToMatch = `${item.data.title} ${item.data.description} ${item.data.categoryName} ${item.data.location || ''} ${item.data.organizer || ''} ${(item.data.tags || []).join(' ')}`;
         cat = 'events';
       }
 

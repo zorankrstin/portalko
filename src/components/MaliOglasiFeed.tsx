@@ -129,7 +129,7 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost,
   // Filter Firestore ads
   const filteredFirestore = useMemo(() => {
     return firestoreAds.filter(ad => {
-      const textToMatch = `${getPlainTextSnippet(ad.title)} ${getPlainTextSnippet(ad.description)} ${ad.category} ${ad.categoryName || ''} ${ad.subcategory || ''} ${ad.subcategoryName || ''} ${ad.location || ''} ${ad.region || ''}`;
+      const textToMatch = `${getPlainTextSnippet(ad.title)} ${getPlainTextSnippet(ad.description)} ${ad.authorName || ''} ${ad.price || ''} ${ad.category} ${ad.categoryName || ''} ${ad.subcategory || ''} ${ad.subcategoryName || ''} ${ad.location || ''} ${ad.region || ''} ${(ad.tags || []).join(' ')}`;
       const matchesSearch = matchesSearchAndCategory(textToMatch, 'ads', searchQuery);
       
       const aCatLower = (ad.category || '').toLowerCase().trim();

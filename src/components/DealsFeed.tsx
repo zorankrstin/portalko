@@ -325,7 +325,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
   // Filter deals
   const filteredDeals = useMemo(() => {
     return combinedDeals.filter(deal => {
-      const textToMatch = `${getPlainTextSnippet(deal.title)} ${deal.partner} ${getPlainTextSnippet(deal.description)} ${deal.categoryName} ${(deal as any).subcategoryName || ''} ${deal.region} ${deal.code || ''}`;
+      const dealTagsText = Array.isArray((deal as any).tags) ? (deal as any).tags.join(' ') : String((deal as any).tags || '');
+      const textToMatch = `${getPlainTextSnippet(deal.title)} ${deal.partner} ${getPlainTextSnippet(deal.description)} ${deal.categoryName} ${(deal as any).subcategoryName || ''} ${deal.location || ''} ${deal.region} ${deal.code || ''} ${dealTagsText}`;
       
       // 1. App-level searchQuery filter (category + terms)
       if (searchQuery && !matchesSearchAndCategory(textToMatch, 'deals', searchQuery)) {
