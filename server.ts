@@ -6,13 +6,14 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { 
-  getBaseSitemapEntries, 
-  generateXmlFromEntries, 
-  formatFirestoreDocToSitemapEntry, 
-  SitemapEntry, 
-  SITE_URL 
+import {
+  SITE_URL,
 } from "./src/utils/sitemapGenerator";
+import {
+  createPeriodicSitemapManager,
+  CrawledFirestoreDoc,
+  SitemapCollectionName,
+} from "./src/services/sitemapCrawlerService";
 import {
   formatFirestoreDocToRssItem,
   generateSiteRssXml,
@@ -62,11 +63,6 @@ async function getServerFirestoreDb(): Promise<any | null> {
   return cachedServerFirestoreDb;
 }
 
-// Cached dynamic sitemap in memory (refreshed every 15 minutes or when posts change)
-let cachedSitemapXml: string | null = null;
-let lastSitemapTime = 0;
-const SITEMAP_CACHE_DURATION = 15 * 60 * 1000;
-
 // Real-time published posts cache & generated RSS XML cache for external news aggregators
 type OgCollectionName = "posts" | "ads" | "events" | "directory";
 interface CachedServerDoc {
@@ -93,10 +89,63 @@ let isPortalSettingsListenerActive = false;
 
 const cachedSiteRssXmlMap = new Map<string, { xml: string; etag: string; lastModified: string }>();
 
+function persistSitemapXmlToDisk(xml: string): void {
+  const targetDirs = [path.join(process.cwd(), "public")];
+  const distDir = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distDir)) {
+    targetDirs.push(distDir);
+  }
+  for (const dir of targetDirs) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const filePath = path.join(dir, "sitemap.xml");
+    const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
+    if (existing !== xml) {
+      fs.writeFileSync(filePath, xml, "utf8");
+    }
+  }
+}
+
+async function fetchLiveFirestoreCollectionForSitemap(
+  colName: SitemapCollectionName
+): Promise<CrawledFirestoreDoc[]> {
+  try {
+    const db = await getServerFirestoreDb();
+    if (db) {
+      const { collection, getDocs } = await import("firebase/firestore");
+      const docs = await withServerTimeout(
+        getDocs(collection(db, colName)).then((snap) =>
+          snap.docs.map((d) => ({ id: d.id, data: d.data() }))
+        ),
+        5000,
+        [] as CrawledFirestoreDoc[]
+      );
+      if (docs.length > 0) {
+        return docs;
+      }
+    }
+  } catch {
+    // Fall back to cached snapshots below
+  }
+
+  if (colName === "posts") return realtimeSitePostDocs;
+  if (colName === "ads") return collectionDocsCache.ads.docs;
+  if (colName === "events") return collectionDocsCache.events.docs;
+  if (colName === "directory_entries") return collectionDocsCache.directory.docs;
+  return [];
+}
+
+const sitemapCrawlIntervalMs = Number(process.env.SITEMAP_CRAWL_INTERVAL_MS) || 15 * 60 * 1000;
+const periodicSitemapManager = createPeriodicSitemapManager({
+  fetchCollectionDocs: fetchLiveFirestoreCollectionForSitemap,
+  persistSitemapXml: persistSitemapXmlToDisk,
+  crawlIntervalMs: sitemapCrawlIntervalMs,
+});
+
 function invalidateSiteFeedCaches() {
   cachedSiteRssXmlMap.clear();
-  cachedSitemapXml = null;
-  lastSitemapTime = 0;
+  periodicSitemapManager.scheduleDebouncedRefresh(2500, "content-invalidation");
 }
 
 async function withServerTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
@@ -141,16 +190,18 @@ async function startSiteRssRealtimeSync(): Promise<void> {
 
     for (const colName of ["ads", "events", "directory"] as const) {
       const slot = collectionDocsCache[colName];
+      const firestoreCollection = colName === "directory" ? "directory_entries" : colName;
       if (!slot.listenerActive) {
         slot.listenerActive = true;
         onSnapshot(
-          collection(db, colName),
+          collection(db, firestoreCollection),
           (snapshot) => {
             slot.docs = snapshot.docs.map((d) => ({
               id: d.id,
               data: d.data(),
             }));
             slot.hasSnapshot = true;
+            periodicSitemapManager.scheduleDebouncedRefresh(2500, `firestore-${firestoreCollection}`);
           },
           () => {
             slot.listenerActive = false;
@@ -306,80 +357,7 @@ async function getOrGenerateSiteRssXml(options: {
   return result;
 }
 
-async function getOrGenerateSitemap(): Promise<string> {
-  const now = Date.now();
-  if (cachedSitemapXml && now - lastSitemapTime < SITEMAP_CACHE_DURATION) {
-    return cachedSitemapXml;
-  }
-
-  const entries: SitemapEntry[] = getBaseSitemapEntries();
-  const seenLocs = new Set<string>(entries.map(e => e.loc));
-
-  try {
-    const db = await getServerFirestoreDb();
-    if (db) {
-      const { collection, getDocs } = await import("firebase/firestore");
-
-      // Fetch Events
-      try {
-        const eventsSnap = await getDocs(collection(db, "events"));
-        eventsSnap.forEach(docSnap => {
-          const entry = formatFirestoreDocToSitemapEntry(docSnap.data(), docSnap.id, "event");
-          if (entry && !seenLocs.has(entry.loc)) {
-            seenLocs.add(entry.loc);
-            entries.push(entry);
-          }
-        });
-      } catch (e) {
-        // Ignore firestore read errors
-      }
-
-      // Fetch Ads
-      try {
-        const adsSnap = await getDocs(collection(db, "ads"));
-        adsSnap.forEach(docSnap => {
-          const entry = formatFirestoreDocToSitemapEntry(docSnap.data(), docSnap.id, "ad");
-          if (entry && !seenLocs.has(entry.loc)) {
-            seenLocs.add(entry.loc);
-            entries.push(entry);
-          }
-        });
-      } catch (e) {
-        // Ignore firestore read errors
-      }
-
-      // Fetch Posts (Deals, Blog, News)
-      try {
-        const postsSnap = await getDocs(collection(db, "posts"));
-        postsSnap.forEach(docSnap => {
-          const data = docSnap.data();
-          if (!data || !data.title) return;
-          const isDeal = data.type === "deal" || 
-                         data.category === "deal" || 
-                         data.category?.startsWith("deal") || 
-                         (data.categoryName && /ugodnost|akcij|popust|trgovin|hrana/i.test(data.categoryName)) || 
-                         Boolean(data.discount) || 
-                         Boolean(data.promoCode);
-          const type = isDeal ? "deal" : data.type === "news" ? "news" : "blog";
-          const entry = formatFirestoreDocToSitemapEntry(data, docSnap.id, type);
-          if (entry && !seenLocs.has(entry.loc)) {
-            seenLocs.add(entry.loc);
-            entries.push(entry);
-          }
-        });
-      } catch (e) {
-        // Ignore firestore read errors
-      }
-    }
-  } catch (err: any) {
-    console.warn("Error augmenting dynamic sitemap from Firestore:", err.message);
-  }
-
-  const xml = generateXmlFromEntries(entries);
-  cachedSitemapXml = xml;
-  lastSitemapTime = now;
-  return xml;
-}
+// Dynamic sitemap generation is handled by periodicSitemapManager (sitemapCrawlerService)
 
 function resolveRequestOrigin(req: express.Request): string {
   const xfHost = (req.headers["x-forwarded-host"] as string)?.split(",")[0]?.trim();
@@ -432,6 +410,7 @@ async function startServer() {
     "/novice/feed",
     "/api/rss/site.xml",
     "/sitemap.xml",
+    "/sitemap_index.xml",
     "/robots.txt",
   ]);
 
@@ -442,7 +421,8 @@ async function startServer() {
     if (
       PUBLIC_SYNDICATION_PATHS.has(cleanReqPath) ||
       cleanReqPath.startsWith("/api/og-image/") ||
-      cleanReqPath.startsWith("/api/meta/")
+      cleanReqPath.startsWith("/api/meta/") ||
+      cleanReqPath.startsWith("/api/sitemap/")
     ) {
       if (isMaliciousSecurityPath(req.path, req.originalUrl || req.url)) {
         return res.status(404).type("text/plain").send("Not Found");
@@ -628,19 +608,41 @@ async function startServer() {
     handleSiteRssFeedRequest
   );
 
-  // Explicit cache invalidation hook (called when posts are published/updated)
+  // Explicit cache invalidation hook (called when posts/ads/events are published/updated)
   app.post("/api/rss/invalidate", (req, res) => {
     invalidateSiteFeedCaches();
     res.json({ success: true });
   });
 
-  // Sitemap endpoint (dynamic and real-time with Firestore entries)
-  app.get("/sitemap.xml", async (req, res) => {
-    res.setHeader("Content-Type", "application/xml; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=3600");
+  // Dynamic sitemap refresh & status endpoints
+  app.post("/api/sitemap/refresh", async (req, res) => {
     try {
-      const xml = await getOrGenerateSitemap();
-      return res.send(xml);
+      const snapshot = await periodicSitemapManager.refreshNow("api-refresh");
+      return res.json({ success: true, stats: snapshot.stats });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Sitemap refresh failed" });
+    }
+  });
+
+  app.get("/api/sitemap/status", (req, res) => {
+    return res.json({ ok: true, ...periodicSitemapManager.getStatus() });
+  });
+
+  // Sitemap endpoint (periodic Firestore crawler + ETag/Last-Modified caching)
+  app.get(["/sitemap.xml", "/sitemap_index.xml"], async (req, res) => {
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=900, must-revalidate");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    try {
+      const { xml, etag, lastModified, stats } = await periodicSitemapManager.getSitemap();
+      res.setHeader("ETag", etag);
+      res.setHeader("Last-Modified", lastModified);
+      res.setHeader("X-Sitemap-Urls", String(stats.totalUrls));
+
+      if (req.headers["if-none-match"] === etag) {
+        return res.status(304).end();
+      }
+      return res.status(200).send(xml);
     } catch (err: any) {
       console.error("Error serving sitemap.xml:", err);
       const publicSitemap = path.join(process.cwd(), "public", "sitemap.xml");
@@ -2460,6 +2462,7 @@ Vrni strogo JSON z natančnim ID-jem izbrane kategorije iz zgornjega seznama.`;
     setTimeout(() => {
       startSiteRssRealtimeSync().catch(() => {});
       warmServerRssCache().catch(() => {});
+      periodicSitemapManager.start();
     }, 300);
   });
 }

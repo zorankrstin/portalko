@@ -44,25 +44,37 @@ function decodeFirestoreFields(fields: Record<string, any> | undefined): Record<
   return out;
 }
 
+const API_KEY = firebaseConfig.apiKey;
+
 async function fetchCollectionDocsRest(colName: OgCollectionName): Promise<CachedOgDoc[]> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`${FIRESTORE_REST_BASE}/${encodeURIComponent(colName)}?pageSize=200`, {
+    const res = await fetch(`${FIRESTORE_REST_BASE}:runQuery?key=${encodeURIComponent(API_KEY)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: colName }],
+          limit: 200,
+        },
+      }),
       signal: controller.signal,
     });
     clearTimeout(timer);
     if (!res.ok) return [];
-    const json: any = await res.json();
-    const docs = Array.isArray(json?.documents) ? json.documents : [];
-    return docs.map((d: any) => {
-      const fullName = String(d?.name || "");
-      const id = fullName.split("/").pop() || "";
-      return {
-        id,
-        data: decodeFirestoreFields(d?.fields),
-      };
-    });
+    const rows: any[] = await res.json();
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .filter((r) => r?.document?.name)
+      .map((r) => {
+        const fullName = String(r.document.name || "");
+        const id = fullName.split("/").pop() || "";
+        return {
+          id,
+          data: decodeFirestoreFields(r.document.fields),
+        };
+      });
   } catch {
     return [];
   }
@@ -73,7 +85,7 @@ async function fetchSingleDocRest(colName: OgCollectionName, docId: string): Pro
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2500);
     const res = await fetch(
-      `${FIRESTORE_REST_BASE}/${encodeURIComponent(colName)}/${encodeURIComponent(docId)}`,
+      `${FIRESTORE_REST_BASE}/${encodeURIComponent(colName)}/${encodeURIComponent(docId)}?key=${encodeURIComponent(API_KEY)}`,
       { signal: controller.signal }
     );
     clearTimeout(timer);
@@ -95,16 +107,26 @@ async function rehydrateShardedDocRest(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2000);
     const res = await fetch(
-      `${FIRESTORE_REST_BASE}/${encodeURIComponent(colName)}/${encodeURIComponent(docId)}/chunks?pageSize=50`,
-      { signal: controller.signal }
+      `${FIRESTORE_REST_BASE}/${encodeURIComponent(colName)}/${encodeURIComponent(docId)}:runQuery?key=${encodeURIComponent(API_KEY)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "chunks" }],
+            limit: 50,
+          },
+        }),
+        signal: controller.signal,
+      }
     );
     clearTimeout(timer);
     if (!res.ok) return data;
-    const json: any = await res.json();
-    const docs = Array.isArray(json?.documents) ? json.documents : [];
-    if (docs.length === 0) return data;
-    const pieces = docs
-      .map((d: any) => decodeFirestoreFields(d?.fields))
+    const rows: any[] = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) return data;
+    const pieces = rows
+      .filter((r) => r?.document?.fields)
+      .map((r) => decodeFirestoreFields(r.document.fields))
       .sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
       .map((c: any) => String(c.data || ""))
       .join("");

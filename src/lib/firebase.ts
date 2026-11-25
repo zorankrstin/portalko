@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, initializeFirestore, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, enableNetwork, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseProjectConfig from '../../firebase-applet-config.json';
 
@@ -45,9 +45,10 @@ export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 /* CRITICAL: The app will break without specifying firestoreDatabaseId */
 export const db = (() => {
   try {
-    return initializeFirestore(app, {
-      experimentalAutoDetectLongPolling: true,
-    }, firebaseConfig.firestoreDatabaseId);
+    return initializeFirestore(app, typeof window !== 'undefined'
+      ? { experimentalForceLongPolling: true }
+      : { experimentalAutoDetectLongPolling: true },
+    firebaseConfig.firestoreDatabaseId);
   } catch (err) {
     return getFirestore(app, firebaseConfig.firestoreDatabaseId);
   }
@@ -129,14 +130,50 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
+async function verifyFirestoreRestReachable(): Promise<boolean> {
+  if (!firebaseConfig.projectId || !firebaseConfig.apiKey || !firebaseConfig.firestoreDatabaseId) {
+    return false;
+  }
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/${encodeURIComponent(firebaseConfig.firestoreDatabaseId)}/documents/test/connection?key=${encodeURIComponent(firebaseConfig.apiKey)}`;
+    const res = await fetch(url, { method: 'GET' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // CRITICAL: Validate connection to Firestore on boot
 export async function testConnection() {
+  if (!firebaseConfig.projectId || !firebaseConfig.apiKey || !firebaseConfig.firestoreDatabaseId) {
+    console.error("Please check your Firebase configuration.");
+    return;
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return;
+  }
+
+  const testDocRef = doc(db, 'test', 'connection');
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await getDocFromServer(testDocRef);
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+      try {
+        await enableNetwork(db).catch(() => {});
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await getDocFromServer(testDocRef);
+        return;
+      } catch (retryError) {
+        const restReachable = await verifyFirestoreRestReachable();
+        if (!restReachable && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
     }
   }
 }
-testConnection();
+
+if (typeof window !== 'undefined') {
+  void testConnection();
+}

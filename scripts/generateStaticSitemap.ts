@@ -1,20 +1,19 @@
 /**
  * Static Sitemap and robots.txt Generation Script
- * Runs at build time or on demand to generate /public/sitemap.xml and /public/robots.txt
+ * Runs at build time or on demand to crawl Firestore and generate /public/sitemap.xml and /public/robots.txt
  */
 
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
-import { 
-  getBaseSitemapEntries, 
-  generateXmlFromEntries, 
-  formatFirestoreDocToSitemapEntry,
-  SitemapEntry,
-  SITE_URL
-} from '../src/utils/sitemapGenerator';
+import { SITE_URL } from '../src/utils/sitemapGenerator';
+import {
+  buildDynamicSitemapFromFirestore,
+  CrawledFirestoreDoc,
+  SitemapCollectionName,
+} from '../src/services/sitemapCrawlerService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,85 +21,50 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.join(rootDir, 'public');
 
 async function buildStaticSitemap() {
-  console.log('Generating sitemap entries...');
-  const entries: SitemapEntry[] = getBaseSitemapEntries();
-  const seenLocs = new Set<string>(entries.map(e => e.loc));
+  console.log('Crawling Firestore and generating sitemap entries...');
 
-  // Try fetching posts from Firestore
+  let db: any = null;
   try {
     const configPath = path.join(rootDir, 'firebase-applet-config.json');
     if (fs.existsSync(configPath)) {
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      const app = initializeApp(cfg);
-      const db = getFirestore(app, cfg.firestoreDatabaseId);
-
-      // Fetch Events
-      try {
-        const eventsSnap = await getDocs(collection(db, 'events'));
-        eventsSnap.forEach(docSnap => {
-          const entry = formatFirestoreDocToSitemapEntry(docSnap.data(), docSnap.id, 'event');
-          if (entry && !seenLocs.has(entry.loc)) {
-            seenLocs.add(entry.loc);
-            entries.push(entry);
-          }
-        });
-        console.log(`Added ${eventsSnap.size} events from Firestore.`);
-      } catch (err: any) {
-        console.warn('Could not fetch events for sitemap:', err.message);
-      }
-
-      // Fetch Ads
-      try {
-        const adsSnap = await getDocs(collection(db, 'ads'));
-        adsSnap.forEach(docSnap => {
-          const entry = formatFirestoreDocToSitemapEntry(docSnap.data(), docSnap.id, 'ad');
-          if (entry && !seenLocs.has(entry.loc)) {
-            seenLocs.add(entry.loc);
-            entries.push(entry);
-          }
-        });
-        console.log(`Added ${adsSnap.size} ads from Firestore.`);
-      } catch (err: any) {
-        console.warn('Could not fetch ads for sitemap:', err.message);
-      }
-
-      // Fetch Posts (Deals, Blog, News)
-      try {
-        const postsSnap = await getDocs(collection(db, 'posts'));
-        postsSnap.forEach(docSnap => {
-          const data = docSnap.data();
-          if (!data || !data.title) return;
-          const isDeal = data.type === 'deal' || 
-                         data.category === 'deal' || 
-                         data.category?.startsWith('deal') || 
-                         (data.categoryName && /ugodnost|akcij|popust|trgovin|hrana/i.test(data.categoryName)) || 
-                         Boolean(data.discount) || 
-                         Boolean(data.promoCode);
-          const type = isDeal ? 'deal' : data.type === 'news' ? 'news' : 'blog';
-          const entry = formatFirestoreDocToSitemapEntry(data, docSnap.id, type);
-          if (entry && !seenLocs.has(entry.loc)) {
-            seenLocs.add(entry.loc);
-            entries.push(entry);
-          }
-        });
-        console.log(`Added ${postsSnap.size} posts from Firestore.`);
-      } catch (err: any) {
-        console.warn('Could not fetch posts for sitemap:', err.message);
-      }
+      const app = getApps().length > 0 ? getApp() : initializeApp(cfg);
+      db = getFirestore(app, cfg.firestoreDatabaseId);
     }
   } catch (err: any) {
-    console.warn('Error reading Firestore for sitemap:', err.message);
+    console.warn('Could not initialize Firebase for static sitemap generation:', err?.message || err);
   }
 
-  // Generate XML
-  const xml = generateXmlFromEntries(entries);
+  const fetchCollectionDocs = async (colName: SitemapCollectionName): Promise<CrawledFirestoreDoc[]> => {
+    if (!db) return [];
+    try {
+      const snap = await getDocs(collection(db, colName));
+      return snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+    } catch (err: any) {
+      console.warn(`Could not fetch ${colName} for sitemap:`, err?.message || err);
+      return [];
+    }
+  };
+
+  const snapshot = await buildDynamicSitemapFromFirestore({
+    fetchCollectionDocs,
+    persistSitemapXml: (xml, stats) => {
+      if (!fs.existsSync(publicDir)) {
+        fs.mkdirSync(publicDir, { recursive: true });
+      }
+      const sitemapPath = path.join(publicDir, 'sitemap.xml');
+      fs.writeFileSync(sitemapPath, xml, 'utf8');
+      console.log(
+        `Successfully generated ${sitemapPath} with ${stats.totalUrls} URLs ` +
+          `(posts=${stats.postsCount}, ads=${stats.adsCount}, events=${stats.eventsCount}, ` +
+          `directory=${stats.directoryCount}, tags=${stats.tagsCount}).`
+      );
+    },
+  });
+
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
   }
-
-  const sitemapPath = path.join(publicDir, 'sitemap.xml');
-  fs.writeFileSync(sitemapPath, xml, 'utf8');
-  console.log(`Successfully generated ${sitemapPath} with ${entries.length} URLs.`);
 
   // Generate robots.txt
   const robotsTxt = `# ==============================================================================
@@ -174,7 +138,7 @@ Sitemap: ${SITE_URL}/sitemap.xml
 `;
   const robotsPath = path.join(publicDir, 'robots.txt');
   fs.writeFileSync(robotsPath, robotsTxt, 'utf8');
-  console.log(`Successfully generated ${robotsPath}.`);
+  console.log(`Successfully generated ${robotsPath} (sitemap hash: ${snapshot.etag}).`);
 }
 
 buildStaticSitemap().then(() => {
