@@ -58,6 +58,7 @@ import { UserAvatar } from './common/UserAvatar';
 import { isDummyAvatar, resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { FollowAuthorButton } from './common/FollowAuthorButton';
+import { ExternalSourceDetailEmbed } from './common/ExternalSourceEmbedCard';
 import { EventReminderButton } from './events/EventReminderButton';
 import { normalizeDateToYmd } from '../utils/eventFilterUtils';
 import { isUserVerified } from '../utils/userVerificationUtils';
@@ -421,9 +422,15 @@ export function PostDetailPage({
         viewsCount: fs.viewsCount ?? 0,
         sharesCount: fs.sharesCount ?? 0,
         code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : (fs.code ? fs.code.trim() : undefined),
-        link: fs.dealLink || fs.link || 'https://www.portalko.net',
+        link: fs.dealLink || fs.externalUrl || fs.link || 'https://www.portalko.net',
         embedCode: fs.embedCode,
         embedOrientation: fs.embedOrientation,
+        isExternalEmbed: fs.isExternalEmbed,
+        externalUrl: fs.externalUrl || (fs.isExternalEmbed ? fs.dealLink : undefined),
+        sourceName: fs.sourceName,
+        sourceDomain: fs.sourceDomain,
+        sourceFavicon: fs.sourceFavicon,
+        fetchedAt: fs.fetchedAt,
       };
     };
 
@@ -457,6 +464,12 @@ export function PostDetailPage({
         sharesCount: fs.sharesCount ?? 0,
         embedCode: fs.embedCode,
         embedOrientation: fs.embedOrientation,
+        isExternalEmbed: fs.isExternalEmbed,
+        externalUrl: fs.externalUrl,
+        sourceName: fs.sourceName,
+        sourceDomain: fs.sourceDomain,
+        sourceFavicon: fs.sourceFavicon,
+        fetchedAt: fs.fetchedAt,
       };
     };
 
@@ -1904,6 +1917,12 @@ export function PostDetailPage({
     ticketUrl: itemData.ticketUrl,
     embedCode: itemData.embedCode,
     embedOrientation: itemData.embedOrientation,
+    isExternalEmbed: (itemData as any).isExternalEmbed,
+    externalUrl: (itemData as any).externalUrl,
+    sourceName: (itemData as any).sourceName,
+    sourceDomain: (itemData as any).sourceDomain,
+    sourceFavicon: (itemData as any).sourceFavicon,
+    fetchedAt: (itemData as any).fetchedAt,
     tags: itemData.tags,
     authorName: itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor',
     authorId: itemData.authorId,
@@ -2797,7 +2816,21 @@ export function PostDetailPage({
 
           {target.type === 'ad' && (
             <div className="flex flex-col gap-3">
-
+              {((itemData as any).isExternalEmbed || (itemData as any).externalUrl) && (
+                <ExternalSourceDetailEmbed
+                  type="ad"
+                  title={itemData.title}
+                  description={itemData.description}
+                  image={itemData.image}
+                  price={itemData.price}
+                  isExternalEmbed={(itemData as any).isExternalEmbed}
+                  externalUrl={(itemData as any).externalUrl}
+                  sourceName={(itemData as any).sourceName}
+                  sourceDomain={(itemData as any).sourceDomain}
+                  sourceFavicon={(itemData as any).sourceFavicon}
+                  fetchedAt={(itemData as any).fetchedAt}
+                />
+              )}
 
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 text-xs text-amber-950 dark:text-amber-200">
                 <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -2809,6 +2842,22 @@ export function PostDetailPage({
                 </div>
               </div>
             </div>
+          )}
+
+          {target.type === 'deal' && ((itemData as any).isExternalEmbed || (itemData as any).externalUrl) && (
+            <ExternalSourceDetailEmbed
+              type="deal"
+              title={itemData.title}
+              description={itemData.description}
+              image={itemData.image}
+              price={itemData.newPrice || itemData.discount || itemData.price}
+              isExternalEmbed={(itemData as any).isExternalEmbed}
+              externalUrl={(itemData as any).externalUrl || itemData.link}
+              sourceName={(itemData as any).sourceName}
+              sourceDomain={(itemData as any).sourceDomain}
+              sourceFavicon={(itemData as any).sourceFavicon}
+              fetchedAt={(itemData as any).fetchedAt}
+            />
           )}
 
           {/* Embedded Social Media or Video if present */}

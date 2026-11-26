@@ -15,6 +15,9 @@ import { isUserUploadedAvatar } from "../../utils/avatarUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
+import { ExternalLink } from 'lucide-react';
+import { ExternalSourceInline } from "../common/ExternalSourceEmbedCard";
+import { extractDomainFromUrl, normalizeExternalUrl } from "../../services/externalEmbedService";
 
 export interface AdPostProps {
   id?: string;
@@ -42,6 +45,12 @@ export interface AdPostProps {
   tags?: string[] | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
+  isExternalEmbed?: boolean;
+  externalUrl?: string;
+  sourceName?: string;
+  sourceDomain?: string;
+  sourceFavicon?: string;
+  fetchedAt?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
   onTagClick?: (tag: string) => void;
 }
@@ -72,6 +81,12 @@ export const AdPost: React.FC<AdPostProps> = ({
   tags,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
+  isExternalEmbed,
+  externalUrl,
+  sourceName,
+  sourceDomain,
+  sourceFavicon,
+  fetchedAt,
   onNavigatePost,
   onTagClick,
 }) => {
@@ -116,6 +131,12 @@ export const AdPost: React.FC<AdPostProps> = ({
           description,
           tags: normalizedTags.length > 0 ? normalizedTags : undefined,
           likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
+          isExternalEmbed,
+          externalUrl,
+          sourceName,
+          sourceDomain,
+          sourceFavicon,
+          fetchedAt,
         },
       });
     } else {
@@ -313,6 +334,18 @@ export const AdPost: React.FC<AdPostProps> = ({
             <span className="flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5 text-primary" /> {location} • {date}
             </span>
+            {(isExternalEmbed || externalUrl) && (
+              <>
+                <span>•</span>
+                <ExternalSourceInline
+                  isExternalEmbed={isExternalEmbed}
+                  externalUrl={externalUrl}
+                  sourceName={sourceName}
+                  sourceDomain={sourceDomain}
+                  sourceFavicon={sourceFavicon}
+                />
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <LikeButton 
@@ -339,12 +372,24 @@ export const AdPost: React.FC<AdPostProps> = ({
               showLabel={true} 
               buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
             />
+            {externalUrl && (
+              <a
+                href={normalizeExternalUrl(externalUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 border border-primary/25"
+                title={`Odpri izvirni oglas na ${sourceDomain || extractDomainFromUrl(externalUrl)}`}
+              >
+                <span>Odpri vir</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
             <button 
               onClick={handleOpenDetail}
               className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Phone className="w-3.5 h-3.5" />
-              <span>Kontakt</span>
+              <span>{externalUrl ? 'Podrobnosti' : 'Kontakt'}</span>
             </button>
           </div>
         </div>

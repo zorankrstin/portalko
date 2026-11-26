@@ -31,6 +31,7 @@ import {
   buildPreRenderedCrawlerHtml,
 } from "./src/services/ogMetaGeneratorService";
 import { isMaliciousSecurityPath, verifyIncomingRequestSecurity } from "./src/utils/securityGuard";
+import { fetchExternalEmbedMetadata } from "./src/services/externalEmbedFetcher";
 
 dotenv.config();
 
@@ -541,6 +542,30 @@ async function startServer() {
     }
     next();
   });
+
+  // External URL metadata / embed fetcher for Mali oglasi & Akcije
+  const handleExternalEmbedFetch = async (req: express.Request, res: express.Response) => {
+    try {
+      const targetUrl = String(
+        req.method === "POST" ? req.body?.url || req.query?.url || "" : req.query?.url || ""
+      ).trim();
+
+      if (!targetUrl) {
+        return res.status(400).json({ ok: false, error: "Vnesite spletni naslov (URL)." });
+      }
+
+      const meta = await fetchExternalEmbedMetadata(targetUrl);
+      return res.status(200).json({ ok: true, meta });
+    } catch (err: any) {
+      return res.status(400).json({
+        ok: false,
+        error: err?.message || "Vsebine s te spletne strani ni bilo mogoče prebrati.",
+      });
+    }
+  };
+
+  app.get("/api/embed/fetch-url", handleExternalEmbedFetch);
+  app.post("/api/embed/fetch-url", handleExternalEmbedFetch);
 
   // Dynamic Site XML RSS 2.0 Feed endpoints for external news aggregators & feed readers
   const handleSiteRssFeedRequest = async (req: express.Request, res: express.Response) => {

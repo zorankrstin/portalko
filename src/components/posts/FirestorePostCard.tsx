@@ -130,6 +130,12 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     ticketUrl: post.ticketUrl,
     embedCode: post.embedCode,
     embedOrientation: post.embedOrientation,
+    isExternalEmbed: post.isExternalEmbed,
+    externalUrl: post.externalUrl,
+    sourceName: post.sourceName,
+    sourceDomain: post.sourceDomain,
+    sourceFavicon: post.sourceFavicon,
+    fetchedAt: post.fetchedAt,
     tags: normalizedTags.length > 0 ? normalizedTags : undefined,
     rejectionReason: post.rejectionReason,
   };
@@ -202,6 +208,12 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           tags={normalizedTags}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
+          isExternalEmbed={post.isExternalEmbed}
+          externalUrl={post.externalUrl}
+          sourceName={post.sourceName}
+          sourceDomain={post.sourceDomain}
+          sourceFavicon={post.sourceFavicon}
+          fetchedAt={post.fetchedAt}
           onNavigatePost={onNavigatePost}
           onTagClick={onTagClick}
         />
@@ -247,6 +259,12 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           tags={normalizedTags}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
+          isExternalEmbed={post.isExternalEmbed}
+          externalUrl={post.externalUrl || post.dealLink}
+          sourceName={post.sourceName}
+          sourceDomain={post.sourceDomain}
+          sourceFavicon={post.sourceFavicon}
+          fetchedAt={post.fetchedAt}
           onNavigatePost={onNavigatePost}
           onTagClick={onTagClick}
         />

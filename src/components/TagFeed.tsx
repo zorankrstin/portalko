@@ -541,6 +541,12 @@ export function TagFeed({
                     votesCount={p.likesCount ?? 0}
                     isPromoted={isPromoted}
                     promotionBadgeType={promoBadge}
+                    isExternalEmbed={p.isExternalEmbed}
+                    externalUrl={p.externalUrl || p.dealLink}
+                    sourceName={p.sourceName}
+                    sourceDomain={p.sourceDomain}
+                    sourceFavicon={p.sourceFavicon}
+                    fetchedAt={p.fetchedAt}
                     onNavigatePost={onNavigatePost}
                     onTagClick={onTagClick}
                   />
@@ -588,6 +594,12 @@ export function TagFeed({
                     tags={entry.tags}
                     isPromoted={isPromoted}
                     promotionBadgeType={ad.promotionBadgeType || ad.promotion?.badgeType}
+                    isExternalEmbed={ad.isExternalEmbed}
+                    externalUrl={ad.externalUrl}
+                    sourceName={ad.sourceName}
+                    sourceDomain={ad.sourceDomain}
+                    sourceFavicon={ad.sourceFavicon}
+                    fetchedAt={ad.fetchedAt}
                     onNavigatePost={onNavigatePost}
                     onTagClick={onTagClick}
                   />

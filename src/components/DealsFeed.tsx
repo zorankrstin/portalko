@@ -71,6 +71,9 @@ import { PromotionConfig, PromotionBadgeType } from '../types';
 import { DealsCategoryLocationFilter } from './deals/DealsCategoryLocationFilter';
 import { canUserPostContentType } from '../utils/permissionUtils';
 import { usePageSeo } from '../services/seoSettingsService';
+import { ExternalEmbedFetcherBox } from './common/ExternalEmbedFetcherBox';
+import { ExternalSourceInline } from './common/ExternalSourceEmbedCard';
+import type { ExternalEmbedMetadata } from '../services/externalEmbedService';
 
 interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -152,6 +155,12 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
     image: '',
     images: [] as string[],
     embedCode: '',
+    isExternalEmbed: false,
+    externalUrl: '',
+    sourceName: '',
+    sourceDomain: '',
+    sourceFavicon: '',
+    fetchedAt: '',
   });
   const [photoMode, setPhotoMode] = useState<'upload' | 'url'>('upload');
   const pendingPhotoFilesRef = useRef<Map<string, File>>(new Map());
@@ -202,13 +211,19 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
           date: p.expirationDate ? `Velja do ${p.expirationDate}` : 'Pravkar objavljeno',
           description: p.content,
           code: (p.promoCode && p.promoCode.trim()) ? p.promoCode.trim() : undefined,
-          link: p.dealLink || '#',
+          link: p.dealLink || p.externalUrl || '#',
           votes: (p.likesCount || 0) + 1,
           verifiedText: 'Članski predlog',
           statusTag: 'today' as const,
           image: p.imageUrl || (p.images && p.images[0]) || CATEGORY_IMAGE_FALLBACKS.tehnika,
           images: p.images || p.imageUrls || (p.imageUrl ? [p.imageUrl] : undefined),
           embedCode: p.embedCode,
+          isExternalEmbed: p.isExternalEmbed,
+          externalUrl: p.externalUrl || (p.isExternalEmbed ? p.dealLink : undefined),
+          sourceName: p.sourceName,
+          sourceDomain: p.sourceDomain,
+          sourceFavicon: p.sourceFavicon,
+          fetchedAt: p.fetchedAt,
           tags: parseTags(p.tags),
           isPromoted: p.isPromoted,
           promotedUntil: p.promotedUntil,
@@ -784,13 +799,19 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
         date: modalForm.expirationDate ? `Velja do ${modalForm.expirationDate}` : (modalForm.date || 'Velja do konca meseca'),
         description: cleanDescription || 'Ugodnost, ki jo je predlagal član skupnosti Portal.si.',
         code: modalForm.code ? modalForm.code.toUpperCase() : undefined,
-        link: modalForm.link || '#',
+        link: modalForm.link || modalForm.externalUrl || '#',
         votes: 1,
         verifiedText: 'Novo dodano',
         statusTag: 'today',
         image: primaryImg,
         images: allImages,
         embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
+        isExternalEmbed: modalForm.isExternalEmbed ? true : undefined,
+        externalUrl: modalForm.isExternalEmbed ? (modalForm.externalUrl || modalForm.link || undefined) : undefined,
+        sourceName: modalForm.isExternalEmbed ? (modalForm.sourceName || undefined) : undefined,
+        sourceDomain: modalForm.isExternalEmbed ? (modalForm.sourceDomain || undefined) : undefined,
+        sourceFavicon: modalForm.isExternalEmbed ? (modalForm.sourceFavicon || undefined) : undefined,
+        fetchedAt: modalForm.isExternalEmbed ? (modalForm.fetchedAt || undefined) : undefined,
       };
 
       // Prepend locally
@@ -821,10 +842,16 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
           expirationDate: modalForm.expirationDate || undefined,
           discount: modalForm.discount || undefined,
           promoCode: modalForm.code ? modalForm.code.toUpperCase() : undefined,
-          dealLink: modalForm.link || undefined,
+          dealLink: modalForm.link || (modalForm.isExternalEmbed ? modalForm.externalUrl || undefined : undefined),
           region: finalRegion,
           location: locationName,
           embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
+          isExternalEmbed: modalForm.isExternalEmbed ? true : undefined,
+          externalUrl: modalForm.isExternalEmbed ? (modalForm.externalUrl || modalForm.link || undefined) : undefined,
+          sourceName: modalForm.isExternalEmbed ? (modalForm.sourceName || undefined) : undefined,
+          sourceDomain: modalForm.isExternalEmbed ? (modalForm.sourceDomain || undefined) : undefined,
+          sourceFavicon: modalForm.isExternalEmbed ? (modalForm.sourceFavicon || undefined) : undefined,
+          fetchedAt: modalForm.isExternalEmbed ? (modalForm.fetchedAt || undefined) : undefined,
           tags: modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).length > 0 
             ? modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean) 
             : undefined,
@@ -874,6 +901,12 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
           image: '',
           images: [],
           embedCode: '',
+          isExternalEmbed: false,
+          externalUrl: '',
+          sourceName: '',
+          sourceDomain: '',
+          sourceFavicon: '',
+          fetchedAt: '',
         });
       }, 1500);
     } catch (err: any) {
@@ -1054,6 +1087,12 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
                     isPromoted,
                     likesCount: (deal as any).likesCount || (deal as any).votes || 0,
                     dealType: deal.dealType,
+                    isExternalEmbed: deal.isExternalEmbed,
+                    externalUrl: deal.externalUrl,
+                    sourceName: deal.sourceName,
+                    sourceDomain: deal.sourceDomain,
+                    sourceFavicon: deal.sourceFavicon,
+                    fetchedAt: deal.fetchedAt,
                   }
                 });
               } else {
@@ -1266,6 +1305,18 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
                           <MapPin className="w-3 h-3 text-outline shrink-0" />
                           <span>{deal.location || deal.region}</span>
                         </span>
+                        {(deal.isExternalEmbed || deal.externalUrl) && (
+                          <>
+                            <span>•</span>
+                            <ExternalSourceInline
+                              isExternalEmbed={deal.isExternalEmbed}
+                              externalUrl={deal.externalUrl || deal.link}
+                              sourceName={deal.sourceName}
+                              sourceDomain={deal.sourceDomain}
+                              sourceFavicon={deal.sourceFavicon}
+                            />
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -1400,6 +1451,58 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
               </div>
             ) : (
               <form onSubmit={handleModalSubmit} className="space-y-3 text-xs">
+                <ExternalEmbedFetcherBox
+                  modeLabel="deal"
+                  externalUrl={modalForm.externalUrl}
+                  sourceName={modalForm.sourceName}
+                  sourceDomain={modalForm.sourceDomain}
+                  sourceFavicon={modalForm.sourceFavicon}
+                  isExternalEmbed={modalForm.isExternalEmbed}
+                  onFetched={(meta: ExternalEmbedMetadata) => {
+                    const htmlDesc = meta.description
+                      ? `<p>${meta.description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+                      : '';
+                    if (htmlDesc) {
+                      editorRef.current?.setContent(htmlDesc);
+                    }
+                    setModalForm(prev => {
+                      const existingImages = new Set(prev.images);
+                      const newFetchedImages = (meta.images || []).filter(u => !existingImages.has(u)).slice(0, 4);
+                      const mergedImages = [...newFetchedImages, ...prev.images];
+                      return {
+                        ...prev,
+                        isExternalEmbed: true,
+                        externalUrl: meta.url,
+                        sourceName: meta.siteName,
+                        sourceDomain: meta.domain,
+                        sourceFavicon: meta.faviconUrl,
+                        fetchedAt: meta.fetchedAt,
+                        store: prev.store.trim() || meta.siteName || meta.domain,
+                        title: meta.title || prev.title,
+                        description: htmlDesc || prev.description,
+                        newPrice: meta.price || prev.newPrice,
+                        oldPrice: meta.oldPrice || prev.oldPrice,
+                        discount: meta.discount || prev.discount,
+                        link: meta.url || prev.link,
+                        tagsString: prev.tagsString.trim() || (meta.tags ? meta.tags.join(', ') : ''),
+                        image: mergedImages[0] || prev.image,
+                        images: mergedImages,
+                      };
+                    });
+                  }}
+                  onClearExternal={() => {
+                    setModalForm(prev => ({
+                      ...prev,
+                      isExternalEmbed: false,
+                      externalUrl: '',
+                      sourceName: '',
+                      sourceDomain: '',
+                      sourceFavicon: '',
+                      fetchedAt: '',
+                    }));
+                  }}
+                />
+
                 <div>
                   <label className="block font-label-md text-on-surface font-semibold mb-1">
                     Naziv trgovca ali spletne strani *

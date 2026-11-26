@@ -32,6 +32,8 @@ import { useCategories } from '../../hooks/useCategories';
 import { CategorySection, getTertiaryCategories } from '../../services/categoryService';
 import { getTodayYmd } from '../../utils/eventFilterUtils';
 import { parseSocialEmbed } from '../../utils/embedUtils';
+import { ExternalEmbedFetcherBox } from '../common/ExternalEmbedFetcherBox';
+import type { ExternalEmbedMetadata } from '../../services/externalEmbedService';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -70,6 +72,12 @@ export interface EditablePostItem {
   ticketUrl?: string;
   embedCode?: string;
   embedOrientation?: 'horizontal' | 'vertical' | 'auto';
+  isExternalEmbed?: boolean;
+  externalUrl?: string;
+  sourceName?: string;
+  sourceDomain?: string;
+  sourceFavicon?: string;
+  fetchedAt?: string;
   tags?: string[];
   rejectionReason?: string;
   likesCount?: number;
@@ -138,6 +146,12 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [embedCode, setEmbedCode] = useState('');
   const [embedOrientation, setEmbedOrientation] = useState<'auto' | 'vertical' | 'horizontal'>('auto');
   const [showEmbedPreview, setShowEmbedPreview] = useState(false);
+  const [isExternalEmbed, setIsExternalEmbed] = useState(false);
+  const [externalUrl, setExternalUrl] = useState('');
+  const [sourceName, setSourceName] = useState('');
+  const [sourceDomain, setSourceDomain] = useState('');
+  const [sourceFavicon, setSourceFavicon] = useState('');
+  const [fetchedAt, setFetchedAt] = useState('');
   const [tagsString, setTagsString] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -400,6 +414,12 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         (item.embedCode && (item.embedCode.includes('data-orientation="vertical"') || item.embedCode.includes('data-vertical="true"')) ? 'vertical' :
          item.embedCode && (item.embedCode.includes('data-orientation="horizontal"') || item.embedCode.includes('data-vertical="false"')) ? 'horizontal' : 'auto');
       setEmbedOrientation(initialOrientation);
+      setIsExternalEmbed(Boolean(item.isExternalEmbed || item.externalUrl));
+      setExternalUrl(item.externalUrl || (item.isExternalEmbed ? item.dealLink || '' : ''));
+      setSourceName(item.sourceName || '');
+      setSourceDomain(item.sourceDomain || '');
+      setSourceFavicon(item.sourceFavicon || '');
+      setFetchedAt(item.fetchedAt || '');
       const rawTags = item.tags;
       const initialTagsStr = Array.isArray(rawTags) 
         ? rawTags.join(', ') 
@@ -701,6 +721,12 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
+          isExternalEmbed: isExternalEmbed ? true : false,
+          externalUrl: isExternalEmbed ? (externalUrl.trim() || undefined) : undefined,
+          sourceName: isExternalEmbed ? (sourceName.trim() || undefined) : undefined,
+          sourceDomain: isExternalEmbed ? (sourceDomain.trim() || undefined) : undefined,
+          sourceFavicon: isExternalEmbed ? (sourceFavicon.trim() || undefined) : undefined,
+          fetchedAt: isExternalEmbed ? (fetchedAt || undefined) : undefined,
           tags: parsedTags,
           status: adStatus as any,
           authorId: item.authorId,
@@ -809,12 +835,18 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           expirationDate: isDealPost ? (expirationDate.trim() || undefined) : undefined,
           discount: isDealPost ? (discount.trim() || undefined) : undefined,
           promoCode: isDealPost ? (promoCode.trim() || undefined) : undefined,
-          dealLink: isDealPost ? (dealLink.trim() || undefined) : undefined,
+          dealLink: isDealPost ? (dealLink.trim() || (isExternalEmbed ? externalUrl.trim() || undefined : undefined)) : undefined,
           location: isDealPost ? location.trim() : (location.trim() || item.location || ''),
           imageUrl: resolvedImageUrl || item.imageUrl || '',
           attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
+          isExternalEmbed: isDealPost ? (isExternalEmbed ? true : false) : undefined,
+          externalUrl: isDealPost && isExternalEmbed ? (externalUrl.trim() || dealLink.trim() || undefined) : undefined,
+          sourceName: isDealPost && isExternalEmbed ? (sourceName.trim() || undefined) : undefined,
+          sourceDomain: isDealPost && isExternalEmbed ? (sourceDomain.trim() || undefined) : undefined,
+          sourceFavicon: isDealPost && isExternalEmbed ? (sourceFavicon.trim() || undefined) : undefined,
+          fetchedAt: isDealPost && isExternalEmbed ? (fetchedAt || undefined) : undefined,
           tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
@@ -1024,6 +1056,51 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
               </div>
             )}
           </div>
+
+          {(item.type === 'ad' || isDeal) && (
+            <ExternalEmbedFetcherBox
+              modeLabel={item.type === 'ad' ? 'ad' : 'deal'}
+              externalUrl={externalUrl}
+              sourceName={sourceName}
+              sourceDomain={sourceDomain}
+              sourceFavicon={sourceFavicon}
+              isExternalEmbed={isExternalEmbed}
+              onFetched={(meta: ExternalEmbedMetadata) => {
+                setIsExternalEmbed(true);
+                setExternalUrl(meta.url);
+                setSourceName(meta.siteName);
+                setSourceDomain(meta.domain);
+                setSourceFavicon(meta.faviconUrl);
+                setFetchedAt(meta.fetchedAt);
+                if (meta.title) setTitle(meta.title);
+                if (meta.description) {
+                  const htmlDesc = `<p>${meta.description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
+                  setContent(htmlDesc);
+                }
+                if (meta.imageUrl) {
+                  setPendingImageFile(null);
+                  setImageUrl(meta.imageUrl);
+                }
+                if (item.type === 'ad') {
+                  if (meta.price) setPrice(meta.price);
+                  if (meta.location && !location.trim()) setLocation(meta.location);
+                } else {
+                  setDealLink(meta.url);
+                  if (meta.price) setNewPrice(meta.price);
+                  if (meta.oldPrice) setOldPrice(meta.oldPrice);
+                  if (meta.discount) setDiscount(meta.discount);
+                }
+              }}
+              onClearExternal={() => {
+                setIsExternalEmbed(false);
+                setExternalUrl('');
+                setSourceName('');
+                setSourceDomain('');
+                setSourceFavicon('');
+                setFetchedAt('');
+              }}
+            />
+          )}
 
           {/* Title */}
           <div className="flex flex-col gap-1.5">

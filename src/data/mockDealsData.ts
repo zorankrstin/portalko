@@ -31,6 +31,12 @@ export interface DealItem {
   image?: string;
   images?: string[];
   embedCode?: string;
+  isExternalEmbed?: boolean;
+  externalUrl?: string;
+  sourceName?: string;
+  sourceDomain?: string;
+  sourceFavicon?: string;
+  fetchedAt?: string;
   statusTag?: 'expiring' | 'today' | 'exclusive' | 'shipping' | 'normal';
 }
 

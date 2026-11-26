@@ -23,6 +23,9 @@ import { VerifiedBadge } from './common/VerifiedBadge';
 import { isUserVerified } from '../utils/userVerificationUtils';
 import { usePageSeo } from '../services/seoSettingsService';
 import { getFeedCardAnimationClass } from '../utils/animationUtils';
+import { ExternalLink } from 'lucide-react';
+import { ExternalSourceInline } from './common/ExternalSourceEmbedCard';
+import { extractDomainFromUrl, normalizeExternalUrl } from '../services/externalEmbedService';
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -422,9 +425,23 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost,
                   <div className="p-4 flex flex-col justify-between flex-1 gap-3">
                     <div>
                       <div className="flex items-start justify-between gap-2">
-                        <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-primary" /> {ad.location || ad.region || 'Slovenija'}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-primary" /> {ad.location || ad.region || 'Slovenija'}
+                          </span>
+                          {(ad.isExternalEmbed || ad.externalUrl) && (
+                            <>
+                              <span className="text-[10px] text-outline">·</span>
+                              <ExternalSourceInline
+                                isExternalEmbed={ad.isExternalEmbed}
+                                externalUrl={ad.externalUrl}
+                                sourceName={ad.sourceName}
+                                sourceDomain={ad.sourceDomain}
+                                sourceFavicon={ad.sourceFavicon}
+                              />
+                            </>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1">
                           <BookmarkButton 
                             id={ad.id}
@@ -547,7 +564,7 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost,
                           })()}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <ShareMenu 
                           title={ad.title}
                           description={ad.description}
@@ -556,6 +573,18 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost,
                           showLabel={true}
                           buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
                         />
+                        {ad.externalUrl && (
+                          <a
+                            href={normalizeExternalUrl(ad.externalUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 border border-primary/25"
+                            title={`Odpri izvirni oglas na ${ad.sourceDomain || extractDomainFromUrl(ad.externalUrl)}`}
+                          >
+                            <span>Odpri vir</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
                         <button 
                           onClick={() => {
                             window.location.hash = `ad-${ad.id}`;
@@ -563,7 +592,7 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost,
                           className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
                         >
                           <Phone className="w-3.5 h-3.5" />
-                          <span>Kontakt</span>
+                          <span>{ad.externalUrl ? 'Podrobnosti' : 'Kontakt'}</span>
                         </button>
                       </div>
                     </div>

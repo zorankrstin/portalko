@@ -15,6 +15,7 @@ import { isUserUploadedAvatar } from "../../utils/avatarUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
+import { ExternalSourceInline } from "../common/ExternalSourceEmbedCard";
 
 export interface DealPostProps {
   id?: string;
@@ -48,6 +49,12 @@ export interface DealPostProps {
   featured?: boolean;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
+  isExternalEmbed?: boolean;
+  externalUrl?: string;
+  sourceName?: string;
+  sourceDomain?: string;
+  sourceFavicon?: string;
+  fetchedAt?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
   onTagClick?: (tag: string) => void;
 }
@@ -84,6 +91,12 @@ export const DealPost: React.FC<DealPostProps> = ({
   featured = false,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
+  isExternalEmbed,
+  externalUrl,
+  sourceName,
+  sourceDomain,
+  sourceFavicon,
+  fetchedAt,
   onNavigatePost,
   onTagClick,
 }) => {
@@ -141,6 +154,12 @@ export const DealPost: React.FC<DealPostProps> = ({
           votes: votesCount || 0,
           votesCount: votesCount || 0,
           likesCount: votesCount || 0,
+          isExternalEmbed,
+          externalUrl,
+          sourceName,
+          sourceDomain,
+          sourceFavicon,
+          fetchedAt,
         },
       });
     } else {
@@ -429,6 +448,18 @@ export const DealPost: React.FC<DealPostProps> = ({
                     <MapPin className="w-3 h-3 text-outline shrink-0" />
                     <span>{region}</span>
                   </span>
+                </>
+              )}
+              {(isExternalEmbed || externalUrl) && (
+                <>
+                  <span>•</span>
+                  <ExternalSourceInline
+                    isExternalEmbed={isExternalEmbed}
+                    externalUrl={externalUrl || link}
+                    sourceName={sourceName}
+                    sourceDomain={sourceDomain}
+                    sourceFavicon={sourceFavicon}
+                  />
                 </>
               )}
             </div>

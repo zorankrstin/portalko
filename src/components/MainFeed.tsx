@@ -452,6 +452,12 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTag
                   tags={ad.tags}
                   isPromoted={isPromoted}
                   promotionBadgeType={ad.promotionBadgeType || ad.promotion?.badgeType}
+                  isExternalEmbed={ad.isExternalEmbed}
+                  externalUrl={ad.externalUrl}
+                  sourceName={ad.sourceName}
+                  sourceDomain={ad.sourceDomain}
+                  sourceFavicon={ad.sourceFavicon}
+                  fetchedAt={ad.fetchedAt}
                   onNavigatePost={onNavigatePost}
                   onTagClick={onTagClick}
                 />
