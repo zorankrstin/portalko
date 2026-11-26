@@ -1,6 +1,11 @@
 import React from 'react';
 import { ExternalLink, Globe } from 'lucide-react';
-import { extractDomainFromUrl, normalizeExternalUrl } from '../../services/externalEmbedService';
+import {
+  extractDomainFromUrl,
+  normalizeExternalUrl,
+  useResolvedExternalEmbed,
+} from '../../services/externalEmbedService';
+import { ResilientEmbedImage } from './EmbedThumbnailPlaceholder';
 
 interface ExternalSourceInlineProps {
   externalUrl?: string;
@@ -52,6 +57,7 @@ export const ExternalSourceInline: React.FC<ExternalSourceInlineProps> = ({
         <img
           src={sourceFavicon}
           alt=""
+          referrerPolicy="no-referrer"
           className="w-3.5 h-3.5 rounded-xs shrink-0"
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = 'none';
@@ -69,7 +75,7 @@ export const ExternalSourceInline: React.FC<ExternalSourceInlineProps> = ({
 };
 
 interface ExternalSourceDetailEmbedProps {
-  type: 'ad' | 'deal';
+  type: 'ad' | 'deal' | 'blog' | 'event';
   title: string;
   description?: string;
   image?: string;
@@ -83,8 +89,8 @@ interface ExternalSourceDetailEmbedProps {
 }
 
 /**
- * Rich embedded preview card shown on PostDetailPage when a Mali oglas or Akcija
- * was fetched from an external website.
+ * Rich embedded preview card shown when a post was fetched or linked from an external website.
+ * Automatically extracts og:image and metadata from externalUrl when no DB image is available.
  */
 export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps> = ({
   type,
@@ -99,22 +105,50 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
   isExternalEmbed,
   fetchedAt,
 }) => {
-  if (!isExternalEmbed && !externalUrl) return null;
-  if (!externalUrl || externalUrl === '#') return null;
+  const hasValidUrl = Boolean(externalUrl && externalUrl.trim() && externalUrl.trim() !== '#');
+  const href = hasValidUrl ? normalizeExternalUrl(externalUrl!) : '';
+  const hasDbImage = Boolean(image && image.trim());
 
-  const href = normalizeExternalUrl(externalUrl);
-  const domain = sourceDomain || extractDomainFromUrl(href) || 'spletna stran';
-  const publisher = sourceName || domain;
-  const cleanDesc = (description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  // Automatically attempt og:image + metadata extraction when image is missing in database
+  const resolvedMeta = useResolvedExternalEmbed(
+    href || undefined,
+    !href || (hasDbImage && Boolean(sourceDomain))
+  );
+
+  if (!isExternalEmbed && !hasValidUrl) return null;
+  if (!href) return null;
+
+  const domain = sourceDomain || resolvedMeta?.domain || extractDomainFromUrl(href) || 'spletna stran';
+  const publisher = sourceName || resolvedMeta?.siteName || domain;
+  const effectiveFavicon = sourceFavicon || resolvedMeta?.faviconUrl;
+  const effectiveFetchedAt = fetchedAt || resolvedMeta?.fetchedAt;
+  const effectiveImage = (hasDbImage ? image?.trim() : '') || resolvedMeta?.imageUrl || '';
+  const effectiveTitle = (title && title.trim()) || resolvedMeta?.title || domain;
+  const effectivePrice =
+    price && price.trim() && price.trim().toLowerCase() !== 'po dogovoru'
+      ? price
+      : resolvedMeta?.price || price;
+  const rawDesc = (description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const cleanDesc = rawDesc || resolvedMeta?.description || '';
+
+  const typeLabel =
+    type === 'ad'
+      ? 'Vdelani zunanji oglas'
+      : type === 'deal'
+      ? 'Vdelana zunanja akcija'
+      : type === 'event'
+      ? 'Vdelani zunanji dogodek'
+      : 'Vdelani zunanji vir';
 
   return (
     <div className="rounded-2xl border border-surface-container bg-surface-container-low/70 overflow-hidden shadow-xs">
       <div className="px-4 py-2.5 border-b border-surface-container/60 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 text-xs">
-          {sourceFavicon ? (
+          {effectiveFavicon ? (
             <img
-              src={sourceFavicon}
+              src={effectiveFavicon}
               alt=""
+              referrerPolicy="no-referrer"
               className="w-4 h-4 rounded-xs shrink-0"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = 'none';
@@ -126,17 +160,17 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
           <span className="font-bold text-on-surface truncate">{publisher}</span>
           <span className="text-outline">·</span>
           <span className="text-outline truncate">{domain}</span>
-          {fetchedAt && (
+          {effectiveFetchedAt && (
             <>
               <span className="text-outline hidden sm:inline">·</span>
               <span className="text-[11px] text-outline hidden sm:inline">
-                Pridobljeno {new Date(fetchedAt).toLocaleDateString('sl-SI')}
+                Pridobljeno {new Date(effectiveFetchedAt).toLocaleDateString('sl-SI')}
               </span>
             </>
           )}
         </div>
         <span className="text-[11px] font-semibold text-primary">
-          {type === 'ad' ? 'Vdelani zunanji oglas' : 'Vdelana zunanja akcija'}
+          {typeLabel}
         </span>
       </div>
 
@@ -146,20 +180,28 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
         rel="noopener noreferrer"
         className="flex flex-col sm:flex-row gap-4 p-4 hover:bg-surface-container/40 transition-colors group"
       >
-        {image && (
-          <div className="sm:w-36 h-28 rounded-xl overflow-hidden bg-surface-container shrink-0 border border-surface-container/60">
-            <img
-              src={image}
-              alt={title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-          </div>
-        )}
+        <div className="sm:w-40 h-28 rounded-xl overflow-hidden bg-surface-container shrink-0 border border-surface-container/60">
+          <ResilientEmbedImage
+            src={effectiveImage}
+            fallbackSrcs={resolvedMeta?.images}
+            alt={effectiveTitle}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            placeholderProps={{
+              postType: type,
+              title: effectiveTitle,
+              sourceDomain: domain,
+              sourceName: publisher,
+              sourceFavicon: effectiveFavicon,
+              externalUrl: href,
+              variant: 'embed',
+            }}
+          />
+        </div>
 
         <div className="flex flex-col justify-between flex-1 min-w-0 gap-2">
           <div>
             <h4 className="font-headline-sm text-sm font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-2">
-              {title}
+              {effectiveTitle}
             </h4>
             {cleanDesc && (
               <p className="text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
@@ -169,8 +211,8 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            {price ? (
-              <span className="text-sm font-black text-primary">{price}</span>
+            {effectivePrice ? (
+              <span className="text-sm font-black text-primary">{effectivePrice}</span>
             ) : (
               <span className="text-xs text-outline truncate max-w-[260px]">{href}</span>
             )}
@@ -185,3 +227,4 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
     </div>
   );
 };
+

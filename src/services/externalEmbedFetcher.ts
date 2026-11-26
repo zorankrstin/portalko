@@ -23,6 +23,8 @@ export interface ExternalEmbedMetadata {
 
 const MAX_HTML_BYTES = 1_500_000;
 const FETCH_TIMEOUT_MS = 9_000;
+const EMBED_CACHE_TTL_MS = 15 * 60 * 1000;
+const embedServerCache = new Map<string, { meta: ExternalEmbedMetadata; expiresAt: number }>();
 
 function decodeHtmlEntities(raw: string): string {
   if (!raw) return "";
@@ -156,6 +158,15 @@ function resolveAbsoluteUrl(maybeRelative: string | undefined | null, baseUrl: s
   }
 }
 
+function isLikelyLogoOrIconUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return (
+    /\.svg(\?|$)/i.test(lower) ||
+    /(?:^|[/_.-])(favicon|logo|icon|sprite|pixel|spacer|blank|placeholder|spinner|avatar|badge|1x1)(?:[/_.-]|$)/i.test(lower) ||
+    lower.includes("_graphics/")
+  );
+}
+
 function parseMetaTags(html: string): Record<string, string[]> {
   const map: Record<string, string[]> = {};
   const metaRegex = /<meta\b([^>]*?)>/gi;
@@ -199,6 +210,41 @@ function parseLinkTags(html: string): { rel: string; href: string }[] {
   return results;
 }
 
+function extractContentImagesFromHtml(html: string, baseUrl: string): string[] {
+  const results: string[] = [];
+  const seen = new Set<string>();
+  const imgRegex = /<img\b([^>]*?)>/gi;
+  let m: RegExpExecArray | null;
+
+  while ((m = imgRegex.exec(html)) !== null) {
+    const attrsStr = m[1];
+    const srcMatch =
+      attrsStr.match(/\bdata-src\s*=\s*(?:"([^"]*)"|'([^']*)')/i) ||
+      attrsStr.match(/\bdata-lazy-src\s*=\s*(?:"([^"]*)"|'([^']*)')/i) ||
+      attrsStr.match(/\bdata-original\s*=\s*(?:"([^"]*)"|'([^']*)')/i) ||
+      attrsStr.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
+    const rawSrc = decodeHtmlEntities(srcMatch?.[1] || srcMatch?.[2] || srcMatch?.[3] || "").trim();
+    if (!rawSrc) continue;
+
+    const abs = resolveAbsoluteUrl(rawSrc, baseUrl);
+    if (!abs || seen.has(abs)) continue;
+    if (isLikelyLogoOrIconUrl(abs)) continue;
+
+    // Skip tiny explicit dimensions (e.g. width="16" height="16")
+    const widthMatch = attrsStr.match(/\bwidth\s*=\s*["']?(\d+)/i);
+    const heightMatch = attrsStr.match(/\bheight\s*=\s*["']?(\d+)/i);
+    const w = widthMatch ? parseInt(widthMatch[1], 10) : 0;
+    const h = heightMatch ? parseInt(heightMatch[1], 10) : 0;
+    if ((w > 0 && w < 80) || (h > 0 && h < 80)) continue;
+
+    seen.add(abs);
+    results.push(abs);
+    if (results.length >= 8) break;
+  }
+
+  return results;
+}
+
 function formatPriceString(rawPrice: string | number | undefined, currency?: string): string | undefined {
   if (rawPrice === undefined || rawPrice === null) return undefined;
   const rawStr = String(rawPrice).trim();
@@ -219,6 +265,38 @@ function formatPriceString(rawPrice: string | number | undefined, currency?: str
     return cur === "EUR" || cur === "€" ? `${formatted} €` : `${formatted} ${cur}`;
   }
   return rawStr;
+}
+
+function extractPriceFromText(text?: string): string | undefined {
+  if (!text) return undefined;
+  // Matches e.g. "14900 EUR", "14.900 €", "1.299,99 EUR", "€ 499"
+  const afterRegex = /(\d{1,3}(?:[.\s]\d{3})+|\d+)(?:,(\d{1,2}))?\s*(€|EUR)\b/i;
+  const afterMatch = text.match(afterRegex);
+  if (afterMatch) {
+    const intRaw = afterMatch[1].replace(/[.\s]/g, "");
+    const decRaw = afterMatch[2] || "";
+    const num = Number(decRaw ? `${intRaw}.${decRaw}` : intRaw);
+    if (Number.isFinite(num) && num > 0 && num < 10_000_000) {
+      return `${num.toLocaleString("sl-SI", {
+        minimumFractionDigits: decRaw ? Math.min(2, decRaw.length) : 0,
+        maximumFractionDigits: 2,
+      })} €`;
+    }
+  }
+  const beforeRegex = /(?:€|EUR)\s*(\d{1,3}(?:[.\s]\d{3})+|\d+)(?:,(\d{1,2}))?/i;
+  const beforeMatch = text.match(beforeRegex);
+  if (beforeMatch) {
+    const intRaw = beforeMatch[1].replace(/[.\s]/g, "");
+    const decRaw = beforeMatch[2] || "";
+    const num = Number(decRaw ? `${intRaw}.${decRaw}` : intRaw);
+    if (Number.isFinite(num) && num > 0 && num < 10_000_000) {
+      return `${num.toLocaleString("sl-SI", {
+        minimumFractionDigits: decRaw ? Math.min(2, decRaw.length) : 0,
+        maximumFractionDigits: 2,
+      })} €`;
+    }
+  }
+  return undefined;
 }
 
 function computeDiscountLabel(oldPriceStr?: string, newPriceStr?: string): string | undefined {
@@ -358,19 +436,130 @@ function cleanTitleSiteSuffix(rawTitle: string, siteName: string, domain: string
   if (!title) return "";
   const escapedSite = siteName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const escapedDomain = domain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`\\s*[|\\-–—·•:]\\s*(?:${escapedSite}|${escapedDomain})$`, "i");
+  const pattern = new RegExp(`\\s*(?:::|[|\\-–—·•:])\\s*(?:www\\.)?(?:${escapedSite}|${escapedDomain})(?:\\s*::\\s*[^|]+)?$`, "i");
   const stripped = title.replace(pattern, "").trim();
   return stripped.length >= 4 ? stripped : title;
 }
 
+function isCloudflareOrBotChallengeHtml(html: string): boolean {
+  if (!html) return false;
+  return (
+    /just a moment\.\.\./i.test(html) ||
+    /attention required!\s*\|\s*cloudflare/i.test(html) ||
+    /\/cdn-cgi\/challenge-platform\//i.test(html) ||
+    /window\._cf_chl_opt/i.test(html) ||
+    /enable javascript and cookies to continue/i.test(html)
+  );
+}
+
+function isChallengeTitleOrText(title?: string, desc?: string): boolean {
+  const combined = `${title || ""} ${desc || ""}`;
+  return (
+    /just a moment\.\.\./i.test(combined) ||
+    /attention required!\s*\|\s*cloudflare/i.test(combined) ||
+    /sorry,\s*you have been blocked/i.test(combined) ||
+    /security service to protect itself/i.test(combined) ||
+    /checking your browser before accessing/i.test(combined)
+  );
+}
+
+async function fetchViaMicrolinkFallback(targetUrl: URL): Promise<ExternalEmbedMetadata> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS + 1500);
+
+  try {
+    const endpoint = `https://api.microlink.io/?url=${encodeURIComponent(targetUrl.toString())}&palette=false&audio=false&video=false&iframe=false`;
+    const res = await fetch(endpoint, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+
+    const payload: any = await res.json().catch(() => null);
+    if (!res.ok || payload?.status !== "success" || !payload?.data) {
+      throw new Error("Ciljna spletna stran blokira samodejni dostop (zaščita Cloudflare).");
+    }
+
+    const d = payload.data;
+    const rawTitle = decodeHtmlEntities(String(d.title || "")).trim();
+    const rawDesc = stripTags(String(d.description || "")).slice(0, 1200);
+
+    if (isChallengeTitleOrText(rawTitle, rawDesc)) {
+      throw new Error("Ciljna spletna stran zahteva ročno potrditev (Cloudflare) in ne dovoli samodejnega branja.");
+    }
+
+    const resolvedUrl = resolveAbsoluteUrl(d.url, targetUrl.toString()) || targetUrl.toString();
+    const canonicalDomain = (() => {
+      try {
+        return new URL(resolvedUrl).hostname.replace(/^www\./i, "").toLowerCase();
+      } catch {
+        return targetUrl.hostname.replace(/^www\./i, "").toLowerCase();
+      }
+    })();
+
+    const siteName = (decodeHtmlEntities(String(d.publisher || "")) || canonicalDomain).trim();
+    // Clean patterns like "Jaguar F-Pace ... - prodam :: Avtonet :: www.Avto.net"
+    let title = cleanTitleSiteSuffix(rawTitle, siteName, canonicalDomain);
+    title = title.replace(/\s*::\s*Avtonet\s*::\s*www\.Avto\.net$/i, "").trim() || title;
+
+    const images: string[] = [];
+    const seen = new Set<string>();
+    const pushImg = (cand?: string) => {
+      const abs = resolveAbsoluteUrl(cand, resolvedUrl);
+      if (abs && !seen.has(abs) && !isLikelyLogoOrIconUrl(abs)) {
+        seen.add(abs);
+        images.push(abs);
+      }
+    };
+    pushImg(d.image?.url);
+
+    const faviconUrl =
+      resolveAbsoluteUrl(d.logo?.url, resolvedUrl) ||
+      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(canonicalDomain)}&sz=64`;
+
+    const price = extractPriceFromText(`${rawTitle} ${rawDesc}`);
+
+    return {
+      url: resolvedUrl,
+      originalUrl: targetUrl.toString(),
+      domain: canonicalDomain,
+      siteName,
+      faviconUrl,
+      title: title || canonicalDomain,
+      description: rawDesc,
+      imageUrl: images[0],
+      images: images.slice(0, 6),
+      price,
+      author: typeof d.author === "string" && d.author.trim() ? decodeHtmlEntities(d.author) : undefined,
+      publishedTime: typeof d.date === "string" && d.date.trim() ? d.date : undefined,
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error("Časovna omejitev pri pridobivanju zaščitene spletne strani je potekla.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function fetchExternalEmbedMetadata(rawUrl: string): Promise<ExternalEmbedMetadata> {
   const initialUrl = await assertSafePublicUrl(rawUrl);
+  const cacheKey = initialUrl.toString();
+
+  const cached = embedServerCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.meta;
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   let finalUrlStr = initialUrl.toString();
   let html = "";
+  let shouldFallbackToMicrolink = false;
+  let directFailureStatus: number | null = null;
 
   try {
     const response = await fetch(finalUrlStr, {
@@ -390,176 +579,234 @@ export async function fetchExternalEmbedMetadata(rawUrl: string): Promise<Extern
       finalUrlStr = verifiedFinal.toString();
     }
 
-    if (!response.ok) {
+    const cfMitigated = (response.headers.get("cf-mitigated") || "").toLowerCase();
+    if (response.status === 403 || response.status === 429 || response.status === 503 || cfMitigated === "challenge") {
+      shouldFallbackToMicrolink = true;
+      directFailureStatus = response.status;
+    } else if (!response.ok) {
       throw new Error(`Ciljna spletna stran je vrnila napako (${response.status}).`);
-    }
+    } else {
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml") && !contentType.includes("text/plain")) {
+        throw new Error("Povezava ne kaže na spletno stran (HTML), temveč na drugo vrsto datoteke.");
+      }
 
-    const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml") && !contentType.includes("text/plain")) {
-      throw new Error("Povezava ne kaže na spletno stran (HTML), temveč na drugo vrsto datoteke.");
-    }
-
-    const reader = response.body?.getReader();
-    if (reader) {
-      const chunks: Uint8Array[] = [];
-      let total = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          total += value.byteLength;
-          chunks.push(value);
-          if (total >= MAX_HTML_BYTES) {
-            await reader.cancel().catch(() => {});
-            break;
+      const reader = response.body?.getReader();
+      if (reader) {
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            total += value.byteLength;
+            chunks.push(value);
+            if (total >= MAX_HTML_BYTES) {
+              await reader.cancel().catch(() => {});
+              break;
+            }
           }
         }
+        html = Buffer.concat(chunks).toString("utf8");
+      } else {
+        html = (await response.text()).slice(0, MAX_HTML_BYTES);
       }
-      html = Buffer.concat(chunks).toString("utf8");
-    } else {
-      html = (await response.text()).slice(0, MAX_HTML_BYTES);
+
+      if (isCloudflareOrBotChallengeHtml(html)) {
+        shouldFallbackToMicrolink = true;
+        directFailureStatus = response.status;
+      }
     }
   } catch (err: any) {
     if (err?.name === "AbortError") {
       throw new Error("Časovna omejitev pri pridobivanju spletne strani je potekla.");
     }
-    throw err;
+    if (!shouldFallbackToMicrolink) {
+      throw err;
+    }
   } finally {
     clearTimeout(timeout);
   }
 
-  const finalParsedUrl = new URL(finalUrlStr);
-  const domain = finalParsedUrl.hostname.replace(/^www\./i, "").toLowerCase();
+  let result: ExternalEmbedMetadata;
 
-  const meta = parseMetaTags(html);
-  const links = parseLinkTags(html);
-  const jsonLd = parseJsonLdNodes(html);
-
-  const canonicalRaw = meta["og:url"]?.[0] || links.find((l) => l.rel === "canonical")?.href;
-  const canonicalUrl = resolveAbsoluteUrl(canonicalRaw, finalUrlStr) || finalUrlStr;
-  const canonicalDomain = (() => {
+  if (shouldFallbackToMicrolink) {
     try {
-      return new URL(canonicalUrl).hostname.replace(/^www\./i, "").toLowerCase();
-    } catch {
-      return domain;
+      result = await fetchViaMicrolinkFallback(new URL(finalUrlStr));
+    } catch (fallbackErr: any) {
+      if (directFailureStatus) {
+        throw new Error(
+          fallbackErr?.message || `Ciljna spletna stran je vrnila napako (${directFailureStatus}).`
+        );
+      }
+      throw fallbackErr;
     }
-  })();
+  } else {
+    const finalParsedUrl = new URL(finalUrlStr);
+    const domain = finalParsedUrl.hostname.replace(/^www\./i, "").toLowerCase();
 
-  const rawSiteName =
-    meta["og:site_name"]?.[0] ||
-    meta["application-name"]?.[0] ||
-    jsonLd.seller ||
-    canonicalDomain;
-  const siteName = rawSiteName.trim() || canonicalDomain;
+    const meta = parseMetaTags(html);
+    const links = parseLinkTags(html);
+    const jsonLd = parseJsonLdNodes(html);
 
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-  const rawTitle =
-    meta["og:title"]?.[0] ||
-    meta["twitter:title"]?.[0] ||
-    jsonLd.title ||
-    (titleMatch ? stripTags(titleMatch[1]) : "") ||
-    (h1Match ? stripTags(h1Match[1]) : "") ||
-    canonicalDomain;
-  const title = cleanTitleSiteSuffix(rawTitle, siteName, canonicalDomain);
+    const canonicalRaw = meta["og:url"]?.[0] || links.find((l) => l.rel === "canonical")?.href;
+    const canonicalUrl = resolveAbsoluteUrl(canonicalRaw, finalUrlStr) || finalUrlStr;
+    const canonicalDomain = (() => {
+      try {
+        return new URL(canonicalUrl).hostname.replace(/^www\./i, "").toLowerCase();
+      } catch {
+        return domain;
+      }
+    })();
 
-  const rawDesc =
-    meta["og:description"]?.[0] ||
-    meta["twitter:description"]?.[0] ||
-    meta["description"]?.[0] ||
-    jsonLd.description ||
-    "";
-  const description = stripTags(rawDesc).slice(0, 1200);
+    const rawSiteName =
+      meta["og:site_name"]?.[0] ||
+      meta["application-name"]?.[0] ||
+      jsonLd.seller ||
+      canonicalDomain;
+    const siteName = rawSiteName.trim() || canonicalDomain;
 
-  // Collect images from OG, Twitter, JSON-LD, and link[rel=image_src]
-  const rawImageCandidates = [
-    ...(meta["og:image:secure_url"] || []),
-    ...(meta["og:image"] || []),
-    ...(meta["og:image:url"] || []),
-    ...(meta["twitter:image"] || []),
-    ...(meta["twitter:image:src"] || []),
-    ...(jsonLd.images || []),
-    ...links.filter((l) => l.rel === "image_src").map((l) => l.href),
-  ];
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    const rawTitle =
+      meta["og:title"]?.[0] ||
+      meta["twitter:title"]?.[0] ||
+      jsonLd.title ||
+      (titleMatch ? stripTags(titleMatch[1]) : "") ||
+      (h1Match ? stripTags(h1Match[1]) : "") ||
+      canonicalDomain;
+    const title = cleanTitleSiteSuffix(rawTitle, siteName, canonicalDomain);
 
-  const resolvedImages: string[] = [];
-  const seenImg = new Set<string>();
-  for (const candidate of rawImageCandidates) {
-    const abs = resolveAbsoluteUrl(candidate, finalUrlStr);
-    if (abs && !seenImg.has(abs)) {
-      seenImg.add(abs);
-      resolvedImages.push(abs);
-    }
-  }
+    const rawDesc =
+      meta["og:description"]?.[0] ||
+      meta["twitter:description"]?.[0] ||
+      meta["description"]?.[0] ||
+      jsonLd.description ||
+      "";
+    const description = stripTags(rawDesc).slice(0, 1200);
 
-  // Favicon
-  const iconCandidate =
-    links.find((l) => l.rel === "apple-touch-icon")?.href ||
-    links.find((l) => l.rel.includes("icon"))?.href;
-  const faviconUrl =
-    resolveAbsoluteUrl(iconCandidate, finalUrlStr) ||
-    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(canonicalDomain)}&sz=64`;
+    // Collect images from OG, Twitter, itemprop=image, JSON-LD, link[rel=image_src], then HTML <img> fallback
+    const rawImageCandidates = [
+      ...(meta["og:image:secure_url"] || []),
+      ...(meta["og:image"] || []),
+      ...(meta["og:image:url"] || []),
+      ...(meta["twitter:image"] || []),
+      ...(meta["twitter:image:src"] || []),
+      ...(meta["image"] || []),
+      ...(meta["thumbnail"] || []),
+      ...(jsonLd.images || []),
+      ...links.filter((l) => l.rel === "image_src").map((l) => l.href),
+    ];
 
-  // Price & discount
-  const metaCurrency =
-    meta["product:price:currency"]?.[0] ||
-    meta["og:price:currency"]?.[0] ||
-    jsonLd.currency ||
-    "EUR";
-  const metaPriceRaw =
-    meta["product:price:amount"]?.[0] ||
-    meta["og:price:amount"]?.[0] ||
-    meta["price"]?.[0];
-  const price = formatPriceString(metaPriceRaw, metaCurrency) || jsonLd.price;
-
-  const metaOldPriceRaw =
-    meta["product:original_price:amount"]?.[0] ||
-    meta["og:original_price:amount"]?.[0];
-  const oldPrice = formatPriceString(metaOldPriceRaw, metaCurrency) || jsonLd.oldPrice;
-  const discount = computeDiscountLabel(oldPrice, price);
-
-  // Location
-  const location =
-    meta["og:locality"]?.[0] ||
-    meta["product:location"]?.[0] ||
-    jsonLd.location ||
-    undefined;
-
-  // Tags
-  const rawKeywordStrings = [
-    ...(meta["article:tag"] || []),
-    ...(meta["keywords"] || []),
-  ];
-  const tagSet = new Set<string>();
-  for (const kStr of rawKeywordStrings) {
-    for (const part of kStr.split(",")) {
-      const cleaned = part.replace(/^#/, "").trim();
-      if (cleaned.length >= 2 && cleaned.length <= 32 && tagSet.size < 6) {
-        tagSet.add(cleaned);
+    const resolvedImages: string[] = [];
+    const seenImg = new Set<string>();
+    for (const candidate of rawImageCandidates) {
+      const abs = resolveAbsoluteUrl(candidate, finalUrlStr);
+      if (abs && !seenImg.has(abs)) {
+        seenImg.add(abs);
+        resolvedImages.push(abs);
       }
     }
-  }
-  if (jsonLd.brand && tagSet.size < 6) {
-    tagSet.add(jsonLd.brand);
+
+    // If structured metadata had zero photos (or only logos), scan content <img> elements
+    const nonLogoResolved = resolvedImages.filter((u) => !isLikelyLogoOrIconUrl(u));
+    if (nonLogoResolved.length === 0) {
+      const htmlImages = extractContentImagesFromHtml(html, finalUrlStr);
+      for (const htmlImg of htmlImages) {
+        if (!seenImg.has(htmlImg)) {
+          seenImg.add(htmlImg);
+          resolvedImages.push(htmlImg);
+        }
+      }
+    }
+
+    // Prioritize real non-logo photos first
+    resolvedImages.sort((a, b) => Number(isLikelyLogoOrIconUrl(a)) - Number(isLikelyLogoOrIconUrl(b)));
+
+    // Favicon
+    const iconCandidate =
+      links.find((l) => l.rel === "apple-touch-icon")?.href ||
+      links.find((l) => l.rel.includes("icon"))?.href;
+    const faviconUrl =
+      resolveAbsoluteUrl(iconCandidate, finalUrlStr) ||
+      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(canonicalDomain)}&sz=64`;
+
+    // Price & discount
+    const metaCurrency =
+      meta["product:price:currency"]?.[0] ||
+      meta["og:price:currency"]?.[0] ||
+      jsonLd.currency ||
+      "EUR";
+    const metaPriceRaw =
+      meta["product:price:amount"]?.[0] ||
+      meta["og:price:amount"]?.[0] ||
+      meta["price"]?.[0];
+    const price =
+      formatPriceString(metaPriceRaw, metaCurrency) ||
+      jsonLd.price ||
+      extractPriceFromText(`${rawTitle} ${description}`);
+
+    const metaOldPriceRaw =
+      meta["product:original_price:amount"]?.[0] ||
+      meta["og:original_price:amount"]?.[0];
+    const oldPrice = formatPriceString(metaOldPriceRaw, metaCurrency) || jsonLd.oldPrice;
+    const discount = computeDiscountLabel(oldPrice, price);
+
+    // Location
+    const location =
+      meta["og:locality"]?.[0] ||
+      meta["product:location"]?.[0] ||
+      jsonLd.location ||
+      undefined;
+
+    // Tags
+    const rawKeywordStrings = [
+      ...(meta["article:tag"] || []),
+      ...(meta["keywords"] || []),
+    ];
+    const tagSet = new Set<string>();
+    for (const kStr of rawKeywordStrings) {
+      for (const part of kStr.split(",")) {
+        const cleaned = part.replace(/^#/, "").trim();
+        if (cleaned.length >= 2 && cleaned.length <= 32 && tagSet.size < 6) {
+          tagSet.add(cleaned);
+        }
+      }
+    }
+    if (jsonLd.brand && tagSet.size < 6) {
+      tagSet.add(jsonLd.brand);
+    }
+
+    result = {
+      url: canonicalUrl,
+      originalUrl: initialUrl.toString(),
+      domain: canonicalDomain,
+      siteName,
+      faviconUrl,
+      title: title || canonicalDomain,
+      description,
+      imageUrl: resolvedImages[0],
+      images: resolvedImages.slice(0, 6),
+      price,
+      oldPrice,
+      discount,
+      location,
+      tags: tagSet.size > 0 ? Array.from(tagSet) : undefined,
+      publishedTime: meta["article:published_time"]?.[0] || jsonLd.publishedTime,
+      author: meta["author"]?.[0] || jsonLd.author,
+      fetchedAt: new Date().toISOString(),
+    };
   }
 
-  return {
-    url: canonicalUrl,
-    originalUrl: initialUrl.toString(),
-    domain: canonicalDomain,
-    siteName,
-    faviconUrl,
-    title: title || canonicalDomain,
-    description,
-    imageUrl: resolvedImages[0],
-    images: resolvedImages.slice(0, 6),
-    price,
-    oldPrice,
-    discount,
-    location,
-    tags: tagSet.size > 0 ? Array.from(tagSet) : undefined,
-    publishedTime: meta["article:published_time"]?.[0] || jsonLd.publishedTime,
-    author: meta["author"]?.[0] || jsonLd.author,
-    fetchedAt: new Date().toISOString(),
-  };
+  // Cache bounded entries
+  if (embedServerCache.size > 200) {
+    const firstKey = embedServerCache.keys().next().value;
+    if (firstKey) embedServerCache.delete(firstKey);
+  }
+  embedServerCache.set(cacheKey, {
+    meta: result,
+    expiresAt: Date.now() + EMBED_CACHE_TTL_MS,
+  });
+
+  return result;
 }

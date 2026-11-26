@@ -543,6 +543,7 @@ export function TagFeed({
                     promotionBadgeType={promoBadge}
                     isExternalEmbed={p.isExternalEmbed}
                     externalUrl={p.externalUrl || p.dealLink}
+                    embedCode={p.embedCode}
                     sourceName={p.sourceName}
                     sourceDomain={p.sourceDomain}
                     sourceFavicon={p.sourceFavicon}
@@ -596,6 +597,7 @@ export function TagFeed({
                     promotionBadgeType={ad.promotionBadgeType || ad.promotion?.badgeType}
                     isExternalEmbed={ad.isExternalEmbed}
                     externalUrl={ad.externalUrl}
+                    embedCode={ad.embedCode}
                     sourceName={ad.sourceName}
                     sourceDomain={ad.sourceDomain}
                     sourceFavicon={ad.sourceFavicon}
@@ -672,6 +674,9 @@ export function TagFeed({
                   tags={entry.tags}
                   isPromoted={isPromoted}
                   promotionBadgeType={ev.promotionBadgeType || ev.promotion?.badgeType}
+                  embedCode={(ev as any).embedCode}
+                  externalUrl={(ev as any).externalUrl}
+                  isExternalEmbed={(ev as any).isExternalEmbed}
                   onNavigatePost={onNavigatePost}
                   onTagClick={onTagClick}
                 />

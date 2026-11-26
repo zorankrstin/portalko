@@ -454,6 +454,7 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTag
                   promotionBadgeType={ad.promotionBadgeType || ad.promotion?.badgeType}
                   isExternalEmbed={ad.isExternalEmbed}
                   externalUrl={ad.externalUrl}
+                  embedCode={ad.embedCode}
                   sourceName={ad.sourceName}
                   sourceDomain={ad.sourceDomain}
                   sourceFavicon={ad.sourceFavicon}
@@ -506,6 +507,9 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTag
                   tags={ev.tags}
                   isPromoted={isPromoted}
                   promotionBadgeType={ev.promotionBadgeType || ev.promotion?.badgeType}
+                  embedCode={(ev as any).embedCode}
+                  externalUrl={(ev as any).externalUrl}
+                  isExternalEmbed={(ev as any).isExternalEmbed}
                   onNavigatePost={onNavigatePost}
                   onTagClick={onTagClick}
                 />

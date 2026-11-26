@@ -16,6 +16,12 @@ import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
 import { ExternalSourceInline } from "../common/ExternalSourceEmbedCard";
+import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import {
+  getDirectVideoThumbnailUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+} from "../../services/externalEmbedService";
 
 export interface DealPostProps {
   id?: string;
@@ -51,6 +57,7 @@ export interface DealPostProps {
   promotionBadgeType?: PromotionBadgeType;
   isExternalEmbed?: boolean;
   externalUrl?: string;
+  embedCode?: string;
   sourceName?: string;
   sourceDomain?: string;
   sourceFavicon?: string;
@@ -93,6 +100,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   promotionBadgeType = 'PROMO',
   isExternalEmbed,
   externalUrl,
+  embedCode,
   sourceName,
   sourceDomain,
   sourceFavicon,
@@ -154,12 +162,13 @@ export const DealPost: React.FC<DealPostProps> = ({
           votes: votesCount || 0,
           votesCount: votesCount || 0,
           likesCount: votesCount || 0,
-          isExternalEmbed,
-          externalUrl,
-          sourceName,
-          sourceDomain,
-          sourceFavicon,
-          fetchedAt,
+          isExternalEmbed: Boolean(isExternalEmbed || resolvedExternalUrl),
+          externalUrl: resolvedExternalUrl || externalUrl,
+          embedCode,
+          sourceName: sourceName || resolvedEmbedMeta?.siteName,
+          sourceDomain: sourceDomain || resolvedEmbedMeta?.domain,
+          sourceFavicon: sourceFavicon || resolvedEmbedMeta?.faviconUrl,
+          fetchedAt: fetchedAt || resolvedEmbedMeta?.fetchedAt,
         },
       });
     } else {
@@ -185,8 +194,22 @@ export const DealPost: React.FC<DealPostProps> = ({
     }
   };
 
+  const hasDbImage = Boolean(image && image.trim());
+  const resolvedExternalUrl = resolvePostExternalUrlCandidate(
+    { externalUrl, link, embedCode },
+    { includeSocialEmbeds: true }
+  );
+  const resolvedEmbedMeta = useResolvedExternalEmbed(
+    resolvedExternalUrl,
+    !resolvedExternalUrl || hasDbImage
+  );
+  const extractedImage = (!hasDbImage
+    ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(embedCode || resolvedExternalUrl))
+    : '') || '';
+
   const resolveInitialImage = () => {
-    if (image && image.trim()) return image.trim();
+    if (hasDbImage) return image.trim();
+    if (extractedImage) return extractedImage;
     const fallback = getActiveFallbackImage(true);
     return fallback || '';
   };
@@ -197,7 +220,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   React.useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image]);
+  }, [image, extractedImage]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -209,6 +232,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   };
 
   const hasVisibleImage = !!imgSrc && !hasError;
+  const shouldShowMediaSlot = Boolean(imgSrc || isExternalEmbed || externalUrl || embedCode);
   const cleanDescription = getPlainTextSnippet(description);
 
   const formatSlDate = (dStr: string) => dStr.includes('-') ? new Date(dStr).toLocaleDateString('sl-SI') : dStr;
@@ -260,19 +284,29 @@ export const DealPost: React.FC<DealPostProps> = ({
       }`}
     >
       {/* PHOTO CONTAINER */}
-      {hasVisibleImage && (
+      {shouldShowMediaSlot && (
         <a 
           href={postUrl}
           onClick={handleOpenDetail}
           className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden block cursor-pointer"
           title="Odpri samostojno stran te ugodnosti"
         >
-          <img 
-            src={imgSrc} 
+          <ResilientEmbedImage
+            src={imgSrc}
+            fallbackSrcs={[...(images || []), ...(resolvedEmbedMeta?.images || [])]}
             alt={cleanTitle}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"
-            onError={handleImageError}
+            onAllImagesFailed={() => setHasError(true)}
+            placeholderProps={{
+              postType: 'deal',
+              title: cleanTitle,
+              sourceDomain: sourceDomain || resolvedEmbedMeta?.domain,
+              sourceName: sourceName || resolvedEmbedMeta?.siteName,
+              sourceFavicon: sourceFavicon || resolvedEmbedMeta?.faviconUrl,
+              externalUrl: resolvedExternalUrl || externalUrl || link,
+              variant: 'card',
+            }}
           />
         </a>
       )}
@@ -343,7 +377,7 @@ export const DealPost: React.FC<DealPostProps> = ({
                 title={cleanTitle} 
                 description={description} 
                 url={`${window.location.origin}${postUrl}`}
-                imageUrl={image}
+                imageUrl={hasVisibleImage ? imgSrc : image}
                 category={categoryName || category}
                 author={author}
                 discount={discount}
@@ -494,7 +528,7 @@ export const DealPost: React.FC<DealPostProps> = ({
                 title={title} 
                 description={description} 
                 url={`${window.location.origin}${postUrl}`}
-                imageUrl={image}
+                imageUrl={hasVisibleImage ? imgSrc : image}
                 category={categoryName || category}
                 author={author}
                 discount={discount}

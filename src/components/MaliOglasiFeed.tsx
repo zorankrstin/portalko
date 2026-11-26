@@ -25,7 +25,272 @@ import { usePageSeo } from '../services/seoSettingsService';
 import { getFeedCardAnimationClass } from '../utils/animationUtils';
 import { ExternalLink } from 'lucide-react';
 import { ExternalSourceInline } from './common/ExternalSourceEmbedCard';
-import { extractDomainFromUrl, normalizeExternalUrl } from '../services/externalEmbedService';
+import { ResilientEmbedImage } from './common/EmbedThumbnailPlaceholder';
+import {
+  extractDomainFromUrl,
+  normalizeExternalUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+} from '../services/externalEmbedService';
+
+function MaliOglasiFeedAdCard({
+  ad,
+  isPromoted,
+  badgeType,
+  users,
+  onTagClick,
+}: {
+  ad: FirestoreAd;
+  isPromoted: boolean;
+  badgeType: any;
+  users: any[];
+  onTagClick?: (tag: string) => void;
+}) {
+  const cleanTitle = getPlainTextSnippet(ad.title);
+  const candidateExternalUrl = useMemo(() => resolvePostExternalUrlCandidate(ad), [ad]);
+  const hasStoredImage = Boolean(ad.imageUrl && ad.imageUrl.trim());
+  const resolvedExt = useResolvedExternalEmbed(
+    candidateExternalUrl,
+    !candidateExternalUrl || hasStoredImage
+  );
+
+  const displayImage = ad.imageUrl || resolvedExt?.imageUrl || resolvedExt?.images?.[0] || '';
+  const cleanDescription =
+    getPlainTextSnippet(ad.description) ||
+    (resolvedExt?.description ? getPlainTextSnippet(resolvedExt.description) : '');
+  const displayPrice =
+    (!ad.price || ad.price === 'Po dogovoru') && resolvedExt?.price
+      ? resolvedExt.price
+      : ad.price;
+  const effectiveExternalUrl = ad.externalUrl || candidateExternalUrl || resolvedExt?.url;
+  const effectiveIsExternal = Boolean(ad.isExternalEmbed || effectiveExternalUrl);
+  const effectiveSourceName = ad.sourceName || resolvedExt?.siteName;
+  const effectiveSourceDomain = ad.sourceDomain || resolvedExt?.domain;
+  const effectiveSourceFavicon = ad.sourceFavicon || resolvedExt?.faviconUrl;
+
+  const shouldShowMediaSlot = Boolean(displayImage || effectiveIsExternal || ad.embedCode);
+
+  return (
+    <article
+      className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row ${
+        isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
+      }`}
+    >
+      {shouldShowMediaSlot && (
+        <a
+          href={`#ad-${ad.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.hash = `ad-${ad.id}`;
+          }}
+          className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group overflow-hidden"
+          title="Odpri samostojno stran tega oglasa"
+        >
+          <ResilientEmbedImage
+            alt={cleanTitle}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            src={displayImage}
+            fallbackSrcs={resolvedExt?.images}
+            placeholderProps={{
+              postType: 'ad',
+              title: cleanTitle,
+              sourceDomain: effectiveSourceDomain,
+              sourceName: effectiveSourceName,
+              sourceFavicon: effectiveSourceFavicon,
+              externalUrl: effectiveExternalUrl,
+              variant: 'card',
+            }}
+          />
+          <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 flex-wrap">
+            {isPromoted && <PromotedBadge type={badgeType} size="sm" />}
+            <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider shadow-sm">
+              {ad.categoryName || ad.category || 'Mali oglas'}
+            </span>
+          </div>
+          {ad.subcategoryName && (
+            <span className="absolute bottom-2 left-2 z-20 px-2 py-0.5 rounded-md bg-black/60 text-white font-label-caps text-[9px] font-semibold backdrop-blur-xs">
+              {ad.subcategoryName}
+            </span>
+          )}
+        </a>
+      )}
+      <div className="p-4 flex flex-col justify-between flex-1 gap-3">
+        <div>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-primary" /> {ad.location || ad.region || 'Slovenija'}
+              </span>
+              {(effectiveIsExternal || effectiveExternalUrl) && (
+                <>
+                  <span className="text-[10px] text-outline">·</span>
+                  <ExternalSourceInline
+                    isExternalEmbed={effectiveIsExternal}
+                    externalUrl={effectiveExternalUrl}
+                    sourceName={effectiveSourceName}
+                    sourceDomain={effectiveSourceDomain}
+                    sourceFavicon={effectiveSourceFavicon}
+                  />
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <BookmarkButton
+                id={ad.id}
+                data={{
+                  id: ad.id,
+                  type: 'ad',
+                  title: cleanTitle,
+                  description: cleanDescription,
+                  category: ad.categoryName || ad.category,
+                  location: ad.location || ad.region,
+                  price: displayPrice,
+                  imageUrl: displayImage || ad.imageUrl,
+                  author: ad.authorName,
+                }}
+              />
+              <ShareMenu
+                title={cleanTitle}
+                description={cleanDescription}
+                type="ad"
+                id={ad.id}
+                imageUrl={displayImage || ad.imageUrl}
+                category={ad.categoryName || ad.category}
+                author={ad.authorName}
+                price={displayPrice}
+                location={ad.location || ad.region}
+              />
+              <ReportButton
+                targetId={ad.id}
+                targetType="ad"
+                targetTitle={cleanTitle}
+                targetAuthor={ad.authorName}
+              />
+            </div>
+          </div>
+          <h2 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface mt-1 hover:text-primary transition-colors cursor-pointer">
+            <a
+              href={`#ad-${ad.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.hash = `ad-${ad.id}`;
+              }}
+            >
+              {cleanTitle}
+            </a>
+          </h2>
+          <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
+            {cleanDescription}
+          </p>
+          {parseTags(ad.tags).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {parseTags(ad.tags).slice(0, 4).map((tag, tagIdx) => (
+                <a
+                  key={`${tag}-${tagIdx}`}
+                  href={buildTagUrl(tag)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onTagClick) {
+                      onTagClick(tag);
+                    } else {
+                      navigateApp(buildTagUrl(tag));
+                    }
+                  }}
+                  className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
+                  title={`Prikaži vse objave z oznako #${tag}`}
+                >
+                  #{tag}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low">
+          <div className="flex flex-col">
+            <span className="font-headline-md text-base sm:text-lg font-black text-primary">
+              {displayPrice || 'Po dogovoru'}
+            </span>
+            <span className="text-[10px] text-outline flex items-center gap-1">
+              <span>Objavil:</span>
+              {(() => {
+                const authorAvatar = resolveUserUploadedAvatar(ad.authorAvatar, ad.authorId, ad.authorName, users);
+                const isAuthorVerified = isUserVerified({
+                  role: ad.authorRole,
+                  userId: ad.authorId,
+                  name: ad.authorName,
+                  users,
+                });
+                return (
+                  <a
+                    href={`/avtor/${slugify(ad.authorName || 'Uporabnik')}`}
+                    data-author-name={ad.authorName || 'Uporabnik'}
+                    data-author-id={ad.authorId}
+                    data-author-avatar={authorAvatar || ''}
+                    data-author-role={ad.authorRole || 'uporabnik'}
+                    data-post-id={ad.id}
+                    data-post-type="ad"
+                    data-post-title={ad.title}
+                    data-post-image={displayImage || ad.imageUrl}
+                    data-post-category={ad.categoryName || ad.category}
+                    data-post-price={displayPrice}
+                    data-post-location={ad.location || ad.region}
+                    className="font-semibold text-on-surface hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
+                    title={`Ogled profila: ${ad.authorName || 'Uporabnik'}`}
+                  >
+                    <UserAvatar
+                      src={authorAvatar}
+                      name={ad.authorName || 'Uporabnik'}
+                      userId={ad.authorId}
+                      role={ad.authorRole}
+                      size="xs"
+                      className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
+                    />
+                    <span>{ad.authorName || 'Uporabnik'}</span>
+                    {isAuthorVerified && <VerifiedBadge size="xs" />}
+                  </a>
+                );
+              })()}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <ShareMenu
+              title={ad.title}
+              description={cleanDescription || ad.description}
+              type="ad"
+              id={ad.id}
+              imageUrl={displayImage || ad.imageUrl}
+              showLabel={true}
+              buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+            />
+            {effectiveExternalUrl && (
+              <a
+                href={normalizeExternalUrl(effectiveExternalUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 border border-primary/25"
+                title={`Odpri izvirni oglas na ${effectiveSourceDomain || extractDomainFromUrl(effectiveExternalUrl)}`}
+              >
+                <span>Odpri vir</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+            <button
+              onClick={() => {
+                window.location.hash = `ad-${ad.id}`;
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>{effectiveExternalUrl ? 'Podrobnosti' : 'Kontakt'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 interface MaliOglasiFeedProps {
   onViewChange: (view: 'main') => void;
@@ -388,218 +653,18 @@ export function MaliOglasiFeed({ onViewChange, searchQuery = '', onNavigatePost,
             const ad = item.data;
             const isPromoted = checkAdPromoted(item);
             const badgeType = ad.promotionBadgeType || ad.promotion?.badgeType || 'PROMO';
-            const cleanTitle = getPlainTextSnippet(ad.title);
-            const cleanDescription = getPlainTextSnippet(ad.description);
 
-              return (
-                <div key={`fs-ad-${ad.id}-${idx}`} className={getFeedCardAnimationClass(idx, PAGE_SIZE)}>
-                  <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row ${
-                    isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
-                  }`}>
-                  {ad.imageUrl && (
-                    <a 
-                      href={`#ad-${ad.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.hash = `ad-${ad.id}`;
-                      }}
-                      className="sm:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
-                      title="Odpri samostojno stran tega oglasa"
-                    >
-                      <img alt={cleanTitle} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src={ad.imageUrl} />
-                      <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
-                        {isPromoted && (
-                          <PromotedBadge type={badgeType} size="sm" />
-                        )}
-                        <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary font-label-caps text-[10px] font-bold uppercase tracking-wider shadow-sm">
-                          {ad.categoryName || ad.category || 'Mali oglas'}
-                        </span>
-                      </div>
-                      {ad.subcategoryName && (
-                        <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/60 text-white font-label-caps text-[9px] font-semibold backdrop-blur-xs">
-                          {ad.subcategoryName}
-                        </span>
-                      )}
-                    </a>
-                  )}
-                  <div className="p-4 flex flex-col justify-between flex-1 gap-3">
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-label-caps text-[10px] text-outline flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-primary" /> {ad.location || ad.region || 'Slovenija'}
-                          </span>
-                          {(ad.isExternalEmbed || ad.externalUrl) && (
-                            <>
-                              <span className="text-[10px] text-outline">·</span>
-                              <ExternalSourceInline
-                                isExternalEmbed={ad.isExternalEmbed}
-                                externalUrl={ad.externalUrl}
-                                sourceName={ad.sourceName}
-                                sourceDomain={ad.sourceDomain}
-                                sourceFavicon={ad.sourceFavicon}
-                              />
-                            </>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <BookmarkButton 
-                            id={ad.id}
-                            data={{
-                              id: ad.id,
-                              type: 'ad',
-                              title: cleanTitle,
-                              description: cleanDescription,
-                              category: ad.categoryName || ad.category,
-                              location: ad.location || ad.region,
-                              price: ad.price,
-                              imageUrl: ad.imageUrl,
-                              author: ad.authorName
-                            }}
-                          />
-                          <ShareMenu 
-                            title={cleanTitle}
-                            description={cleanDescription} 
-                            type="ad"
-                            id={ad.id}
-                            imageUrl={ad.imageUrl}
-                            category={ad.categoryName || ad.category}
-                            author={ad.authorName}
-                            price={ad.price}
-                            location={ad.location || ad.region}
-                          />
-                          <ReportButton 
-                            targetId={ad.id} 
-                            targetType="ad" 
-                            targetTitle={cleanTitle} 
-                            targetAuthor={ad.authorName} 
-                          />
-                        </div>
-                      </div>
-                      <h2 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface mt-1 hover:text-primary transition-colors cursor-pointer">
-                        <a 
-                          href={`#ad-${ad.id}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            window.location.hash = `ad-${ad.id}`;
-                          }}
-                        >
-                          {cleanTitle}
-                        </a>
-                      </h2>
-                      <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1">
-                        {cleanDescription}
-                      </p>
-                      {parseTags(ad.tags).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {parseTags(ad.tags).slice(0, 4).map((tag, tagIdx) => (
-                            <a
-                              key={`${tag}-${tagIdx}`}
-                              href={buildTagUrl(tag)}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (onTagClick) {
-                                  onTagClick(tag);
-                                } else {
-                                  navigateApp(buildTagUrl(tag));
-                                }
-                              }}
-                              className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
-                              title={`Prikaži vse objave z oznako #${tag}`}
-                            >
-                              #{tag}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-container-low">
-                      <div className="flex flex-col">
-                        <span className="font-headline-md text-base sm:text-lg font-black text-primary">
-                          {ad.price || 'Po dogovoru'}
-                        </span>
-                        <span className="text-[10px] text-outline flex items-center gap-1">
-                          <span>Objavil:</span>
-                          {(() => {
-                            const authorAvatar = resolveUserUploadedAvatar(ad.authorAvatar, ad.authorId, ad.authorName, users);
-                            const isAuthorVerified = isUserVerified({
-                              role: ad.authorRole,
-                              userId: ad.authorId,
-                              name: ad.authorName,
-                              users,
-                            });
-                            return (
-                              <a
-                                href={`/avtor/${slugify(ad.authorName || 'Uporabnik')}`}
-                                data-author-name={ad.authorName || 'Uporabnik'}
-                                data-author-id={ad.authorId}
-                                data-author-avatar={authorAvatar || ''}
-                                data-author-role={ad.authorRole || 'uporabnik'}
-                                data-post-id={ad.id}
-                                data-post-type="ad"
-                                data-post-title={ad.title}
-                                data-post-image={ad.imageUrl}
-                                data-post-category={ad.categoryName || ad.category}
-                                data-post-price={ad.price}
-                                data-post-location={ad.location || ad.region}
-                                className="font-semibold text-on-surface hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
-                                title={`Ogled profila: ${ad.authorName || 'Uporabnik'}`}
-                              >
-                                <UserAvatar
-                                  src={authorAvatar}
-                                  name={ad.authorName || 'Uporabnik'}
-                                  userId={ad.authorId}
-                                  role={ad.authorRole}
-                                  size="xs"
-                                  className="w-4 h-4 text-[8px] shrink-0 ring-1 ring-surface-container/60 shadow-xs"
-                                />
-                                <span>{ad.authorName || 'Uporabnik'}</span>
-                                {isAuthorVerified && (
-                                  <VerifiedBadge size="xs" />
-                                )}
-                              </a>
-                            );
-                          })()}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <ShareMenu 
-                          title={ad.title}
-                          description={ad.description}
-                          type="ad"
-                          id={ad.id}
-                          showLabel={true}
-                          buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
-                        />
-                        {ad.externalUrl && (
-                          <a
-                            href={normalizeExternalUrl(ad.externalUrl)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 border border-primary/25"
-                            title={`Odpri izvirni oglas na ${ad.sourceDomain || extractDomainFromUrl(ad.externalUrl)}`}
-                          >
-                            <span>Odpri vir</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                        <button 
-                          onClick={() => {
-                            window.location.hash = `ad-${ad.id}`;
-                          }}
-                          className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Phone className="w-3.5 h-3.5" />
-                          <span>{ad.externalUrl ? 'Podrobnosti' : 'Kontakt'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-                </div>
-              );
+            return (
+              <div key={`fs-ad-${ad.id}-${idx}`} className={getFeedCardAnimationClass(idx, PAGE_SIZE)}>
+                <MaliOglasiFeedAdCard
+                  ad={ad}
+                  isPromoted={isPromoted}
+                  badgeType={badgeType}
+                  users={users}
+                  onTagClick={onTagClick}
+                />
+              </div>
+            );
           })
         )}
       </div>

@@ -59,6 +59,14 @@ import { isDummyAvatar, resolveUserUploadedAvatar } from '../utils/avatarUtils';
 import { VerifiedBadge } from './common/VerifiedBadge';
 import { FollowAuthorButton } from './common/FollowAuthorButton';
 import { ExternalSourceDetailEmbed } from './common/ExternalSourceEmbedCard';
+import { EmbedContentRenderer } from './common/EmbedContentRenderer';
+import { ResilientEmbedImage } from './common/EmbedThumbnailPlaceholder';
+import {
+  getDirectVideoThumbnailUrl,
+  isGenericExternalUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+} from '../services/externalEmbedService';
 import { EventReminderButton } from './events/EventReminderButton';
 import { normalizeDateToYmd } from '../utils/eventFilterUtils';
 import { isUserVerified } from '../utils/userVerificationUtils';
@@ -335,8 +343,8 @@ export function PostDetailPage({
     scrollToSidebarsTop();
   }, [target.type, target.id]);
 
-  // Resolve item data
-  const itemData = useMemo(() => {
+  // Resolve base item data
+  const rawItemData = useMemo(() => {
     const { type, id, initialData } = target;
 
     // Helper to format event object
@@ -373,22 +381,38 @@ export function PostDetailPage({
         subcategory: fs.subcategory,
         subcategoryName: fs.subcategoryName,
         thirdLevelCategory: fs.thirdLevelCategory,
-        image: fs.imageUrl || fs.image || (fs.images && fs.images[0]) || (getActiveFallbackImage(true) || ''),
+        image: fs.imageUrl || fs.image || (fs.images && fs.images[0]) || '',
         images: (fs.images && fs.images.length > 0)
           ? fs.images
           : (fs.imageUrls && fs.imageUrls.length > 0)
           ? fs.imageUrls
-          : (fs.imageUrl ? [fs.imageUrl] : (getActiveFallbackImage(true) ? [getActiveFallbackImage(true)!] : [])),
+          : (fs.imageUrl ? [fs.imageUrl] : []),
         attachments: fs.attachments,
         interestedCount: fs.interestedCount || 42,
         likesCount: fs.likesCount || 0,
         viewsCount: fs.viewsCount ?? 0,
         sharesCount: fs.sharesCount ?? 0,
+        isExternalEmbed: Boolean(fs.isExternalEmbed || resolvePostExternalUrlCandidate(fs)),
+        externalUrl: fs.externalUrl || resolvePostExternalUrlCandidate(fs),
+        sourceName: fs.sourceName,
+        sourceDomain: fs.sourceDomain,
+        sourceFavicon: fs.sourceFavicon,
+        fetchedAt: fs.fetchedAt,
       };
     };
 
     // Helper to format deal object
     const formatDealData = (fs: FirestorePost | any) => {
+      const storedImgs: string[] = Array.isArray(fs.images) && fs.images.length > 0
+        ? fs.images.filter((u: any) => typeof u === 'string' && u.trim())
+        : Array.isArray(fs.imageUrls) && fs.imageUrls.length > 0
+        ? fs.imageUrls.filter((u: any) => typeof u === 'string' && u.trim())
+        : fs.imageUrl
+        ? [fs.imageUrl]
+        : fs.image
+        ? [fs.image]
+        : [];
+      const detectedExternalUrl = resolvePostExternalUrlCandidate(fs);
       return {
         id: fs.id,
         type: 'deal' as const,
@@ -413,8 +437,8 @@ export function PostDetailPage({
         subcategoryName: fs.subcategoryName,
         thirdLevelCategory: fs.thirdLevelCategory || (fs as any).make,
         date: fs.expirationDate ? `Velja do ${fs.expirationDate}` : (fs.createdAt ? new Date(fs.createdAt).toLocaleDateString('sl-SI') : 'Danes'),
-        image: fs.imageUrl || fs.image || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1000&auto=format&fit=crop&q=80',
-        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        image: storedImgs[0] || '',
+        images: storedImgs.length > 0 ? storedImgs : undefined,
         attachments: fs.attachments,
         region: fs.location || fs.region || 'Vsa Slovenija',
         votes: fs.likesCount ?? (fs as any).votes ?? 0,
@@ -422,11 +446,11 @@ export function PostDetailPage({
         viewsCount: fs.viewsCount ?? 0,
         sharesCount: fs.sharesCount ?? 0,
         code: (fs.promoCode && fs.promoCode.trim()) ? fs.promoCode.trim() : (fs.code ? fs.code.trim() : undefined),
-        link: fs.dealLink || fs.externalUrl || fs.link || 'https://www.portalko.net',
+        link: fs.dealLink || fs.externalUrl || detectedExternalUrl || fs.link || 'https://www.portalko.net',
         embedCode: fs.embedCode,
         embedOrientation: fs.embedOrientation,
-        isExternalEmbed: fs.isExternalEmbed,
-        externalUrl: fs.externalUrl || (fs.isExternalEmbed ? fs.dealLink : undefined),
+        isExternalEmbed: Boolean(fs.isExternalEmbed || detectedExternalUrl),
+        externalUrl: fs.externalUrl || detectedExternalUrl,
         sourceName: fs.sourceName,
         sourceDomain: fs.sourceDomain,
         sourceFavicon: fs.sourceFavicon,
@@ -436,6 +460,14 @@ export function PostDetailPage({
 
     // Helper to format ad object
     const formatAdData = (fs: FirestoreAd) => {
+      const storedImgs: string[] = Array.isArray((fs as any).images) && (fs as any).images.length > 0
+        ? (fs as any).images.filter((u: any) => typeof u === 'string' && u.trim())
+        : Array.isArray((fs as any).imageUrls) && (fs as any).imageUrls.length > 0
+        ? (fs as any).imageUrls.filter((u: any) => typeof u === 'string' && u.trim())
+        : fs.imageUrl
+        ? [fs.imageUrl]
+        : [];
+      const detectedExternalUrl = resolvePostExternalUrlCandidate(fs);
       return {
         id: fs.id,
         type: 'ad' as const,
@@ -455,8 +487,8 @@ export function PostDetailPage({
         subcategory: fs.subcategory,
         subcategoryName: fs.subcategoryName,
         thirdLevelCategory: fs.thirdLevelCategory || (fs as any).make,
-        image: fs.imageUrl || 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1000&auto=format&fit=crop&q=80',
-        images: fs.images || fs.imageUrls || (fs.imageUrl ? [fs.imageUrl] : undefined),
+        image: storedImgs[0] || '',
+        images: storedImgs.length > 0 ? storedImgs : undefined,
         attachments: fs.attachments,
         authorInitials: (fs.authorName || 'O').slice(0, 2).toUpperCase(),
         likesCount: fs.likesCount || 0,
@@ -464,8 +496,8 @@ export function PostDetailPage({
         sharesCount: fs.sharesCount ?? 0,
         embedCode: fs.embedCode,
         embedOrientation: fs.embedOrientation,
-        isExternalEmbed: fs.isExternalEmbed,
-        externalUrl: fs.externalUrl,
+        isExternalEmbed: Boolean(fs.isExternalEmbed || detectedExternalUrl),
+        externalUrl: fs.externalUrl || detectedExternalUrl,
         sourceName: fs.sourceName,
         sourceDomain: fs.sourceDomain,
         sourceFavicon: fs.sourceFavicon,
@@ -543,6 +575,12 @@ export function PostDetailPage({
         viewsCount: fs.viewsCount ?? 0,
         sharesCount: fs.sharesCount ?? 0,
         tags: (fs.tags && fs.tags.length > 0) ? fs.tags : undefined,
+        isExternalEmbed: Boolean(fs.isExternalEmbed || resolvePostExternalUrlCandidate(fs)),
+        externalUrl: fs.externalUrl || resolvePostExternalUrlCandidate(fs),
+        sourceName: fs.sourceName,
+        sourceDomain: fs.sourceDomain,
+        sourceFavicon: fs.sourceFavicon,
+        fetchedAt: fs.fetchedAt,
       };
     };
 
@@ -754,6 +792,100 @@ export function PostDetailPage({
     return resolvedItem;
   }, [target, firestorePosts, firestoreEvents, firestoreAds, directItem]);
 
+  const candidateExternalUrl = useMemo(() => {
+    if (!rawItemData) return undefined;
+    return resolvePostExternalUrlCandidate(rawItemData, { includeSocialEmbeds: true });
+  }, [rawItemData]);
+
+  const hasStoredRealImage = useMemo(() => {
+    if (!rawItemData) return false;
+    const portalFallback = getActiveFallbackImage(true, target.type as any);
+    const imgs: string[] = [];
+    if (Array.isArray((rawItemData as any).images)) imgs.push(...(rawItemData as any).images);
+    if (Array.isArray((rawItemData as any).imageUrls)) imgs.push(...(rawItemData as any).imageUrls);
+    if (typeof (rawItemData as any).image === 'string') imgs.push((rawItemData as any).image);
+    if (typeof (rawItemData as any).imageUrl === 'string') imgs.push((rawItemData as any).imageUrl);
+    return imgs.some(
+      (u) =>
+        typeof u === 'string' &&
+        u.trim().length > 0 &&
+        u.trim() !== portalFallback &&
+        !u.includes('photo-1588872657578-7efd1f1555ed') &&
+        !u.includes('photo-1607082348824-0a96f2a4b9da')
+    );
+  }, [rawItemData, target.type]);
+
+  const effectiveItemType = (rawItemData as any)?.type || target.type;
+  const skipExternalMetaFetch =
+    !candidateExternalUrl ||
+    (hasStoredRealImage &&
+      (effectiveItemType !== 'ad' && effectiveItemType !== 'deal'
+        ? true
+        : Boolean((rawItemData as any)?.sourceDomain)));
+
+  const resolvedExternalMeta = useResolvedExternalEmbed(
+    candidateExternalUrl,
+    skipExternalMetaFetch
+  );
+
+  const itemData = useMemo(() => {
+    if (!rawItemData) return null;
+    if (!candidateExternalUrl && !resolvedExternalMeta) return rawItemData;
+
+    const rawAny = rawItemData as any;
+    const rawDescPlain = String(rawAny.description || rawAny.content || '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .trim();
+
+    const directVideoThumb = !hasStoredRealImage
+      ? getDirectVideoThumbnailUrl(candidateExternalUrl || rawAny.embedCode)
+      : undefined;
+
+    const fetchedImages = resolvedExternalMeta?.images?.length
+      ? resolvedExternalMeta.images
+      : resolvedExternalMeta?.imageUrl
+      ? [resolvedExternalMeta.imageUrl]
+      : directVideoThumb
+      ? [directVideoThumb]
+      : [];
+
+    const nextImage = hasStoredRealImage
+      ? rawAny.image || rawAny.imageUrl
+      : fetchedImages[0] || rawAny.image || rawAny.imageUrl || '';
+
+    const nextImages = hasStoredRealImage
+      ? rawAny.images
+      : fetchedImages.length > 0
+      ? fetchedImages
+      : rawAny.images;
+
+    const nextPrice =
+      (!rawAny.price || rawAny.price === 'Po dogovoru') && resolvedExternalMeta?.price
+        ? resolvedExternalMeta.price
+        : rawAny.price;
+
+    const nextDescription =
+      !rawDescPlain && resolvedExternalMeta?.description
+        ? `<p>${resolvedExternalMeta.description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+        : rawAny.description;
+
+    return {
+      ...rawAny,
+      image: nextImage,
+      imageUrl: nextImage || rawAny.imageUrl,
+      images: nextImages,
+      price: nextPrice,
+      description: nextDescription,
+      isExternalEmbed: Boolean(rawAny.isExternalEmbed || candidateExternalUrl),
+      externalUrl: rawAny.externalUrl || candidateExternalUrl || resolvedExternalMeta?.url,
+      sourceName: rawAny.sourceName || resolvedExternalMeta?.siteName,
+      sourceDomain: rawAny.sourceDomain || resolvedExternalMeta?.domain,
+      sourceFavicon: rawAny.sourceFavicon || resolvedExternalMeta?.faviconUrl,
+      fetchedAt: rawAny.fetchedAt || resolvedExternalMeta?.fetchedAt,
+    };
+  }, [rawItemData, resolvedExternalMeta, candidateExternalUrl, hasStoredRealImage]);
+
   useEffect(() => {
     if (!itemData || !itemData.id || !itemData.title) return;
     const realId = itemData.id;
@@ -821,12 +953,12 @@ export function PostDetailPage({
     for (const url of list) {
       if (!unique.includes(url)) unique.push(url);
     }
-    if (unique.length === 0) {
+    if (unique.length === 0 && !candidateExternalUrl) {
       const fallback = getActiveFallbackImage(true, target.type as any);
       if (fallback) unique.push(fallback);
     }
     return unique;
-  }, [itemData, target.type]);
+  }, [itemData, target.type, candidateExternalUrl]);
 
   // Reset active image on post change
   useEffect(() => {
@@ -2291,24 +2423,29 @@ export function PostDetailPage({
                 />
               )}
 
-              {/* Main Photo - Full uncropped photo visible */}
-              <img
+              {/* Main Photo - Full uncropped photo visible, falls back cleanly to EmbedThumbnailPlaceholder on 404/MIME error */}
+              <ResilientEmbedImage
                 key={`${postImages[activeImageIndex] || activeImageIndex}-${imageFitMode}`}
                 src={postImages[activeImageIndex]}
                 alt={`${itemData.title} – fotografija ${activeImageIndex + 1}`}
-                onError={(e) => {
-                  const fallback = getActiveFallbackImage(false);
-                  if (fallback && (e.target as HTMLImageElement).src !== fallback) {
-                    (e.target as HTMLImageElement).src = fallback;
-                  } else {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }
-                }}
+                loading="eager"
                 className={`transition-all duration-300 select-none ${
                   imageFitMode === 'contain'
                     ? 'relative z-10 w-full h-auto max-h-[75vh] sm:max-h-[85vh] object-contain mx-auto block drop-shadow-xs group-hover:scale-[1.008]'
                     : 'w-full h-full object-cover group-hover:scale-[1.01]'
                 }`}
+                placeholderClassName={
+                  imageFitMode === 'contain' ? 'min-h-[220px] sm:min-h-[300px]' : ''
+                }
+                placeholderProps={{
+                  postType: target.type === 'ad' ? 'ad' : target.type === 'deal' ? 'deal' : target.type === 'event' ? 'event' : 'blog',
+                  title: itemData.title,
+                  sourceDomain: (itemData as any).sourceDomain,
+                  sourceName: (itemData as any).sourceName,
+                  sourceFavicon: (itemData as any).sourceFavicon,
+                  externalUrl: (itemData as any).externalUrl,
+                  variant: 'hero',
+                }}
               />
 
               {/* Direct Prev / Next arrows over image when multiple photos exist */}
@@ -2404,10 +2541,16 @@ export function PostDetailPage({
                       title={`Prikaži sliko ${idx + 1}`}
                       aria-label={`Prikaži sliko ${idx + 1}`}
                     >
-                      <img
+                      <ResilientEmbedImage
                         src={imgUrl}
                         alt={`${itemData.title} – miniatura ${idx + 1}`}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        placeholderProps={{
+                          postType: target.type === 'ad' ? 'ad' : target.type === 'deal' ? 'deal' : target.type === 'event' ? 'event' : 'blog',
+                          sourceDomain: (itemData as any).sourceDomain,
+                          sourceName: (itemData as any).sourceName,
+                          variant: 'embed',
+                        }}
                       />
                       {idx === activeImageIndex && (
                         <div className="absolute inset-0 bg-primary/10 pointer-events-none" />
@@ -2860,15 +3003,20 @@ export function PostDetailPage({
             />
           )}
 
-          {/* Embedded Social Media or Video if present */}
-          {itemData.embedCode && (
+          {/* Embedded Social Media, Video, or External Link via EmbedContentRenderer (auto-extracts og:image if no DB image) */}
+          {itemData.embedCode && !((target.type === 'ad' || target.type === 'deal') && isGenericExternalUrl(itemData.embedCode)) && (
             <div className="flex flex-col gap-2.5 pt-4 border-t border-surface-container-low">
               <h3 className="font-headline-sm text-sm font-bold text-on-surface flex items-center gap-2">
                 <span>Vdelana vsebina / Družbena omrežja</span>
               </h3>
-              <div 
-                className="tiptap rounded-xl overflow-hidden"
-                dangerouslySetInnerHTML={{ __html: getCleanHtml(parseSocialEmbed(itemData.embedCode, itemData.embedOrientation === 'auto' ? undefined : itemData.embedOrientation)?.embedHtml || itemData.embedCode) }}
+              <EmbedContentRenderer
+                embedCode={itemData.embedCode}
+                embedOrientation={itemData.embedOrientation}
+                dbImage={hasStoredRealImage ? (itemData.image || (Array.isArray(itemData.images) ? itemData.images[0] : '')) : undefined}
+                externalUrl={(itemData as any).externalUrl}
+                title={itemData.title}
+                preResolvedMeta={resolvedExternalMeta}
+                sanitizeHtml={getCleanHtml}
               />
             </div>
           )}
@@ -3575,6 +3723,7 @@ export function PostDetailPage({
             <img
               src={postImages[activeImageIndex]}
               alt={`${itemData.title} – fotografija ${activeImageIndex + 1}`}
+              referrerPolicy="no-referrer"
               className="max-h-[80vh] sm:max-h-[85vh] max-w-full w-auto h-auto object-contain rounded-xl shadow-2xl select-none"
             />
 
@@ -3613,6 +3762,7 @@ export function PostDetailPage({
                   <img 
                     src={imgUrl} 
                     alt={`Miniatura ${idx + 1}`} 
+                    referrerPolicy="no-referrer"
                     className="w-full h-full object-cover" 
                   />
                 </button>

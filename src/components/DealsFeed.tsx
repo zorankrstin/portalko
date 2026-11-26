@@ -73,7 +73,13 @@ import { canUserPostContentType } from '../utils/permissionUtils';
 import { usePageSeo } from '../services/seoSettingsService';
 import { ExternalEmbedFetcherBox } from './common/ExternalEmbedFetcherBox';
 import { ExternalSourceInline } from './common/ExternalSourceEmbedCard';
-import type { ExternalEmbedMetadata } from '../services/externalEmbedService';
+import { ResilientEmbedImage } from './common/EmbedThumbnailPlaceholder';
+import {
+  fetchExternalEmbedUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+  type ExternalEmbedMetadata,
+} from '../services/externalEmbedService';
 
 interface DealsFeedProps {
   onViewChange: (view: 'main') => void;
@@ -181,6 +187,56 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
   } | null>(null);
   const [submitErrorMsg, setSubmitErrorMsg] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [isQuickFetchingEmbedUrl, setIsQuickFetchingEmbedUrl] = useState(false);
+  const [quickFetchEmbedError, setQuickFetchEmbedError] = useState('');
+
+  const applyFetchedExternalDealMeta = (meta: ExternalEmbedMetadata) => {
+    const htmlDesc = meta.description
+      ? `<p>${meta.description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+      : '';
+    if (htmlDesc) {
+      editorRef.current?.setContent(htmlDesc);
+    }
+    setModalForm(prev => {
+      const existingImages = new Set(prev.images);
+      const newFetchedImages = (meta.images || []).filter(u => !existingImages.has(u)).slice(0, 4);
+      const mergedImages = [...newFetchedImages, ...prev.images];
+      return {
+        ...prev,
+        isExternalEmbed: true,
+        externalUrl: meta.url,
+        sourceName: meta.siteName,
+        sourceDomain: meta.domain,
+        sourceFavicon: meta.faviconUrl,
+        fetchedAt: meta.fetchedAt,
+        store: prev.store.trim() || meta.siteName || meta.domain,
+        title: meta.title || prev.title,
+        description: htmlDesc || prev.description,
+        newPrice: meta.price || prev.newPrice,
+        oldPrice: meta.oldPrice || prev.oldPrice,
+        discount: meta.discount || prev.discount,
+        link: meta.url || prev.link,
+        tagsString: prev.tagsString.trim() || (meta.tags ? meta.tags.join(', ') : ''),
+        image: mergedImages[0] || prev.image,
+        images: mergedImages,
+      };
+    });
+  };
+
+  const handleQuickFetchDealFromEmbedCode = async () => {
+    const raw = modalForm.embedCode.trim();
+    if (!raw || isQuickFetchingEmbedUrl) return;
+    setIsQuickFetchingEmbedUrl(true);
+    setQuickFetchEmbedError('');
+    try {
+      const meta = await fetchExternalEmbedUrl(raw);
+      applyFetchedExternalDealMeta(meta);
+    } catch (err: any) {
+      setQuickFetchEmbedError(err?.message || 'Podatkov in fotografij s povezave ni bilo mogoče samodejno pridobiti.');
+    } finally {
+      setIsQuickFetchingEmbedUrl(false);
+    }
+  };
 
   // Subscribe to Firestore for real community deals
   useEffect(() => {
@@ -215,7 +271,8 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
           votes: (p.likesCount || 0) + 1,
           verifiedText: 'Članski predlog',
           statusTag: 'today' as const,
-          image: p.imageUrl || (p.images && p.images[0]) || CATEGORY_IMAGE_FALLBACKS.tehnika,
+          image: p.imageUrl || (p.images && p.images[0]) || '',
+          _hasStoredImage: Boolean(p.imageUrl || (p.images && p.images[0])),
           images: p.images || p.imageUrls || (p.imageUrl ? [p.imageUrl] : undefined),
           embedCode: p.embedCode,
           isExternalEmbed: p.isExternalEmbed,
@@ -1025,365 +1082,21 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
             </button>
           </div>
         ) : (
-          visibleDeals.map((deal, idx) => {
-            const currentVotes = votesMap[deal.id] ?? deal.votes;
-            const hasVoted = votedSet.has(deal.id);
-            const isCopied = copiedCodeId === deal.id;
-            const dealImg = deal.image || CATEGORY_IMAGE_FALLBACKS[deal.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
-            const cleanTitle = getPlainTextSnippet(deal.title);
-            const cleanDescription = getPlainTextSnippet(deal.description);
-            const isPromoted = Boolean(
-              (deal as any).promotion 
-                ? isItemActivelyPromoted((deal as any).promotion, 'ugodnosti', selectedCategory, selectedSubcategory)
-                : ((deal as any).isPromoted && (!(deal as any).promotedUntil || new Date((deal as any).promotedUntil).getTime() > Date.now()))
-            );
-            const badgeType: PromotionBadgeType = (deal as any).promotionBadgeType || (deal as any).promotion?.badgeType || 'PROMO';
-
-            const dealUrl = buildPostUrl({
-              type: 'deal',
-              id: deal.id,
-              title: cleanTitle,
-              category: deal.category,
-              categoryName: deal.categoryName,
-              subcategory: (deal as any).subcategory,
-              subcategoryName: (deal as any).subcategoryName,
-            });
-
-            const handleOpenDeal = (e?: React.MouseEvent) => {
-              if (e) e.preventDefault();
-              if (onNavigatePost) {
-                onNavigatePost({
-                  type: 'deal',
-                  id: deal.id,
-                  titleSlug: slugify(cleanTitle),
-                  categorySlug: slugify(deal.categoryName || deal.category || 'akcije'),
-                  subcategorySlug: (deal as any).subcategoryName || (deal as any).subcategory ? slugify((deal as any).subcategoryName || (deal as any).subcategory) : undefined,
-                  initialData: {
-                    id: deal.id,
-                    title: cleanTitle,
-                    category: deal.category || 'akcije',
-                    categoryName: deal.categoryName || 'Akcije',
-                    subcategory: (deal as any).subcategory,
-                    subcategoryName: (deal as any).subcategoryName,
-                    partner: deal.partner,
-                    author: deal.partner,
-                    authorName: deal.partner,
-                    authorAvatar: deal.partnerAvatar,
-                    authorRole: deal.partnerRole || 'Trgovec',
-                    image: dealImg,
-                    images: (deal as any).images || (dealImg ? [dealImg] : []),
-                    discount: deal.discount,
-                    newPrice: deal.newPrice,
-                    oldPrice: deal.oldPrice,
-                    price: deal.newPrice || deal.discount || deal.oldPrice,
-                    code: deal.code,
-                    link: deal.link,
-                    expires: (deal as any).expires,
-                    location: deal.location,
-                    region: deal.region,
-                    description: deal.description || cleanDescription,
-                    verified: (deal as any).verified,
-                    tags: parseTags((deal as any).tags).length > 0 ? parseTags((deal as any).tags) : undefined,
-                    isPromoted,
-                    likesCount: (deal as any).likesCount || (deal as any).votes || 0,
-                    dealType: deal.dealType,
-                    isExternalEmbed: deal.isExternalEmbed,
-                    externalUrl: deal.externalUrl,
-                    sourceName: deal.sourceName,
-                    sourceDomain: deal.sourceDomain,
-                    sourceFavicon: deal.sourceFavicon,
-                    fetchedAt: deal.fetchedAt,
-                  }
-                });
-              } else {
-                window.location.hash = `deal-${deal.id}`;
-              }
-            };
-
-            return (
-              <div key={`deal-${deal.id}-${idx}`} className={getFeedCardAnimationClass(idx, PAGE_SIZE)}>
-                <article
-                  className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row group ${
-                    isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/60 hover:border-surface-container-high'
-                  }`}
-                >
-                {/* PHOTO CONTAINER */}
-                <a 
-                  href={dealUrl}
-                  onClick={handleOpenDeal}
-                  className="sm:w-52 md:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden block cursor-pointer"
-                  title="Odpri samostojno stran te ugodnosti"
-                >
-                  <img 
-                    src={dealImg} 
-                    alt={cleanTitle}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                    loading="lazy"
-                  />
-                </a>
-
-                {/* CONTENT AREA */}
-                <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-3">
-                  <div>
-                    {/* Header Row: Partner info and actions */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <a
-                          href={`/avtor/${slugify(deal.partner)}`}
-                          data-author-name={deal.partner}
-                          data-author-id={deal.partnerId || (deal as any).authorId}
-                          data-author-avatar={deal.partnerAvatar || ''}
-                          data-author-role={deal.partnerRole || 'partner'}
-                          data-post-id={deal.id}
-                          data-post-type="deal"
-                          data-post-title={cleanTitle}
-                          data-post-image={dealImg}
-                          data-post-category={deal.categoryName || deal.category}
-                          data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
-                          data-post-location={deal.region}
-                          className="shrink-0 group/avatar focus:outline-none"
-                          title={`Ogled profila partnerja: ${deal.partner}`}
-                        >
-                          <UserAvatar
-                            src={deal.partnerAvatar}
-                            name={deal.partner}
-                            userId={deal.partnerId || (deal as any).authorId}
-                            role={deal.partnerRole}
-                            size="sm"
-                            className="w-7 h-7 sm:w-8 sm:h-8 ring-1 ring-black/10 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shrink-0 shadow-xs transition-all"
-                          />
-                        </a>
-                        <div className="flex items-center gap-2 flex-wrap min-w-0">
-                          <a
-                            href={`/avtor/${slugify(deal.partner)}`}
-                            data-author-name={deal.partner}
-                            data-author-id={deal.partnerId || (deal as any).authorId}
-                            data-author-avatar={deal.partnerAvatar || ''}
-                            data-author-role={deal.partnerRole || 'partner'}
-                            data-post-id={deal.id}
-                            data-post-type="deal"
-                            data-post-title={cleanTitle}
-                            data-post-image={dealImg}
-                            data-post-category={deal.categoryName || deal.category}
-                            data-post-price={deal.newPrice || deal.discount || deal.oldPrice}
-                            data-post-location={deal.region}
-                            className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
-                            title={`Ogled profila partnerja: ${deal.partner}`}
-                          >
-                            <UserDisplayName name={deal.partner} role={deal.partnerRole} />
-                          </a>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-1 shrink-0">
-                        <BookmarkButton 
-                          id={deal.id} 
-                          data={{
-                            type: 'deal',
-                            category: 'deals',
-                            title: cleanTitle,
-                            price: deal.newPrice || deal.discount,
-                            discount: deal.discount,
-                            oldPrice: deal.oldPrice,
-                            newPrice: deal.newPrice,
-                            expirationDate: deal.expirationDate,
-                            author: deal.partner,
-                            authorRole: deal.partnerRole,
-                            authorAvatar: deal.partnerAvatar || '',
-                            date: deal.date,
-                            description: cleanDescription,
-                            image: dealImg,
-                            code: deal.code,
-                            link: deal.link,
-                            votesCount: currentVotes,
-                            categoryName: deal.categoryName,
-                            region: deal.region,
-                            verifiedText: deal.verifiedText,
-                          }}
-                        />
-                        <ShareMenu 
-                          id={deal.id} 
-                          type="deal" 
-                          title={cleanTitle} 
-                          description={cleanDescription} 
-                          imageUrl={dealImg}
-                          category={deal.categoryName || deal.category}
-                          author={deal.partner}
-                          discount={deal.discount}
-                          price={deal.newPrice || deal.discount || deal.oldPrice}
-                          location={deal.location || deal.region}
-                        />
-                        <ReportButton 
-                          targetId={deal.id} 
-                          targetType="deal" 
-                          targetTitle={cleanTitle} 
-                          targetAuthor={deal.partner} 
-                          targetUrl={deal.link} 
-                        />
-                      </div>
-                    </div>
-
-                    {/* Title */}
-                    <a
-                      href={dealUrl}
-                      onClick={handleOpenDeal}
-                      className="block group/title cursor-pointer"
-                    >
-                      <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover/title:text-primary transition-colors leading-snug">
-                        {cleanTitle}
-                      </h3>
-                    </a>
-
-                    {/* Pricing Highlight: Old price & New price */}
-                    {(deal.newPrice || deal.oldPrice) && (
-                      <div className="flex items-center gap-2.5 my-1.5 p-2 rounded-xl bg-surface-container-low/80 border border-surface-container/60 w-fit flex-wrap">
-                        {deal.newPrice && (
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-[10px] uppercase font-bold text-outline">Akcija:</span>
-                            <span className="font-headline-sm text-base sm:text-lg font-black text-secondary">
-                              {deal.newPrice}
-                            </span>
-                          </div>
-                        )}
-                        {deal.oldPrice && (
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-[10px] text-outline">Redna:</span>
-                            <span className="text-xs line-through text-outline font-medium">
-                              {deal.oldPrice}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Description */}
-                    <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
-                      {cleanDescription}
-                    </p>
-                    {parseTags((deal as any).tags).length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {parseTags((deal as any).tags).slice(0, 4).map((tag, tagIdx) => (
-                          <a
-                            key={`${tag}-${tagIdx}`}
-                            href={buildTagUrl(tag)}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (onTagClick) {
-                                onTagClick(tag);
-                              } else {
-                                navigateApp(buildTagUrl(tag));
-                              }
-                            }}
-                            className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
-                            title={`Prikaži vse objave z oznako #${tag}`}
-                          >
-                            #{tag}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Metadata & Actions Row */}
-                  <div className="space-y-2.5 pt-2 border-t border-surface-container-low">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-outline font-label-md text-[11px]">
-                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                        {deal.verifiedText && (
-                          <span className="flex items-center gap-1 text-secondary font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>{deal.verifiedText}</span>
-                          </span>
-                        )}
-                        <span>•</span>
-                        <span className="flex items-center gap-1 text-error font-medium">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>{deal.date}</span>
-                        </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1 truncate max-w-[180px]" title={deal.location ? `${deal.location} (${deal.region})` : deal.region}>
-                          <MapPin className="w-3 h-3 text-outline shrink-0" />
-                          <span>{deal.location || deal.region}</span>
-                        </span>
-                        {(deal.isExternalEmbed || deal.externalUrl) && (
-                          <>
-                            <span>•</span>
-                            <ExternalSourceInline
-                              isExternalEmbed={deal.isExternalEmbed}
-                              externalUrl={deal.externalUrl || deal.link}
-                              sourceName={deal.sourceName}
-                              sourceDomain={deal.sourceDomain}
-                              sourceFavicon={deal.sourceFavicon}
-                            />
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Promo Code or Direct Link CTA */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Upvote / Like button */}
-                        <LikeButton
-                          id={deal.id}
-                          targetType="deal"
-                          initialLikesCount={deal.votes || 0}
-                          variant="pill"
-                          iconType="thumbs-up"
-                          itemTitle={cleanTitle}
-                          authorId={deal.authorId}
-                          className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
-                        />
-                        <a 
-                          href={deal.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs"
-                        >
-                          <span>{deal.dealType === 'flyer' ? 'Prelistaj letak' : 'Uveljavi popust'}</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </a>
-                        <ShareMenu 
-                          id={deal.id} 
-                          type="deal" 
-                          title={cleanTitle} 
-                          description={cleanDescription} 
-                          imageUrl={dealImg}
-                          category={deal.categoryName || deal.category}
-                          author={deal.partner}
-                          discount={deal.discount}
-                          price={deal.newPrice || deal.discount || deal.oldPrice}
-                          location={deal.location || deal.region}
-                          showLabel={true} 
-                          buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
-                        />
-                      </div>
-
-                      {deal.code && deal.code.trim() ? (
-                        <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60 ml-auto">
-                          <span className="font-label-caps text-[10px] text-outline uppercase font-bold">Koda:</span>
-                          <span className="font-mono font-bold text-primary px-2 py-0.5 bg-surface-container-lowest rounded select-all text-xs border border-surface-container">
-                            {deal.code.trim()}
-                          </span>
-                          <button 
-                            onClick={() => handleCopy(deal.code!.trim(), deal.id)}
-                            className="p-1 text-outline hover:text-primary transition-colors cursor-pointer" 
-                            title="Kopiraj kodo" 
-                            type="button"
-                          >
-                            {isCopied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                          {isCopied && <span className="text-[10px] font-bold text-secondary">Kopirano!</span>}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                </div>
-              </article>
-              </div>
-            );
-          })
+          visibleDeals.map((deal, idx) => (
+            <DealFeedCard
+              key={`deal-${deal.id}-${idx}`}
+              deal={deal}
+              idx={idx}
+              pageSize={PAGE_SIZE}
+              currentVotes={votesMap[deal.id] ?? deal.votes}
+              isCopied={copiedCodeId === deal.id}
+              selectedCategory={selectedCategory}
+              selectedSubcategory={selectedSubcategory}
+              onCopyCode={handleCopy}
+              onNavigatePost={onNavigatePost}
+              onTagClick={onTagClick}
+            />
+          ))
         )}
       </div>
 
@@ -1458,38 +1171,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
                   sourceDomain={modalForm.sourceDomain}
                   sourceFavicon={modalForm.sourceFavicon}
                   isExternalEmbed={modalForm.isExternalEmbed}
-                  onFetched={(meta: ExternalEmbedMetadata) => {
-                    const htmlDesc = meta.description
-                      ? `<p>${meta.description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
-                      : '';
-                    if (htmlDesc) {
-                      editorRef.current?.setContent(htmlDesc);
-                    }
-                    setModalForm(prev => {
-                      const existingImages = new Set(prev.images);
-                      const newFetchedImages = (meta.images || []).filter(u => !existingImages.has(u)).slice(0, 4);
-                      const mergedImages = [...newFetchedImages, ...prev.images];
-                      return {
-                        ...prev,
-                        isExternalEmbed: true,
-                        externalUrl: meta.url,
-                        sourceName: meta.siteName,
-                        sourceDomain: meta.domain,
-                        sourceFavicon: meta.faviconUrl,
-                        fetchedAt: meta.fetchedAt,
-                        store: prev.store.trim() || meta.siteName || meta.domain,
-                        title: meta.title || prev.title,
-                        description: htmlDesc || prev.description,
-                        newPrice: meta.price || prev.newPrice,
-                        oldPrice: meta.oldPrice || prev.oldPrice,
-                        discount: meta.discount || prev.discount,
-                        link: meta.url || prev.link,
-                        tagsString: prev.tagsString.trim() || (meta.tags ? meta.tags.join(', ') : ''),
-                        image: mergedImages[0] || prev.image,
-                        images: mergedImages,
-                      };
-                    });
-                  }}
+                  onFetched={applyFetchedExternalDealMeta}
                   onClearExternal={() => {
                     setModalForm(prev => ({
                       ...prev,
@@ -1941,7 +1623,7 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
                               idx === 0 ? 'border-primary ring-2 ring-primary/40 shadow-xs' : 'border-surface-container'
                             }`}
                           >
-                            <img src={imgUrl} alt={`Fotografija ${idx + 1}`} className="w-full h-full object-cover" />
+                            <img src={imgUrl} alt={`Fotografija ${idx + 1}`} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                             {idx === 0 && (
                               <span className="absolute top-1 left-1 bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
                                 <Star className="w-2.5 h-2.5 fill-current" />
@@ -2093,7 +1775,25 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
                           📺 Vodoravni prikaz (16:9)
                         </span>
                       )}
+                      {parseSocialEmbed(modalForm.embedCode.trim())?.platform === 'generic' && (
+                        <button
+                          type="button"
+                          onClick={handleQuickFetchDealFromEmbedCode}
+                          disabled={isQuickFetchingEmbedUrl}
+                          className="ml-auto px-2.5 py-1 rounded-lg bg-primary text-on-primary text-[11px] font-bold hover:bg-primary-container transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        >
+                          {isQuickFetchingEmbedUrl ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3" />
+                          )}
+                          <span>{isQuickFetchingEmbedUrl ? 'Pridobivam...' : 'Pridobi fotografijo in podatke'}</span>
+                        </button>
+                      )}
                     </div>
+                  )}
+                  {quickFetchEmbedError && (
+                    <p className="text-[11px] text-error font-medium">{quickFetchEmbedError}</p>
                   )}
                 </div>
 
@@ -2229,3 +1929,452 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
     </div>
   );
 }
+
+interface DealFeedCardProps {
+  deal: DealItem;
+  idx: number;
+  pageSize: number;
+  currentVotes: number;
+  isCopied: boolean;
+  selectedCategory: string;
+  selectedSubcategory: string;
+  onCopyCode: (code: string, id: string) => void;
+  onNavigatePost?: (target: PostDetailTarget) => void;
+  onTagClick?: (tag: string) => void;
+}
+
+function DealFeedCard({
+  deal,
+  idx,
+  pageSize,
+  currentVotes,
+  isCopied,
+  selectedCategory,
+  selectedSubcategory,
+  onCopyCode,
+  onNavigatePost,
+  onTagClick,
+}: DealFeedCardProps) {
+  const candidateExternalUrl = resolvePostExternalUrlCandidate(deal as any);
+  const hasStoredImage = Boolean(
+    (deal as any)._hasStoredImage !== undefined
+      ? (deal as any)._hasStoredImage
+      : deal.image
+  );
+  const resolvedExternalMeta = useResolvedExternalEmbed(
+    candidateExternalUrl,
+    hasStoredImage
+  );
+
+  const dealImg =
+    (hasStoredImage && deal.image ? deal.image : '') ||
+    resolvedExternalMeta?.imageUrl ||
+    (!candidateExternalUrl
+      ? CATEGORY_IMAGE_FALLBACKS[deal.category] || CATEGORY_IMAGE_FALLBACKS.tehnika
+      : '');
+
+  const effectiveExternalUrl = deal.externalUrl || candidateExternalUrl || undefined;
+  const effectiveIsExternalEmbed = Boolean(deal.isExternalEmbed || candidateExternalUrl);
+  const effectiveSourceName = deal.sourceName || resolvedExternalMeta?.siteName;
+  const effectiveSourceDomain = deal.sourceDomain || resolvedExternalMeta?.domain;
+  const effectiveSourceFavicon = deal.sourceFavicon || resolvedExternalMeta?.faviconUrl;
+  const effectiveNewPrice = deal.newPrice || (!deal.oldPrice ? resolvedExternalMeta?.price : undefined);
+  const effectiveLink = deal.link && deal.link !== '#' ? deal.link : (effectiveExternalUrl || '#');
+
+  const cleanTitle = getPlainTextSnippet(deal.title);
+  const cleanDescription = getPlainTextSnippet(
+    deal.description || resolvedExternalMeta?.description || ''
+  );
+  const isPromoted = Boolean(
+    (deal as any).promotion
+      ? isItemActivelyPromoted(
+          (deal as any).promotion,
+          'ugodnosti',
+          selectedCategory,
+          selectedSubcategory
+        )
+      : (deal as any).isPromoted &&
+          (!(deal as any).promotedUntil ||
+            new Date((deal as any).promotedUntil).getTime() > Date.now())
+  );
+
+  const dealUrl = buildPostUrl({
+    type: 'deal',
+    id: deal.id,
+    title: cleanTitle,
+    category: deal.category,
+    categoryName: deal.categoryName,
+    subcategory: (deal as any).subcategory,
+    subcategoryName: (deal as any).subcategoryName,
+  });
+
+  const handleOpenDeal = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    const resolvedImages =
+      Array.isArray((deal as any).images) && (deal as any).images.length > 0
+        ? (deal as any).images
+        : resolvedExternalMeta?.images && resolvedExternalMeta.images.length > 0
+        ? resolvedExternalMeta.images
+        : dealImg
+        ? [dealImg]
+        : [];
+
+    if (onNavigatePost) {
+      onNavigatePost({
+        type: 'deal',
+        id: deal.id,
+        titleSlug: slugify(cleanTitle),
+        categorySlug: slugify(deal.categoryName || deal.category || 'akcije'),
+        subcategorySlug:
+          (deal as any).subcategoryName || (deal as any).subcategory
+            ? slugify((deal as any).subcategoryName || (deal as any).subcategory)
+            : undefined,
+        initialData: {
+          id: deal.id,
+          title: cleanTitle,
+          category: deal.category || 'akcije',
+          categoryName: deal.categoryName || 'Akcije',
+          subcategory: (deal as any).subcategory,
+          subcategoryName: (deal as any).subcategoryName,
+          partner: deal.partner,
+          author: deal.partner,
+          authorName: deal.partner,
+          authorAvatar: deal.partnerAvatar,
+          authorRole: deal.partnerRole || 'Trgovec',
+          image: dealImg,
+          images: resolvedImages,
+          discount: deal.discount,
+          newPrice: effectiveNewPrice,
+          oldPrice: deal.oldPrice,
+          price: effectiveNewPrice || deal.discount || deal.oldPrice,
+          code: deal.code,
+          link: effectiveLink,
+          expires: (deal as any).expires,
+          location: deal.location,
+          region: deal.region,
+          description: deal.description || cleanDescription,
+          verified: (deal as any).verified,
+          tags:
+            parseTags((deal as any).tags).length > 0
+              ? parseTags((deal as any).tags)
+              : undefined,
+          isPromoted,
+          likesCount: (deal as any).likesCount || (deal as any).votes || 0,
+          dealType: deal.dealType,
+          embedCode: deal.embedCode,
+          isExternalEmbed: effectiveIsExternalEmbed,
+          externalUrl: effectiveExternalUrl,
+          sourceName: effectiveSourceName,
+          sourceDomain: effectiveSourceDomain,
+          sourceFavicon: effectiveSourceFavicon,
+          fetchedAt: deal.fetchedAt || resolvedExternalMeta?.fetchedAt,
+        },
+      });
+    } else {
+      window.location.hash = `deal-${deal.id}`;
+    }
+  };
+
+  return (
+    <div className={getFeedCardAnimationClass(idx, pageSize)}>
+      <article
+        className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row group ${
+          isPromoted
+            ? 'border-amber-500/40 ring-1 ring-amber-500/20'
+            : 'border-surface-container/60 hover:border-surface-container-high'
+        }`}
+      >
+        {/* PHOTO CONTAINER */}
+        <a
+          href={dealUrl}
+          onClick={handleOpenDeal}
+          className="sm:w-52 md:w-56 h-48 sm:h-auto bg-surface-container shrink-0 relative overflow-hidden block cursor-pointer"
+          title="Odpri samostojno stran te ugodnosti"
+        >
+          <ResilientEmbedImage
+            src={dealImg}
+            fallbackSrcs={resolvedExternalMeta?.images}
+            alt={cleanTitle}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            loading="lazy"
+            placeholderProps={{
+              postType: 'deal',
+              title: cleanTitle,
+              sourceDomain: effectiveSourceDomain,
+              sourceName: effectiveSourceName,
+              sourceFavicon: effectiveSourceFavicon,
+              externalUrl: effectiveExternalUrl,
+              variant: 'card',
+            }}
+          />
+        </a>
+
+        {/* CONTENT AREA */}
+        <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-3">
+          <div>
+            {/* Header Row: Partner info and actions */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <a
+                  href={`/avtor/${slugify(deal.partner)}`}
+                  data-author-name={deal.partner}
+                  data-author-id={deal.partnerId || (deal as any).authorId}
+                  data-author-avatar={deal.partnerAvatar || ''}
+                  data-author-role={deal.partnerRole || 'partner'}
+                  data-post-id={deal.id}
+                  data-post-type="deal"
+                  data-post-title={cleanTitle}
+                  data-post-image={dealImg}
+                  data-post-category={deal.categoryName || deal.category}
+                  data-post-price={effectiveNewPrice || deal.discount || deal.oldPrice}
+                  data-post-location={deal.region}
+                  className="shrink-0 group/avatar focus:outline-none"
+                  title={`Ogled profila partnerja: ${deal.partner}`}
+                >
+                  <UserAvatar
+                    src={deal.partnerAvatar}
+                    name={deal.partner}
+                    userId={deal.partnerId || (deal as any).authorId}
+                    role={deal.partnerRole}
+                    size="sm"
+                    className="w-7 h-7 sm:w-8 sm:h-8 ring-1 ring-black/10 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shrink-0 shadow-xs transition-all"
+                  />
+                </a>
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <a
+                    href={`/avtor/${slugify(deal.partner)}`}
+                    data-author-name={deal.partner}
+                    data-author-id={deal.partnerId || (deal as any).authorId}
+                    data-author-avatar={deal.partnerAvatar || ''}
+                    data-author-role={deal.partnerRole || 'partner'}
+                    data-post-id={deal.id}
+                    data-post-type="deal"
+                    data-post-title={cleanTitle}
+                    data-post-image={dealImg}
+                    data-post-category={deal.categoryName || deal.category}
+                    data-post-price={effectiveNewPrice || deal.discount || deal.oldPrice}
+                    data-post-location={deal.region}
+                    className="font-label-lg text-xs sm:text-sm font-bold text-on-surface hover:text-primary hover:underline truncate transition-colors"
+                    title={`Ogled profila partnerja: ${deal.partner}`}
+                  >
+                    <UserDisplayName name={deal.partner} role={deal.partnerRole} />
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0">
+                <BookmarkButton
+                  id={deal.id}
+                  data={{
+                    type: 'deal',
+                    category: 'deals',
+                    title: cleanTitle,
+                    price: effectiveNewPrice || deal.discount,
+                    discount: deal.discount,
+                    oldPrice: deal.oldPrice,
+                    newPrice: effectiveNewPrice,
+                    expirationDate: deal.expirationDate,
+                    author: deal.partner,
+                    authorRole: deal.partnerRole,
+                    authorAvatar: deal.partnerAvatar || '',
+                    date: deal.date,
+                    description: cleanDescription,
+                    image: dealImg,
+                    code: deal.code,
+                    link: effectiveLink,
+                    votesCount: currentVotes,
+                    categoryName: deal.categoryName,
+                    region: deal.region,
+                    verifiedText: deal.verifiedText,
+                  }}
+                />
+                <ShareMenu
+                  id={deal.id}
+                  type="deal"
+                  title={cleanTitle}
+                  description={cleanDescription}
+                  imageUrl={dealImg}
+                  category={deal.categoryName || deal.category}
+                  author={deal.partner}
+                  discount={deal.discount}
+                  price={effectiveNewPrice || deal.discount || deal.oldPrice}
+                  location={deal.location || deal.region}
+                />
+                <ReportButton
+                  targetId={deal.id}
+                  targetType="deal"
+                  targetTitle={cleanTitle}
+                  targetAuthor={deal.partner}
+                  targetUrl={effectiveLink}
+                />
+              </div>
+            </div>
+
+            {/* Title */}
+            <a href={dealUrl} onClick={handleOpenDeal} className="block group/title cursor-pointer">
+              <h3 className="font-headline-sm text-sm sm:text-base font-bold text-on-surface line-clamp-2 mt-1.5 group-hover/title:text-primary transition-colors leading-snug">
+                {cleanTitle}
+              </h3>
+            </a>
+
+            {/* Pricing Highlight: Old price & New price */}
+            {(effectiveNewPrice || deal.oldPrice) && (
+              <div className="flex items-center gap-2.5 my-1.5 p-2 rounded-xl bg-surface-container-low/80 border border-surface-container/60 w-fit flex-wrap">
+                {effectiveNewPrice && (
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[10px] uppercase font-bold text-outline">Akcija:</span>
+                    <span className="font-headline-sm text-base sm:text-lg font-black text-secondary">
+                      {effectiveNewPrice}
+                    </span>
+                  </div>
+                )}
+                {deal.oldPrice && (
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[10px] text-outline">Redna:</span>
+                    <span className="text-xs line-through text-outline font-medium">
+                      {deal.oldPrice}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Description */}
+            <p className="font-body-sm text-xs text-on-surface-variant line-clamp-2 mt-1 leading-relaxed">
+              {cleanDescription}
+            </p>
+            {parseTags((deal as any).tags).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {parseTags((deal as any).tags).slice(0, 4).map((tag, tagIdx) => (
+                  <a
+                    key={`${tag}-${tagIdx}`}
+                    href={buildTagUrl(tag)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (onTagClick) {
+                        onTagClick(tag);
+                      } else {
+                        navigateApp(buildTagUrl(tag));
+                      }
+                    }}
+                    className="text-[11px] font-label-md font-medium text-primary/90 hover:text-on-primary bg-primary/8 hover:bg-primary px-2 py-0.5 rounded-md border border-primary/15 transition-colors cursor-pointer"
+                    title={`Prikaži vse objave z oznako #${tag}`}
+                  >
+                    #{tag}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Metadata & Actions Row */}
+          <div className="space-y-2.5 pt-2 border-t border-surface-container-low">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-outline font-label-md text-[11px]">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                {deal.verifiedText && (
+                  <span className="flex items-center gap-1 text-secondary font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{deal.verifiedText}</span>
+                  </span>
+                )}
+                <span>•</span>
+                <span className="flex items-center gap-1 text-error font-medium">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{deal.date}</span>
+                </span>
+                <span>•</span>
+                <span
+                  className="flex items-center gap-1 truncate max-w-[180px]"
+                  title={deal.location ? `${deal.location} (${deal.region})` : deal.region}
+                >
+                  <MapPin className="w-3 h-3 text-outline shrink-0" />
+                  <span>{deal.location || deal.region}</span>
+                </span>
+                {(effectiveIsExternalEmbed || effectiveExternalUrl) && (
+                  <>
+                    <span>•</span>
+                    <ExternalSourceInline
+                      isExternalEmbed={effectiveIsExternalEmbed}
+                      externalUrl={effectiveExternalUrl || effectiveLink}
+                      sourceName={effectiveSourceName}
+                      sourceDomain={effectiveSourceDomain}
+                      sourceFavicon={effectiveSourceFavicon}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Promo Code or Direct Link CTA */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Upvote / Like button */}
+                <LikeButton
+                  id={deal.id}
+                  targetType="deal"
+                  initialLikesCount={deal.votes || 0}
+                  variant="pill"
+                  iconType="thumbs-up"
+                  itemTitle={cleanTitle}
+                  authorId={deal.authorId}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
+                />
+                <a
+                  href={effectiveLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary font-label-md text-xs font-semibold hover:bg-primary-container transition-colors inline-flex items-center gap-1.5 shadow-xs"
+                >
+                  <span>{deal.dealType === 'flyer' ? 'Prelistaj letak' : 'Uveljavi popust'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+                <ShareMenu
+                  id={deal.id}
+                  type="deal"
+                  title={cleanTitle}
+                  description={cleanDescription}
+                  imageUrl={dealImg}
+                  category={deal.categoryName || deal.category}
+                  author={deal.partner}
+                  discount={deal.discount}
+                  price={effectiveNewPrice || deal.discount || deal.oldPrice}
+                  location={deal.location || deal.region}
+                  showLabel={true}
+                  buttonClassName="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container"
+                />
+              </div>
+
+              {deal.code && deal.code.trim() ? (
+                <div className="flex items-center gap-1.5 bg-surface-container-low px-2.5 py-1.5 rounded-xl border border-surface-container/60 ml-auto">
+                  <span className="font-label-caps text-[10px] text-outline uppercase font-bold">
+                    Koda:
+                  </span>
+                  <span className="font-mono font-bold text-primary px-2 py-0.5 bg-surface-container-lowest rounded select-all text-xs border border-surface-container">
+                    {deal.code.trim()}
+                  </span>
+                  <button
+                    onClick={() => onCopyCode(deal.code!.trim(), deal.id)}
+                    className="p-1 text-outline hover:text-primary transition-colors cursor-pointer"
+                    title="Kopiraj kodo"
+                    type="button"
+                  >
+                    {isCopied ? (
+                      <Check className="w-3.5 h-3.5 text-secondary" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                  {isCopied && (
+                    <span className="text-[10px] font-bold text-secondary">Kopirano!</span>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  );
+}
+

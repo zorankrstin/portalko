@@ -14,6 +14,7 @@ import {
   ExternalEmbedMetadata,
   fetchExternalEmbedUrl,
 } from '../../services/externalEmbedService';
+import { ResilientEmbedImage } from './EmbedThumbnailPlaceholder';
 
 interface ExternalEmbedFetcherBoxProps {
   modeLabel: 'ad' | 'deal';
@@ -171,13 +172,22 @@ export const ExternalEmbedFetcherBox: React.FC<ExternalEmbedFetcherBoxProps> = (
       {hasActiveExternal && (
         <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-surface-container flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            {lastFetchedMeta?.imageUrl && (
-              <img
-                src={lastFetchedMeta.imageUrl}
-                alt={lastFetchedMeta.title}
-                className="w-12 h-12 rounded-lg object-cover border border-surface-container shrink-0"
+            <div className="w-12 h-12 rounded-lg overflow-hidden border border-surface-container shrink-0 bg-surface-container-low">
+              <ResilientEmbedImage
+                src={lastFetchedMeta?.imageUrl}
+                fallbackSrcs={lastFetchedMeta?.images}
+                alt={lastFetchedMeta?.title || activeSiteName || 'Predogled'}
+                className="w-full h-full object-cover"
+                placeholderProps={{
+                  postType: modeLabel,
+                  sourceDomain: activeDomain,
+                  sourceName: activeSiteName,
+                  sourceFavicon: activeFavicon,
+                  externalUrl: activeUrl,
+                  variant: 'embed',
+                }}
               />
-            )}
+            </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-[11px] text-secondary font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
@@ -188,6 +198,7 @@ export const ExternalEmbedFetcherBox: React.FC<ExternalEmbedFetcherBoxProps> = (
                   <img
                     src={activeFavicon}
                     alt=""
+                    referrerPolicy="no-referrer"
                     className="w-3.5 h-3.5 rounded-xs shrink-0"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).style.display = 'none';

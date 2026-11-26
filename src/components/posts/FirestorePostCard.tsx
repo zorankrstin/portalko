@@ -20,6 +20,12 @@ import { getPlainTextSnippet, formatViewsCount } from "../../utils/textUtils";
 import { handleImageFallbackError, getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
 import { parseTags } from "../../utils/tagUtils";
+import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import {
+  getDirectVideoThumbnailUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+} from "../../services/externalEmbedService";
 import type { PostDetailTarget } from "../../types";
 
 export interface FirestorePostCardProps {
@@ -38,8 +44,31 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     return resolveUserUploadedAvatar(post.authorAvatar, post.authorId, post.authorName, users);
   }, [post.authorAvatar, post.authorId, post.authorName, users]);
 
+  const isDeal = post.category === 'deal' || 
+                 post.category === 'ugodnosti' || 
+                 post.category?.startsWith('deal') || 
+                 post.categoryName === 'Ugodnosti' || 
+                 post.categoryName === 'Ugodnost' ||
+                 post.id.startsWith('deal-') || 
+                 post.id.startsWith('hero-bento-') ||
+                 Boolean(post.price && post.category !== 'ad' && post.category !== 'event');
+
+  const isDelegatedCardType = post.category === 'ad' || isDeal || post.category === 'event';
+  const hasDbImage = Boolean(post.imageUrl && post.imageUrl.trim());
+  const candidateExternalUrl = !hasDbImage && !isDelegatedCardType
+    ? resolvePostExternalUrlCandidate(post, { includeSocialEmbeds: true })
+    : undefined;
+  const resolvedEmbedMeta = useResolvedExternalEmbed(
+    candidateExternalUrl,
+    !candidateExternalUrl || hasDbImage || isDelegatedCardType
+  );
+  const extractedEmbedImage = (!hasDbImage
+    ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(post.embedCode || candidateExternalUrl))
+    : '') || '';
+
   const resolveInitialImage = () => {
-    if (post.imageUrl && post.imageUrl.trim()) return post.imageUrl.trim();
+    if (hasDbImage) return post.imageUrl!.trim();
+    if (extractedEmbedImage) return extractedEmbedImage;
     return getActiveFallbackImage(true, post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog') || '';
   };
   const [imgSrc, setImgSrc] = useState<string>(resolveInitialImage());
@@ -48,7 +77,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
   useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasImgError(false);
-  }, [post.imageUrl]);
+  }, [post.imageUrl, extractedEmbedImage]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -90,15 +119,6 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
       setIsDeleting(false);
     }
   };
-
-  const isDeal = post.category === 'deal' || 
-                 post.category === 'ugodnosti' || 
-                 post.category?.startsWith('deal') || 
-                 post.categoryName === 'Ugodnosti' || 
-                 post.categoryName === 'Ugodnost' ||
-                 post.id.startsWith('deal-') || 
-                 post.id.startsWith('hero-bento-') ||
-                 Boolean(post.price && post.category !== 'ad' && post.category !== 'event');
 
   const editableItem: EditablePostItem = {
     id: post.id,
@@ -210,6 +230,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           promotionBadgeType={promoBadge}
           isExternalEmbed={post.isExternalEmbed}
           externalUrl={post.externalUrl}
+          embedCode={post.embedCode}
           sourceName={post.sourceName}
           sourceDomain={post.sourceDomain}
           sourceFavicon={post.sourceFavicon}
@@ -261,6 +282,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           promotionBadgeType={promoBadge}
           isExternalEmbed={post.isExternalEmbed}
           externalUrl={post.externalUrl || post.dealLink}
+          embedCode={post.embedCode}
           sourceName={post.sourceName}
           sourceDomain={post.sourceDomain}
           sourceFavicon={post.sourceFavicon}
@@ -313,6 +335,9 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           tags={normalizedTags}
           isPromoted={isPostPromoted}
           promotionBadgeType={promoBadge}
+          embedCode={post.embedCode}
+          externalUrl={post.externalUrl}
+          isExternalEmbed={post.isExternalEmbed}
           onNavigatePost={onNavigatePost}
           onTagClick={onTagClick}
         />
@@ -337,7 +362,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     authorAvatar: post.authorAvatar,
     date: formatSlovenianDate(post.createdAt) || 'Nedavno',
     description: post.content,
-    image: post.imageUrl,
+    image: post.imageUrl || extractedEmbedImage || (imgSrc && !hasImgError ? imgSrc : undefined),
   };
 
   const roleLabels: Record<string, string> = {
@@ -539,7 +564,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             title={post.title} 
             description={post.content}
             url={`${window.location.origin}${postUrl}`}
-            imageUrl={(post as any).image || (post.images && post.images[0])}
+            imageUrl={(post as any).image || post.imageUrl || (post.images && post.images[0]) || extractedEmbedImage || (imgSrc && !hasImgError ? imgSrc : undefined)}
             category={post.categoryName || post.category}
             author={post.authorName}
             price={(post as any).price}
@@ -581,22 +606,32 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
         )}
       </div>
 
-      {imgSrc && !hasImgError && (
+      {(imgSrc || post.isExternalEmbed || post.externalUrl || post.embedCode) && (
         <a
           href={postUrl}
           onClick={handleOpenDetail}
-          className="relative rounded-xl overflow-hidden aspect-[16/9] max-h-80 bg-surface-container block cursor-pointer group/img ring-1 ring-black/5"
+          className="relative rounded-xl overflow-hidden aspect-[16/9] max-h-80 w-full bg-surface-container block cursor-pointer group/img ring-1 ring-black/5"
           title="Odpri samostojno stran članka"
         >
-          <img 
-            alt={post.title} 
-            className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500" 
-            src={imgSrc} 
+          <ResilientEmbedImage
+            alt={post.title}
+            className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500"
+            src={imgSrc}
+            fallbackSrcs={[...(post.images || []), ...(post.imageUrls || []), ...(resolvedEmbedMeta?.images || [])]}
             loading="lazy"
-            onError={handleImageError}
+            onAllImagesFailed={() => setHasImgError(true)}
+            placeholderProps={{
+              postType: 'blog',
+              title: post.title,
+              sourceDomain: post.sourceDomain || resolvedEmbedMeta?.domain,
+              sourceName: post.sourceName || resolvedEmbedMeta?.siteName,
+              sourceFavicon: post.sourceFavicon || resolvedEmbedMeta?.faviconUrl,
+              externalUrl: post.externalUrl || candidateExternalUrl,
+              variant: 'card',
+            }}
           />
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 via-black/15 to-transparent pointer-events-none" />
-          <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1.5">
+          <div className="absolute bottom-3 left-3 z-20 flex flex-wrap items-center gap-1.5">
             <span className="bg-black/70 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg font-label-md text-[11px] font-medium flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-secondary-fixed" />
               <span>{readMinutes} min branja</span>
@@ -681,7 +716,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             title={post.title}
             description={post.content}
             url={`${window.location.origin}${postUrl}`}
-            imageUrl={(post as any).image || (post.images && post.images[0])}
+            imageUrl={(post as any).image || post.imageUrl || (post.images && post.images[0]) || extractedEmbedImage || (imgSrc && !hasImgError ? imgSrc : undefined)}
             category={post.categoryName || post.category}
             author={post.authorName}
             price={(post as any).price}

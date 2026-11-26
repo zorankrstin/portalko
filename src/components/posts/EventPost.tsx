@@ -18,6 +18,12 @@ import { resolveEventDisplayDate } from "../../utils/dateUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { EventReminderButton } from "../events/EventReminderButton";
+import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import {
+  getDirectVideoThumbnailUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+} from "../../services/externalEmbedService";
 
 export interface EventPostProps {
   id?: string;
@@ -53,6 +59,9 @@ export interface EventPostProps {
   tags?: string[] | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
+  embedCode?: string;
+  externalUrl?: string;
+  isExternalEmbed?: boolean;
   onNavigatePost?: (target: PostDetailTarget) => void;
   onTagClick?: (tag: string) => void;
   onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
@@ -94,6 +103,9 @@ export const EventPost: React.FC<EventPostProps> = ({
   tags,
   isPromoted = false,
   promotionBadgeType = 'PROMO',
+  embedCode,
+  externalUrl,
+  isExternalEmbed,
   onNavigatePost,
   onTagClick,
   onAuthorClick,
@@ -205,6 +217,9 @@ export const EventPost: React.FC<EventPostProps> = ({
           tags: normalizedTags.length > 0 ? normalizedTags : undefined,
           likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
           interestedCount,
+          embedCode,
+          externalUrl: resolvedExternalUrl || externalUrl,
+          isExternalEmbed: Boolean(isExternalEmbed || resolvedExternalUrl),
         },
       });
     } else {
@@ -212,9 +227,20 @@ export const EventPost: React.FC<EventPostProps> = ({
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
+
+  const hasDbImage = Boolean(image && image.trim());
+  const resolvedExternalUrl = !hasDbImage
+    ? resolvePostExternalUrlCandidate({ externalUrl, link: ticketUrl, embedCode }, { includeSocialEmbeds: true })
+    : undefined;
+  const resolvedEmbedMeta = useResolvedExternalEmbed(resolvedExternalUrl, !resolvedExternalUrl || hasDbImage);
+  const extractedImage = (!hasDbImage
+    ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(embedCode || resolvedExternalUrl))
+    : '') || '';
+
   // Resolve image without forcing any hardcoded stock photo
   const resolveInitialImage = () => {
-    if (image && image.trim()) return image.trim();
+    if (hasDbImage) return image!.trim();
+    if (extractedImage) return extractedImage;
     // Only use fallback if explicitly configured by admin for missing photos
     const fallback = getActiveFallbackImage(true);
     return fallback || '';
@@ -226,7 +252,7 @@ export const EventPost: React.FC<EventPostProps> = ({
   useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image]);
+  }, [image, extractedImage]);
 
   const handleInterest = () => {
     setIsInterested(prev => !prev);
@@ -247,6 +273,7 @@ export const EventPost: React.FC<EventPostProps> = ({
   const cleanDescription = getPlainTextSnippet(description);
   const displayPrice = price && price.trim() !== '' ? price : 'Vstop prost';
   const hasVisibleImage = !!imgSrc && !hasError;
+  const shouldShowMediaSlot = Boolean(imgSrc || isExternalEmbed || externalUrl || embedCode);
 
   const bookmarkData = {
     type: 'event',
@@ -274,20 +301,30 @@ export const EventPost: React.FC<EventPostProps> = ({
     <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row ${
       isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
     }`}>
-      {hasVisibleImage && (
+      {shouldShowMediaSlot && (
         <a 
           href={postUrl}
           onClick={handleOpenDetail}
           className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group overflow-hidden"
           title="Odpri samostojno stran tega dogodka"
         >
-          <img 
-            alt={title} 
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-            src={imgSrc} 
-            onError={handleImageError}
+          <ResilientEmbedImage
+            alt={title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            src={imgSrc}
+            fallbackSrcs={[...(images || []), ...(resolvedEmbedMeta?.images || [])]}
+            onAllImagesFailed={() => setHasError(true)}
+            placeholderProps={{
+              postType: 'event',
+              title,
+              sourceDomain: resolvedEmbedMeta?.domain,
+              sourceName: resolvedEmbedMeta?.siteName,
+              sourceFavicon: resolvedEmbedMeta?.faviconUrl,
+              externalUrl: resolvedExternalUrl || externalUrl || ticketUrl,
+              variant: 'card',
+            }}
           />
-          <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
+          <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 flex-wrap">
             {isPromoted && (
               <PromotedBadge type={promotionBadgeType} size="sm" />
             )}
@@ -301,7 +338,7 @@ export const EventPost: React.FC<EventPostProps> = ({
       <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
         <div>
           {/* Header row when no image is shown: display date badge & promo badge nicely */}
-          {!hasVisibleImage && (
+          {!shouldShowMediaSlot && (
             <div className="flex items-center gap-3 mb-2.5">
               <div className="bg-primary/10 rounded-xl px-2.5 py-1 text-center min-w-[46px] border border-primary/20 shrink-0">
                 <div className="text-[10px] font-bold text-primary uppercase font-label-caps">{displayMonth}</div>
@@ -377,7 +414,7 @@ export const EventPost: React.FC<EventPostProps> = ({
                 title={title} 
                 description={cleanDescription} 
                 url={`${window.location.origin}${postUrl}`}
-                imageUrl={image}
+                imageUrl={hasVisibleImage ? imgSrc : image}
                 category={categoryName || category}
                 author={organizer || authorName}
                 date={date}
@@ -519,7 +556,7 @@ export const EventPost: React.FC<EventPostProps> = ({
               title={title} 
               description={cleanDescription} 
               url={`${window.location.origin}${postUrl}`}
-              imageUrl={image}
+              imageUrl={hasVisibleImage ? imgSrc : image}
               category={categoryName || category}
               author={organizer || authorName}
               date={date}

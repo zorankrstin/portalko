@@ -8,6 +8,7 @@ import {
   resolveBestOgImageUrl,
   resolveOgMetadataFromLookup,
 } from "../../src/services/ogMetaGeneratorService";
+import { fetchExternalEmbedMetadata } from "../../src/services/externalEmbedFetcher";
 
 const PROJECT_ID = firebaseConfig.projectId;
 const DATABASE_ID = firebaseConfig.firestoreDatabaseId || "(default)";
@@ -206,6 +207,17 @@ export const handler: Handler = async (event) => {
     portalFallbackImage,
     getCollectionDocs: fetchCollectionDocsRest,
     rehydrateShardedDoc: rehydrateShardedDocRest,
+    resolveExternalEmbedImage: async (extUrl: string) => {
+      try {
+        const fetched = await Promise.race([
+          fetchExternalEmbedMetadata(extUrl).catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
+        ]);
+        return fetched?.imageUrl || null;
+      } catch {
+        return null;
+      }
+    },
   });
 
   if (pathLower.includes("/api/meta/og")) {

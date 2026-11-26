@@ -33,6 +33,7 @@ export interface OgLookupDeps {
     docId: string,
     data: Record<string, any>
   ) => Promise<Record<string, any>>;
+  resolveExternalEmbedImage?: (externalUrl: string) => Promise<string | null>;
 }
 
 const SOCIAL_PREVIEW_CRAWLER_REGEX =
@@ -245,6 +246,70 @@ export function resolveBestOgImageUrl(
   // 4. Serve base64 data:image/... via binary /api/og-image proxy so Facebook accepts it
   if (foundDataUri) {
     return `${origin}/api/og-image/${colName}/${encodeURIComponent(docId)}`;
+  }
+
+  return null;
+}
+
+export function extractExternalUrlCandidateFromDoc(
+  colName: OgCollectionName,
+  data: Record<string, any> | null | undefined
+): string | null {
+  if (!data || (colName !== 'ads' && colName !== 'posts' && colName !== 'events')) return null;
+
+  const isPublicNonPortalUrl = (raw?: string): string | null => {
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!/^https?:\/\//i.test(trimmed)) return null;
+    const lower = trimmed.toLowerCase();
+    if (lower.includes('portalko.net')) return null;
+    return trimmed;
+  };
+
+  const explicit = [data.externalUrl, data.dealLink, data.link, data.ticketUrl]
+    .map((v) => isPublicNonPortalUrl(v))
+    .find(Boolean);
+  if (explicit) return explicit;
+
+  const embedRaw = typeof data.embedCode === 'string' ? data.embedCode.trim() : '';
+  if (!embedRaw) return null;
+
+  if (!embedRaw.includes('<') && /^https?:\/\/[^\s]+$/i.test(embedRaw)) {
+    return isPublicNonPortalUrl(embedRaw);
+  }
+
+  const igMatch = embedRaw.match(/data-instgrm-permalink=["']([^"']+)["']/i);
+  if (igMatch?.[1]) {
+    const valid = isPublicNonPortalUrl(igMatch[1]);
+    if (valid) return valid;
+  }
+
+  const citeMatch = embedRaw.match(/\bcite=["']([^"']+)["']/i);
+  if (citeMatch?.[1]) {
+    const valid = isPublicNonPortalUrl(citeMatch[1]);
+    if (valid) return valid;
+  }
+
+  const iframeSrcMatch = embedRaw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+  if (iframeSrcMatch?.[1]) {
+    const fbHref = iframeSrcMatch[1].match(/[?&]href=([^&]+)/i);
+    if (fbHref?.[1]) {
+      try {
+        const decoded = decodeURIComponent(fbHref[1]);
+        const valid = isPublicNonPortalUrl(decoded);
+        if (valid) return valid;
+      } catch {
+        // ignore decode error
+      }
+    }
+    const valid = isPublicNonPortalUrl(iframeSrcMatch[1]);
+    if (valid) return valid;
+  }
+
+  const hrefMatches = Array.from(embedRaw.matchAll(/<a[^>]+href=["']([^"']+)["']/gi));
+  for (let i = hrefMatches.length - 1; i >= 0; i--) {
+    const valid = isPublicNonPortalUrl(hrefMatches[i]?.[1]);
+    if (valid) return valid;
   }
 
   return null;
@@ -472,7 +537,20 @@ export async function resolveOgMetadataFromLookup(
             fullDesc = `Preberite objavo ${rawItemTitle} na slovenskem portalu Portalko.`;
           }
 
-          const featuredImg = resolveBestOgImageUrl(colName, matched.id, data, origin);
+          let featuredImg = resolveBestOgImageUrl(colName, matched.id, data, origin);
+          if (!featuredImg && deps.resolveExternalEmbedImage) {
+            const extCandidateUrl = extractExternalUrlCandidateFromDoc(colName, data);
+            if (extCandidateUrl) {
+              try {
+                const resolvedExt = await deps.resolveExternalEmbedImage(extCandidateUrl);
+                if (resolvedExt) {
+                  featuredImg = normalizeHttpOrOriginImageUrl(resolvedExt, origin);
+                }
+              } catch {
+                // Ignore external lookup errors during OG resolution
+              }
+            }
+          }
           const authorName = cleanServerHtmlText(
             data.authorName || data.author || data.organizer || data.partner || '',
             80

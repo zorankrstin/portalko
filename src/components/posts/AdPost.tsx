@@ -17,7 +17,13 @@ import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
 import { ExternalLink } from 'lucide-react';
 import { ExternalSourceInline } from "../common/ExternalSourceEmbedCard";
-import { extractDomainFromUrl, normalizeExternalUrl } from "../../services/externalEmbedService";
+import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import {
+  extractDomainFromUrl,
+  normalizeExternalUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+} from "../../services/externalEmbedService";
 
 export interface AdPostProps {
   id?: string;
@@ -51,6 +57,7 @@ export interface AdPostProps {
   sourceDomain?: string;
   sourceFavicon?: string;
   fetchedAt?: string;
+  embedCode?: string;
   onNavigatePost?: (target: PostDetailTarget) => void;
   onTagClick?: (tag: string) => void;
 }
@@ -87,6 +94,7 @@ export const AdPost: React.FC<AdPostProps> = ({
   sourceDomain,
   sourceFavicon,
   fetchedAt,
+  embedCode,
   onNavigatePost,
   onTagClick,
 }) => {
@@ -124,19 +132,24 @@ export const AdPost: React.FC<AdPostProps> = ({
           authorRole,
           authorAvatar,
           image: imgSrc || image || (images && images[0]) || '',
-          images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
-          price,
+          images: (images && images.length > 0)
+            ? images
+            : (resolvedExternalMeta?.images && resolvedExternalMeta.images.length > 0
+                ? resolvedExternalMeta.images
+                : (image ? [image] : (imgSrc ? [imgSrc] : []))),
+          price: effectivePrice,
           location,
           date,
-          description,
+          description: cleanDescription || description,
           tags: normalizedTags.length > 0 ? normalizedTags : undefined,
           likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
-          isExternalEmbed,
-          externalUrl,
-          sourceName,
-          sourceDomain,
-          sourceFavicon,
-          fetchedAt,
+          embedCode,
+          isExternalEmbed: effectiveIsExternalEmbed,
+          externalUrl: effectiveExternalUrl,
+          sourceName: effectiveSourceName,
+          sourceDomain: effectiveSourceDomain,
+          sourceFavicon: effectiveSourceFavicon,
+          fetchedAt: effectiveFetchedAt,
         },
       });
     } else {
@@ -144,11 +157,41 @@ export const AdPost: React.FC<AdPostProps> = ({
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
+  const candidateExternalUrl = React.useMemo(
+    () => resolvePostExternalUrlCandidate({ externalUrl, embedCode, isExternalEmbed }),
+    [externalUrl, embedCode, isExternalEmbed]
+  );
+
+  const hasStoredImage = Boolean(
+    (image && image.trim()) || (images && images.length > 0 && images[0]?.trim())
+  );
+
+  const resolvedExternalMeta = useResolvedExternalEmbed(
+    candidateExternalUrl,
+    !candidateExternalUrl || hasStoredImage
+  );
+
+  const effectiveExternalUrl = externalUrl || candidateExternalUrl || resolvedExternalMeta?.url;
+  const effectiveIsExternalEmbed = Boolean(isExternalEmbed || effectiveExternalUrl);
+  const effectiveSourceName = sourceName || resolvedExternalMeta?.siteName;
+  const effectiveSourceDomain = sourceDomain || resolvedExternalMeta?.domain;
+  const effectiveSourceFavicon = sourceFavicon || resolvedExternalMeta?.faviconUrl;
+  const effectiveFetchedAt = fetchedAt || resolvedExternalMeta?.fetchedAt;
+  const effectivePrice =
+    (!price || price === "Po dogovoru") && resolvedExternalMeta?.price
+      ? resolvedExternalMeta.price
+      : price;
+
   const resolveInitialImage = () => {
     if (image && image.trim()) return image.trim();
     if (images && images.length > 0 && images[0]?.trim()) return images[0].trim();
-    const fallback = getActiveFallbackImage(true);
-    return fallback || '';
+    if (resolvedExternalMeta?.imageUrl) return resolvedExternalMeta.imageUrl;
+    if (resolvedExternalMeta?.images && resolvedExternalMeta.images.length > 0) return resolvedExternalMeta.images[0];
+    if (!candidateExternalUrl) {
+      const fallback = getActiveFallbackImage(true);
+      return fallback || '';
+    }
+    return '';
   };
 
   const [imgSrc, setImgSrc] = React.useState<string>(resolveInitialImage());
@@ -157,7 +200,7 @@ export const AdPost: React.FC<AdPostProps> = ({
   React.useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image, images]);
+  }, [image, images, resolvedExternalMeta, candidateExternalUrl]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -170,8 +213,10 @@ export const AdPost: React.FC<AdPostProps> = ({
 
   const { users } = useAuth();
   const hasVisibleImage = !!imgSrc && !hasError;
+  const shouldShowMediaSlot = Boolean(imgSrc || effectiveIsExternalEmbed || embedCode);
   const displayCategory = categoryName || category || 'Oglas';
-  const cleanDescription = getPlainTextSnippet(description);
+  const rawCleanDesc = getPlainTextSnippet(description);
+  const cleanDescription = rawCleanDesc || (resolvedExternalMeta?.description ? getPlainTextSnippet(resolvedExternalMeta.description) : '');
 
   const isAuthorVerified = isUserVerified({
     role: authorRole,
@@ -194,20 +239,30 @@ export const AdPost: React.FC<AdPostProps> = ({
     <article className={`bg-surface-container-lowest rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-md flex flex-col sm:flex-row ${
       isPromoted ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-surface-container/50 hover:border-surface-container-high'
     }`}>
-      {hasVisibleImage && (
+      {shouldShowMediaSlot && (
         <a 
           href={postUrl}
           onClick={handleOpenDetail}
-          className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group"
+          className="sm:w-60 h-48 sm:h-auto bg-surface-container shrink-0 relative block cursor-pointer group overflow-hidden"
           title="Odpri samostojno stran tega malega oglasa"
         >
-          <img 
-            alt={title} 
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-            src={imgSrc} 
-            onError={handleImageError}
+          <ResilientEmbedImage
+            src={imgSrc}
+            fallbackSrcs={[...(images || []), ...(resolvedExternalMeta?.images || [])]}
+            alt={title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onAllImagesFailed={() => setHasError(true)}
+            placeholderProps={{
+              postType: 'ad',
+              title,
+              sourceDomain: effectiveSourceDomain,
+              sourceName: effectiveSourceName,
+              sourceFavicon: effectiveSourceFavicon,
+              externalUrl: effectiveExternalUrl,
+              variant: 'card',
+            }}
           />
-          <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
+          <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 flex-wrap">
             {isPromoted && (
               <PromotedBadge type={promotionBadgeType} size="sm" />
             )}
@@ -219,7 +274,7 @@ export const AdPost: React.FC<AdPostProps> = ({
       )}
       <div className="p-space-md flex flex-col justify-between flex-1 gap-3">
         <div>
-          {!hasVisibleImage && (
+          {!shouldShowMediaSlot && (
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2.5 py-1 rounded-lg bg-surface-container font-label-caps text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
                 {displayCategory}
@@ -230,7 +285,7 @@ export const AdPost: React.FC<AdPostProps> = ({
             </div>
           )}
           <div className="flex items-start justify-between gap-2">
-            <span className="font-headline-lg text-xl font-bold text-primary">{price}</span>
+            <span className="font-headline-lg text-xl font-bold text-primary">{effectivePrice}</span>
             <div className="flex items-center gap-1">
               <BookmarkButton 
                 id={id} 
@@ -334,15 +389,15 @@ export const AdPost: React.FC<AdPostProps> = ({
             <span className="flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5 text-primary" /> {location} • {date}
             </span>
-            {(isExternalEmbed || externalUrl) && (
+            {(effectiveIsExternalEmbed || effectiveExternalUrl) && (
               <>
                 <span>•</span>
                 <ExternalSourceInline
-                  isExternalEmbed={isExternalEmbed}
-                  externalUrl={externalUrl}
-                  sourceName={sourceName}
-                  sourceDomain={sourceDomain}
-                  sourceFavicon={sourceFavicon}
+                  isExternalEmbed={effectiveIsExternalEmbed}
+                  externalUrl={effectiveExternalUrl}
+                  sourceName={effectiveSourceName}
+                  sourceDomain={effectiveSourceDomain}
+                  sourceFavicon={effectiveSourceFavicon}
                 />
               </>
             )}
@@ -362,23 +417,23 @@ export const AdPost: React.FC<AdPostProps> = ({
               id={id} 
               type="ad" 
               title={title} 
-              description={description} 
+              description={cleanDescription || description} 
               url={`${window.location.origin}${postUrl}`}
-              imageUrl={image}
+              imageUrl={hasVisibleImage ? imgSrc : image}
               category={categoryName || category}
               author={author}
-              price={price}
+              price={effectivePrice}
               location={location}
               showLabel={true} 
               buttonClassName="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer border border-surface-container" 
             />
-            {externalUrl && (
+            {effectiveExternalUrl && (
               <a
-                href={normalizeExternalUrl(externalUrl)}
+                href={normalizeExternalUrl(effectiveExternalUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 border border-primary/25"
-                title={`Odpri izvirni oglas na ${sourceDomain || extractDomainFromUrl(externalUrl)}`}
+                title={`Odpri izvirni oglas na ${effectiveSourceDomain || extractDomainFromUrl(effectiveExternalUrl)}`}
               >
                 <span>Odpri vir</span>
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -389,7 +444,7 @@ export const AdPost: React.FC<AdPostProps> = ({
               className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Phone className="w-3.5 h-3.5" />
-              <span>{externalUrl ? 'Podrobnosti' : 'Kontakt'}</span>
+              <span>{effectiveExternalUrl ? 'Podrobnosti' : 'Kontakt'}</span>
             </button>
           </div>
         </div>

@@ -60,7 +60,10 @@ import { parseSocialEmbed } from '../utils/embedUtils';
 import { canUserPostContentType, canUserPostBlogOrDeals, ROLES_BLOG_AND_DEALS, ROLES_CLASSIFIEDS } from '../utils/permissionUtils';
 import { isUserVerified } from '../utils/userVerificationUtils';
 import { ExternalEmbedFetcherBox } from './common/ExternalEmbedFetcherBox';
-import type { ExternalEmbedMetadata } from '../services/externalEmbedService';
+import {
+  fetchExternalEmbedUrl,
+  type ExternalEmbedMetadata,
+} from '../services/externalEmbedService';
 
 type PostType = 'post' | 'ad' | 'deal' | 'event';
 
@@ -150,6 +153,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
   const [sourceDomain, setSourceDomain] = useState('');
   const [sourceFavicon, setSourceFavicon] = useState('');
   const [fetchedAt, setFetchedAt] = useState('');
+  const [isQuickFetchingEmbedUrl, setIsQuickFetchingEmbedUrl] = useState(false);
+  const [quickFetchEmbedError, setQuickFetchEmbedError] = useState('');
 
   const parsedEmbedPreview = useMemo(() => {
     if (!embedCode.trim()) return null;
@@ -376,6 +381,8 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
       setSourceDomain('');
       setSourceFavicon('');
       setFetchedAt('');
+      setIsQuickFetchingEmbedUrl(false);
+      setQuickFetchEmbedError('');
       setErrorMsg('');
       setSuccessMsg('');
       setIsSubmitting(false);
@@ -456,6 +463,22 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
     setSourceDomain('');
     setSourceFavicon('');
     setFetchedAt('');
+    setQuickFetchEmbedError('');
+  };
+
+  const handleQuickFetchFromEmbedCode = async () => {
+    const raw = embedCode.trim();
+    if (!raw || isQuickFetchingEmbedUrl) return;
+    setIsQuickFetchingEmbedUrl(true);
+    setQuickFetchEmbedError('');
+    try {
+      const meta = await fetchExternalEmbedUrl(raw);
+      handleExternalEmbedFetched(meta);
+    } catch (err: any) {
+      setQuickFetchEmbedError(err?.message || 'Podatkov in fotografij s povezave ni bilo mogoče samodejno pridobiti.');
+    } finally {
+      setIsQuickFetchingEmbedUrl(false);
+    }
   };
 
   const handlePriceChange = (type: 'old' | 'new', val: string) => {
@@ -2203,7 +2226,7 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                         idx === 0 ? 'border-primary ring-2 ring-primary/40 shadow-xs' : 'border-surface-container'
                       }`}
                     >
-                      <img src={img.previewUrl} alt={`Predogled ${idx + 1}`} className="h-full w-full object-cover" />
+                      <img src={img.previewUrl} alt={`Predogled ${idx + 1}`} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
                       {idx === 0 && (
                         <span className="absolute top-1 left-1 bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
                           <Star className="w-2.5 h-2.5 fill-current" />
@@ -2212,7 +2235,9 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                       )}
                       {img.uploadedUrl && (
                         <span className="absolute bottom-1 left-1 bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
-                          Storage ✓
+                          {img.uploadedUrl.includes('firebasestorage') || img.uploadedUrl.includes('storage.googleapis.com')
+                            ? 'Storage ✓'
+                            : 'Zunanja ✓'}
                         </span>
                       )}
                       {img.uploadStatus === 'uploading' && (
@@ -2458,6 +2483,32 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
                     className="pt-2 border-t border-surface-container-low max-h-96 overflow-y-auto no-scrollbar rounded-lg"
                     dangerouslySetInnerHTML={{ __html: parsedEmbedPreview.embedHtml }}
                   />
+                )}
+
+                {(postType === 'ad' || postType === 'deal') && parsedEmbedPreview.platform === 'generic' && (
+                  <div className="pt-2 border-t border-surface-container-low flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[11px] text-on-surface-variant">
+                        Prilepljena je zunanja povezava. Lahko samodejno pridobite originalno fotografijo, ceno in opis v objavo:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleQuickFetchFromEmbedCode}
+                        disabled={isQuickFetchingEmbedUrl}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-[11px] font-bold hover:bg-primary-container transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        {isQuickFetchingEmbedUrl ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Globe className="w-3.5 h-3.5" />
+                        )}
+                        <span>{isQuickFetchingEmbedUrl ? 'Pridobivam...' : 'Pridobi fotografijo in podatke'}</span>
+                      </button>
+                    </div>
+                    {quickFetchEmbedError && (
+                      <p className="text-[11px] text-error font-medium">{quickFetchEmbedError}</p>
+                    )}
+                  </div>
                 )}
               </div>
             )}

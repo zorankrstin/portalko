@@ -382,6 +382,14 @@ async function resolveOgMetadataForTargetUrl(
     getCollectionDocs: (colName) => getServerCollectionDocs(colName as OgCollectionName),
     rehydrateShardedDoc: (colName, docId, data) =>
       rehydrateServerDocIfSharded(colName as OgCollectionName, docId, data),
+    resolveExternalEmbedImage: async (extUrl: string) => {
+      const fetched = await withServerTimeout(
+        fetchExternalEmbedMetadata(extUrl).catch(() => null),
+        3500,
+        null
+      );
+      return fetched?.imageUrl || null;
+    },
   });
 }
 

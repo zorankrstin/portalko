@@ -14,6 +14,12 @@ import { UserAvatar } from "../common/UserAvatar";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
+import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import {
+  getDirectVideoThumbnailUrl,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbed,
+} from "../../services/externalEmbedService";
 import type { PostDetailTarget } from "../../types";
 
 export interface BlogPostProps {
@@ -45,6 +51,9 @@ export interface BlogPostProps {
   tags?: string[] | string;
   isPromoted?: boolean;
   promotionBadgeType?: PromotionBadgeType;
+  embedCode?: string;
+  externalUrl?: string;
+  isExternalEmbed?: boolean;
   onNavigatePost?: (target: PostDetailTarget) => void;
   onTagClick?: (tag: string) => void;
 }
@@ -78,6 +87,9 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   tags = [],
   isPromoted = false,
   promotionBadgeType = 'PROMO',
+  embedCode,
+  externalUrl,
+  isExternalEmbed,
   onNavigatePost,
   onTagClick,
 }) => {
@@ -104,8 +116,18 @@ export const BlogPost: React.FC<BlogPostProps> = ({
 
   const authorUrl = `/avtor/${slugify(author)}`;
 
+  const hasDbImage = Boolean(image && image.trim());
+  const candidateUrl = !hasDbImage
+    ? resolvePostExternalUrlCandidate({ embedCode, externalUrl }, { includeSocialEmbeds: true })
+    : undefined;
+  const resolvedEmbedMeta = useResolvedExternalEmbed(candidateUrl, !candidateUrl || hasDbImage);
+  const extractedImage = (!hasDbImage
+    ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(embedCode || candidateUrl))
+    : '') || '';
+
   const resolveInitialImage = () => {
-    if (image && image.trim()) return image.trim();
+    if (hasDbImage) return image!.trim();
+    if (extractedImage) return extractedImage;
     return getActiveFallbackImage(true, 'blog') || '';
   };
   const [imgSrc, setImgSrc] = React.useState<string>(resolveInitialImage());
@@ -114,7 +136,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   React.useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image]);
+  }, [image, extractedImage]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -150,6 +172,9 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           date,
           location,
           description: finalDesc,
+          embedCode,
+          externalUrl,
+          isExternalEmbed,
           likesCount: typeof likesCount === 'number' ? likesCount : (parseInt(String(likesCount).replace(/\D/g, ''), 10) || 0),
           viewsCount,
           commentsCount,
@@ -162,6 +187,8 @@ export const BlogPost: React.FC<BlogPostProps> = ({
     }
   };
 
+  const effectiveImage = (imgSrc && !hasError ? imgSrc : '') || image || '';
+
   const bookmarkData = {
     type: 'blog',
     category: 'blog',
@@ -172,7 +199,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
     date,
     location,
     description: finalDesc,
-    image,
+    image: effectiveImage,
     readTime,
     photoCount,
   };
@@ -262,7 +289,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             title={title} 
             description={description} 
             url={`${window.location.origin}${postUrl}`}
-            imageUrl={image}
+            imageUrl={effectiveImage}
             category={categoryName || category}
             author={author}
             date={date}
@@ -302,21 +329,31 @@ export const BlogPost: React.FC<BlogPostProps> = ({
         </p>
       </div>
       
-      {imgSrc && !hasError && (
+      {(imgSrc || isExternalEmbed || externalUrl || embedCode) && (
         <a
           href={postUrl}
           onClick={handleOpenDetail}
           className="relative rounded-xl overflow-hidden aspect-[16/9] max-h-80 w-full bg-surface-container block cursor-pointer group/img ring-1 ring-black/5"
           title="Odpri samostojno stran članka"
         >
-          <img 
-            className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500" 
-            src={imgSrc} 
-            alt={title} 
-            onError={handleImageError}
+          <ResilientEmbedImage
+            className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500"
+            src={imgSrc}
+            fallbackSrcs={[...(images || []), ...(resolvedEmbedMeta?.images || [])]}
+            alt={title}
+            onAllImagesFailed={() => setHasError(true)}
+            placeholderProps={{
+              postType: 'blog',
+              title,
+              sourceDomain: resolvedEmbedMeta?.domain,
+              sourceName: resolvedEmbedMeta?.siteName,
+              sourceFavicon: resolvedEmbedMeta?.faviconUrl,
+              externalUrl: externalUrl || candidateUrl,
+              variant: 'card',
+            }}
           />
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 via-black/15 to-transparent pointer-events-none" />
-          <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg font-label-md text-[11px] font-medium flex items-center gap-1.5">
+          <div className="absolute bottom-3 left-3 z-20 bg-black/70 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg font-label-md text-[11px] font-medium flex items-center gap-1.5">
             <Camera className="w-3.5 h-3.5 text-secondary-fixed" /> {readTime} {photoCount ? `• ${photoCount}` : ''}
           </div>
         </a>
@@ -373,7 +410,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             title={title}
             description={description}
             url={`${window.location.origin}${postUrl}`}
-            imageUrl={image}
+            imageUrl={effectiveImage}
             category={categoryName || category}
             author={author}
             date={date}

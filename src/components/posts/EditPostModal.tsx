@@ -33,7 +33,12 @@ import { CategorySection, getTertiaryCategories } from '../../services/categoryS
 import { getTodayYmd } from '../../utils/eventFilterUtils';
 import { parseSocialEmbed } from '../../utils/embedUtils';
 import { ExternalEmbedFetcherBox } from '../common/ExternalEmbedFetcherBox';
-import type { ExternalEmbedMetadata } from '../../services/externalEmbedService';
+import {
+  fetchExternalEmbedUrl,
+  isGenericExternalUrl,
+  normalizeExternalUrl,
+  type ExternalEmbedMetadata,
+} from '../../services/externalEmbedService';
 
 export type EditableItemType = 'post' | 'ad' | 'event' | 'deal';
 
@@ -152,6 +157,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
   const [sourceDomain, setSourceDomain] = useState('');
   const [sourceFavicon, setSourceFavicon] = useState('');
   const [fetchedAt, setFetchedAt] = useState('');
+  const [isQuickFetchingEmbedUrl, setIsQuickFetchingEmbedUrl] = useState(false);
+  const [quickFetchEmbedError, setQuickFetchEmbedError] = useState('');
   const [tagsString, setTagsString] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -414,12 +421,17 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         (item.embedCode && (item.embedCode.includes('data-orientation="vertical"') || item.embedCode.includes('data-vertical="true"')) ? 'vertical' :
          item.embedCode && (item.embedCode.includes('data-orientation="horizontal"') || item.embedCode.includes('data-vertical="false"')) ? 'horizontal' : 'auto');
       setEmbedOrientation(initialOrientation);
-      setIsExternalEmbed(Boolean(item.isExternalEmbed || item.externalUrl));
-      setExternalUrl(item.externalUrl || (item.isExternalEmbed ? item.dealLink || '' : ''));
+      const fallbackGenericUrl = !item.externalUrl && isGenericExternalUrl(item.embedCode)
+        ? normalizeExternalUrl(item.embedCode || '')
+        : '';
+      setIsExternalEmbed(Boolean(item.isExternalEmbed || item.externalUrl || fallbackGenericUrl));
+      setExternalUrl(item.externalUrl || (item.isExternalEmbed ? item.dealLink || '' : '') || fallbackGenericUrl);
       setSourceName(item.sourceName || '');
       setSourceDomain(item.sourceDomain || '');
       setSourceFavicon(item.sourceFavicon || '');
       setFetchedAt(item.fetchedAt || '');
+      setIsQuickFetchingEmbedUrl(false);
+      setQuickFetchEmbedError('');
       const rawTags = item.tags;
       const initialTagsStr = Array.isArray(rawTags) 
         ? rawTags.join(', ') 
@@ -456,6 +468,49 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
     setEmbedCode('');
     setEmbedOrientation('auto');
     setShowEmbedPreview(false);
+    setQuickFetchEmbedError('');
+  };
+
+  const applyFetchedExternalMeta = (meta: ExternalEmbedMetadata) => {
+    setIsExternalEmbed(true);
+    setExternalUrl(meta.url);
+    setSourceName(meta.siteName);
+    setSourceDomain(meta.domain);
+    setSourceFavicon(meta.faviconUrl);
+    setFetchedAt(meta.fetchedAt);
+    if (meta.title && (!title.trim() || title.trim() === item?.title)) setTitle(meta.title);
+    if (meta.description && (!content.trim() || content.trim() === '<p></p>')) {
+      const htmlDesc = `<p>${meta.description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
+      setContent(htmlDesc);
+    }
+    if (meta.imageUrl) {
+      setPendingImageFile(null);
+      setImageUrl(meta.imageUrl);
+    }
+    if (item?.type === 'ad') {
+      if (meta.price && (!price.trim() || price.trim().toLowerCase() === 'po dogovoru')) setPrice(meta.price);
+      if (meta.location && !location.trim()) setLocation(meta.location);
+    } else {
+      setDealLink(meta.url);
+      if (meta.price) setNewPrice(meta.price);
+      if (meta.oldPrice) setOldPrice(meta.oldPrice);
+      if (meta.discount) setDiscount(meta.discount);
+    }
+  };
+
+  const handleQuickFetchFromEmbedCode = async () => {
+    const raw = embedCode.trim();
+    if (!raw || isQuickFetchingEmbedUrl) return;
+    setIsQuickFetchingEmbedUrl(true);
+    setQuickFetchEmbedError('');
+    try {
+      const meta = await fetchExternalEmbedUrl(raw);
+      applyFetchedExternalMeta(meta);
+    } catch (err: any) {
+      setQuickFetchEmbedError(err?.message || 'Podatkov in fotografij s povezave ni bilo mogoče pridobiti.');
+    } finally {
+      setIsQuickFetchingEmbedUrl(false);
+    }
   };
 
   const handleAttachmentFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1797,7 +1852,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
 
             {imageUrl && (
               <div className="mt-1 relative w-full h-36 rounded-xl overflow-hidden bg-surface-container border border-surface-container group">
-                <img src={imageUrl} alt="Predogled" className="w-full h-full object-cover" onError={() => {}} />
+                <img src={imageUrl} alt="Predogled" referrerPolicy="no-referrer" className="w-full h-full object-cover" onError={() => {}} />
                 <button
                   type="button"
                   onClick={() => {
@@ -2008,6 +2063,32 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
                     </button>
                   </div>
                 </div>
+
+                {(item.type === 'ad' || isDeal) && parsedEmbed.platform === 'generic' && (
+                  <div className="pt-2 border-t border-surface-container-low flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[11px] text-on-surface-variant">
+                        Prilepljena je zunanja povezava. Kliknite za uvoz originalne fotografije in podatkov:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleQuickFetchFromEmbedCode}
+                        disabled={isQuickFetchingEmbedUrl}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-[11px] font-bold hover:bg-primary-container transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        {isQuickFetchingEmbedUrl ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5" />
+                        )}
+                        <span>{isQuickFetchingEmbedUrl ? 'Pridobivam...' : 'Pridobi fotografijo in podatke'}</span>
+                      </button>
+                    </div>
+                    {quickFetchEmbedError && (
+                      <p className="text-[11px] text-error font-medium">{quickFetchEmbedError}</p>
+                    )}
+                  </div>
+                )}
 
                 {showEmbedPreview && (
                   <div 

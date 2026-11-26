@@ -498,6 +498,9 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
                   tags={event.tags}
                   isPromoted={isPromoted}
                   promotionBadgeType={badgeType}
+                  embedCode={(event as any).embedCode}
+                  externalUrl={(event as any).externalUrl}
+                  isExternalEmbed={(event as any).isExternalEmbed}
                   onNavigatePost={onNavigatePost}
                   onTagClick={onTagClick}
                   onCategoryClick={(cat, catName, sub, subName) => {
