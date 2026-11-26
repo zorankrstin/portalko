@@ -19,6 +19,7 @@ import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { EventReminderButton } from "../events/EventReminderButton";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import { EmbedSourceBadge } from "../common/ExternalSourceEmbedCard";
 import {
   getDirectVideoThumbnailUrl,
   resolvePostExternalUrlCandidate,
@@ -229,9 +230,11 @@ export const EventPost: React.FC<EventPostProps> = ({
   };
 
   const hasDbImage = Boolean(image && image.trim());
-  const resolvedExternalUrl = !hasDbImage
-    ? resolvePostExternalUrlCandidate({ externalUrl, link: ticketUrl, embedCode }, { includeSocialEmbeds: true })
-    : undefined;
+  const sourceEmbedUrl = resolvePostExternalUrlCandidate(
+    { externalUrl, link: ticketUrl, embedCode },
+    { includeSocialEmbeds: true }
+  );
+  const resolvedExternalUrl = !hasDbImage ? sourceEmbedUrl : undefined;
   const resolvedEmbedMeta = useResolvedExternalEmbed(resolvedExternalUrl, !resolvedExternalUrl || hasDbImage);
   const extractedImage = (!hasDbImage
     ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(embedCode || resolvedExternalUrl))
@@ -514,6 +517,18 @@ export const EventPost: React.FC<EventPostProps> = ({
                   <Clock className="w-3 h-3 text-primary" />
                   {displayTime}
                 </span>
+              </>
+            )}
+            {(isExternalEmbed || externalUrl || embedCode) && (sourceEmbedUrl || externalUrl) && (
+              <>
+                <span>•</span>
+                <EmbedSourceBadge
+                  externalUrl={sourceEmbedUrl || externalUrl}
+                  sourceName={resolvedEmbedMeta?.siteName}
+                  sourceDomain={resolvedEmbedMeta?.domain}
+                  sourceFavicon={resolvedEmbedMeta?.faviconUrl}
+                  size="sm"
+                />
               </>
             )}
           </div>

@@ -15,6 +15,7 @@ import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import { EmbedSourceBadge } from "../common/ExternalSourceEmbedCard";
 import {
   getDirectVideoThumbnailUrl,
   resolvePostExternalUrlCandidate,
@@ -117,9 +118,11 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   const authorUrl = `/avtor/${slugify(author)}`;
 
   const hasDbImage = Boolean(image && image.trim());
-  const candidateUrl = !hasDbImage
-    ? resolvePostExternalUrlCandidate({ embedCode, externalUrl }, { includeSocialEmbeds: true })
-    : undefined;
+  const sourceEmbedUrl = resolvePostExternalUrlCandidate(
+    { embedCode, externalUrl },
+    { includeSocialEmbeds: true }
+  );
+  const candidateUrl = !hasDbImage ? sourceEmbedUrl : undefined;
   const resolvedEmbedMeta = useResolvedExternalEmbed(candidateUrl, !candidateUrl || hasDbImage);
   const extractedImage = (!hasDbImage
     ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(embedCode || candidateUrl))
@@ -270,6 +273,18 @@ export const BlogPost: React.FC<BlogPostProps> = ({
                 <>
                   <span>•</span>
                   <span>{location}</span>
+                </>
+              )}
+              {(isExternalEmbed || sourceEmbedUrl) && (
+                <>
+                  <span>•</span>
+                  <EmbedSourceBadge
+                    externalUrl={sourceEmbedUrl || externalUrl}
+                    sourceName={resolvedEmbedMeta?.siteName}
+                    sourceDomain={resolvedEmbedMeta?.domain}
+                    sourceFavicon={resolvedEmbedMeta?.faviconUrl}
+                    size="sm"
+                  />
                 </>
               )}
             </p>

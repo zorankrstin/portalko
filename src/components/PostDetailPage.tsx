@@ -3003,6 +3003,21 @@ export function PostDetailPage({
             />
           )}
 
+          {(target.type === 'blog' || target.type === 'event') && ((itemData as any).isExternalEmbed || (itemData as any).externalUrl) && !itemData.embedCode && (
+            <ExternalSourceDetailEmbed
+              type={target.type === 'event' ? 'event' : 'blog'}
+              title={itemData.title}
+              description={itemData.description}
+              image={itemData.image}
+              isExternalEmbed={(itemData as any).isExternalEmbed}
+              externalUrl={(itemData as any).externalUrl}
+              sourceName={(itemData as any).sourceName}
+              sourceDomain={(itemData as any).sourceDomain}
+              sourceFavicon={(itemData as any).sourceFavicon}
+              fetchedAt={(itemData as any).fetchedAt}
+            />
+          )}
+
           {/* Embedded Social Media, Video, or External Link via EmbedContentRenderer (auto-extracts og:image if no DB image) */}
           {itemData.embedCode && !((target.type === 'ad' || target.type === 'deal') && isGenericExternalUrl(itemData.embedCode)) && (
             <div className="flex flex-col gap-2.5 pt-4 border-t border-surface-container-low">
@@ -3014,6 +3029,9 @@ export function PostDetailPage({
                 embedOrientation={itemData.embedOrientation}
                 dbImage={hasStoredRealImage ? (itemData.image || (Array.isArray(itemData.images) ? itemData.images[0] : '')) : undefined}
                 externalUrl={(itemData as any).externalUrl}
+                sourceName={(itemData as any).sourceName}
+                sourceDomain={(itemData as any).sourceDomain}
+                sourceFavicon={(itemData as any).sourceFavicon}
                 title={itemData.title}
                 preResolvedMeta={resolvedExternalMeta}
                 sanitizeHtml={getCleanHtml}

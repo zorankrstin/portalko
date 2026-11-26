@@ -21,6 +21,7 @@ import { handleImageFallbackError, getActiveFallbackImage } from "../../services
 import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
 import { parseTags } from "../../utils/tagUtils";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
+import { EmbedSourceBadge } from "../common/ExternalSourceEmbedCard";
 import {
   getDirectVideoThumbnailUrl,
   resolvePostExternalUrlCandidate,
@@ -55,9 +56,10 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
 
   const isDelegatedCardType = post.category === 'ad' || isDeal || post.category === 'event';
   const hasDbImage = Boolean(post.imageUrl && post.imageUrl.trim());
-  const candidateExternalUrl = !hasDbImage && !isDelegatedCardType
+  const sourceEmbedUrl = !isDelegatedCardType
     ? resolvePostExternalUrlCandidate(post, { includeSocialEmbeds: true })
     : undefined;
+  const candidateExternalUrl = !hasDbImage ? sourceEmbedUrl : undefined;
   const resolvedEmbedMeta = useResolvedExternalEmbed(
     candidateExternalUrl,
     !candidateExternalUrl || hasDbImage || isDelegatedCardType
@@ -517,6 +519,18 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
                     <MapPin className="w-3 h-3" />
                     {post.location}
                   </span>
+                </>
+              )}
+              {(post.isExternalEmbed || post.externalUrl || sourceEmbedUrl) && (
+                <>
+                  <span>•</span>
+                  <EmbedSourceBadge
+                    externalUrl={sourceEmbedUrl || post.externalUrl}
+                    sourceName={post.sourceName || resolvedEmbedMeta?.siteName}
+                    sourceDomain={post.sourceDomain || resolvedEmbedMeta?.domain}
+                    sourceFavicon={post.sourceFavicon || resolvedEmbedMeta?.faviconUrl}
+                    size="sm"
+                  />
                 </>
               )}
             </div>

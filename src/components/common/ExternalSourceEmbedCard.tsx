@@ -7,39 +7,150 @@ import {
 } from '../../services/externalEmbedService';
 import { ResilientEmbedImage } from './EmbedThumbnailPlaceholder';
 
-interface ExternalSourceInlineProps {
+const KNOWN_SOURCE_BRANDS: Record<string, string> = {
+  'avto.net': 'Avto.net',
+  'bolha.com': 'Bolha.com',
+  'nepremicnine.net': 'Nepremičnine.net',
+  'mimovrste.com': 'Mimovrste',
+  'bigbang.si': 'Big Bang',
+  'merkur.si': 'Merkur',
+  'intersport.si': 'Intersport',
+  'hervis.si': 'Hervis',
+  'hofer.si': 'Hofer',
+  'lidl.si': 'Lidl',
+  'spar.si': 'Spar',
+  'mercator.si': 'Mercator',
+  'youtube.com': 'YouTube',
+  'youtu.be': 'YouTube',
+  'youtube-nocookie.com': 'YouTube',
+  'tiktok.com': 'TikTok',
+  'instagram.com': 'Instagram',
+  'facebook.com': 'Facebook',
+  'fb.watch': 'Facebook',
+  'twitter.com': 'X (Twitter)',
+  'x.com': 'X (Twitter)',
+  '24ur.com': '24ur.com',
+  'rtvslo.si': 'RTV SLO',
+  'siol.net': 'Siol.net',
+  'delo.si': 'Delo.si',
+  'n1info.si': 'N1',
+  'slovenskenovice.si': 'Slovenske novice',
+  'zurnal24.si': 'Žurnal24',
+  'eventim.si': 'Eventim.si',
+  'mojekarte.si': 'MojeKarte.si',
+};
+
+/**
+ * Formats a clean, human-readable source website label (e.g. "avto.net" -> "Avto.net").
+ */
+export function formatEmbedSourceLabel(
+  domain?: string,
+  siteName?: string,
+  platform?: string
+): string {
+  const cleanDomain = (domain || '').replace(/^www\./i, '').trim();
+  const cleanDomainLower = cleanDomain.toLowerCase();
+  const cleanSite = (siteName || '').trim();
+
+  if (cleanDomainLower && KNOWN_SOURCE_BRANDS[cleanDomainLower]) {
+    return KNOWN_SOURCE_BRANDS[cleanDomainLower];
+  }
+
+  // Subdomain match for known brands (e.g. "m.avto.net" -> "Avto.net", "vm.tiktok.com" -> "TikTok")
+  if (cleanDomainLower) {
+    for (const [brandDomain, brandLabel] of Object.entries(KNOWN_SOURCE_BRANDS)) {
+      if (cleanDomainLower === brandDomain || cleanDomainLower.endsWith(`.${brandDomain}`)) {
+        return brandLabel;
+      }
+    }
+  }
+
+  if (platform) {
+    const pLower = platform.toLowerCase();
+    if (pLower === 'youtube') return 'YouTube';
+    if (pLower === 'tiktok') return 'TikTok';
+    if (pLower === 'instagram') return 'Instagram';
+    if (pLower === 'facebook') return 'Facebook';
+    if (pLower === 'twitter') return 'X (Twitter)';
+  }
+
+  if (cleanDomain) {
+    return cleanDomain.charAt(0).toUpperCase() + cleanDomain.slice(1);
+  }
+  if (cleanSite) {
+    return cleanSite.charAt(0).toUpperCase() + cleanSite.slice(1);
+  }
+  return 'Zunanji vir';
+}
+
+export interface EmbedSourceBadgeProps {
   externalUrl?: string;
   sourceName?: string;
   sourceDomain?: string;
   sourceFavicon?: string;
-  isExternalEmbed?: boolean;
+  platform?: string;
+  size?: 'sm' | 'md';
   className?: string;
 }
 
 /**
- * Clean unboxed source attribution for fetched external posts in feed cards
- * (avoids decorative pill badges while keeping domain & original link crystal clear).
+ * Clear visual source badge (e.g. "Vir: Avto.net") indicating where embedded content originates.
  */
-export const ExternalSourceInline: React.FC<ExternalSourceInlineProps> = ({
+export const EmbedSourceBadge: React.FC<EmbedSourceBadgeProps> = ({
   externalUrl,
   sourceName,
   sourceDomain,
   sourceFavicon,
-  isExternalEmbed,
+  platform,
+  size = 'sm',
   className = '',
 }) => {
-  if (!isExternalEmbed && !externalUrl) return null;
-  const href = externalUrl ? normalizeExternalUrl(externalUrl) : '';
-  const domain = sourceDomain || extractDomainFromUrl(href) || sourceName || 'zunanja stran';
-  const displayName = sourceName && sourceName.toLowerCase() !== domain.toLowerCase()
-    ? `${sourceName} (${domain})`
-    : domain;
+  const href = externalUrl && externalUrl.trim() !== '#' ? normalizeExternalUrl(externalUrl) : '';
+  const extractedDomain = sourceDomain || (href ? extractDomainFromUrl(href) : '');
+  const sourceLabel = formatEmbedSourceLabel(extractedDomain, sourceName, platform);
+
+  if (!href && !sourceDomain && !sourceName && !platform) return null;
+
+  const isMedium = size === 'md';
+  const baseClasses = `inline-flex items-center gap-1.5 rounded-lg border font-medium whitespace-nowrap max-w-full transition-colors ${
+    isMedium
+      ? 'px-2.5 py-1 text-xs bg-primary/10 dark:bg-primary/15 border-primary/25 text-on-surface hover:bg-primary/15 hover:border-primary/40'
+      : 'px-2 py-0.5 text-[11px] bg-primary/8 dark:bg-primary/15 border-primary/20 text-on-surface hover:bg-primary/15 hover:border-primary/35'
+  } ${className}`;
+
+  const content = (
+    <>
+      {sourceFavicon ? (
+        <img
+          src={sourceFavicon}
+          alt=""
+          referrerPolicy="no-referrer"
+          className={`${isMedium ? 'w-3.5 h-3.5' : 'w-3 h-3'} rounded-xs shrink-0 object-contain`}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      ) : (
+        <Globe className={`${isMedium ? 'w-3.5 h-3.5' : 'w-3 h-3'} text-primary shrink-0`} />
+      )}
+      <span className="text-on-surface-variant">Vir:</span>
+      <span className="font-bold text-primary truncate">{sourceLabel}</span>
+      {href && (
+        <ExternalLink
+          className={`${isMedium ? 'w-3.5 h-3.5' : 'w-3 h-3'} text-primary/80 shrink-0`}
+          aria-hidden="true"
+        />
+      )}
+    </>
+  );
 
   if (!href) {
     return (
-      <span className={`inline-flex items-center gap-1.5 text-[11px] text-outline font-medium ${className}`}>
-        <Globe className="w-3 h-3 text-primary/80 shrink-0" />
-        <span>Izvorna objava · {displayName}</span>
+      <span
+        className={baseClasses}
+        title={`Vir vsebine: ${sourceLabel}`}
+      >
+        {content}
       </span>
     );
   }
@@ -50,27 +161,44 @@ export const ExternalSourceInline: React.FC<ExternalSourceInlineProps> = ({
       target="_blank"
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
-      className={`inline-flex items-center gap-1.5 text-[11px] font-medium text-on-surface-variant hover:text-primary transition-colors ${className}`}
-      title={`Odpri izvirno objavo na ${domain}`}
+      className={baseClasses}
+      title={`Odpri izvirno vsebino na ${extractedDomain || sourceLabel}`}
     >
-      {sourceFavicon ? (
-        <img
-          src={sourceFavicon}
-          alt=""
-          referrerPolicy="no-referrer"
-          className="w-3.5 h-3.5 rounded-xs shrink-0"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      ) : (
-        <Globe className="w-3 h-3 text-primary shrink-0" />
-      )}
-      <span className="truncate">
-        Izvor: <span className="font-semibold text-on-surface">{domain}</span>
-      </span>
-      <ExternalLink className="w-3 h-3 text-primary shrink-0" />
+      {content}
     </a>
+  );
+};
+
+interface ExternalSourceInlineProps {
+  externalUrl?: string;
+  sourceName?: string;
+  sourceDomain?: string;
+  sourceFavicon?: string;
+  isExternalEmbed?: boolean;
+  className?: string;
+}
+
+/**
+ * Clean source transparency badge for fetched external posts in feed cards (e.g. "Vir: Avto.net").
+ */
+export const ExternalSourceInline: React.FC<ExternalSourceInlineProps> = ({
+  externalUrl,
+  sourceName,
+  sourceDomain,
+  sourceFavicon,
+  isExternalEmbed,
+  className = '',
+}) => {
+  if (!isExternalEmbed && !externalUrl) return null;
+  return (
+    <EmbedSourceBadge
+      externalUrl={externalUrl}
+      sourceName={sourceName}
+      sourceDomain={sourceDomain}
+      sourceFavicon={sourceFavicon}
+      size="sm"
+      className={className}
+    />
   );
 };
 
@@ -143,33 +271,21 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
   return (
     <div className="rounded-2xl border border-surface-container bg-surface-container-low/70 overflow-hidden shadow-xs">
       <div className="px-4 py-2.5 border-b border-surface-container/60 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0 text-xs">
-          {effectiveFavicon ? (
-            <img
-              src={effectiveFavicon}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="w-4 h-4 rounded-xs shrink-0"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          ) : (
-            <Globe className="w-4 h-4 text-primary shrink-0" />
-          )}
-          <span className="font-bold text-on-surface truncate">{publisher}</span>
-          <span className="text-outline">·</span>
-          <span className="text-outline truncate">{domain}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-wrap text-xs">
+          <EmbedSourceBadge
+            externalUrl={href}
+            sourceName={publisher}
+            sourceDomain={domain}
+            sourceFavicon={effectiveFavicon}
+            size="md"
+          />
           {effectiveFetchedAt && (
-            <>
-              <span className="text-outline hidden sm:inline">·</span>
-              <span className="text-[11px] text-outline hidden sm:inline">
-                Pridobljeno {new Date(effectiveFetchedAt).toLocaleDateString('sl-SI')}
-              </span>
-            </>
+            <span className="text-[11px] text-outline hidden sm:inline">
+              Pridobljeno {new Date(effectiveFetchedAt).toLocaleDateString('sl-SI')}
+            </span>
           )}
         </div>
-        <span className="text-[11px] font-semibold text-primary">
+        <span className="text-[11px] font-semibold text-on-surface-variant">
           {typeLabel}
         </span>
       </div>
@@ -218,7 +334,7 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
             )}
 
             <span className="px-3.5 py-1.5 rounded-xl bg-primary group-hover:bg-primary-container text-on-primary text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0">
-              <span>Odpri na {domain}</span>
+              <span>Odpri na {formatEmbedSourceLabel(domain, publisher)}</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </span>
           </div>
@@ -227,4 +343,3 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
     </div>
   );
 };
-
