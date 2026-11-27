@@ -18,9 +18,10 @@ import { useAuth } from "../../contexts/AuthContext";
 import { ExternalSourceInline } from "../common/ExternalSourceEmbedCard";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
 import {
+  filterRealStoredImages,
   getDirectVideoThumbnailUrl,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
 } from "../../services/externalEmbedService";
 
 export interface DealPostProps {
@@ -148,8 +149,12 @@ export const DealPost: React.FC<DealPostProps> = ({
           authorId,
           authorRole,
           authorAvatar,
-          image: imgSrc || image || '',
-          images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
+          image: (hasVisibleImage ? imgSrc : '') || realStoredImages[0] || '',
+          images: realStoredImages.length > 0
+            ? realStoredImages
+            : (resolvedEmbedMeta?.images && resolvedEmbedMeta.images.length > 0
+                ? resolvedEmbedMeta.images
+                : (hasVisibleImage && imgSrc ? [imgSrc] : [])),
           discount,
           oldPrice,
           newPrice,
@@ -194,12 +199,20 @@ export const DealPost: React.FC<DealPostProps> = ({
     }
   };
 
-  const hasDbImage = Boolean(image && image.trim());
-  const resolvedExternalUrl = resolvePostExternalUrlCandidate(
-    { externalUrl, link, embedCode },
-    { includeSocialEmbeds: true }
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = React.useMemo(
+    () => filterRealStoredImages([image, ...(images || [])], portalBrokenFallback),
+    [image, images, portalBrokenFallback]
   );
-  const resolvedEmbedMeta = useResolvedExternalEmbed(
+  const hasDbImage = realStoredImages.length > 0;
+  const resolvedExternalUrl = React.useMemo(
+    () => resolvePostExternalUrlCandidate(
+      { externalUrl, link, embedCode, description },
+      { includeSocialEmbeds: true }
+    ),
+    [externalUrl, link, embedCode, description]
+  );
+  const { data: resolvedEmbedMeta, isLoading: isExternalMetaLoading } = useResolvedExternalEmbedState(
     resolvedExternalUrl,
     !resolvedExternalUrl || hasDbImage
   );
@@ -208,10 +221,13 @@ export const DealPost: React.FC<DealPostProps> = ({
     : '') || '';
 
   const resolveInitialImage = () => {
-    if (hasDbImage) return image.trim();
+    if (realStoredImages[0]) return realStoredImages[0];
     if (extractedImage) return extractedImage;
-    const fallback = getActiveFallbackImage(true);
-    return fallback || '';
+    if (!resolvedExternalUrl) {
+      const fallback = getActiveFallbackImage(true);
+      return fallback || '';
+    }
+    return '';
   };
 
   const [imgSrc, setImgSrc] = useState<string>(resolveInitialImage());
@@ -220,7 +236,7 @@ export const DealPost: React.FC<DealPostProps> = ({
   React.useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image, extractedImage]);
+  }, [realStoredImages, extractedImage, resolvedExternalUrl]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -293,10 +309,12 @@ export const DealPost: React.FC<DealPostProps> = ({
         >
           <ResilientEmbedImage
             src={imgSrc}
-            fallbackSrcs={[...(images || []), ...(resolvedEmbedMeta?.images || [])]}
+            fallbackSrcs={[...realStoredImages.slice(1), ...(resolvedEmbedMeta?.images || [])]}
             alt={cleanTitle}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"
+            showLoadingShimmer={true}
+            isMetadataLoading={isExternalMetaLoading && !hasDbImage}
             onAllImagesFailed={() => setHasError(true)}
             placeholderProps={{
               postType: 'deal',
@@ -484,15 +502,15 @@ export const DealPost: React.FC<DealPostProps> = ({
                   </span>
                 </>
               )}
-              {(isExternalEmbed || externalUrl) && (
+              {(isExternalEmbed || resolvedExternalUrl || externalUrl) && (
                 <>
                   <span>•</span>
                   <ExternalSourceInline
-                    isExternalEmbed={isExternalEmbed}
-                    externalUrl={externalUrl || link}
-                    sourceName={sourceName}
-                    sourceDomain={sourceDomain}
-                    sourceFavicon={sourceFavicon}
+                    isExternalEmbed={Boolean(isExternalEmbed || resolvedExternalUrl)}
+                    externalUrl={resolvedExternalUrl || externalUrl || link}
+                    sourceName={sourceName || resolvedEmbedMeta?.siteName}
+                    sourceDomain={sourceDomain || resolvedEmbedMeta?.domain}
+                    sourceFavicon={sourceFavicon || resolvedEmbedMeta?.faviconUrl}
                   />
                 </>
               )}

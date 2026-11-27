@@ -5,6 +5,7 @@ import {
   extractDomainFromUrl,
   extractEmbedSourceUrl,
   getDirectVideoThumbnailUrl,
+  isDummyOrFallbackImageUrl,
   useResolvedExternalEmbedState,
   type ExternalEmbedMetadata,
 } from '../../services/externalEmbedService';
@@ -61,7 +62,7 @@ export const EmbedContentRenderer: React.FC<EmbedContentRendererProps> = ({
     return externalUrl?.trim() || parsed?.embedUrl || extractEmbedSourceUrl(rawEmbed);
   }, [externalUrl, parsed?.embedUrl, rawEmbed]);
 
-  const hasDbImage = Boolean(dbImage && dbImage.trim());
+  const hasDbImage = Boolean(dbImage && dbImage.trim() && !isDummyOrFallbackImageUrl(dbImage));
   const shouldSkipAutoFetch = !sourceUrl || hasDbImage || Boolean(preResolvedMeta?.imageUrl);
   const { data: autoMeta, isLoading: isAutoMetaLoading } = useResolvedExternalEmbedState(
     sourceUrl,

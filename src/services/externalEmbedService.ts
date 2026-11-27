@@ -164,31 +164,173 @@ export function getDirectVideoThumbnailUrl(rawInput?: string | null): string | u
   return undefined;
 }
 
+const KNOWN_DUMMY_STOCK_IMAGE_FRAGMENTS = [
+  "photo-1588872657578-7efd1f1555ed",
+  "photo-1607082348824-0a96f2a4b9da",
+  "photo-1552519507-da3b142c6e3d",
+  "photo-1568605117036-5fe5e7bab0b7",
+  "photo-1506744038136-46273834b3fb",
+  "photo-1501281668745-f7f57925c3b4",
+  "photo-1496181133206-80ce9b88a853",
+  "photo-1542838132-92c53300491e",
+  "photo-1540555700478-4be289fbecef",
+  "photo-1551632811-561732d1e306",
+  "photo-1555041469-a586c61ea9bc",
+];
+
+/**
+ * Returns true if the URL is empty, a placeholder/dummy image, or a hardcoded stock fallback
+ * that should NOT be treated as a real user/source image.
+ */
+export function isDummyOrFallbackImageUrl(
+  url?: string | null,
+  portalFallbackUrl?: string | null
+): boolean {
+  if (!url || typeof url !== "string") return true;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === "#" || trimmed === "undefined" || trimmed === "null") {
+    return true;
+  }
+  const lower = trimmed.toLowerCase();
+  if (portalFallbackUrl && trimmed === portalFallbackUrl.trim()) {
+    return true;
+  }
+  if (
+    lower.endsWith("/favicon.png") ||
+    lower.endsWith("/favicon.ico") ||
+    lower.includes("via.placeholder.com") ||
+    lower.includes("placeholder.com/") ||
+    lower.includes("dummyimage.com")
+  ) {
+    return true;
+  }
+  return KNOWN_DUMMY_STOCK_IMAGE_FRAGMENTS.some((frag) => lower.includes(frag));
+}
+
+export function filterRealStoredImages(
+  urls: Array<string | undefined | null>,
+  portalFallbackUrl?: string | null
+): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    if (isDummyOrFallbackImageUrl(trimmed, portalFallbackUrl)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function isNonEmbedAssetOrInternalHost(parsed: URL): boolean {
+  const host = parsed.hostname.toLowerCase();
+  const pathLower = parsed.pathname.toLowerCase();
+  if (
+    host.includes("portalko.net") ||
+    host.includes("firebasestorage.googleapis.com") ||
+    host.includes("storage.googleapis.com") ||
+    host.includes("i.ytimg.com") ||
+    host.includes("img.youtube.com") ||
+    (host.includes("google.com") && pathLower.startsWith("/s2/favicons"))
+  ) {
+    return true;
+  }
+  if (
+    /\.(?:jpe?g|png|webp|gif|svg|avif|ico|bmp|pdf|mp4|webm|mp3|wav|css|js|woff2?)$/i.test(
+      pathLower
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function extractFirstExternalUrlFromRichText(
+  rawHtmlOrText?: string | null,
+  options?: { includeSocialEmbeds?: boolean }
+): string | undefined {
+  if (!rawHtmlOrText || typeof rawHtmlOrText !== "string") return undefined;
+
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const addCandidate = (raw?: string) => {
+    if (!raw) return;
+    const cleaned = raw
+      .replace(/&amp;/gi, "&")
+      .replace(/[),.;!?]+$/, "")
+      .trim();
+    if (!cleaned || seen.has(cleaned)) return;
+    seen.add(cleaned);
+    candidates.push(cleaned);
+  };
+
+  // 1. <a href="..."> links inside HTML description/content
+  for (const match of rawHtmlOrText.matchAll(/<a\b[^>]+href=["']([^"']+)["']/gi)) {
+    addCandidate(match[1]);
+  }
+
+  // 2. Plain https:// or http:// URLs written in text or HTML
+  const plainText = rawHtmlOrText
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ");
+  for (const match of plainText.matchAll(/\bhttps?:\/\/[^\s<>"')]+/gi)) {
+    addCandidate(match[0]);
+  }
+
+  for (const cand of candidates) {
+    const normalized = normalizeExternalUrl(cand);
+    try {
+      const parsed = new URL(normalized);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+      if (isNonEmbedAssetOrInternalHost(parsed)) continue;
+      if (!options?.includeSocialEmbeds && !isGenericExternalUrl(normalized)) {
+        continue;
+      }
+      return parsed.toString();
+    } catch {
+      // ignore malformed URL
+    }
+  }
+
+  return undefined;
+}
+
 export function resolvePostExternalUrlCandidate(
   data?: Record<string, any> | null,
   options?: { includeSocialEmbeds?: boolean }
 ): string | undefined {
   if (!data) return undefined;
-  const directCandidates = [data.externalUrl, data.dealLink, data.link];
+  const directCandidates = [data.externalUrl, data.dealLink, data.link, data.ticketUrl];
   for (const cand of directCandidates) {
     if (typeof cand === "string" && cand.trim() && cand.trim() !== "#") {
       const normalized = normalizeExternalUrl(cand.trim());
       try {
-        const host = new URL(normalized).hostname.toLowerCase();
-        if (!host.includes("portalko.net")) {
-          return normalized;
+        const parsed = new URL(normalized);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+        if (!parsed.hostname.toLowerCase().includes("portalko.net")) {
+          return parsed.toString();
         }
       } catch {
         // ignore invalid URL
       }
     }
   }
-  if (typeof data.embedCode === "string") {
+  if (typeof data.embedCode === "string" && data.embedCode.trim()) {
     if (isGenericExternalUrl(data.embedCode)) {
       return normalizeExternalUrl(data.embedCode);
     }
     if (options?.includeSocialEmbeds) {
-      return extractEmbedSourceUrl(data.embedCode);
+      const fromEmbed = extractEmbedSourceUrl(data.embedCode);
+      if (fromEmbed) return fromEmbed;
+    }
+  }
+  const textFields = [data.description, data.content, data.richContent];
+  for (const field of textFields) {
+    if (typeof field === "string" && field.trim()) {
+      const found = extractFirstExternalUrlFromRichText(field, options);
+      if (found) return found;
     }
   }
   return undefined;
@@ -233,7 +375,7 @@ const CLIENT_EMBED_CACHE = new Map<string, ExternalEmbedMetadata>();
 const CLIENT_FAILED_CACHE = new Map<string, number>();
 const INFLIGHT_EMBED_REQUESTS = new Map<string, Promise<ExternalEmbedMetadata | null>>();
 const SESSION_STORAGE_PREFIX = "portalko_ext_embed_v1_";
-const FAILED_BACKOFF_MS = 5 * 60 * 1000;
+const FAILED_BACKOFF_MS = 45 * 1000;
 
 export function getCachedExternalEmbed(rawUrl?: string): ExternalEmbedMetadata | null {
   if (!rawUrl) return null;

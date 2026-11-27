@@ -171,6 +171,23 @@ export function guessImageMimeTypeFromUrl(url: string): string | undefined {
   return undefined;
 }
 
+function isDummyOrFallbackOgImage(url: string): boolean {
+  const lower = url.toLowerCase();
+  return (
+    lower.endsWith('/favicon.png') ||
+    lower.endsWith('/favicon.ico') ||
+    lower.includes('via.placeholder.com') ||
+    lower.includes('placeholder.com/') ||
+    lower.includes('dummyimage.com') ||
+    lower.includes('photo-1588872657578-7efd1f1555ed') ||
+    lower.includes('photo-1607082348824-0a96f2a4b9da') ||
+    lower.includes('photo-1552519507-da3b142c6e3d') ||
+    lower.includes('photo-1568605117036-5fe5e7bab0b7') ||
+    lower.includes('photo-1506744038136-46273834b3fb') ||
+    lower.includes('photo-1501281668745-f7f57925c3b4')
+  );
+}
+
 export function resolveBestOgImageUrl(
   colName: OgCollectionName,
   docId: string,
@@ -212,7 +229,7 @@ export function resolveBestOgImageUrl(
       continue;
     }
     const normalized = normalizeHttpOrOriginImageUrl(trimmed, origin);
-    if (normalized && !normalized.endsWith('/favicon.png')) {
+    if (normalized && !isDummyOrFallbackOgImage(normalized)) {
       return normalized;
     }
   }
@@ -224,7 +241,7 @@ export function resolveBestOgImageUrl(
       foundDataUri = true;
     } else {
       const normalized = normalizeHttpOrOriginImageUrl(inlineSrc, origin);
-      if (normalized && !normalized.endsWith('/favicon.png')) {
+      if (normalized && !isDummyOrFallbackOgImage(normalized)) {
         return normalized;
       }
     }
@@ -259,11 +276,29 @@ export function extractExternalUrlCandidateFromDoc(
 
   const isPublicNonPortalUrl = (raw?: string): string | null => {
     if (!raw || typeof raw !== 'string') return null;
-    const trimmed = raw.trim();
+    const trimmed = raw
+      .replace(/&amp;/gi, '&')
+      .replace(/[),.;!?]+$/, '')
+      .trim();
     if (!/^https?:\/\//i.test(trimmed)) return null;
-    const lower = trimmed.toLowerCase();
-    if (lower.includes('portalko.net')) return null;
-    return trimmed;
+    try {
+      const parsed = new URL(trimmed);
+      const host = parsed.hostname.toLowerCase();
+      const pathLower = parsed.pathname.toLowerCase();
+      if (
+        host.includes('portalko.net') ||
+        host.includes('firebasestorage.googleapis.com') ||
+        host.includes('storage.googleapis.com') ||
+        host.includes('i.ytimg.com') ||
+        host.includes('img.youtube.com') ||
+        /\.(?:jpe?g|png|webp|gif|svg|avif|ico|bmp|pdf|mp4|webm|css|js)$/i.test(pathLower)
+      ) {
+        return null;
+      }
+      return parsed.toString();
+    } catch {
+      return null;
+    }
   };
 
   const explicit = [data.externalUrl, data.dealLink, data.link, data.ticketUrl]
@@ -272,44 +307,60 @@ export function extractExternalUrlCandidateFromDoc(
   if (explicit) return explicit;
 
   const embedRaw = typeof data.embedCode === 'string' ? data.embedCode.trim() : '';
-  if (!embedRaw) return null;
-
-  if (!embedRaw.includes('<') && /^https?:\/\/[^\s]+$/i.test(embedRaw)) {
-    return isPublicNonPortalUrl(embedRaw);
-  }
-
-  const igMatch = embedRaw.match(/data-instgrm-permalink=["']([^"']+)["']/i);
-  if (igMatch?.[1]) {
-    const valid = isPublicNonPortalUrl(igMatch[1]);
-    if (valid) return valid;
-  }
-
-  const citeMatch = embedRaw.match(/\bcite=["']([^"']+)["']/i);
-  if (citeMatch?.[1]) {
-    const valid = isPublicNonPortalUrl(citeMatch[1]);
-    if (valid) return valid;
-  }
-
-  const iframeSrcMatch = embedRaw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-  if (iframeSrcMatch?.[1]) {
-    const fbHref = iframeSrcMatch[1].match(/[?&]href=([^&]+)/i);
-    if (fbHref?.[1]) {
-      try {
-        const decoded = decodeURIComponent(fbHref[1]);
-        const valid = isPublicNonPortalUrl(decoded);
-        if (valid) return valid;
-      } catch {
-        // ignore decode error
-      }
+  if (embedRaw) {
+    if (!embedRaw.includes('<') && /^https?:\/\/[^\s]+$/i.test(embedRaw)) {
+      const direct = isPublicNonPortalUrl(embedRaw);
+      if (direct) return direct;
     }
-    const valid = isPublicNonPortalUrl(iframeSrcMatch[1]);
-    if (valid) return valid;
+
+    const igMatch = embedRaw.match(/data-instgrm-permalink=["']([^"']+)["']/i);
+    if (igMatch?.[1]) {
+      const valid = isPublicNonPortalUrl(igMatch[1]);
+      if (valid) return valid;
+    }
+
+    const citeMatch = embedRaw.match(/\bcite=["']([^"']+)["']/i);
+    if (citeMatch?.[1]) {
+      const valid = isPublicNonPortalUrl(citeMatch[1]);
+      if (valid) return valid;
+    }
+
+    const iframeSrcMatch = embedRaw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+    if (iframeSrcMatch?.[1]) {
+      const fbHref = iframeSrcMatch[1].match(/[?&]href=([^&]+)/i);
+      if (fbHref?.[1]) {
+        try {
+          const decoded = decodeURIComponent(fbHref[1]);
+          const valid = isPublicNonPortalUrl(decoded);
+          if (valid) return valid;
+        } catch {
+          // ignore decode error
+        }
+      }
+      const valid = isPublicNonPortalUrl(iframeSrcMatch[1]);
+      if (valid) return valid;
+    }
+
+    const hrefMatches = Array.from(embedRaw.matchAll(/<a[^>]+href=["']([^"']+)["']/gi));
+    for (let i = hrefMatches.length - 1; i >= 0; i--) {
+      const valid = isPublicNonPortalUrl(hrefMatches[i]?.[1]);
+      if (valid) return valid;
+    }
   }
 
-  const hrefMatches = Array.from(embedRaw.matchAll(/<a[^>]+href=["']([^"']+)["']/gi));
-  for (let i = hrefMatches.length - 1; i >= 0; i--) {
-    const valid = isPublicNonPortalUrl(hrefMatches[i]?.[1]);
-    if (valid) return valid;
+  // Fallback: extract external URL from rich-text/HTML description, content, or richContent
+  const textSources = [data.description, data.content, data.richContent];
+  for (const src of textSources) {
+    if (typeof src !== 'string' || !src.trim()) continue;
+    for (const match of src.matchAll(/<a\b[^>]+href=["']([^"']+)["']/gi)) {
+      const valid = isPublicNonPortalUrl(match[1]);
+      if (valid) return valid;
+    }
+    const stripped = src.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ');
+    for (const match of stripped.matchAll(/\bhttps?:\/\/[^\s<>"')]+/gi)) {
+      const valid = isPublicNonPortalUrl(match[0]);
+      if (valid) return valid;
+    }
   }
 
   return null;

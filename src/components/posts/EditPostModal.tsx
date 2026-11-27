@@ -34,9 +34,12 @@ import { getTodayYmd } from '../../utils/eventFilterUtils';
 import { parseSocialEmbed } from '../../utils/embedUtils';
 import { ExternalEmbedFetcherBox } from '../common/ExternalEmbedFetcherBox';
 import {
+  extractDomainFromUrl,
   fetchExternalEmbedUrl,
+  filterRealStoredImages,
   isGenericExternalUrl,
   normalizeExternalUrl,
+  resolvePostExternalUrlCandidate,
   type ExternalEmbedMetadata,
 } from '../../services/externalEmbedService';
 
@@ -758,6 +761,49 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
         phase: 'saving',
       }));
 
+      const cleanedResolvedImageUrl = filterRealStoredImages([resolvedImageUrl])[0] || '';
+      const detectedExternalUrl = resolvePostExternalUrlCandidate(
+        {
+          externalUrl: externalUrl.trim() || undefined,
+          dealLink: item.type === 'deal' ? (dealLink.trim() || undefined) : undefined,
+          ticketUrl: item.type === 'event' ? (ticketUrl.trim() || undefined) : undefined,
+          embedCode: finalEmbedCode || undefined,
+          description: cleanContent,
+        },
+        { includeSocialEmbeds: item.type === 'post' || item.type === 'event' }
+      );
+
+      let finalIsExternalEmbed = Boolean(isExternalEmbed || detectedExternalUrl);
+      let finalExternalUrl =
+        (externalUrl.trim() ||
+          detectedExternalUrl ||
+          (item.type === 'deal' ? dealLink.trim() : '') ||
+          '').trim() || undefined;
+      let finalSourceName = sourceName.trim() || undefined;
+      let finalSourceDomain =
+        sourceDomain.trim() || (finalExternalUrl ? extractDomainFromUrl(finalExternalUrl) : undefined);
+      let finalSourceFavicon = sourceFavicon.trim() || undefined;
+      let finalFetchedAt = fetchedAt || undefined;
+      let effectiveCoverImageUrl = cleanedResolvedImageUrl;
+
+      if (!effectiveCoverImageUrl && finalExternalUrl) {
+        try {
+          const autoMeta = await fetchExternalEmbedUrl(finalExternalUrl);
+          const autoImages = filterRealStoredImages([autoMeta.imageUrl, ...(autoMeta.images || [])]);
+          if (autoImages[0]) {
+            effectiveCoverImageUrl = autoImages[0];
+          }
+          finalIsExternalEmbed = true;
+          finalExternalUrl = autoMeta.url || finalExternalUrl;
+          finalSourceName = finalSourceName || autoMeta.siteName;
+          finalSourceDomain = finalSourceDomain || autoMeta.domain;
+          finalSourceFavicon = finalSourceFavicon || autoMeta.faviconUrl;
+          finalFetchedAt = finalFetchedAt || autoMeta.fetchedAt;
+        } catch {
+          // Non-blocking: card and detail views will retry client-side
+        }
+      }
+
       if (item.type === 'ad') {
         const adStatus = targetStatus === 'published' ? 'active' : targetStatus;
         await updateAdInFirestore(item.id, {
@@ -772,16 +818,16 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           thirdLevelCategory: thirdLevelCategory.trim() || undefined,
           price: price.trim() || 'Po dogovoru',
           location: location.trim() || 'Slovenija',
-          imageUrl: resolvedImageUrl,
+          imageUrl: effectiveCoverImageUrl,
           attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
-          isExternalEmbed: isExternalEmbed ? true : false,
-          externalUrl: isExternalEmbed ? (externalUrl.trim() || undefined) : undefined,
-          sourceName: isExternalEmbed ? (sourceName.trim() || undefined) : undefined,
-          sourceDomain: isExternalEmbed ? (sourceDomain.trim() || undefined) : undefined,
-          sourceFavicon: isExternalEmbed ? (sourceFavicon.trim() || undefined) : undefined,
-          fetchedAt: isExternalEmbed ? (fetchedAt || undefined) : undefined,
+          isExternalEmbed: finalIsExternalEmbed ? true : false,
+          externalUrl: finalIsExternalEmbed ? finalExternalUrl : undefined,
+          sourceName: finalIsExternalEmbed ? finalSourceName : undefined,
+          sourceDomain: finalIsExternalEmbed ? finalSourceDomain : undefined,
+          sourceFavicon: finalIsExternalEmbed ? finalSourceFavicon : undefined,
+          fetchedAt: finalIsExternalEmbed ? finalFetchedAt : undefined,
           tags: parsedTags,
           status: adStatus as any,
           authorId: item.authorId,
@@ -841,10 +887,16 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           eventTimes: allTimes.length > 0 ? allTimes : (primaryTime ? [primaryTime] : undefined),
           eventSchedule: cleanSchedules.length > 0 ? cleanSchedules : undefined,
           ticketUrl: ticketUrl.trim() || '',
-          imageUrl: resolvedImageUrl,
+          imageUrl: effectiveCoverImageUrl,
           attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
+          isExternalEmbed: finalIsExternalEmbed ? true : false,
+          externalUrl: finalIsExternalEmbed ? finalExternalUrl : undefined,
+          sourceName: finalIsExternalEmbed ? finalSourceName : undefined,
+          sourceDomain: finalIsExternalEmbed ? finalSourceDomain : undefined,
+          sourceFavicon: finalIsExternalEmbed ? finalSourceFavicon : undefined,
+          fetchedAt: finalIsExternalEmbed ? finalFetchedAt : undefined,
           tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,
@@ -890,18 +942,18 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ isOpen, onClose, i
           expirationDate: isDealPost ? (expirationDate.trim() || undefined) : undefined,
           discount: isDealPost ? (discount.trim() || undefined) : undefined,
           promoCode: isDealPost ? (promoCode.trim() || undefined) : undefined,
-          dealLink: isDealPost ? (dealLink.trim() || (isExternalEmbed ? externalUrl.trim() || undefined : undefined)) : undefined,
+          dealLink: isDealPost ? (dealLink.trim() || (finalIsExternalEmbed ? finalExternalUrl : undefined)) : undefined,
           location: isDealPost ? location.trim() : (location.trim() || item.location || ''),
-          imageUrl: resolvedImageUrl || item.imageUrl || '',
+          imageUrl: effectiveCoverImageUrl || filterRealStoredImages([item.imageUrl])[0] || '',
           attachments: finalAttachments,
           embedCode: finalEmbedCode,
           embedOrientation: finalEmbedOrientation,
-          isExternalEmbed: isDealPost ? (isExternalEmbed ? true : false) : undefined,
-          externalUrl: isDealPost && isExternalEmbed ? (externalUrl.trim() || dealLink.trim() || undefined) : undefined,
-          sourceName: isDealPost && isExternalEmbed ? (sourceName.trim() || undefined) : undefined,
-          sourceDomain: isDealPost && isExternalEmbed ? (sourceDomain.trim() || undefined) : undefined,
-          sourceFavicon: isDealPost && isExternalEmbed ? (sourceFavicon.trim() || undefined) : undefined,
-          fetchedAt: isDealPost && isExternalEmbed ? (fetchedAt || undefined) : undefined,
+          isExternalEmbed: finalIsExternalEmbed ? true : false,
+          externalUrl: finalIsExternalEmbed ? finalExternalUrl : undefined,
+          sourceName: finalIsExternalEmbed ? finalSourceName : undefined,
+          sourceDomain: finalIsExternalEmbed ? finalSourceDomain : undefined,
+          sourceFavicon: finalIsExternalEmbed ? finalSourceFavicon : undefined,
+          fetchedAt: finalIsExternalEmbed ? finalFetchedAt : undefined,
           tags: parsedTags,
           status: targetStatus as any,
           authorId: item.authorId,

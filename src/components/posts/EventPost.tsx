@@ -21,9 +21,10 @@ import { EventReminderButton } from "../events/EventReminderButton";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
 import { EmbedSourceBadge } from "../common/ExternalSourceEmbedCard";
 import {
+  filterRealStoredImages,
   getDirectVideoThumbnailUrl,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
 } from "../../services/externalEmbedService";
 
 export interface EventPostProps {
@@ -229,24 +230,38 @@ export const EventPost: React.FC<EventPostProps> = ({
     }
   };
 
-  const hasDbImage = Boolean(image && image.trim());
-  const sourceEmbedUrl = resolvePostExternalUrlCandidate(
-    { externalUrl, link: ticketUrl, embedCode },
-    { includeSocialEmbeds: true }
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = useMemo(
+    () => filterRealStoredImages([image, ...(images || [])], portalBrokenFallback),
+    [image, images, portalBrokenFallback]
+  );
+  const hasDbImage = realStoredImages.length > 0;
+  const sourceEmbedUrl = useMemo(
+    () => resolvePostExternalUrlCandidate(
+      { externalUrl, link: ticketUrl, embedCode, description },
+      { includeSocialEmbeds: true }
+    ),
+    [externalUrl, ticketUrl, embedCode, description]
   );
   const resolvedExternalUrl = !hasDbImage ? sourceEmbedUrl : undefined;
-  const resolvedEmbedMeta = useResolvedExternalEmbed(resolvedExternalUrl, !resolvedExternalUrl || hasDbImage);
+  const { data: resolvedEmbedMeta, isLoading: isExternalMetaLoading } = useResolvedExternalEmbedState(
+    resolvedExternalUrl,
+    !resolvedExternalUrl || hasDbImage
+  );
   const extractedImage = (!hasDbImage
     ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(embedCode || resolvedExternalUrl))
     : '') || '';
 
   // Resolve image without forcing any hardcoded stock photo
   const resolveInitialImage = () => {
-    if (hasDbImage) return image!.trim();
+    if (realStoredImages[0]) return realStoredImages[0];
     if (extractedImage) return extractedImage;
     // Only use fallback if explicitly configured by admin for missing photos
-    const fallback = getActiveFallbackImage(true);
-    return fallback || '';
+    if (!sourceEmbedUrl) {
+      const fallback = getActiveFallbackImage(true);
+      return fallback || '';
+    }
+    return '';
   };
 
   const [imgSrc, setImgSrc] = useState<string>(resolveInitialImage());
@@ -255,7 +270,7 @@ export const EventPost: React.FC<EventPostProps> = ({
   useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image, extractedImage]);
+  }, [realStoredImages, extractedImage, sourceEmbedUrl]);
 
   const handleInterest = () => {
     setIsInterested(prev => !prev);
@@ -315,7 +330,9 @@ export const EventPost: React.FC<EventPostProps> = ({
             alt={title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             src={imgSrc}
-            fallbackSrcs={[...(images || []), ...(resolvedEmbedMeta?.images || [])]}
+            fallbackSrcs={[...realStoredImages.slice(1), ...(resolvedEmbedMeta?.images || [])]}
+            showLoadingShimmer={true}
+            isMetadataLoading={isExternalMetaLoading && !hasDbImage}
             onAllImagesFailed={() => setHasError(true)}
             placeholderProps={{
               postType: 'event',
@@ -323,7 +340,7 @@ export const EventPost: React.FC<EventPostProps> = ({
               sourceDomain: resolvedEmbedMeta?.domain,
               sourceName: resolvedEmbedMeta?.siteName,
               sourceFavicon: resolvedEmbedMeta?.faviconUrl,
-              externalUrl: resolvedExternalUrl || externalUrl || ticketUrl,
+              externalUrl: sourceEmbedUrl || externalUrl || ticketUrl,
               variant: 'card',
             }}
           />

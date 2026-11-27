@@ -62,10 +62,12 @@ import { ExternalSourceDetailEmbed } from './common/ExternalSourceEmbedCard';
 import { EmbedContentRenderer } from './common/EmbedContentRenderer';
 import { ResilientEmbedImage } from './common/EmbedThumbnailPlaceholder';
 import {
+  filterRealStoredImages,
   getDirectVideoThumbnailUrl,
+  isDummyOrFallbackImageUrl,
   isGenericExternalUrl,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
 } from '../services/externalEmbedService';
 import { EventReminderButton } from './events/EventReminderButton';
 import { normalizeDateToYmd } from '../utils/eventFilterUtils';
@@ -170,6 +172,54 @@ interface PostComment {
   downvotes?: number;
   score?: number;
   userVote?: 'up' | 'down' | null;
+}
+
+function DetailCardThumbnail({
+  image,
+  externalUrl,
+  title,
+  postType,
+  sourceDomain,
+  sourceName,
+}: {
+  image?: string;
+  externalUrl?: string;
+  title: string;
+  postType: 'ad' | 'deal' | 'event' | 'blog';
+  sourceDomain?: string;
+  sourceName?: string;
+}) {
+  const hasRealImage = Boolean(image && !isDummyOrFallbackImageUrl(image));
+  const { data: resolvedMeta, isLoading } = useResolvedExternalEmbedState(
+    externalUrl,
+    !externalUrl || hasRealImage
+  );
+  const resolvedSrc =
+    (hasRealImage ? image?.trim() : '') ||
+    resolvedMeta?.imageUrl ||
+    getDirectVideoThumbnailUrl(externalUrl) ||
+    '';
+
+  return (
+    <ResilientEmbedImage
+      src={resolvedSrc}
+      fallbackSrcs={resolvedMeta?.images}
+      alt={title}
+      showLoadingShimmer={true}
+      isMetadataLoading={isLoading && !hasRealImage}
+      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+      loading="lazy"
+      placeholderProps={{
+        postType,
+        title,
+        sourceDomain: sourceDomain || resolvedMeta?.domain,
+        sourceName: sourceName || resolvedMeta?.siteName,
+        sourceFavicon: resolvedMeta?.faviconUrl,
+        externalUrl,
+        variant: 'card',
+      }}
+    />
+  );
 }
 
 export function PostDetailPage({ 
@@ -805,14 +855,7 @@ export function PostDetailPage({
     if (Array.isArray((rawItemData as any).imageUrls)) imgs.push(...(rawItemData as any).imageUrls);
     if (typeof (rawItemData as any).image === 'string') imgs.push((rawItemData as any).image);
     if (typeof (rawItemData as any).imageUrl === 'string') imgs.push((rawItemData as any).imageUrl);
-    return imgs.some(
-      (u) =>
-        typeof u === 'string' &&
-        u.trim().length > 0 &&
-        u.trim() !== portalFallback &&
-        !u.includes('photo-1588872657578-7efd1f1555ed') &&
-        !u.includes('photo-1607082348824-0a96f2a4b9da')
-    );
+    return filterRealStoredImages(imgs, portalFallback).length > 0;
   }, [rawItemData, target.type]);
 
   const effectiveItemType = (rawItemData as any)?.type || target.type;
@@ -823,10 +866,8 @@ export function PostDetailPage({
         ? true
         : Boolean((rawItemData as any)?.sourceDomain)));
 
-  const resolvedExternalMeta = useResolvedExternalEmbed(
-    candidateExternalUrl,
-    skipExternalMetaFetch
-  );
+  const { data: resolvedExternalMeta, isLoading: isExternalMetaLoading } =
+    useResolvedExternalEmbedState(candidateExternalUrl, skipExternalMetaFetch);
 
   const itemData = useMemo(() => {
     if (!rawItemData) return null;
@@ -850,15 +891,21 @@ export function PostDetailPage({
       ? [directVideoThumb]
       : [];
 
+    const portalFallback = getActiveFallbackImage(true, target.type as any);
+    const realRawImage = filterRealStoredImages([rawAny.image, rawAny.imageUrl], portalFallback)[0];
+    const realRawImages = Array.isArray(rawAny.images)
+      ? filterRealStoredImages(rawAny.images, portalFallback)
+      : undefined;
+
     const nextImage = hasStoredRealImage
-      ? rawAny.image || rawAny.imageUrl
-      : fetchedImages[0] || rawAny.image || rawAny.imageUrl || '';
+      ? realRawImage || rawAny.image || rawAny.imageUrl
+      : fetchedImages[0] || '';
 
     const nextImages = hasStoredRealImage
-      ? rawAny.images
+      ? realRawImages
       : fetchedImages.length > 0
       ? fetchedImages
-      : rawAny.images;
+      : undefined;
 
     const nextPrice =
       (!rawAny.price || rawAny.price === 'Po dogovoru') && resolvedExternalMeta?.price
@@ -873,7 +920,7 @@ export function PostDetailPage({
     return {
       ...rawAny,
       image: nextImage,
-      imageUrl: nextImage || rawAny.imageUrl,
+      imageUrl: nextImage || undefined,
       images: nextImages,
       price: nextPrice,
       description: nextDescription,
@@ -884,7 +931,7 @@ export function PostDetailPage({
       sourceFavicon: rawAny.sourceFavicon || resolvedExternalMeta?.faviconUrl,
       fetchedAt: rawAny.fetchedAt || resolvedExternalMeta?.fetchedAt,
     };
-  }, [rawItemData, resolvedExternalMeta, candidateExternalUrl, hasStoredRealImage]);
+  }, [rawItemData, resolvedExternalMeta, candidateExternalUrl, hasStoredRealImage, target.type]);
 
   useEffect(() => {
     if (!itemData || !itemData.id || !itemData.title) return;
@@ -949,13 +996,15 @@ export function PostDetailPage({
     addItems(itemData.image);
     addItems(itemData.imageUrl);
 
+    const portalFallback = getActiveFallbackImage(true, target.type as any);
     const unique: string[] = [];
     for (const url of list) {
-      if (!unique.includes(url)) unique.push(url);
+      if (!isDummyOrFallbackImageUrl(url, portalFallback) && !unique.includes(url)) {
+        unique.push(url);
+      }
     }
-    if (unique.length === 0 && !candidateExternalUrl) {
-      const fallback = getActiveFallbackImage(true, target.type as any);
-      if (fallback) unique.push(fallback);
+    if (unique.length === 0 && !candidateExternalUrl && portalFallback) {
+      unique.push(portalFallback);
     }
     return unique;
   }, [itemData, target.type, candidateExternalUrl]);
@@ -1437,6 +1486,11 @@ export function PostDetailPage({
       author?: string;
       authorAvatar?: string;
       image?: string;
+      externalUrl?: string;
+      sourceDomain?: string;
+      sourceName?: string;
+      sourceFavicon?: string;
+      embedCode?: string;
       readTime?: string;
       date?: string;
       categoryName: string;
@@ -1471,7 +1525,10 @@ export function PostDetailPage({
           description: getPlainTextSnippet(p.content),
           author: p.authorName,
           authorAvatar: p.authorAvatar,
-          image: p.imageUrl || getActiveFallbackImage(true, 'blog') || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
+          image: filterRealStoredImages([p.imageUrl, ...(p.images || [])], getActiveFallbackImage(true, 'blog'))[0] || getActiveFallbackImage(true, 'blog') || '',
+          externalUrl: resolvePostExternalUrlCandidate(p, { includeSocialEmbeds: true }),
+          sourceDomain: (p as any).sourceDomain,
+          sourceName: (p as any).sourceName,
           readTime: '4 min branja',
           date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : 'Nedavno',
           categoryName: cat.name,
@@ -1549,7 +1606,10 @@ export function PostDetailPage({
           title: a.title,
           price: a.price,
           location: a.location,
-          image: a.imageUrl || (a.imageUrls && a.imageUrls[0]) || getActiveFallbackImage(true, 'ad') || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&auto=format&fit=crop&q=80',
+          image: filterRealStoredImages([a.imageUrl, ...((a as any).images || []), ...(a.imageUrls || [])], getActiveFallbackImage(true, 'ad'))[0] || getActiveFallbackImage(true, 'ad') || '',
+          externalUrl: resolvePostExternalUrlCandidate(a),
+          sourceDomain: a.sourceDomain,
+          sourceName: a.sourceName,
           category: a.category || 'splosno',
           categoryName: a.categoryName || a.category || 'Mali oglas'
         });
@@ -1598,7 +1658,8 @@ export function PostDetailPage({
           month: resolvedDate.dateInfo.month,
           day: resolvedDate.dateInfo.day,
           time: resolvedDate.eventTime || e.eventTime || '19:00',
-          image: e.imageUrl || (e.imageUrls && e.imageUrls[0]) || getActiveFallbackImage(true, 'event') || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&auto=format&fit=crop&q=80',
+          image: filterRealStoredImages([e.imageUrl, ...((e as any).images || []), ...(e.imageUrls || [])], getActiveFallbackImage(true, 'event'))[0] || getActiveFallbackImage(true, 'event') || '',
+          externalUrl: resolvePostExternalUrlCandidate(e, { includeSocialEmbeds: true }),
           category: e.category || 'dogodki',
           categoryName: e.categoryName || e.category || 'Dogodek'
         });
@@ -1645,7 +1706,10 @@ export function PostDetailPage({
             title: p.title,
             partner: p.authorName || 'Portalko partner',
             discount: p.price || '-20%',
-            image: p.imageUrl || getActiveFallbackImage(true, 'deal') || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&auto=format&fit=crop&q=80',
+            image: filterRealStoredImages([p.imageUrl, ...(p.images || []), ...(p.imageUrls || [])], getActiveFallbackImage(true, 'deal'))[0] || getActiveFallbackImage(true, 'deal') || '',
+            externalUrl: resolvePostExternalUrlCandidate(p),
+            sourceDomain: p.sourceDomain,
+            sourceName: p.sourceName,
             category: p.category || 'ugodnosti',
             categoryName: p.categoryName || p.subcategoryName || 'Ugodnosti',
             description: p.content
@@ -1695,6 +1759,9 @@ export function PostDetailPage({
       authorAvatar?: string;
       authorRole?: string;
       image?: string;
+      externalUrl?: string;
+      sourceDomain?: string;
+      sourceName?: string;
       categoryName: string;
       categoryId?: string;
       price?: string;
@@ -1738,7 +1805,10 @@ export function PostDetailPage({
             author: p.authorName || itemData.author || 'Avtor',
             authorAvatar: p.authorAvatar || itemData.authorAvatar,
             authorRole: p.authorRole || 'Ugodnost',
-            image: p.imageUrl || getActiveFallbackImage(true, 'deal') || 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&auto=format&fit=crop&q=80',
+            image: filterRealStoredImages([p.imageUrl, ...(p.images || [])], getActiveFallbackImage(true, 'deal'))[0] || getActiveFallbackImage(true, 'deal') || '',
+            externalUrl: resolvePostExternalUrlCandidate(p),
+            sourceDomain: p.sourceDomain,
+            sourceName: p.sourceName,
             categoryName: p.categoryName || 'Ugodnosti',
             price: p.price || p.discount || '-20%',
             date: p.expirationDate ? `Do ${p.expirationDate}` : (p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : 'Ugodnost'),
@@ -1753,7 +1823,10 @@ export function PostDetailPage({
             author: p.authorName || itemData.author || 'Avtor',
             authorAvatar: p.authorAvatar || itemData.authorAvatar,
             authorRole: p.authorRole || 'Avtor',
-            image: p.imageUrl || getActiveFallbackImage(true, 'blog') || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
+            image: filterRealStoredImages([p.imageUrl, ...(p.images || [])], getActiveFallbackImage(true, 'blog'))[0] || getActiveFallbackImage(true, 'blog') || '',
+            externalUrl: resolvePostExternalUrlCandidate(p, { includeSocialEmbeds: true }),
+            sourceDomain: p.sourceDomain,
+            sourceName: p.sourceName,
             categoryName: cat.name,
             categoryId: cat.id,
             readTime: '4 min branja',
@@ -1776,7 +1849,10 @@ export function PostDetailPage({
           author: a.authorName || itemData.author || 'Avtor',
           authorAvatar: a.authorAvatar || itemData.authorAvatar,
           authorRole: a.authorRole || 'Prodajalec',
-          image: a.imageUrl || (a.imageUrls && a.imageUrls[0]) || getActiveFallbackImage(true, 'ad') || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&auto=format&fit=crop&q=80',
+          image: filterRealStoredImages([a.imageUrl, ...((a as any).images || []), ...(a.imageUrls || [])], getActiveFallbackImage(true, 'ad'))[0] || getActiveFallbackImage(true, 'ad') || '',
+          externalUrl: resolvePostExternalUrlCandidate(a),
+          sourceDomain: a.sourceDomain,
+          sourceName: a.sourceName,
           categoryName: a.categoryName || a.category || 'Mali oglas',
           price: a.price || 'Po dogovoru',
           location: a.location || 'Slovenija',
@@ -1799,7 +1875,8 @@ export function PostDetailPage({
           author: e.authorName || itemData.author || 'Organizator',
           authorAvatar: e.authorAvatar || itemData.authorAvatar,
           authorRole: e.authorRole || 'Organizator',
-          image: e.imageUrl || (e.imageUrls && e.imageUrls[0]) || getActiveFallbackImage(true, 'event') || 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&auto=format&fit=crop&q=80',
+          image: filterRealStoredImages([e.imageUrl, ...((e as any).images || []), ...(e.imageUrls || [])], getActiveFallbackImage(true, 'event'))[0] || getActiveFallbackImage(true, 'event') || '',
+          externalUrl: resolvePostExternalUrlCandidate(e, { includeSocialEmbeds: true }),
           categoryName: e.categoryName || e.category || 'Dogodek',
           location: resolvedDate.location || e.location || 'Slovenija',
           price: e.price || 'Vstop prost',
@@ -2402,7 +2479,7 @@ export function PostDetailPage({
         </div>
 
         {/* Post Hero Photo / Pristine Featured Image (Zero elements on photo) */}
-        {postImages.length > 0 && (
+        {(postImages.length > 0 || (Boolean(candidateExternalUrl) && isExternalMetaLoading)) && (
           <div className="relative flex flex-col bg-surface-container-low overflow-hidden">
             {/* Pristine Clean Hero Image Box (Full uncropped photo visible) */}
             <div 
@@ -2411,7 +2488,7 @@ export function PostDetailPage({
                   ? 'min-h-[220px] sm:min-h-[300px] max-h-[85vh] bg-surface-container-low dark:bg-black/40'
                   : 'h-72 sm:h-96 md:h-[500px] bg-surface-container'
               }`}
-              onClick={() => setIsLightboxOpen(true)}
+              onClick={() => { if (postImages.length > 0) setIsLightboxOpen(true); }}
               title="Kliknite za celozaslonski ogled fotografije"
             >
               {/* Subtle ambient blurred background glow when in contain mode so full photo is comfortably framed */}
@@ -2429,6 +2506,8 @@ export function PostDetailPage({
                 src={postImages[activeImageIndex]}
                 alt={`${itemData.title} – fotografija ${activeImageIndex + 1}`}
                 loading="eager"
+                showLoadingShimmer={true}
+                isMetadataLoading={isExternalMetaLoading && postImages.length === 0}
                 className={`transition-all duration-300 select-none ${
                   imageFitMode === 'contain'
                     ? 'relative z-10 w-full h-auto max-h-[75vh] sm:max-h-[85vh] object-contain mx-auto block drop-shadow-xs group-hover:scale-[1.008]'
@@ -3193,19 +3272,14 @@ export function PostDetailPage({
                 >
                   {/* Thumbnail container */}
                   <div className="relative aspect-16/9 w-full overflow-hidden bg-surface-container">
-                    {article.image ? (
-                      <img 
-                        src={article.image} 
-                        alt={plainTitle} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                        loading="lazy"
-                        onError={handleImageFallbackError}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
-                        <BookOpen className="w-8 h-8" />
-                      </div>
-                    )}
+                    <DetailCardThumbnail
+                      image={article.image}
+                      externalUrl={(article as any).externalUrl}
+                      title={plainTitle}
+                      postType="blog"
+                      sourceDomain={(article as any).sourceDomain}
+                      sourceName={(article as any).sourceName}
+                    />
                   </div>
 
                   {/* Content */}
@@ -3341,19 +3415,14 @@ export function PostDetailPage({
                   title={deal.title}
                 >
                   <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
-                    {deal.image ? (
-                      <img 
-                        src={deal.image} 
-                        alt={deal.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                        loading="lazy"
-                        onError={handleImageFallbackError}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
-                        <Sparkles className="w-8 h-8" />
-                      </div>
-                    )}
+                    <DetailCardThumbnail
+                      image={deal.image}
+                      externalUrl={(deal as any).externalUrl}
+                      title={deal.title}
+                      postType="deal"
+                      sourceDomain={(deal as any).sourceDomain}
+                      sourceName={(deal as any).sourceName}
+                    />
                     {deal.discount && (
                       <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-primary text-on-primary text-[10px] font-bold shadow-xs">
                         {deal.discount}
@@ -3406,19 +3475,12 @@ export function PostDetailPage({
                   title={evt.title}
                 >
                   <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
-                    {evt.image ? (
-                      <img 
-                        src={evt.image} 
-                        alt={evt.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                        loading="lazy"
-                        onError={handleImageFallbackError}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
-                        <Calendar className="w-8 h-8" />
-                      </div>
-                    )}
+                    <DetailCardThumbnail
+                      image={evt.image}
+                      externalUrl={(evt as any).externalUrl}
+                      title={evt.title}
+                      postType="event"
+                    />
                   </div>
                   <div className="p-3.5 flex-1 flex flex-col gap-1.5">
                     <h4 className="font-bold text-xs sm:text-sm text-on-surface line-clamp-2 group-hover:text-primary transition-colors leading-snug">
@@ -3461,19 +3523,14 @@ export function PostDetailPage({
                   title={ad.title}
                 >
                   <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
-                    {ad.image ? (
-                      <img 
-                        src={ad.image} 
-                        alt={ad.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                        loading="lazy"
-                        onError={handleImageFallbackError}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
-                        <Tag className="w-8 h-8" />
-                      </div>
-                    )}
+                    <DetailCardThumbnail
+                      image={ad.image}
+                      externalUrl={(ad as any).externalUrl}
+                      title={ad.title}
+                      postType="ad"
+                      sourceDomain={(ad as any).sourceDomain}
+                      sourceName={(ad as any).sourceName}
+                    />
                     {ad.price && (
                       <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-bold shadow-xs">
                         {ad.price}
@@ -3591,22 +3648,14 @@ export function PostDetailPage({
                 >
                   {/* Thumbnail container */}
                   <div className="relative aspect-16/10 w-full overflow-hidden bg-surface-container">
-                    {post.image ? (
-                      <img 
-                        src={post.image} 
-                        alt={post.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                        loading="lazy"
-                        onError={handleImageFallbackError}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-surface-container-high text-outline">
-                        {post.type === 'deal' ? <Sparkles className="w-8 h-8" /> :
-                         post.type === 'event' ? <Calendar className="w-8 h-8" /> :
-                         post.type === 'ad' ? <Tag className="w-8 h-8" /> :
-                         <BookOpen className="w-8 h-8" />}
-                      </div>
-                    )}
+                    <DetailCardThumbnail
+                      image={post.image}
+                      externalUrl={post.externalUrl}
+                      title={post.title}
+                      postType={post.type}
+                      sourceDomain={post.sourceDomain}
+                      sourceName={post.sourceName}
+                    />
                     
                     {/* Category Pill */}
                     {post.categoryName && post.type !== 'event' && (

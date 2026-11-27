@@ -4,6 +4,52 @@ import { PostDetailTarget } from '../types';
 import { subscribeToAds, FirestoreAd } from '../services/firestoreService';
 import { scrollToPageTop } from '../utils/scrollUtils';
 import { PromotionBannerZone } from './common/PromotionBannerZone';
+import { ResilientEmbedImage } from './common/EmbedThumbnailPlaceholder';
+import { getActiveFallbackImage } from '../services/portalSettingsService';
+import {
+  filterRealStoredImages,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbedState,
+} from '../services/externalEmbedService';
+
+function SidebarAdThumb({ ad }: { ad: FirestoreAd }) {
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = filterRealStoredImages(
+    [ad.imageUrl, ...((ad as any).images || [])],
+    portalBrokenFallback
+  );
+  const hasStoredImage = realStoredImages.length > 0;
+  const candidateUrl = resolvePostExternalUrlCandidate(ad);
+  const { data: extMeta, isLoading } = useResolvedExternalEmbedState(
+    candidateUrl,
+    !candidateUrl || hasStoredImage
+  );
+
+  const thumbSrc = realStoredImages[0] || extMeta?.imageUrl || extMeta?.images?.[0] || '';
+  if (!thumbSrc && !candidateUrl && !ad.embedCode) return null;
+
+  return (
+    <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-surface-container">
+      <ResilientEmbedImage
+        src={thumbSrc}
+        fallbackSrcs={[...realStoredImages.slice(1), ...(extMeta?.images || [])]}
+        alt={ad.title}
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+        showLoadingShimmer={true}
+        isMetadataLoading={isLoading && !hasStoredImage}
+        placeholderProps={{
+          postType: 'ad',
+          title: ad.title,
+          sourceDomain: ad.sourceDomain || extMeta?.domain,
+          sourceName: ad.sourceName || extMeta?.siteName,
+          sourceFavicon: ad.sourceFavicon || extMeta?.faviconUrl,
+          externalUrl: ad.externalUrl || candidateUrl,
+          variant: 'embed',
+        }}
+      />
+    </div>
+  );
+}
 
 interface RightSidebarAdsProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
@@ -59,13 +105,7 @@ export function RightSidebarAds({ onNavigatePost }: RightSidebarAdsProps = {}) {
                 className="group flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer border border-transparent hover:border-surface-container/60"
                 title={`Odpri oglas: ${ad.title}`}
               >
-                {ad.imageUrl && (
-                  <img 
-                    src={ad.imageUrl} 
-                    alt={ad.title} 
-                    className="w-12 h-12 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform"
-                  />
-                )}
+                <SidebarAdThumb ad={ad} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-1">
                     <span className="font-headline-sm text-xs font-bold text-primary">{ad.price}</span>

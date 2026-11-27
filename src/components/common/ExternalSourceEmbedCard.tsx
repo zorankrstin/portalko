@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Check, Copy, ExternalLink, Globe } from 'lucide-react';
 import {
   extractDomainFromUrl,
+  isDummyOrFallbackImageUrl,
   normalizeExternalUrl,
   useResolvedExternalEmbedState,
 } from '../../services/externalEmbedService';
@@ -338,7 +339,7 @@ export const ExternalSourceDetailEmbed: React.FC<ExternalSourceDetailEmbedProps>
 }) => {
   const hasValidUrl = Boolean(externalUrl && externalUrl.trim() && externalUrl.trim() !== '#');
   const href = hasValidUrl ? normalizeExternalUrl(externalUrl!) : '';
-  const hasDbImage = Boolean(image && image.trim());
+  const hasDbImage = Boolean(image && image.trim() && !isDummyOrFallbackImageUrl(image));
 
   // Automatically attempt og:image + metadata extraction when image is missing in database
   const { data: resolvedMeta, isLoading: isMetaLoading } = useResolvedExternalEmbedState(

@@ -61,7 +61,10 @@ import { canUserPostContentType, canUserPostBlogOrDeals, ROLES_BLOG_AND_DEALS, R
 import { isUserVerified } from '../utils/userVerificationUtils';
 import { ExternalEmbedFetcherBox } from './common/ExternalEmbedFetcherBox';
 import {
+  extractDomainFromUrl,
   fetchExternalEmbedUrl,
+  filterRealStoredImages,
+  resolvePostExternalUrlCandidate,
   type ExternalEmbedMetadata,
 } from '../services/externalEmbedService';
 
@@ -983,8 +986,50 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
         phase: 'saving',
       }));
 
-      const primaryImg = uploadedImageUrls[0] || undefined;
-      const allImgs = uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined;
+      const cleanedUploadedImages = filterRealStoredImages(uploadedImageUrls);
+      const detectedExternalUrl = resolvePostExternalUrlCandidate(
+        {
+          externalUrl: externalUrl.trim() || undefined,
+          dealLink: postType === 'deal' ? (dealLink.trim() || undefined) : undefined,
+          ticketUrl: postType === 'event' ? (ticketUrl.trim() || undefined) : undefined,
+          embedCode: embedCode.trim() || undefined,
+          description: cleanContent,
+        },
+        { includeSocialEmbeds: postType === 'post' || postType === 'event' }
+      );
+
+      let finalIsExternalEmbed = Boolean(isExternalEmbed || detectedExternalUrl);
+      let finalExternalUrl =
+        (externalUrl.trim() ||
+          detectedExternalUrl ||
+          (postType === 'deal' ? dealLink.trim() : '') ||
+          '').trim() || undefined;
+      let finalSourceName = sourceName.trim() || undefined;
+      let finalSourceDomain =
+        sourceDomain.trim() || (finalExternalUrl ? extractDomainFromUrl(finalExternalUrl) : undefined);
+      let finalSourceFavicon = sourceFavicon.trim() || undefined;
+      let finalFetchedAt = fetchedAt || undefined;
+
+      if (cleanedUploadedImages.length === 0 && finalExternalUrl) {
+        try {
+          const autoMeta = await fetchExternalEmbedUrl(finalExternalUrl);
+          const autoImages = filterRealStoredImages([autoMeta.imageUrl, ...(autoMeta.images || [])]);
+          if (autoImages.length > 0) {
+            cleanedUploadedImages.push(...autoImages.slice(0, 4));
+          }
+          finalIsExternalEmbed = true;
+          finalExternalUrl = autoMeta.url || finalExternalUrl;
+          finalSourceName = finalSourceName || autoMeta.siteName;
+          finalSourceDomain = finalSourceDomain || autoMeta.domain;
+          finalSourceFavicon = finalSourceFavicon || autoMeta.faviconUrl;
+          finalFetchedAt = finalFetchedAt || autoMeta.fetchedAt;
+        } catch {
+          // Non-blocking: card and detail views will retry client-side
+        }
+      }
+
+      const primaryImg = cleanedUploadedImages[0] || undefined;
+      const allImgs = cleanedUploadedImages.length > 0 ? cleanedUploadedImages : undefined;
       const finalAttachments = uploadedAttachments.length > 0 ? uploadedAttachments : undefined;
 
       if (postType === 'post' || postType === 'deal') {
@@ -1022,13 +1067,13 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           expirationDate: postType === 'deal' ? (expirationDate.trim() || undefined) : undefined,
           discount: postType === 'deal' ? (discount.trim() || undefined) : undefined,
           promoCode: postType === 'deal' ? (promoCode.trim() || undefined) : undefined,
-          dealLink: postType === 'deal' ? (dealLink.trim() || (isExternalEmbed ? externalUrl.trim() || undefined : undefined)) : undefined,
-          isExternalEmbed: postType === 'deal' && isExternalEmbed ? true : undefined,
-          externalUrl: postType === 'deal' && isExternalEmbed ? (externalUrl.trim() || dealLink.trim() || undefined) : undefined,
-          sourceName: postType === 'deal' && isExternalEmbed ? (sourceName.trim() || undefined) : undefined,
-          sourceDomain: postType === 'deal' && isExternalEmbed ? (sourceDomain.trim() || undefined) : undefined,
-          sourceFavicon: postType === 'deal' && isExternalEmbed ? (sourceFavicon.trim() || undefined) : undefined,
-          fetchedAt: postType === 'deal' && isExternalEmbed ? (fetchedAt || undefined) : undefined,
+          dealLink: postType === 'deal' ? (dealLink.trim() || (finalIsExternalEmbed ? finalExternalUrl : undefined)) : undefined,
+          isExternalEmbed: finalIsExternalEmbed ? true : undefined,
+          externalUrl: finalIsExternalEmbed ? finalExternalUrl : undefined,
+          sourceName: finalIsExternalEmbed ? finalSourceName : undefined,
+          sourceDomain: finalIsExternalEmbed ? finalSourceDomain : undefined,
+          sourceFavicon: finalIsExternalEmbed ? finalSourceFavicon : undefined,
+          fetchedAt: finalIsExternalEmbed ? finalFetchedAt : undefined,
           status: initialStatus,
           likesCount: 0,
           commentsCount: 0,
@@ -1096,12 +1141,12 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           attachments: finalAttachments,
           embedCode: embedCode || undefined,
           embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
-          isExternalEmbed: isExternalEmbed ? true : undefined,
-          externalUrl: isExternalEmbed ? (externalUrl.trim() || undefined) : undefined,
-          sourceName: isExternalEmbed ? (sourceName.trim() || undefined) : undefined,
-          sourceDomain: isExternalEmbed ? (sourceDomain.trim() || undefined) : undefined,
-          sourceFavicon: isExternalEmbed ? (sourceFavicon.trim() || undefined) : undefined,
-          fetchedAt: isExternalEmbed ? (fetchedAt || undefined) : undefined,
+          isExternalEmbed: finalIsExternalEmbed ? true : undefined,
+          externalUrl: finalIsExternalEmbed ? finalExternalUrl : undefined,
+          sourceName: finalIsExternalEmbed ? finalSourceName : undefined,
+          sourceDomain: finalIsExternalEmbed ? finalSourceDomain : undefined,
+          sourceFavicon: finalIsExternalEmbed ? finalSourceFavicon : undefined,
+          fetchedAt: finalIsExternalEmbed ? finalFetchedAt : undefined,
           status: initialAdStatus,
           tags: userTags.length > 0 ? userTags : undefined,
         });
@@ -1170,6 +1215,12 @@ export function ComposeModal({ isOpen, onClose, initialType = 'post', onPostCrea
           attachments: finalAttachments,
           embedCode: embedCode || undefined,
           embedOrientation: embedCode.trim() ? (embedOrientation === 'auto' ? undefined : embedOrientation) : undefined,
+          isExternalEmbed: finalIsExternalEmbed ? true : undefined,
+          externalUrl: finalIsExternalEmbed ? finalExternalUrl : undefined,
+          sourceName: finalIsExternalEmbed ? finalSourceName : undefined,
+          sourceDomain: finalIsExternalEmbed ? finalSourceDomain : undefined,
+          sourceFavicon: finalIsExternalEmbed ? finalSourceFavicon : undefined,
+          fetchedAt: finalIsExternalEmbed ? finalFetchedAt : undefined,
           status: 'published',
           isPromoted: false,
           tags: userTags.length > 0 ? userTags : undefined,

@@ -20,9 +20,10 @@ import { ExternalSourceInline } from "../common/ExternalSourceEmbedCard";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
 import {
   extractDomainFromUrl,
+  filterRealStoredImages,
   normalizeExternalUrl,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
 } from "../../services/externalEmbedService";
 
 export interface AdPostProps {
@@ -158,15 +159,18 @@ export const AdPost: React.FC<AdPostProps> = ({
     }
   };
   const candidateExternalUrl = React.useMemo(
-    () => resolvePostExternalUrlCandidate({ externalUrl, embedCode, isExternalEmbed }),
-    [externalUrl, embedCode, isExternalEmbed]
+    () => resolvePostExternalUrlCandidate({ externalUrl, embedCode, description, isExternalEmbed }),
+    [externalUrl, embedCode, description, isExternalEmbed]
   );
 
-  const hasStoredImage = Boolean(
-    (image && image.trim()) || (images && images.length > 0 && images[0]?.trim())
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = React.useMemo(
+    () => filterRealStoredImages([image, ...(images || [])], portalBrokenFallback),
+    [image, images, portalBrokenFallback]
   );
+  const hasStoredImage = realStoredImages.length > 0;
 
-  const resolvedExternalMeta = useResolvedExternalEmbed(
+  const { data: resolvedExternalMeta, isLoading: isExternalMetaLoading } = useResolvedExternalEmbedState(
     candidateExternalUrl,
     !candidateExternalUrl || hasStoredImage
   );
@@ -183,8 +187,7 @@ export const AdPost: React.FC<AdPostProps> = ({
       : price;
 
   const resolveInitialImage = () => {
-    if (image && image.trim()) return image.trim();
-    if (images && images.length > 0 && images[0]?.trim()) return images[0].trim();
+    if (realStoredImages[0]) return realStoredImages[0];
     if (resolvedExternalMeta?.imageUrl) return resolvedExternalMeta.imageUrl;
     if (resolvedExternalMeta?.images && resolvedExternalMeta.images.length > 0) return resolvedExternalMeta.images[0];
     if (!candidateExternalUrl) {
@@ -200,7 +203,7 @@ export const AdPost: React.FC<AdPostProps> = ({
   React.useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image, images, resolvedExternalMeta, candidateExternalUrl]);
+  }, [realStoredImages, resolvedExternalMeta, candidateExternalUrl]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -248,9 +251,11 @@ export const AdPost: React.FC<AdPostProps> = ({
         >
           <ResilientEmbedImage
             src={imgSrc}
-            fallbackSrcs={[...(images || []), ...(resolvedExternalMeta?.images || [])]}
+            fallbackSrcs={[...realStoredImages.slice(1), ...(resolvedExternalMeta?.images || [])]}
             alt={title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            showLoadingShimmer={true}
+            isMetadataLoading={isExternalMetaLoading && !hasStoredImage}
             onAllImagesFailed={() => setHasError(true)}
             placeholderProps={{
               postType: 'ad',
@@ -297,7 +302,7 @@ export const AdPost: React.FC<AdPostProps> = ({
                 title={title} 
                 description={cleanDescription} 
                 url={`${window.location.origin}${postUrl}`}
-                imageUrl={image}
+                imageUrl={hasVisibleImage ? imgSrc : (realStoredImages[0] || undefined)}
                 category={categoryName || category}
                 author={author}
                 price={price}
@@ -419,7 +424,7 @@ export const AdPost: React.FC<AdPostProps> = ({
               title={title} 
               description={cleanDescription || description} 
               url={`${window.location.origin}${postUrl}`}
-              imageUrl={hasVisibleImage ? imgSrc : image}
+              imageUrl={hasVisibleImage ? imgSrc : (realStoredImages[0] || undefined)}
               category={categoryName || category}
               author={author}
               price={effectivePrice}

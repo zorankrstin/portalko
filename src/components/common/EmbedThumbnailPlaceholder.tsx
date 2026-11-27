@@ -9,7 +9,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { getActiveFallbackImage } from '../../services/portalSettingsService';
-import { extractDomainFromUrl } from '../../services/externalEmbedService';
+import { extractDomainFromUrl, isDummyOrFallbackImageUrl } from '../../services/externalEmbedService';
 
 export type EmbedThumbnailPostType = 'ad' | 'deal' | 'event' | 'blog' | 'embed';
 export type EmbedThumbnailVariant = 'embed' | 'card' | 'hero';
@@ -260,22 +260,40 @@ export const ResilientEmbedImage: React.FC<ResilientEmbedImageProps> = ({
 }) => {
   const candidates = useMemo(() => {
     const list: string[] = [];
-    const add = (cand?: string | null) => {
+    const portalBrokenFallback = allowPortalBrokenFallback ? getActiveFallbackImage(false) : null;
+    const addRaw = (cand?: string | null) => {
       if (!isLikelyValidImageUrl(cand)) return;
       const trimmed = cand.trim();
       if (!list.includes(trimmed)) {
         list.push(trimmed);
       }
     };
+    const addExternal = (cand?: string | null) => {
+      if (!isLikelyValidImageUrl(cand)) return;
+      const trimmed = cand.trim();
+      if (isDummyOrFallbackImageUrl(trimmed, portalBrokenFallback)) return;
+      addRaw(trimmed);
+      if (
+        /^https?:\/\//i.test(trimmed) &&
+        !trimmed.includes('/api/embed/image-proxy') &&
+        !trimmed.includes('firebasestorage.googleapis.com') &&
+        !trimmed.includes('storage.googleapis.com') &&
+        !trimmed.includes('lh3.googleusercontent.com') &&
+        !trimmed.includes('i.ytimg.com') &&
+        !trimmed.includes('portalko.net')
+      ) {
+        addRaw(`/api/embed/image-proxy?url=${encodeURIComponent(trimmed)}`);
+      }
+    };
 
-    add(src);
+    addExternal(src);
     if (Array.isArray(fallbackSrcs)) {
       for (const extra of fallbackSrcs) {
-        add(extra);
+        addExternal(extra);
       }
     }
-    if (allowPortalBrokenFallback) {
-      add(getActiveFallbackImage(false));
+    if (portalBrokenFallback) {
+      addRaw(portalBrokenFallback);
     }
     return list;
   }, [src, fallbackSrcs, allowPortalBrokenFallback]);

@@ -26,11 +26,13 @@ import { getFeedCardAnimationClass } from '../utils/animationUtils';
 import { ExternalLink } from 'lucide-react';
 import { ExternalSourceInline } from './common/ExternalSourceEmbedCard';
 import { ResilientEmbedImage } from './common/EmbedThumbnailPlaceholder';
+import { getActiveFallbackImage } from '../services/portalSettingsService';
 import {
   extractDomainFromUrl,
+  filterRealStoredImages,
   normalizeExternalUrl,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
 } from '../services/externalEmbedService';
 
 function MaliOglasiFeedAdCard({
@@ -48,13 +50,18 @@ function MaliOglasiFeedAdCard({
 }) {
   const cleanTitle = getPlainTextSnippet(ad.title);
   const candidateExternalUrl = useMemo(() => resolvePostExternalUrlCandidate(ad), [ad]);
-  const hasStoredImage = Boolean(ad.imageUrl && ad.imageUrl.trim());
-  const resolvedExt = useResolvedExternalEmbed(
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = useMemo(
+    () => filterRealStoredImages([ad.imageUrl, ...((ad as any).images || [])], portalBrokenFallback),
+    [ad.imageUrl, (ad as any).images, portalBrokenFallback]
+  );
+  const hasStoredImage = realStoredImages.length > 0;
+  const { data: resolvedExt, isLoading: isExternalMetaLoading } = useResolvedExternalEmbedState(
     candidateExternalUrl,
     !candidateExternalUrl || hasStoredImage
   );
 
-  const displayImage = ad.imageUrl || resolvedExt?.imageUrl || resolvedExt?.images?.[0] || '';
+  const displayImage = realStoredImages[0] || resolvedExt?.imageUrl || resolvedExt?.images?.[0] || '';
   const cleanDescription =
     getPlainTextSnippet(ad.description) ||
     (resolvedExt?.description ? getPlainTextSnippet(resolvedExt.description) : '');
@@ -90,7 +97,9 @@ function MaliOglasiFeedAdCard({
             alt={cleanTitle}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             src={displayImage}
-            fallbackSrcs={resolvedExt?.images}
+            fallbackSrcs={[...realStoredImages.slice(1), ...(resolvedExt?.images || [])]}
+            showLoadingShimmer={true}
+            isMetadataLoading={isExternalMetaLoading && !hasStoredImage}
             placeholderProps={{
               postType: 'ad',
               title: cleanTitle,
@@ -145,7 +154,7 @@ function MaliOglasiFeedAdCard({
                   category: ad.categoryName || ad.category,
                   location: ad.location || ad.region,
                   price: displayPrice,
-                  imageUrl: displayImage || ad.imageUrl,
+                  imageUrl: displayImage || undefined,
                   author: ad.authorName,
                 }}
               />
@@ -154,7 +163,7 @@ function MaliOglasiFeedAdCard({
                 description={cleanDescription}
                 type="ad"
                 id={ad.id}
-                imageUrl={displayImage || ad.imageUrl}
+                imageUrl={displayImage || undefined}
                 category={ad.categoryName || ad.category}
                 author={ad.authorName}
                 price={displayPrice}

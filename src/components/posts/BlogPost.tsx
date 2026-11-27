@@ -17,9 +17,10 @@ import { useAuth } from "../../contexts/AuthContext";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
 import { EmbedSourceBadge } from "../common/ExternalSourceEmbedCard";
 import {
+  filterRealStoredImages,
   getDirectVideoThumbnailUrl,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
 } from "../../services/externalEmbedService";
 import type { PostDetailTarget } from "../../types";
 
@@ -117,21 +118,35 @@ export const BlogPost: React.FC<BlogPostProps> = ({
 
   const authorUrl = `/avtor/${slugify(author)}`;
 
-  const hasDbImage = Boolean(image && image.trim());
-  const sourceEmbedUrl = resolvePostExternalUrlCandidate(
-    { embedCode, externalUrl },
-    { includeSocialEmbeds: true }
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = React.useMemo(
+    () => filterRealStoredImages([image, ...(images || [])], portalBrokenFallback),
+    [image, images, portalBrokenFallback]
+  );
+  const hasDbImage = realStoredImages.length > 0;
+  const sourceEmbedUrl = React.useMemo(
+    () => resolvePostExternalUrlCandidate(
+      { embedCode, externalUrl, description: finalDesc },
+      { includeSocialEmbeds: true }
+    ),
+    [embedCode, externalUrl, finalDesc]
   );
   const candidateUrl = !hasDbImage ? sourceEmbedUrl : undefined;
-  const resolvedEmbedMeta = useResolvedExternalEmbed(candidateUrl, !candidateUrl || hasDbImage);
+  const { data: resolvedEmbedMeta, isLoading: isExternalMetaLoading } = useResolvedExternalEmbedState(
+    candidateUrl,
+    !candidateUrl || hasDbImage
+  );
   const extractedImage = (!hasDbImage
     ? (resolvedEmbedMeta?.imageUrl || getDirectVideoThumbnailUrl(embedCode || candidateUrl))
     : '') || '';
 
   const resolveInitialImage = () => {
-    if (hasDbImage) return image!.trim();
+    if (realStoredImages[0]) return realStoredImages[0];
     if (extractedImage) return extractedImage;
-    return getActiveFallbackImage(true, 'blog') || '';
+    if (!sourceEmbedUrl) {
+      return getActiveFallbackImage(true, 'blog') || '';
+    }
+    return '';
   };
   const [imgSrc, setImgSrc] = React.useState<string>(resolveInitialImage());
   const [hasError, setHasError] = React.useState<boolean>(false);
@@ -139,7 +154,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   React.useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasError(false);
-  }, [image, extractedImage]);
+  }, [realStoredImages, extractedImage, sourceEmbedUrl]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -170,8 +185,8 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           authorId,
           authorRole,
           authorAvatar,
-          image: imgSrc || image || '',
-          images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
+          image: (imgSrc && !hasError ? imgSrc : '') || realStoredImages[0] || '',
+          images: realStoredImages.length > 0 ? realStoredImages : (imgSrc && !hasError ? [imgSrc] : []),
           date,
           location,
           description: finalDesc,
@@ -190,7 +205,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
     }
   };
 
-  const effectiveImage = (imgSrc && !hasError ? imgSrc : '') || image || '';
+  const effectiveImage = (imgSrc && !hasError ? imgSrc : '') || realStoredImages[0] || '';
 
   const bookmarkData = {
     type: 'blog',
@@ -354,8 +369,10 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           <ResilientEmbedImage
             className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500"
             src={imgSrc}
-            fallbackSrcs={[...(images || []), ...(resolvedEmbedMeta?.images || [])]}
+            fallbackSrcs={[...realStoredImages.slice(1), ...(resolvedEmbedMeta?.images || [])]}
             alt={title}
+            showLoadingShimmer={true}
+            isMetadataLoading={isExternalMetaLoading && !hasDbImage}
             onAllImagesFailed={() => setHasError(true)}
             placeholderProps={{
               postType: 'blog',
@@ -363,7 +380,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
               sourceDomain: resolvedEmbedMeta?.domain,
               sourceName: resolvedEmbedMeta?.siteName,
               sourceFavicon: resolvedEmbedMeta?.faviconUrl,
-              externalUrl: externalUrl || candidateUrl,
+              externalUrl: externalUrl || sourceEmbedUrl,
               variant: 'card',
             }}
           />

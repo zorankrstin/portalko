@@ -23,9 +23,10 @@ import { parseTags } from "../../utils/tagUtils";
 import { ResilientEmbedImage } from "../common/EmbedThumbnailPlaceholder";
 import { EmbedSourceBadge } from "../common/ExternalSourceEmbedCard";
 import {
+  filterRealStoredImages,
   getDirectVideoThumbnailUrl,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
 } from "../../services/externalEmbedService";
 import type { PostDetailTarget } from "../../types";
 
@@ -55,12 +56,17 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
                  Boolean(post.price && post.category !== 'ad' && post.category !== 'event');
 
   const isDelegatedCardType = post.category === 'ad' || isDeal || post.category === 'event';
-  const hasDbImage = Boolean(post.imageUrl && post.imageUrl.trim());
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = React.useMemo(
+    () => filterRealStoredImages([post.imageUrl, ...(post.images || []), ...(post.imageUrls || [])], portalBrokenFallback),
+    [post.imageUrl, post.images, post.imageUrls, portalBrokenFallback]
+  );
+  const hasDbImage = realStoredImages.length > 0;
   const sourceEmbedUrl = !isDelegatedCardType
     ? resolvePostExternalUrlCandidate(post, { includeSocialEmbeds: true })
     : undefined;
   const candidateExternalUrl = !hasDbImage ? sourceEmbedUrl : undefined;
-  const resolvedEmbedMeta = useResolvedExternalEmbed(
+  const { data: resolvedEmbedMeta, isLoading: isExternalMetaLoading } = useResolvedExternalEmbedState(
     candidateExternalUrl,
     !candidateExternalUrl || hasDbImage || isDelegatedCardType
   );
@@ -69,9 +75,12 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
     : '') || '';
 
   const resolveInitialImage = () => {
-    if (hasDbImage) return post.imageUrl!.trim();
+    if (realStoredImages[0]) return realStoredImages[0];
     if (extractedEmbedImage) return extractedEmbedImage;
-    return getActiveFallbackImage(true, post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog') || '';
+    if (!sourceEmbedUrl) {
+      return getActiveFallbackImage(true, post.category === 'event' ? 'event' : post.category === 'ad' ? 'ad' : 'blog') || '';
+    }
+    return '';
   };
   const [imgSrc, setImgSrc] = useState<string>(resolveInitialImage());
   const [hasImgError, setHasImgError] = useState<boolean>(false);
@@ -79,7 +88,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
   useEffect(() => {
     setImgSrc(resolveInitialImage());
     setHasImgError(false);
-  }, [post.imageUrl, extractedEmbedImage]);
+  }, [realStoredImages, extractedEmbedImage, sourceEmbedUrl]);
 
   const handleImageError = () => {
     const fallback = getActiveFallbackImage(false);
@@ -631,8 +640,10 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
             alt={post.title}
             className="w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform duration-500"
             src={imgSrc}
-            fallbackSrcs={[...(post.images || []), ...(post.imageUrls || []), ...(resolvedEmbedMeta?.images || [])]}
+            fallbackSrcs={[...realStoredImages.slice(1), ...(resolvedEmbedMeta?.images || [])]}
             loading="lazy"
+            showLoadingShimmer={true}
+            isMetadataLoading={isExternalMetaLoading && !hasDbImage}
             onAllImagesFailed={() => setHasImgError(true)}
             placeholderProps={{
               postType: 'blog',
@@ -640,7 +651,7 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
               sourceDomain: post.sourceDomain || resolvedEmbedMeta?.domain,
               sourceName: post.sourceName || resolvedEmbedMeta?.siteName,
               sourceFavicon: post.sourceFavicon || resolvedEmbedMeta?.faviconUrl,
-              externalUrl: post.externalUrl || candidateExternalUrl,
+              externalUrl: post.externalUrl || sourceEmbedUrl,
               variant: 'card',
             }}
           />

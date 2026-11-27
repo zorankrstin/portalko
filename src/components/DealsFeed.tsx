@@ -75,9 +75,11 @@ import { ExternalEmbedFetcherBox } from './common/ExternalEmbedFetcherBox';
 import { ExternalSourceInline } from './common/ExternalSourceEmbedCard';
 import { ResilientEmbedImage } from './common/EmbedThumbnailPlaceholder';
 import {
+  extractDomainFromUrl,
   fetchExternalEmbedUrl,
+  filterRealStoredImages,
   resolvePostExternalUrlCandidate,
-  useResolvedExternalEmbed,
+  useResolvedExternalEmbedState,
   type ExternalEmbedMetadata,
 } from '../services/externalEmbedService';
 
@@ -87,15 +89,6 @@ interface DealsFeedProps {
   onNavigatePost?: (target: PostDetailTarget) => void;
   onTagClick?: (tag: string) => void;
 }
-
-const CATEGORY_IMAGE_FALLBACKS: Record<string, string> = {
-  tehnika: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800&auto=format&fit=crop&q=80',
-  prehrana: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80',
-  turizem: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800&auto=format&fit=crop&q=80',
-  sport: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800&auto=format&fit=crop&q=80',
-  dom: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&auto=format&fit=crop&q=80',
-  avto: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80',
-};
 
 export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTagClick }: DealsFeedProps) {
   const { currentUser } = useAuth();
@@ -271,9 +264,9 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
           votes: (p.likesCount || 0) + 1,
           verifiedText: 'Članski predlog',
           statusTag: 'today' as const,
-          image: p.imageUrl || (p.images && p.images[0]) || '',
-          _hasStoredImage: Boolean(p.imageUrl || (p.images && p.images[0])),
-          images: p.images || p.imageUrls || (p.imageUrl ? [p.imageUrl] : undefined),
+          image: filterRealStoredImages([p.imageUrl, ...(p.images || []), ...(p.imageUrls || [])])[0] || '',
+          _hasStoredImage: filterRealStoredImages([p.imageUrl, ...(p.images || []), ...(p.imageUrls || [])]).length > 0,
+          images: filterRealStoredImages([p.imageUrl, ...(p.images || []), ...(p.imageUrls || [])]),
           embedCode: p.embedCode,
           isExternalEmbed: p.isExternalEmbed,
           externalUrl: p.externalUrl || (p.isExternalEmbed ? p.dealLink : undefined),
@@ -691,7 +684,6 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
 
     try {
       const authorId = currentUser?.id || 'user';
-      const fallbackImg = CATEGORY_IMAGE_FALLBACKS[modalForm.category] || CATEGORY_IMAGE_FALLBACKS.tehnika;
       const rawImgs = modalForm.images.length > 0 ? modalForm.images : (modalForm.image ? [modalForm.image] : []);
 
       // Upload queued local images & any Base64 strings to Firebase Storage
@@ -814,8 +806,40 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
         phase: 'saving',
       }));
 
-      const primaryImg = resolvedImages[0] || fallbackImg;
-      const allImages = resolvedImages.length > 0 ? resolvedImages : [fallbackImg];
+      const detectedExternalUrl = resolvePostExternalUrlCandidate({
+        externalUrl: modalForm.externalUrl,
+        dealLink: modalForm.link,
+        embedCode: modalForm.embedCode,
+        description: cleanDescription,
+      });
+
+      let finalExternalEmbed = Boolean(modalForm.isExternalEmbed || detectedExternalUrl);
+      let finalExternalUrl = (modalForm.externalUrl || detectedExternalUrl || modalForm.link || '').trim() || undefined;
+      if (finalExternalUrl === '#') finalExternalUrl = undefined;
+      let finalSourceName = modalForm.sourceName?.trim() || undefined;
+      let finalSourceDomain = modalForm.sourceDomain?.trim() || (finalExternalUrl ? extractDomainFromUrl(finalExternalUrl) : undefined);
+      let finalSourceFavicon = modalForm.sourceFavicon?.trim() || undefined;
+      let finalFetchedAt = modalForm.fetchedAt || undefined;
+
+      const cleanedResolvedImages = filterRealStoredImages(resolvedImages);
+      if (cleanedResolvedImages.length === 0 && finalExternalUrl) {
+        try {
+          const autoMeta = await fetchExternalEmbedUrl(finalExternalUrl);
+          const autoImages = filterRealStoredImages([autoMeta.imageUrl, ...(autoMeta.images || [])]);
+          cleanedResolvedImages.push(...autoImages.slice(0, 4));
+          finalExternalEmbed = true;
+          finalExternalUrl = autoMeta.url || finalExternalUrl;
+          finalSourceName = finalSourceName || autoMeta.siteName;
+          finalSourceDomain = finalSourceDomain || autoMeta.domain;
+          finalSourceFavicon = finalSourceFavicon || autoMeta.faviconUrl;
+          finalFetchedAt = finalFetchedAt || autoMeta.fetchedAt;
+        } catch {
+          // Non-blocking: card will retry client-side if external fetch fails now
+        }
+      }
+
+      const primaryImg = cleanedResolvedImages[0] || undefined;
+      const allImages = cleanedResolvedImages.length > 0 ? cleanedResolvedImages : undefined;
 
       // Optional location & region resolution
       const chosenRegObj = SLOVENIA_REGIONS.find(r => r.id === modalForm.region);
@@ -856,19 +880,19 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
         date: modalForm.expirationDate ? `Velja do ${modalForm.expirationDate}` : (modalForm.date || 'Velja do konca meseca'),
         description: cleanDescription || 'Ugodnost, ki jo je predlagal član skupnosti Portal.si.',
         code: modalForm.code ? modalForm.code.toUpperCase() : undefined,
-        link: modalForm.link || modalForm.externalUrl || '#',
+        link: modalForm.link || finalExternalUrl || '#',
         votes: 1,
         verifiedText: 'Novo dodano',
         statusTag: 'today',
-        image: primaryImg,
+        image: primaryImg || '',
         images: allImages,
         embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
-        isExternalEmbed: modalForm.isExternalEmbed ? true : undefined,
-        externalUrl: modalForm.isExternalEmbed ? (modalForm.externalUrl || modalForm.link || undefined) : undefined,
-        sourceName: modalForm.isExternalEmbed ? (modalForm.sourceName || undefined) : undefined,
-        sourceDomain: modalForm.isExternalEmbed ? (modalForm.sourceDomain || undefined) : undefined,
-        sourceFavicon: modalForm.isExternalEmbed ? (modalForm.sourceFavicon || undefined) : undefined,
-        fetchedAt: modalForm.isExternalEmbed ? (modalForm.fetchedAt || undefined) : undefined,
+        isExternalEmbed: finalExternalEmbed ? true : undefined,
+        externalUrl: finalExternalEmbed ? finalExternalUrl : undefined,
+        sourceName: finalExternalEmbed ? finalSourceName : undefined,
+        sourceDomain: finalExternalEmbed ? finalSourceDomain : undefined,
+        sourceFavicon: finalExternalEmbed ? finalSourceFavicon : undefined,
+        fetchedAt: finalExternalEmbed ? finalFetchedAt : undefined,
       };
 
       // Prepend locally
@@ -899,16 +923,16 @@ export function DealsFeed({ onViewChange, searchQuery = '', onNavigatePost, onTa
           expirationDate: modalForm.expirationDate || undefined,
           discount: modalForm.discount || undefined,
           promoCode: modalForm.code ? modalForm.code.toUpperCase() : undefined,
-          dealLink: modalForm.link || (modalForm.isExternalEmbed ? modalForm.externalUrl || undefined : undefined),
+          dealLink: modalForm.link || (finalExternalEmbed ? finalExternalUrl : undefined),
           region: finalRegion,
           location: locationName,
           embedCode: modalForm.embedCode ? modalForm.embedCode.trim() : undefined,
-          isExternalEmbed: modalForm.isExternalEmbed ? true : undefined,
-          externalUrl: modalForm.isExternalEmbed ? (modalForm.externalUrl || modalForm.link || undefined) : undefined,
-          sourceName: modalForm.isExternalEmbed ? (modalForm.sourceName || undefined) : undefined,
-          sourceDomain: modalForm.isExternalEmbed ? (modalForm.sourceDomain || undefined) : undefined,
-          sourceFavicon: modalForm.isExternalEmbed ? (modalForm.sourceFavicon || undefined) : undefined,
-          fetchedAt: modalForm.isExternalEmbed ? (modalForm.fetchedAt || undefined) : undefined,
+          isExternalEmbed: finalExternalEmbed ? true : undefined,
+          externalUrl: finalExternalEmbed ? finalExternalUrl : undefined,
+          sourceName: finalExternalEmbed ? finalSourceName : undefined,
+          sourceDomain: finalExternalEmbed ? finalSourceDomain : undefined,
+          sourceFavicon: finalExternalEmbed ? finalSourceFavicon : undefined,
+          fetchedAt: finalExternalEmbed ? finalFetchedAt : undefined,
           tags: modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean).length > 0 
             ? modalForm.tagsString.split(',').map(t => t.replace(/^#/, '').trim()).filter(Boolean) 
             : undefined,
@@ -1955,23 +1979,25 @@ function DealFeedCard({
   onNavigatePost,
   onTagClick,
 }: DealFeedCardProps) {
-  const candidateExternalUrl = resolvePostExternalUrlCandidate(deal as any);
-  const hasStoredImage = Boolean(
-    (deal as any)._hasStoredImage !== undefined
-      ? (deal as any)._hasStoredImage
-      : deal.image
+  const candidateExternalUrl = useMemo(
+    () => resolvePostExternalUrlCandidate(deal as any, { includeSocialEmbeds: true }),
+    [deal]
   );
-  const resolvedExternalMeta = useResolvedExternalEmbed(
+  const realStoredImages = useMemo(
+    () => filterRealStoredImages([deal.image, ...((deal as any).images || [])]),
+    [deal.image, (deal as any).images]
+  );
+  const hasStoredImage = realStoredImages.length > 0;
+  const { data: resolvedExternalMeta, isLoading: isExternalMetaLoading } = useResolvedExternalEmbedState(
     candidateExternalUrl,
-    hasStoredImage
+    !candidateExternalUrl || hasStoredImage
   );
 
   const dealImg =
-    (hasStoredImage && deal.image ? deal.image : '') ||
+    realStoredImages[0] ||
     resolvedExternalMeta?.imageUrl ||
-    (!candidateExternalUrl
-      ? CATEGORY_IMAGE_FALLBACKS[deal.category] || CATEGORY_IMAGE_FALLBACKS.tehnika
-      : '');
+    resolvedExternalMeta?.images?.[0] ||
+    '';
 
   const effectiveExternalUrl = deal.externalUrl || candidateExternalUrl || undefined;
   const effectiveIsExternalEmbed = Boolean(deal.isExternalEmbed || candidateExternalUrl);
@@ -2093,10 +2119,12 @@ function DealFeedCard({
         >
           <ResilientEmbedImage
             src={dealImg}
-            fallbackSrcs={resolvedExternalMeta?.images}
+            fallbackSrcs={[...realStoredImages.slice(1), ...(resolvedExternalMeta?.images || [])]}
             alt={cleanTitle}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"
+            showLoadingShimmer={true}
+            isMetadataLoading={isExternalMetaLoading && !hasStoredImage}
             placeholderProps={{
               postType: 'deal',
               title: cleanTitle,

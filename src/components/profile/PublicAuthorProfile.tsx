@@ -33,6 +33,13 @@ import { isUserVerified } from '../../utils/userVerificationUtils';
 import { FollowAuthorButton } from '../common/FollowAuthorButton';
 import { SocialNetworkGraph } from './SocialNetworkGraph';
 import { getFeedCardAnimationClass } from '../../utils/animationUtils';
+import { ResilientEmbedImage } from '../common/EmbedThumbnailPlaceholder';
+import { getActiveFallbackImage } from '../../services/portalSettingsService';
+import {
+  filterRealStoredImages,
+  resolvePostExternalUrlCandidate,
+  useResolvedExternalEmbedState,
+} from '../../services/externalEmbedService';
 
 export interface PublicAuthorProfileProps {
   targetAuthor: AuthorProfileTarget;
@@ -49,6 +56,11 @@ export interface AuthorItemCardData {
   description: string;
   category?: string;
   imageUrl?: string;
+  externalUrl?: string;
+  embedCode?: string;
+  sourceName?: string;
+  sourceDomain?: string;
+  sourceFavicon?: string;
   price?: string;
   location?: string;
   date?: string;
@@ -57,6 +69,62 @@ export interface AuthorItemCardData {
   lovesCount?: number;
   viewsCount?: number;
   interestedCount?: number | string;
+}
+
+function AuthorItemThumbnail({ item }: { item: AuthorItemCardData }) {
+  const portalBrokenFallback = getActiveFallbackImage(false);
+  const realStoredImages = filterRealStoredImages([item.imageUrl], portalBrokenFallback);
+  const hasStoredImage = realStoredImages.length > 0;
+  const candidateUrl = useMemo(
+    () =>
+      resolvePostExternalUrlCandidate(
+        {
+          externalUrl: item.externalUrl,
+          embedCode: item.embedCode,
+          description: item.description,
+        },
+        { includeSocialEmbeds: true }
+      ),
+    [item.externalUrl, item.embedCode, item.description]
+  );
+  const { data: extMeta, isLoading } = useResolvedExternalEmbedState(
+    candidateUrl,
+    !candidateUrl || hasStoredImage
+  );
+
+  const imgSrc = realStoredImages[0] || extMeta?.imageUrl || extMeta?.images?.[0] || '';
+  if (!imgSrc && !candidateUrl && !item.embedCode) {
+    return (
+      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-surface-container-low flex items-center justify-center text-primary shrink-0 border border-surface-container">
+        {item.type === 'ad' && <Store className="w-8 h-8 text-emerald-500" />}
+        {item.type === 'event' && <Calendar className="w-8 h-8 text-sky-500" />}
+        {item.type === 'deal' && <Tag className="w-8 h-8 text-amber-500" />}
+        {item.type === 'post' && <BookOpen className="w-8 h-8 text-purple-500" />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden shrink-0 border border-surface-container bg-surface-container">
+      <ResilientEmbedImage
+        src={imgSrc}
+        fallbackSrcs={[...realStoredImages.slice(1), ...(extMeta?.images || [])]}
+        alt={item.title}
+        className="w-full h-full object-cover group-hover:scale-102 transition-transform"
+        showLoadingShimmer={true}
+        isMetadataLoading={isLoading && !hasStoredImage}
+        placeholderProps={{
+          postType: item.type === 'post' ? 'blog' : item.type,
+          title: item.title,
+          sourceDomain: item.sourceDomain || extMeta?.domain,
+          sourceName: item.sourceName || extMeta?.siteName,
+          sourceFavicon: item.sourceFavicon || extMeta?.faviconUrl,
+          externalUrl: item.externalUrl || candidateUrl,
+          variant: 'embed',
+        }}
+      />
+    </div>
+  );
 }
 
 export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onViewChange, onAuthorClick }: PublicAuthorProfileProps) {
@@ -309,7 +377,12 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           title: p.title,
           description: p.content,
           category: p.categoryName || p.category,
-          imageUrl: p.imageUrl,
+          imageUrl: filterRealStoredImages([p.imageUrl, ...(p.images || []), ...(p.imageUrls || [])])[0],
+          externalUrl: resolvePostExternalUrlCandidate(p, { includeSocialEmbeds: true }),
+          embedCode: p.embedCode,
+          sourceName: p.sourceName,
+          sourceDomain: p.sourceDomain,
+          sourceFavicon: p.sourceFavicon,
           price: p.price,
           location: p.location,
           date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('sl-SI') : undefined,
@@ -336,7 +409,12 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           title: a.title,
           description: a.description,
           category: a.categoryName || a.category,
-          imageUrl: a.imageUrl,
+          imageUrl: filterRealStoredImages([a.imageUrl, ...((a as any).images || [])])[0],
+          externalUrl: resolvePostExternalUrlCandidate(a, { includeSocialEmbeds: true }),
+          embedCode: a.embedCode,
+          sourceName: a.sourceName,
+          sourceDomain: a.sourceDomain,
+          sourceFavicon: a.sourceFavicon,
           price: a.price,
           location: a.location,
           date: a.createdAt ? new Date(a.createdAt).toLocaleDateString('sl-SI') : undefined,
@@ -366,7 +444,12 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
           title: e.title,
           description: e.description,
           category: e.categoryName || e.category,
-          imageUrl: e.imageUrl,
+          imageUrl: filterRealStoredImages([e.imageUrl, ...((e as any).images || [])])[0],
+          externalUrl: resolvePostExternalUrlCandidate(e, { includeSocialEmbeds: true }),
+          embedCode: e.embedCode,
+          sourceName: (e as any).sourceName,
+          sourceDomain: (e as any).sourceDomain,
+          sourceFavicon: (e as any).sourceFavicon,
           price: e.price,
           location: resolvedDate.location || e.location,
           date: resolvedDate.dateInfo.fullDate || e.eventDate || (e.createdAt ? new Date(e.createdAt).toLocaleDateString('sl-SI') : undefined),
@@ -858,20 +941,7 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
                   className="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container/60 shadow-2xs hover:shadow-md hover:scale-[1.01] hover:border-primary/40 transition-all duration-300 ease-out cursor-pointer flex flex-col sm:flex-row gap-4 justify-between group"
                 >
                 <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt={item.title}
-                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover shrink-0 border border-surface-container group-hover:scale-102 transition-transform"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-surface-container-low flex items-center justify-center text-primary shrink-0 border border-surface-container">
-                      {item.type === 'ad' && <Store className="w-8 h-8 text-emerald-500" />}
-                      {item.type === 'event' && <Calendar className="w-8 h-8 text-sky-500" />}
-                      {item.type === 'deal' && <Tag className="w-8 h-8 text-amber-500" />}
-                      {item.type === 'post' && <BookOpen className="w-8 h-8 text-purple-500" />}
-                    </div>
-                  )}
+                  <AuthorItemThumbnail item={item} />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">

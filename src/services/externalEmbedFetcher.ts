@@ -162,8 +162,10 @@ function isLikelyLogoOrIconUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return (
     /\.svg(\?|$)/i.test(lower) ||
-    /(?:^|[/_.-])(favicon|logo|icon|sprite|pixel|spacer|blank|placeholder|spinner|avatar|badge|1x1)(?:[/_.-]|$)/i.test(lower) ||
-    lower.includes("_graphics/")
+    /(?:^|[/_.-])(favicon|logo|icon|sprite|pixel|spacer|blank|placeholder|spinner|avatar|badge|dummy|noimage|no-image|1x1)(?:[/_.-]|$)/i.test(lower) ||
+    lower.includes("_graphics/") ||
+    lower.includes("dummyimage.com") ||
+    lower.includes("via.placeholder.com")
   );
 }
 

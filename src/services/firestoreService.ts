@@ -734,6 +734,12 @@ export interface FirestoreEvent {
   imageUrl?: string;
   embedCode?: string;
   embedOrientation?: 'horizontal' | 'vertical' | 'auto';
+  isExternalEmbed?: boolean;
+  externalUrl?: string;
+  sourceName?: string;
+  sourceDomain?: string;
+  sourceFavicon?: string;
+  fetchedAt?: string;
   images?: string[];
   imageUrls?: string[];
   attachments?: PostAttachment[];
