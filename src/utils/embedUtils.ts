@@ -42,6 +42,176 @@ export function detectVideoPlatformFromUrl(urlOrHtml: string): VideoPlatform {
   return 'iframe';
 }
 
+const EMBED_KNOWN_SOURCE_NAMES: Record<string, string> = {
+  'avto.net': 'Avto.net',
+  'bolha.com': 'Bolha.com',
+  'nepremicnine.net': 'Nepremičnine.net',
+  'mimovrste.com': 'Mimovrste',
+  'youtube.com': 'YouTube',
+  'youtu.be': 'YouTube',
+  'youtube-nocookie.com': 'YouTube',
+  'tiktok.com': 'TikTok',
+  'instagram.com': 'Instagram',
+  'facebook.com': 'Facebook',
+  'fb.watch': 'Facebook',
+  'twitter.com': 'X (Twitter)',
+  'x.com': 'X (Twitter)',
+  '24ur.com': '24ur.com',
+  'rtvslo.si': 'RTV SLO',
+  'siol.net': 'Siol.net',
+};
+
+function escapeEmbedHtml(val: string): string {
+  return String(val || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function getEmbedSourceLabel(urlOrDomain?: string, platform?: string): string {
+  const raw = (urlOrDomain || '').trim();
+  let domain = '';
+  if (raw) {
+    try {
+      const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      domain = new URL(candidate).hostname.replace(/^www\./i, '');
+    } catch {
+      domain = raw.replace(/^www\./i, '').split('/')[0] || '';
+    }
+  }
+  const lowerDomain = domain.toLowerCase();
+  if (lowerDomain) {
+    if (EMBED_KNOWN_SOURCE_NAMES[lowerDomain]) {
+      return EMBED_KNOWN_SOURCE_NAMES[lowerDomain];
+    }
+    for (const [known, label] of Object.entries(EMBED_KNOWN_SOURCE_NAMES)) {
+      if (lowerDomain === known || lowerDomain.endsWith(`.${known}`)) {
+        return label;
+      }
+    }
+  }
+
+  switch ((platform || '').toLowerCase()) {
+    case 'youtube':
+      return 'YouTube';
+    case 'tiktok':
+      return 'TikTok';
+    case 'instagram':
+      return 'Instagram';
+    case 'facebook':
+      return 'Facebook';
+    case 'twitter':
+      return 'X (Twitter)';
+  }
+
+  if (domain) {
+    return domain.charAt(0).toUpperCase() + domain.slice(1);
+  }
+  return 'Zunanji vir';
+}
+
+function buildEmbedSourceBarHtml(sourceLabel: string, sourceUrl?: string): string {
+  const safeLabel = escapeEmbedHtml(sourceLabel);
+  const cleanUrl = sourceUrl && /^https?:\/\//i.test(sourceUrl) ? escapeEmbedHtml(sourceUrl) : '';
+  const badgeHtml = cleanUrl
+    ? `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-source-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary/25 bg-primary/10 text-xs font-medium text-on-surface hover:bg-primary/15 transition-colors" title="Vir vsebine: ${safeLabel}"><span class="text-on-surface-variant">Vir:</span> <strong class="font-bold text-primary">${safeLabel}</strong> <span aria-hidden="true" class="text-primary">↗</span></a>`
+    : `<span class="embed-source-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary/25 bg-primary/10 text-xs font-medium text-on-surface"><span class="text-on-surface-variant">Vir:</span> <strong class="font-bold text-primary">${safeLabel}</strong></span>`;
+  const visitSourceHtml = cleanUrl
+    ? `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-visit-source-link inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-primary/25 bg-surface-container-lowest hover:bg-primary/10 text-xs font-semibold text-primary transition-colors whitespace-nowrap" title="Odpri izvirno vsebino v novem zavihku">Obišči vir ↗</a>`
+    : '';
+  const leftGroupHtml = `<div class="flex flex-wrap items-center gap-2">${badgeHtml}${visitSourceHtml}</div>`;
+  const copyBtnHtml = cleanUrl
+    ? `<button type="button" data-copy-embed-url="${cleanUrl}" class="embed-copy-link-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-surface-container-high bg-surface-container-low hover:bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer whitespace-nowrap" title="Kopiraj izvorno povezavo">Kopiraj povezavo</button>`
+    : '';
+  const actionsHtml = copyBtnHtml
+    ? `<div class="flex items-center gap-2 flex-wrap">${copyBtnHtml}</div>`
+    : '';
+  return `<div class="embed-source-bar px-3.5 py-2 border-b border-surface-container/60 bg-surface-container-lowest/70 flex flex-wrap items-center justify-between gap-2">${leftGroupHtml}${actionsHtml}</div>`;
+}
+
+export async function copyEmbedUrlToClipboard(url: string): Promise<boolean> {
+  const clean = (url || '').trim();
+  if (!clean) return false;
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(clean);
+      return true;
+    }
+  } catch {
+    // Fallback below
+  }
+
+  try {
+    if (typeof document === 'undefined') return false;
+    const textarea = document.createElement('textarea');
+    textarea.value = clean;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+export function initEmbedCopyLinkDelegation(): () => void {
+  if (typeof document === 'undefined') return () => {};
+  const resetTimers = new WeakMap<HTMLElement, number>();
+
+  const handleClick = async (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    const btn = target?.closest<HTMLElement>('[data-copy-embed-url]');
+    if (!btn) return;
+
+    const url = btn.getAttribute('data-copy-embed-url') || '';
+    if (!url) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const copied = await copyEmbedUrlToClipboard(url);
+    if (!copied) return;
+
+    const prevTimer = resetTimers.get(btn);
+    if (prevTimer) window.clearTimeout(prevTimer);
+
+    if (!btn.dataset.originalLabel) {
+      btn.dataset.originalLabel = btn.textContent || 'Kopiraj povezavo';
+    }
+    btn.textContent = 'Kopirano! ✓';
+    btn.classList.add('text-primary', 'border-primary/40', 'bg-primary/10');
+
+    const timer = window.setTimeout(() => {
+      btn.textContent = btn.dataset.originalLabel || 'Kopiraj povezavo';
+      btn.classList.remove('text-primary', 'border-primary/40', 'bg-primary/10');
+      resetTimers.delete(btn);
+    }, 2000);
+    resetTimers.set(btn, timer);
+  };
+
+  document.addEventListener('click', handleClick);
+  return () => {
+    document.removeEventListener('click', handleClick);
+  };
+}
+
+function wrapEmbedContainerHtml(
+  innerHtml: string,
+  sourceLabel: string,
+  sourceUrl?: string,
+  maxWidthClass = 'max-w-3xl mx-auto'
+): string {
+  return `<div class="embed-container my-4 w-full ${maxWidthClass} rounded-2xl border border-surface-container bg-surface-container-low/75 overflow-hidden shadow-xs">${buildEmbedSourceBarHtml(sourceLabel, sourceUrl)}<div class="p-2 sm:p-3">${innerHtml}</div></div>`;
+}
+
 /**
  * Checks whether an HTML snippet, iframe or link represents a vertical format video
  * (YouTube Shorts, Instagram Reels, TikTok, or iframes with height > width).
@@ -127,7 +297,16 @@ export function isIframeOrHtmlVertical(htmlOrUrl: string): boolean {
   return false;
 }
 
-export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical' | 'horizontal'): ParsedEmbed | null {
+export interface ParseSocialEmbedOptions {
+  includeSourceBadge?: boolean;
+}
+
+export function parseSocialEmbed(
+  rawInput: string,
+  forceOrientation?: 'vertical' | 'horizontal',
+  options?: ParseSocialEmbedOptions
+): ParsedEmbed | null {
+  const includeSourceBadge = options?.includeSourceBadge !== false;
   const input = rawInput.trim();
   if (!input) return null;
 
@@ -196,6 +375,20 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
       }
     }
 
+    const iframeSrcMatch = input.match(/src=["']([^"']+)["']/i);
+    const iframeSrc = iframeSrcMatch?.[1] || '';
+    const iframePlatform = detectVideoPlatformFromUrl(iframeSrc || input);
+    const iframeSourceLabel = getEmbedSourceLabel(iframeSrc, iframePlatform);
+
+    if (includeSourceBadge && input.includes('<iframe')) {
+      formatted = wrapEmbedContainerHtml(
+        formatted,
+        iframeSourceLabel,
+        iframeSrc,
+        isVertical ? 'max-w-[400px] mx-auto' : 'max-w-4xl mx-auto'
+      );
+    }
+
     return {
       platform: 'iframe',
       platformName: isVertical ? 'Vdelana vsebina (navpični format 9:16)' : 'Koda za vdelavo (HTML/Iframe)',
@@ -215,12 +408,24 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
     const detectedShort = /\/shorts\/|shorts\?v=/i.test(input);
     const isShort = isUserForcedVertical ? true : (isUserForcedHorizontal ? false : detectedShort);
     const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+    const originalWatchUrl = isShort
+      ? `https://www.youtube.com/shorts/${videoId}`
+      : `https://www.youtube.com/watch?v=${videoId}`;
 
     let embedHtml = '';
     if (isShort) {
-      embedHtml = `<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] aspect-[9/16] min-h-[580px] max-h-[720px] rounded-2xl overflow-hidden border border-surface-container shadow-md bg-black relative" style="aspect-ratio: 9/16; min-height: 580px;"><iframe src="${embedUrl}" data-vertical="true" class="w-full h-full border-0" title="YouTube Shorts predvajalnik" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div></div>`;
+      embedHtml = `<div class="embed-vertical-container ${includeSourceBadge ? '!my-0' : 'my-4'} w-full flex justify-center"><div class="w-full max-w-[360px] aspect-[9/16] min-h-[580px] max-h-[720px] rounded-2xl overflow-hidden border border-surface-container shadow-md bg-black relative" style="aspect-ratio: 9/16; min-height: 580px;"><iframe src="${embedUrl}" data-vertical="true" class="w-full h-full border-0" title="YouTube Shorts predvajalnik" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div></div>`;
     } else {
-      embedHtml = `<div class="embed-horizontal-container my-3 w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden border border-surface-container shadow-xs" style="aspect-ratio: 16/9;"><iframe src="${embedUrl}" data-vertical="false" class="w-full h-full border-0" title="YouTube video predvajalnik" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+      embedHtml = `<div class="embed-horizontal-container ${includeSourceBadge ? '!my-0' : 'my-3'} w-full max-w-3xl mx-auto aspect-video rounded-xl overflow-hidden border border-surface-container shadow-xs" style="aspect-ratio: 16/9;"><iframe src="${embedUrl}" data-vertical="false" class="w-full h-full border-0" title="YouTube video predvajalnik" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+    }
+
+    if (includeSourceBadge) {
+      embedHtml = wrapEmbedContainerHtml(
+        embedHtml,
+        'YouTube',
+        originalWatchUrl,
+        isShort ? 'max-w-[400px] mx-auto' : 'max-w-3xl mx-auto'
+      );
     }
 
     return {
@@ -242,7 +447,11 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
     const username = twitterMatch[1];
     const tweetId = twitterMatch[2];
     const cleanUrl = `https://x.com/${username}/status/${tweetId}`;
-    const embedHtml = `<blockquote class="twitter-tweet my-3 p-4 rounded-xl border border-surface-container bg-surface-container-low max-w-xl mx-auto shadow-xs" data-dnt="true"><div class="flex items-center justify-between mb-1.5"><span class="font-bold text-xs text-on-surface flex items-center gap-1.5">𝕏 Objava na omrežju X (@${username})</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri izvirnik ↗</a></div><p class="text-xs text-on-surface-variant font-medium">Kliknite za ogled objave in razprave na omrežju X.</p></blockquote>`;
+    const safeUser = escapeEmbedHtml(username);
+    const badgeBar = includeSourceBadge
+      ? `<div class="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-surface-container/60"><div class="flex flex-wrap items-center gap-2"><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-source-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary/25 bg-primary/10 text-xs font-medium text-on-surface"><span class="text-on-surface-variant">Vir:</span> <strong class="font-bold text-primary">X (Twitter)</strong> <span aria-hidden="true" class="text-primary">↗</span></a><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-visit-source-link inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-primary/25 bg-surface-container-lowest hover:bg-primary/10 text-xs font-semibold text-primary transition-colors whitespace-nowrap">Obišči vir ↗</a></div><div class="flex items-center gap-2"><button type="button" data-copy-embed-url="${cleanUrl}" class="embed-copy-link-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer whitespace-nowrap" title="Kopiraj izvorno povezavo">Kopiraj povezavo</button><span class="text-[11px] font-semibold text-on-surface-variant">@${safeUser}</span></div></div>`
+      : '';
+    const embedHtml = `<blockquote class="${includeSourceBadge ? 'embed-container ' : ''}twitter-tweet my-3 p-4 rounded-xl border border-surface-container bg-surface-container-low max-w-xl mx-auto shadow-xs" data-dnt="true">${badgeBar}<div class="flex items-center justify-between mb-1.5"><span class="font-bold text-xs text-on-surface flex items-center gap-1.5">𝕏 Objava na omrežju X (@${safeUser})</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri izvirnik ↗</a></div><p class="text-xs text-on-surface-variant font-medium">Kliknite za ogled objave in razprave na omrežju X.</p></blockquote>`;
     return {
       platform: 'twitter',
       platformName: 'X / Twitter objava',
@@ -266,10 +475,14 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
     const embedUrl = `https://www.instagram.com/p/${postId}/embed`;
 
     let embedHtml = '';
+    const igHeader = includeSourceBadge
+      ? `<div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-surface-container/60"><div class="flex flex-wrap items-center gap-1.5"><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-source-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary/25 bg-primary/10 text-xs font-medium text-on-surface"><span class="text-on-surface-variant">Vir:</span> <strong class="font-bold text-primary">Instagram</strong> <span aria-hidden="true" class="text-primary">↗</span></a><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-visit-source-link inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-primary/25 bg-surface-container-lowest hover:bg-primary/10 text-[11px] font-semibold text-primary transition-colors whitespace-nowrap">Obišči vir ↗</a></div><div class="flex items-center gap-2"><button type="button" data-copy-embed-url="${cleanUrl}" class="embed-copy-link-btn inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer whitespace-nowrap" title="Kopiraj izvorno povezavo">Kopiraj povezavo</button></div></div>`
+      : `<div class="flex items-center justify-between"><span class="font-bold text-xs text-pink-600 flex items-center gap-1.5">🎬 Instagram ${detectedReel ? 'Reel' : 'objava'}${isVertical ? ' (navpični format)' : ''}</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri ↗</a></div>`;
+
     if (isVertical) {
-      embedHtml = `<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[380px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="min-height: 580px;"><div class="flex items-center justify-between"><span class="font-bold text-xs text-pink-600 flex items-center gap-1.5">🎬 Instagram ${detectedReel ? 'Reel' : 'objava'} (navpični format)</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri ↗</a></div><iframe src="${embedUrl}" data-vertical="true" class="w-full min-h-[640px] sm:min-h-[700px] border-0 rounded-xl bg-surface-container-lowest" allowtransparency="true" scrolling="no"></iframe></div></div>`;
+      embedHtml = `<div class="${includeSourceBadge ? 'embed-container ' : ''}embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[380px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="min-height: 580px;">${igHeader}<iframe src="${embedUrl}" data-vertical="true" class="w-full min-h-[640px] sm:min-h-[700px] border-0 rounded-xl bg-surface-container-lowest" allowtransparency="true" scrolling="no"></iframe></div></div>`;
     } else {
-      embedHtml = `<div class="embed-post-container my-3 p-3.5 rounded-xl border border-surface-container bg-surface-container-low max-w-lg mx-auto shadow-xs"><div class="flex items-center justify-between mb-2"><span class="font-bold text-xs text-pink-600 flex items-center gap-1.5">📸 Instagram objava</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Instagramu ↗</a></div><iframe src="${embedUrl}" data-vertical="false" class="w-full min-h-[520px] sm:min-h-[580px] border-0 rounded-lg bg-surface-container-lowest" allowtransparency="true" scrolling="no"></iframe></div>`;
+      embedHtml = `<div class="${includeSourceBadge ? 'embed-container ' : ''}embed-post-container my-3 p-3.5 rounded-xl border border-surface-container bg-surface-container-low max-w-lg mx-auto shadow-xs flex flex-col gap-2">${igHeader}<iframe src="${embedUrl}" data-vertical="false" class="w-full min-h-[520px] sm:min-h-[580px] border-0 rounded-lg bg-surface-container-lowest" allowtransparency="true" scrolling="no"></iframe></div>`;
     }
 
     return {
@@ -290,12 +503,16 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
     const detectedReel = cleanUrl.includes('/reel/') || cleanUrl.includes('/reels/') || cleanUrl.includes('fb.watch/');
     const isVertical = isUserForcedVertical ? true : (isUserForcedHorizontal ? false : detectedReel);
     const pluginUrl = `https://www.facebook.com/plugins/${isVertical ? 'video.php' : 'post.php'}?href=${encodeURIComponent(cleanUrl)}&show_text=true&width=${isVertical ? '360' : '500'}`;
+    const safeCleanUrl = escapeEmbedHtml(cleanUrl);
+    const fbHeader = includeSourceBadge
+      ? `<div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-surface-container/60"><div class="flex flex-wrap items-center gap-1.5"><a href="${safeCleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-source-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary/25 bg-primary/10 text-xs font-medium text-on-surface"><span class="text-on-surface-variant">Vir:</span> <strong class="font-bold text-primary">Facebook</strong> <span aria-hidden="true" class="text-primary">↗</span></a><a href="${safeCleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-visit-source-link inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-primary/25 bg-surface-container-lowest hover:bg-primary/10 text-[11px] font-semibold text-primary transition-colors whitespace-nowrap">Obišči vir ↗</a></div><div class="flex items-center gap-2"><button type="button" data-copy-embed-url="${safeCleanUrl}" class="embed-copy-link-btn inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer whitespace-nowrap" title="Kopiraj izvorno povezavo">Kopiraj povezavo</button></div></div>`
+      : `<div class="flex items-center justify-between mb-2"><span class="font-bold text-xs text-blue-600 flex items-center gap-1.5">${isVertical ? '🎬 Facebook Reel (navpični format)' : '📘 Facebook objava'}</span><a href="${safeCleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Facebooku ↗</a></div>`;
 
     let embedHtml = '';
     if (isVertical) {
-      embedHtml = `<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="min-height: 580px;"><div class="flex items-center justify-between"><span class="font-bold text-xs text-blue-600 flex items-center gap-1.5">🎬 Facebook Reel (navpični format)</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Facebooku ↗</a></div><iframe src="${pluginUrl}" data-vertical="true" data-orientation="vertical" class="w-full min-h-[620px] border-0 rounded-xl overflow-hidden bg-surface-container-lowest" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div></div>`;
+      embedHtml = `<div class="${includeSourceBadge ? 'embed-container ' : ''}embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="min-height: 580px;">${fbHeader}<iframe src="${pluginUrl}" data-vertical="true" data-orientation="vertical" class="w-full min-h-[620px] border-0 rounded-xl overflow-hidden bg-surface-container-lowest" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div></div>`;
     } else {
-      embedHtml = `<div class="embed-horizontal-container embed-post-container my-4 w-full max-w-2xl mx-auto p-3.5 rounded-2xl border border-surface-container bg-surface-container-low shadow-xs"><div class="flex items-center justify-between mb-2"><span class="font-bold text-xs text-blue-600 flex items-center gap-1.5">📘 Facebook objava</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri na Facebooku ↗</a></div><div class="w-full flex justify-center overflow-hidden"><iframe src="${pluginUrl}" data-vertical="false" data-orientation="horizontal" class="w-full min-h-[480px] sm:min-h-[620px] border-0 rounded-lg overflow-hidden" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div></div>`;
+      embedHtml = `<div class="${includeSourceBadge ? 'embed-container ' : ''}embed-horizontal-container embed-post-container my-4 w-full max-w-2xl mx-auto p-3.5 rounded-2xl border border-surface-container bg-surface-container-low shadow-xs flex flex-col gap-2">${fbHeader}<div class="w-full flex justify-center overflow-hidden"><iframe src="${pluginUrl}" data-vertical="false" data-orientation="horizontal" class="w-full min-h-[480px] sm:min-h-[620px] border-0 rounded-lg overflow-hidden" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div></div>`;
     }
 
     return {
@@ -317,7 +534,11 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
     const videoId = tiktokMatch[2] || tiktokMatch[3];
     const cleanUrl = tiktokMatch[2] ? `https://www.tiktok.com/@${user}/video/${videoId}` : input;
     const embedUrl = `https://www.tiktok.com/embed/v2/${videoId}`;
-    const embedHtml = `<div class="embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="aspect-ratio: 9/16; min-height: 580px;"><div class="flex items-center justify-between"><span class="font-bold text-xs text-on-surface flex items-center gap-1.5">🎵 TikTok video (@${user})</span><a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri v TikTok ↗</a></div><iframe src="${embedUrl}" data-vertical="true" class="w-full min-h-[660px] sm:min-h-[740px] border-0 rounded-xl bg-surface-container-lowest" allowfullscreen allow="autoplay"></iframe></div></div>`;
+    const safeCleanUrl = escapeEmbedHtml(cleanUrl);
+    const tiktokHeader = includeSourceBadge
+      ? `<div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-surface-container/60"><div class="flex flex-wrap items-center gap-1.5"><a href="${safeCleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-source-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary/25 bg-primary/10 text-xs font-medium text-on-surface"><span class="text-on-surface-variant">Vir:</span> <strong class="font-bold text-primary">TikTok</strong> <span aria-hidden="true" class="text-primary">↗</span></a><a href="${safeCleanUrl}" target="_blank" rel="noopener noreferrer" class="embed-visit-source-link inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-primary/25 bg-surface-container-lowest hover:bg-primary/10 text-[11px] font-semibold text-primary transition-colors whitespace-nowrap">Obišči vir ↗</a></div><div class="flex items-center gap-2"><button type="button" data-copy-embed-url="${safeCleanUrl}" class="embed-copy-link-btn inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer whitespace-nowrap" title="Kopiraj izvorno povezavo">Kopiraj povezavo</button></div></div>`
+      : `<div class="flex items-center justify-between"><span class="font-bold text-xs text-on-surface flex items-center gap-1.5">🎵 TikTok video (@${escapeEmbedHtml(user)})</span><a href="${safeCleanUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary font-semibold hover:underline">Odpri v TikTok ↗</a></div>`;
+    const embedHtml = `<div class="${includeSourceBadge ? 'embed-container ' : ''}embed-vertical-container my-4 w-full flex justify-center"><div class="w-full max-w-[360px] rounded-2xl border border-surface-container bg-surface-container-low p-3.5 shadow-md flex flex-col gap-2" style="aspect-ratio: 9/16; min-height: 580px;">${tiktokHeader}<iframe src="${embedUrl}" data-vertical="true" class="w-full min-h-[660px] sm:min-h-[740px] border-0 rounded-xl bg-surface-container-lowest" allowfullscreen allow="autoplay"></iframe></div></div>`;
     return {
       platform: 'tiktok',
       platformName: 'TikTok video (navpični format 9:16)',
@@ -336,8 +557,12 @@ export function parseSocialEmbed(rawInput: string, forceOrientation?: 'vertical'
     try {
       domain = new URL(url).hostname.replace(/^www\./, '');
     } catch {}
+    const sourceLabel = getEmbedSourceLabel(url);
+    const safeUrl = escapeEmbedHtml(url);
+    const safeDomain = escapeEmbedHtml(domain);
+    const safeLabel = escapeEmbedHtml(sourceLabel);
 
-    const embedHtml = `<div class="my-3 p-3.5 rounded-xl border border-surface-container bg-surface-container-low flex items-center justify-between gap-3 shadow-xs"><div class="flex items-center gap-2"><span class="text-base">🔗</span><div><div class="text-xs font-bold text-on-surface">${domain}</div><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline break-all">${url}</a></div></div><a href="${url}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface flex items-center gap-1 shrink-0"><span>Odpri</span><span>↗</span></a></div>`;
+    const embedHtml = `<div class="embed-container my-3 rounded-xl border border-surface-container bg-surface-container-low overflow-hidden shadow-xs"><div class="px-3.5 py-2 border-b border-surface-container/60 bg-surface-container-lowest/70 flex flex-wrap items-center justify-between gap-2"><div class="flex flex-wrap items-center gap-2"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="embed-source-badge inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border border-primary/25 bg-primary/10 text-xs font-medium text-on-surface"><span class="text-on-surface-variant">Vir:</span> <strong class="font-bold text-primary">${safeLabel}</strong> <span aria-hidden="true" class="text-primary">↗</span></a><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="embed-visit-source-link inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg border border-primary/25 bg-surface-container-lowest hover:bg-primary/10 text-[11px] font-semibold text-primary transition-colors whitespace-nowrap">Obišči vir ↗</a></div><div class="flex items-center gap-2"><button type="button" data-copy-embed-url="${safeUrl}" class="embed-copy-link-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-surface-container-high bg-surface-container-low hover:bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer whitespace-nowrap" title="Kopiraj izvorno povezavo">Kopiraj povezavo</button><span class="text-[11px] font-medium text-outline">Zunanja povezava</span></div></div><div class="p-3.5 flex items-center justify-between gap-3"><div class="min-w-0"><div class="text-xs font-bold text-on-surface">${safeDomain}</div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline break-all">${safeUrl}</a></div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface flex items-center gap-1 shrink-0"><span>Odpri</span><span>↗</span></a></div></div>`;
     return {
       platform: 'generic',
       platformName: 'Spletna povezava',

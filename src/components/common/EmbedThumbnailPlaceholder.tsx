@@ -174,6 +174,55 @@ export const EmbedThumbnailPlaceholder: React.FC<EmbedThumbnailPlaceholderProps>
   );
 };
 
+export interface EmbedContainerSkeletonProps {
+  variant?: 'horizontal' | 'compact';
+  className?: string;
+}
+
+/**
+ * Pulsing skeleton loader rendered inside .embed-container while external metadata
+ * (og:image, title, description) is being fetched.
+ */
+export const EmbedContainerSkeleton: React.FC<EmbedContainerSkeletonProps> = ({
+  variant = 'horizontal',
+  className = '',
+}) => {
+  const isCompact = variant === 'compact';
+
+  return (
+    <div
+      role="status"
+      aria-label="Nalaganje predogleda vdelane vsebine"
+      className={`embed-skeleton flex flex-col sm:flex-row ${
+        isCompact ? 'gap-4 p-4' : ''
+      } ${className}`}
+    >
+      <div
+        className={`${
+          isCompact
+            ? 'sm:w-40 h-28 rounded-xl border border-surface-container/60'
+            : 'sm:w-48 h-40 sm:h-auto min-h-[144px] border-b sm:border-b-0 sm:border-r border-surface-container/60'
+        } shrink-0 overflow-hidden embed-shimmer animate-pulse`}
+      />
+      <div
+        className={`${
+          isCompact ? 'py-0.5' : 'p-4'
+        } flex flex-col justify-between flex-1 min-w-0 gap-3`}
+      >
+        <div className="space-y-2">
+          <div className="h-4 w-4/5 rounded-md embed-shimmer animate-pulse" />
+          <div className="h-3 w-full rounded-md embed-shimmer animate-pulse" />
+          <div className="h-3 w-2/3 rounded-md embed-shimmer animate-pulse" />
+        </div>
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="h-3.5 w-28 rounded-md embed-shimmer animate-pulse" />
+          <div className="h-8 w-32 rounded-xl embed-shimmer animate-pulse shrink-0" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export interface ResilientEmbedImageProps {
   src?: string | null;
   fallbackSrcs?: Array<string | undefined | null>;
@@ -181,6 +230,8 @@ export interface ResilientEmbedImageProps {
   className?: string;
   loading?: 'lazy' | 'eager';
   allowPortalBrokenFallback?: boolean;
+  showLoadingShimmer?: boolean;
+  isMetadataLoading?: boolean;
   onImageLoaded?: (loadedSrc: string) => void;
   onAllImagesFailed?: () => void;
   placeholderProps?: Omit<EmbedThumbnailPlaceholderProps, 'className'>;
@@ -200,6 +251,8 @@ export const ResilientEmbedImage: React.FC<ResilientEmbedImageProps> = ({
   className = 'w-full h-full object-cover',
   loading = 'lazy',
   allowPortalBrokenFallback = true,
+  showLoadingShimmer = false,
+  isMetadataLoading = false,
   onImageLoaded,
   onAllImagesFailed,
   placeholderProps,
@@ -230,11 +283,19 @@ export const ResilientEmbedImage: React.FC<ResilientEmbedImageProps> = ({
   const candidatesKey = candidates.join('|');
   const [attemptIndex, setAttemptIndex] = useState(0);
   const [exhausted, setExhausted] = useState(candidates.length === 0);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   useEffect(() => {
     setAttemptIndex(0);
     setExhausted(candidates.length === 0);
+    setImgLoaded(false);
   }, [candidatesKey]);
+
+  const activeSrc = !exhausted ? candidates[attemptIndex] : undefined;
+
+  useEffect(() => {
+    setImgLoaded(false);
+  }, [activeSrc]);
 
   const advanceToNextOrFail = () => {
     const nextIdx = attemptIndex + 1;
@@ -246,7 +307,15 @@ export const ResilientEmbedImage: React.FC<ResilientEmbedImageProps> = ({
     }
   };
 
-  const activeSrc = !exhausted ? candidates[attemptIndex] : undefined;
+  if (isMetadataLoading && (!activeSrc || exhausted)) {
+    return (
+      <div
+        role="status"
+        aria-label="Nalaganje sličice"
+        className={`w-full h-full embed-shimmer animate-pulse ${placeholderClassName}`}
+      />
+    );
+  }
 
   if (!activeSrc || exhausted) {
     return (
@@ -257,6 +326,12 @@ export const ResilientEmbedImage: React.FC<ResilientEmbedImageProps> = ({
     );
   }
 
+  const shimmerClasses = showLoadingShimmer && !imgLoaded
+    ? 'embed-shimmer opacity-85'
+    : showLoadingShimmer
+    ? 'opacity-100'
+    : '';
+
   return (
     <img
       key={activeSrc}
@@ -264,7 +339,7 @@ export const ResilientEmbedImage: React.FC<ResilientEmbedImageProps> = ({
       alt={alt}
       referrerPolicy="no-referrer"
       loading={loading}
-      className={className}
+      className={`${className} ${shimmerClasses}`}
       onLoad={(e) => {
         const img = e.currentTarget;
         // Guard against invalid MIME responses or 1x1 tracking pixels that fire load with tiny dimensions
@@ -272,6 +347,7 @@ export const ResilientEmbedImage: React.FC<ResilientEmbedImageProps> = ({
           advanceToNextOrFail();
           return;
         }
+        setImgLoaded(true);
         onImageLoaded?.(activeSrc);
       }}
       onError={advanceToNextOrFail}

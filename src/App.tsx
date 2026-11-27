@@ -36,6 +36,7 @@ import { usePageSeo, DEFAULT_PAGE_SEO } from './services/seoSettingsService';
 import { initAnalyticsNavigationTracker } from './utils/analyticsUtils';
 import { parseUrlPath, buildPostUrl, buildTagUrl, slugify, SECTION_TO_SLUG, VIEW_HASH_MAP } from './utils/urlUtils';
 import { openCookieSettingsModal } from './services/cookieConsentService';
+import { initEmbedCopyLinkDelegation } from './utils/embedUtils';
 
 export { VIEW_HASH_MAP };
 
@@ -74,6 +75,10 @@ export default function App() {
   useEffect(() => {
     usersRef.current = users;
   }, [users]);
+
+  useEffect(() => {
+    return initEmbedCopyLinkDelegation();
+  }, []);
 
   // Check for email verification parameter on load (?verify-email=..., ?token=..., /verify-email/:token, etc.)
   useEffect(() => {

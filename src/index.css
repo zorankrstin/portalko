@@ -643,3 +643,32 @@ html, body {
   max-width: 100%;
 }
 
+/* Subtle pulsing shimmer loader for .embed-container skeletons & initializing frames */
+@keyframes embedShimmerSweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.embed-shimmer {
+  background: linear-gradient(
+    105deg,
+    var(--color-surface-container-low) 20%,
+    var(--color-surface-container-high) 45%,
+    var(--color-surface-container-low) 70%
+  );
+  background-size: 200% 100%;
+  animation: embedShimmerSweep 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .embed-shimmer {
+    animation: none;
+    background: var(--color-surface-container);
+  }
+}
+
+

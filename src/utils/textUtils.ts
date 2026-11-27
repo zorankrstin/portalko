@@ -61,7 +61,7 @@ export function getCleanHtml(html?: string): string {
   );
 
   return DOMPurify.sanitize(content, {
-    ADD_TAGS: ['iframe', 'blockquote', 'u', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col'],
+    ADD_TAGS: ['iframe', 'blockquote', 'button', 'u', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col'],
     ADD_ATTR: [
       'allow', 
       'allowfullscreen', 
@@ -76,6 +76,7 @@ export function getCleanHtml(html?: string): string {
       'target', 
       'rel', 
       'title',
+      'type',
       'colspan',
       'rowspan',
       'colwidth',
@@ -84,6 +85,7 @@ export function getCleanHtml(html?: string): string {
       'data-video-embed',
       'data-platform',
       'data-original-url',
+      'data-copy-embed-url',
       'data-aspect',
       'data-dnt',
       'loading',

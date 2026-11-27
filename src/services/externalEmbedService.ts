@@ -298,30 +298,53 @@ export async function fetchExternalEmbedUrlCached(rawUrl: string): Promise<Exter
   return promise;
 }
 
-export function useResolvedExternalEmbed(
+export interface ResolvedExternalEmbedState {
+  data: ExternalEmbedMetadata | null;
+  isLoading: boolean;
+}
+
+export function useResolvedExternalEmbedState(
   candidateUrl?: string,
   skipFetch = false
-): ExternalEmbedMetadata | null {
+): ResolvedExternalEmbedState {
   const normalized = candidateUrl ? normalizeExternalUrl(candidateUrl) : "";
-  const [resolved, setResolved] = useState<ExternalEmbedMetadata | null>(() =>
-    normalized ? getCachedExternalEmbed(normalized) : null
-  );
+  const [state, setState] = useState<ResolvedExternalEmbedState>(() => {
+    if (!normalized || skipFetch) {
+      return { data: null, isLoading: false };
+    }
+    const cached = getCachedExternalEmbed(normalized);
+    if (cached) {
+      return { data: cached, isLoading: false };
+    }
+    const failedAt = CLIENT_FAILED_CACHE.get(normalized);
+    if (failedAt && Date.now() - failedAt < FAILED_BACKOFF_MS) {
+      return { data: null, isLoading: false };
+    }
+    return { data: null, isLoading: true };
+  });
 
   useEffect(() => {
     if (!normalized || skipFetch) {
-      setResolved(null);
+      setState({ data: null, isLoading: false });
       return;
     }
     const cached = getCachedExternalEmbed(normalized);
     if (cached) {
-      setResolved(cached);
+      setState({ data: cached, isLoading: false });
+      return;
+    }
+    const failedAt = CLIENT_FAILED_CACHE.get(normalized);
+    if (failedAt && Date.now() - failedAt < FAILED_BACKOFF_MS) {
+      setState({ data: null, isLoading: false });
       return;
     }
 
     let cancelled = false;
+    setState((prev) => (prev.data ? prev : { data: null, isLoading: true }));
+
     fetchExternalEmbedUrlCached(normalized).then((meta) => {
-      if (!cancelled && meta) {
-        setResolved(meta);
+      if (!cancelled) {
+        setState({ data: meta, isLoading: false });
       }
     });
 
@@ -330,5 +353,13 @@ export function useResolvedExternalEmbed(
     };
   }, [normalized, skipFetch]);
 
-  return resolved;
+  return state;
 }
+
+export function useResolvedExternalEmbed(
+  candidateUrl?: string,
+  skipFetch = false
+): ExternalEmbedMetadata | null {
+  return useResolvedExternalEmbedState(candidateUrl, skipFetch).data;
+}
+
