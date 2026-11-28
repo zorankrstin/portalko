@@ -226,8 +226,9 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           subtitle={post.subtitle}
           price={post.price || "Po dogovoru"}
           author={post.authorName}
+          authorName={post.authorName}
           authorId={post.authorId}
-          authorAvatar={post.authorAvatar}
+          authorAvatar={effectiveAuthorAvatar || post.authorAvatar}
           authorRole={post.authorRole}
           location="Slovenija"
           date="Ravno objavljeno"
@@ -275,9 +276,10 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           startDate={post.startDate}
           expirationDate={post.expirationDate}
           author={post.authorName}
+          authorName={post.authorName}
           authorId={post.authorId}
           authorRole={post.authorRole || "Partner"}
-          authorAvatar={post.authorAvatar}
+          authorAvatar={effectiveAuthorAvatar || post.authorAvatar}
           date={post.expirationDate ? `Velja do ${post.expirationDate}` : "Aktualno"}
           description={post.content}
           image={post.imageUrl}
@@ -326,8 +328,9 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
           title={post.title}
           subtitle={post.subtitle}
           organizer={post.authorName}
+          authorName={post.authorName}
           authorId={post.authorId}
-          authorAvatar={post.authorAvatar}
+          authorAvatar={effectiveAuthorAvatar || post.authorAvatar}
           authorRole={post.authorRole}
           categoryName={post.categoryName || "Dogodek"}
           category="dogodki"
@@ -367,13 +370,23 @@ export const FirestorePostCard: React.FC<FirestorePostCardProps> = ({ post, onNa
   const bookmarkData = {
     type: 'blog',
     category: post.category || 'blog',
+    categoryName: post.categoryName,
+    subcategory: post.subcategory,
+    subcategoryName: post.subcategoryName,
     title: post.title,
     author: post.authorName,
+    authorName: post.authorName,
+    authorId: post.authorId,
     authorRole: post.authorRole,
-    authorAvatar: post.authorAvatar,
+    authorAvatar: effectiveAuthorAvatar || post.authorAvatar,
     date: formatSlovenianDate(post.createdAt) || 'Nedavno',
+    location: post.location,
     description: post.content,
     image: post.imageUrl || extractedEmbedImage || (imgSrc && !hasImgError ? imgSrc : undefined),
+    tags: normalizedTags.length > 0 ? normalizedTags : undefined,
+    embedCode: post.embedCode,
+    externalUrl: post.externalUrl,
+    isExternalEmbed: post.isExternalEmbed,
   };
 
   const roleLabels: Record<string, string> = {

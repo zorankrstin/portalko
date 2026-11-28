@@ -34,6 +34,8 @@ export interface DealPostProps {
   startDate?: string;
   expirationDate?: string;
   author?: string;
+  authorName?: string;
+  partner?: string;
   authorId?: string;
   authorRole?: string;
   authorAvatar?: string;
@@ -76,10 +78,12 @@ export const DealPost: React.FC<DealPostProps> = ({
   newPrice,
   startDate,
   expirationDate,
-  author = "Partner",
+  author: rawAuthor,
+  authorName,
+  partner,
   authorId,
-  authorRole = "Preverjen partner",
-  authorAvatar,
+  authorRole: rawAuthorRole,
+  authorAvatar: rawAuthorAvatar,
   date = "",
   description = "",
   code,
@@ -109,6 +113,32 @@ export const DealPost: React.FC<DealPostProps> = ({
   onNavigatePost,
   onTagClick,
 }) => {
+  const { users, currentUser } = useAuth();
+  const rawAuthorCandidate = authorName?.trim() || rawAuthor?.trim() || partner?.trim() || '';
+  const matchedAuthorUser = React.useMemo(() => {
+    if (!users || users.length === 0) return undefined;
+    if (authorId) {
+      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      if (byId) return byId;
+    }
+    if (!rawAuthorCandidate) return undefined;
+    return users.find(
+      (u) =>
+        u.name &&
+        (u.name.trim().toLowerCase() === rawAuthorCandidate.toLowerCase() ||
+          slugify(u.name) === slugify(rawAuthorCandidate))
+    );
+  }, [users, authorId, rawAuthorCandidate]);
+
+  const effectiveAuthorId = matchedAuthorUser?.id || authorId;
+  const author =
+    (authorId && matchedAuthorUser?.name?.trim()) ||
+    rawAuthorCandidate ||
+    matchedAuthorUser?.name?.trim() ||
+    "Partner";
+  const authorRole = matchedAuthorUser?.role || rawAuthorRole || "Preverjen partner";
+  const authorAvatar = matchedAuthorUser?.avatar || rawAuthorAvatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);
+
   const normalizedTags = parseTags(tags);
   const [copied, setCopied] = useState(false);
   const [votes, setVotes] = useState(votesCount);
@@ -146,7 +176,9 @@ export const DealPost: React.FC<DealPostProps> = ({
           subcategory,
           subcategoryName,
           author,
-          authorId,
+          authorName: author,
+          partner: author,
+          authorId: effectiveAuthorId,
           authorRole,
           authorAvatar,
           image: (hasVisibleImage ? imgSrc : '') || realStoredImages[0] || '',
@@ -261,7 +293,6 @@ export const DealPost: React.FC<DealPostProps> = ({
     effectiveDate = `Od ${formatSlDate(startDate)}`;
   }
 
-  const { users } = useAuth();
   const bookmarkData = {
     type: 'deal',
     category: 'deals',
@@ -273,22 +304,35 @@ export const DealPost: React.FC<DealPostProps> = ({
     startDate,
     expirationDate,
     author,
+    authorName: author,
+    partner: author,
+    authorId: effectiveAuthorId,
     authorRole,
     authorAvatar: avatarSrc,
     date: effectiveDate,
     description: cleanDescription,
     image: hasVisibleImage ? imgSrc : undefined,
+    images: realStoredImages.length > 0 ? realStoredImages : undefined,
+    tags: normalizedTags.length > 0 ? normalizedTags : undefined,
     code: hasValidCode ? code!.trim() : undefined,
     link,
     votesCount: votes,
     categoryName,
+    subcategory,
+    subcategoryName,
     region,
     verifiedText,
+    embedCode,
+    isExternalEmbed: Boolean(isExternalEmbed || resolvedExternalUrl),
+    externalUrl: resolvedExternalUrl || externalUrl,
+    sourceName: sourceName || resolvedEmbedMeta?.siteName,
+    sourceDomain: sourceDomain || resolvedEmbedMeta?.domain,
+    sourceFavicon: sourceFavicon || resolvedEmbedMeta?.faviconUrl,
   };
 
   const isAuthorVerified = isUserVerified({
     role: authorRole,
-    userId: authorId,
+    userId: effectiveAuthorId,
     name: author,
     users,
   });
@@ -338,7 +382,7 @@ export const DealPost: React.FC<DealPostProps> = ({
               <a
                 href={authorUrl}
                 data-author-name={author}
-                data-author-id={authorId}
+                data-author-id={effectiveAuthorId}
                 data-author-avatar={avatarSrc || authorAvatar}
                 data-author-role={authorRole || 'partner'}
                 data-post-id={id}
@@ -354,7 +398,7 @@ export const DealPost: React.FC<DealPostProps> = ({
                 <UserAvatar
                   src={avatarSrc}
                   name={author}
-                  userId={authorId}
+                  userId={effectiveAuthorId}
                   role={authorRole || 'partner'}
                   className="w-7 h-7 sm:w-8 sm:h-8 group-hover/avatar:ring-2 group-hover/avatar:ring-primary shadow-xs transition-all"
                 />
@@ -363,7 +407,7 @@ export const DealPost: React.FC<DealPostProps> = ({
                 <a
                   href={authorUrl}
                   data-author-name={author}
-                  data-author-id={authorId}
+                  data-author-id={effectiveAuthorId}
                   data-author-avatar={avatarSrc || authorAvatar}
                   data-author-role={authorRole || 'partner'}
                   data-post-id={id}
@@ -528,7 +572,7 @@ export const DealPost: React.FC<DealPostProps> = ({
                 variant="pill"
                 iconType="thumbs-up"
                 itemTitle={cleanTitle}
-                authorId={authorId}
+                authorId={effectiveAuthorId}
                 className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-surface-container/60 bg-surface-container-low hover:bg-surface-container text-on-surface"
               />
               <a 

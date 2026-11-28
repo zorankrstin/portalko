@@ -32,6 +32,7 @@ export interface AdPostProps {
   subtitle?: string;
   price?: string;
   author?: string;
+  authorName?: string;
   authorId?: string;
   authorAvatar?: string;
   authorRole?: string;
@@ -65,18 +66,19 @@ export interface AdPostProps {
 
 export const AdPost: React.FC<AdPostProps> = ({ 
   id = "ad",
-  title = "Apple iPhone 15 Pro 128GB - Naravni Titan, garancija do nov. 2025",
+  title: rawTitle,
   subtitle,
-  price = "790 €",
-  author = "Marko K.",
+  price: rawPrice,
+  author: rawAuthor,
+  authorName,
   authorId,
-  authorAvatar,
-  authorRole = "Uporabnik",
-  authorInitials = "MK",
-  location = "Ljubljana",
-  date = "Danes",
-  description = "Telefon je brezhiben, od prvega dne nošen v originalnem Apple usnjenem ovitku ter z nameščenim PanzerGlass steklom.",
-  categoryName = "Telefonija",
+  authorAvatar: rawAuthorAvatar,
+  authorRole: rawAuthorRole,
+  authorInitials,
+  location: rawLocation,
+  date: rawDate,
+  description: rawDescription,
+  categoryName: rawCategoryName,
   category = "elektronika",
   subcategory,
   subcategoryName,
@@ -99,6 +101,40 @@ export const AdPost: React.FC<AdPostProps> = ({
   onNavigatePost,
   onTagClick,
 }) => {
+  const isDemoAd = !id || id === 'ad';
+  const title = rawTitle ?? (isDemoAd ? "Apple iPhone 15 Pro 128GB - Naravni Titan, garancija do nov. 2025" : "Mali oglas");
+  const price = rawPrice ?? (isDemoAd ? "790 €" : "Po dogovoru");
+  const location = rawLocation ?? (isDemoAd ? "Ljubljana" : "Slovenija");
+  const date = rawDate ?? (isDemoAd ? "Danes" : "");
+  const description = rawDescription ?? (isDemoAd ? "Telefon je brezhiben, od prvega dne nošen v originalnem Apple usnjenem ovitku ter z nameščenim PanzerGlass steklom." : "");
+  const categoryName = rawCategoryName ?? (isDemoAd ? "Telefonija" : "Mali oglas");
+
+  const { users, currentUser } = useAuth();
+  const rawAuthorCandidate = authorName?.trim() || rawAuthor?.trim() || '';
+  const matchedAuthorUser = React.useMemo(() => {
+    if (!users || users.length === 0) return undefined;
+    if (authorId) {
+      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      if (byId) return byId;
+    }
+    if (!rawAuthorCandidate) return undefined;
+    return users.find(
+      (u) =>
+        u.name &&
+        (u.name.trim().toLowerCase() === rawAuthorCandidate.toLowerCase() ||
+          slugify(u.name) === slugify(rawAuthorCandidate))
+    );
+  }, [users, authorId, rawAuthorCandidate]);
+
+  const effectiveAuthorId = matchedAuthorUser?.id || authorId;
+  const author =
+    (authorId && matchedAuthorUser?.name?.trim()) ||
+    rawAuthorCandidate ||
+    matchedAuthorUser?.name?.trim() ||
+    (isDemoAd ? "Marko K." : "Uporabnik");
+  const authorRole = rawAuthorRole || matchedAuthorUser?.role || "Uporabnik";
+  const authorAvatar = rawAuthorAvatar || matchedAuthorUser?.avatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);
+
   const normalizedTags = parseTags(tags);
   const postUrl = buildPostUrl({
     type: 'ad',
@@ -129,7 +165,8 @@ export const AdPost: React.FC<AdPostProps> = ({
           subcategory,
           subcategoryName,
           author,
-          authorId,
+          authorName: author,
+          authorId: effectiveAuthorId,
           authorRole,
           authorAvatar,
           image: imgSrc || image || (images && images[0]) || '',
@@ -214,7 +251,6 @@ export const AdPost: React.FC<AdPostProps> = ({
     setHasError(true);
   };
 
-  const { users } = useAuth();
   const hasVisibleImage = !!imgSrc && !hasError;
   const shouldShowMediaSlot = Boolean(imgSrc || effectiveIsExternalEmbed || embedCode);
   const displayCategory = categoryName || category || 'Oglas';
@@ -223,7 +259,7 @@ export const AdPost: React.FC<AdPostProps> = ({
 
   const isAuthorVerified = isUserVerified({
     role: authorRole,
-    userId: authorId,
+    userId: effectiveAuthorId,
     name: author,
     users,
   });
@@ -232,10 +268,27 @@ export const AdPost: React.FC<AdPostProps> = ({
     type: 'ad',
     category: 'ads',
     title,
-    price,
+    price: effectivePrice,
+    author,
+    authorName: author,
+    authorId: effectiveAuthorId,
+    authorRole,
+    authorAvatar: (authorAvatar && isUserUploadedAvatar(authorAvatar)) ? authorAvatar : undefined,
+    categoryName,
+    subcategory,
+    subcategoryName,
     location,
+    date,
     description: cleanDescription,
     image: hasVisibleImage ? imgSrc : undefined,
+    images: realStoredImages.length > 0 ? realStoredImages : undefined,
+    tags: normalizedTags.length > 0 ? normalizedTags : undefined,
+    embedCode,
+    isExternalEmbed: effectiveIsExternalEmbed,
+    externalUrl: effectiveExternalUrl,
+    sourceName: effectiveSourceName,
+    sourceDomain: effectiveSourceDomain,
+    sourceFavicon: effectiveSourceFavicon,
   };
 
   return (
@@ -362,7 +415,7 @@ export const AdPost: React.FC<AdPostProps> = ({
                 <a
                   href={authorUrl}
                   data-author-name={author}
-                  data-author-id={authorId}
+                  data-author-id={effectiveAuthorId}
                   data-author-avatar={(authorAvatar && isUserUploadedAvatar(authorAvatar)) ? authorAvatar : ''}
                   data-author-role={authorRole}
                   data-post-id={id}
@@ -378,7 +431,7 @@ export const AdPost: React.FC<AdPostProps> = ({
                   <UserAvatar
                     src={authorAvatar}
                     name={author}
-                    userId={authorId}
+                    userId={effectiveAuthorId}
                     role={authorRole}
                     size="xs"
                     className="w-5 h-5 ring-1 ring-surface-container/60 shrink-0"
@@ -414,7 +467,7 @@ export const AdPost: React.FC<AdPostProps> = ({
               initialLikesCount={likesCount} 
               variant="pill" 
               itemTitle={title} 
-              authorId={authorId}
+              authorId={effectiveAuthorId}
               showLabel={false}
               className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container" 
             />

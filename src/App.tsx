@@ -932,7 +932,11 @@ export default function App() {
               />
             )}
             {currentView === 'saved' && (
-              <SavedView searchQuery={searchQuery} />
+              <SavedView
+                searchQuery={searchQuery}
+                onNavigatePost={handleNavigatePost}
+                onAuthorClick={handleAuthorClick}
+              />
             )}
           </main>
 

@@ -33,6 +33,7 @@ export interface BlogPostProps {
   subcategory?: string;
   subcategoryName?: string;
   author?: string;
+  authorName?: string;
   authorId?: string;
   authorRole?: string;
   authorAvatar?: string;
@@ -62,21 +63,22 @@ export interface BlogPostProps {
 
 export const BlogPost: React.FC<BlogPostProps> = ({ 
   id = "blog",
-  title = "Potep po dolini Soče: 5 skritih kotičkov, ki jih morate obiskati to pomlad",
+  title: rawTitle,
   subtitle,
   category = "turizem-izleti",
-  categoryName = "Turizem & Izleti",
+  categoryName: rawCategoryName,
   subcategory,
   subcategoryName,
-  author = "Uredništvo Portalko.net",
+  author: rawAuthor,
+  authorName,
   authorId,
-  authorRole = "admin",
-  authorAvatar = undefined,
-  date = "Pred 2 urama",
-  location = "Dolina Soče, Bovec",
-  description = "Pomlad ob smaragdni reki ponuja popolno tišino pred glavno turistično sezono. Odkrili smo manj znane slapove, neobljudene tolmunčke v Trenti ter domačo sirarno v vasi Čezsoča, kjer še vedno ohranjajo stoletno tradicijo izdelave bovškega sira.",
+  authorRole: rawAuthorRole,
+  authorAvatar: rawAuthorAvatar,
+  date: rawDate,
+  location: rawLocation,
+  description: rawDescription,
   excerpt,
-  image = "https://lh3.googleusercontent.com/aida-public/AB6AXuDmfcqLkX6EpehopwShblWWWTErEk6fiZmrLuObihcFhQPTTdN1UP0HwAJWNxbpewO7AD8rNtHki7D2UQxR3ruAprxzai0oCSFiLO7Ucc2eM__0HctsIVOGVfYNHax9soqlpthUdhwDbTst0e68dCdSFOM0wasuTUnvpZCJ__StsF3T8Qey5cE-RGiZXa7sEzk59Ev8spqvVpe-6CJ-6XR19xlIiJd9yyxqk2aRczUvHRHR4HUWu0Zv",
+  image: rawImage,
   images,
   readTime = "5 minut branja",
   photoCount = "8 fotografij",
@@ -95,13 +97,46 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   onNavigatePost,
   onTagClick,
 }) => {
-  const { users } = useAuth();
+  const isDemoBlog = !id || id === 'blog';
+  const title = rawTitle ?? (isDemoBlog ? "Potep po dolini Soče: 5 skritih kotičkov, ki jih morate obiskati to pomlad" : "Objava");
+  const categoryName = rawCategoryName ?? (isDemoBlog ? "Turizem & Izleti" : "Blog");
+  const date = rawDate ?? (isDemoBlog ? "Pred 2 urama" : "Nedavno");
+  const location = rawLocation ?? (isDemoBlog ? "Dolina Soče, Bovec" : "Slovenija");
+  const description = rawDescription ?? (isDemoBlog ? "Pomlad ob smaragdni reki ponuja popolno tišino pred glavno turistično sezono. Odkrili smo manj znane slapove, neobljudene tolmunčke v Trenti ter domačo sirarno v vasi Čezsoča, kjer še vedno ohranjajo stoletno tradicijo izdelave bovškega sira." : "");
+  const image = rawImage ?? (isDemoBlog ? "https://lh3.googleusercontent.com/aida-public/AB6AXuDmfcqLkX6EpehopwShblWWWTErEk6fiZmrLuObihcFhQPTTdN1UP0HwAJWNxbpewO7AD8rNtHki7D2UQxR3ruAprxzai0oCSFiLO7Ucc2eM__0HctsIVOGVfYNHax9soqlpthUdhwDbTst0e68dCdSFOM0wasuTUnvpZCJ__StsF3T8Qey5cE-RGiZXa7sEzk59Ev8spqvVpe-6CJ-6XR19xlIiJd9yyxqk2aRczUvHRHR4HUWu0Zv" : undefined);
+
+  const { users, currentUser } = useAuth();
+  const rawAuthorCandidate = authorName?.trim() || rawAuthor?.trim() || '';
+  const matchedAuthorUser = React.useMemo(() => {
+    if (!users || users.length === 0) return undefined;
+    if (authorId) {
+      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      if (byId) return byId;
+    }
+    if (!rawAuthorCandidate) return undefined;
+    return users.find(
+      (u) =>
+        u.name &&
+        (u.name.trim().toLowerCase() === rawAuthorCandidate.toLowerCase() ||
+          slugify(u.name) === slugify(rawAuthorCandidate))
+    );
+  }, [users, authorId, rawAuthorCandidate]);
+
+  const effectiveAuthorId = matchedAuthorUser?.id || authorId;
+  const author =
+    (authorId && matchedAuthorUser?.name?.trim()) ||
+    rawAuthorCandidate ||
+    matchedAuthorUser?.name?.trim() ||
+    (isDemoBlog ? "Uredništvo Portalko.net" : "Avtor");
+  const authorRole = matchedAuthorUser?.role || rawAuthorRole || (isDemoBlog ? "admin" : "Član skupnosti");
+  const authorAvatar = matchedAuthorUser?.avatar || rawAuthorAvatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);
+
   const normalizedTags = parseTags(tags);
   const finalDesc = excerpt || description;
 
   const isAuthorVerified = isUserVerified({
     role: authorRole,
-    userId: authorId,
+    userId: effectiveAuthorId,
     name: author,
     users,
   });
@@ -182,7 +217,8 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           subcategory,
           subcategoryName,
           author,
-          authorId,
+          authorName: author,
+          authorId: effectiveAuthorId,
           authorRole,
           authorAvatar,
           image: (imgSrc && !hasError ? imgSrc : '') || realStoredImages[0] || '',
@@ -212,12 +248,22 @@ export const BlogPost: React.FC<BlogPostProps> = ({
     category: 'blog',
     title,
     author,
+    authorName: author,
+    authorId: effectiveAuthorId,
     authorRole,
     authorAvatar,
+    categoryName,
+    subcategory,
+    subcategoryName,
     date,
     location,
     description: finalDesc,
     image: effectiveImage,
+    images: realStoredImages.length > 0 ? realStoredImages : undefined,
+    tags: normalizedTags.length > 0 ? normalizedTags : undefined,
+    embedCode,
+    externalUrl,
+    isExternalEmbed,
     readTime,
     photoCount,
   };
@@ -231,7 +277,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
           <a
             href={authorUrl}
             data-author-name={author}
-            data-author-id={authorId}
+            data-author-id={effectiveAuthorId}
             data-author-avatar={authorAvatar}
             data-author-role={authorRole}
             data-post-id={id}
@@ -240,13 +286,13 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             data-post-image={image}
             data-post-category={categoryName || category}
             data-post-location={location}
-            className="group/avatar shrink-0 focus:outline-none"
+            className="group/author shrink-0 focus:outline-none"
             title={`Ogled profila avtorja: ${author}`}
           >
             <UserAvatar
               src={authorAvatar}
               name={author}
-              userId={authorId}
+              userId={effectiveAuthorId}
               role={authorRole}
               size="md"
               className="w-11 h-11 ring-2 ring-primary/10 group-hover/avatar:ring-primary/40 transition-all"
@@ -257,7 +303,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
               <a
                 href={authorUrl}
                 data-author-name={author}
-                data-author-id={authorId}
+                data-author-id={effectiveAuthorId}
                 data-author-avatar={authorAvatar}
                 data-author-role={authorRole}
                 data-post-id={id}
@@ -423,7 +469,7 @@ export const BlogPost: React.FC<BlogPostProps> = ({
             initialLikesCount={likesCount}
             variant="card-action"
             itemTitle={title}
-            authorId={authorId}
+            authorId={effectiveAuthorId}
           />
           <button 
             onClick={handleOpenDetail}

@@ -2167,23 +2167,6 @@ export function PostDetailPage({
     ? 'Mali oglasi'
     : 'Blog & Članki';
 
-  // Bookmark payload
-  const bookmarkData = {
-    id: itemData.id,
-    type: (target.type === 'blog' || target.type === 'post') ? 'blog' : target.type,
-    category: target.type === 'deal' ? 'deals' : target.type === 'event' ? 'events' : target.type === 'ad' ? 'ads' : 'blog',
-    title: itemData.title,
-    description: itemData.description || itemData.content,
-    price: itemData.price || itemData.discount,
-    discount: itemData.discount,
-    location: itemData.location || itemData.region,
-    date: itemData.date || itemData.eventDate,
-    image: itemData.image || itemData.imageUrl,
-    author: itemData.author || itemData.partner || itemData.organizer,
-    readTime: itemData.readTime,
-    photoCount: itemData.photoCount,
-  };
-
   const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
   const isAuthor = Boolean(currentUser?.id && itemData.authorId && currentUser.id === itemData.authorId);
   const canManage = isAdminOrSuper || isAuthor;
@@ -2275,25 +2258,91 @@ export function PostDetailPage({
     authorAvatar: itemData.partnerAvatar || itemData.authorAvatar,
   };
 
-  const authorDisplayName = itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor';
-  const authorAvatar = itemData.partnerAvatar || itemData.authorAvatar;
-  const authorRole = itemData.partnerRole || itemData.authorRole;
+  const authorDisplayName =
+    itemData.author ||
+    itemData.authorName ||
+    itemData.partner ||
+    itemData.organizer ||
+    'Avtor';
   const rawAuthorId = itemData.authorId || itemData.partnerId || itemData.organizerId;
   const matchedAuthorUser = users.find(
     u =>
       (rawAuthorId && u.id === rawAuthorId) ||
       (authorDisplayName &&
+        authorDisplayName !== 'Avtor' &&
         (u.name.trim().toLowerCase() === authorDisplayName.trim().toLowerCase() ||
           slugify(u.name) === slugify(authorDisplayName)))
   );
   const authorId = rawAuthorId || matchedAuthorUser?.id;
+  const resolvedAuthorName =
+    itemData.author ||
+    itemData.authorName ||
+    itemData.partner ||
+    itemData.organizer ||
+    matchedAuthorUser?.name ||
+    'Avtor';
+  const authorAvatar =
+    resolveUserUploadedAvatar(
+      itemData.partnerAvatar || itemData.authorAvatar,
+      authorId,
+      resolvedAuthorName,
+      users,
+      currentUser
+    ) ||
+    itemData.partnerAvatar ||
+    itemData.authorAvatar;
+  const authorRole = itemData.partnerRole || itemData.authorRole || matchedAuthorUser?.role;
 
   const isAuthorVerified = isUserVerified({
     role: authorRole,
     userId: authorId,
-    name: authorDisplayName,
+    name: resolvedAuthorName,
     users,
   });
+
+  // Bookmark payload with complete resolved author & item metadata
+  const bookmarkData = {
+    id: itemData.id,
+    type: (target.type === 'blog' || target.type === 'post') ? 'blog' : target.type,
+    category: target.type === 'deal' ? 'deals' : target.type === 'event' ? 'events' : target.type === 'ad' ? 'ads' : 'blog',
+    categoryName: itemData.categoryName,
+    subcategory: itemData.subcategory,
+    subcategoryName: itemData.subcategoryName,
+    title: itemData.title,
+    description: itemData.description || itemData.content,
+    price: itemData.price || itemData.discount,
+    discount: itemData.discount,
+    oldPrice: itemData.oldPrice,
+    newPrice: itemData.newPrice,
+    location: itemData.location || itemData.region,
+    region: itemData.region,
+    date: itemData.date || itemData.eventDate,
+    eventDate: itemData.eventDate,
+    eventTime: itemData.eventTime,
+    eventDates: itemData.eventDates,
+    eventSchedule: itemData.eventSchedule,
+    month: itemData.month,
+    day: itemData.day,
+    ticketUrl: itemData.ticketUrl,
+    image: itemData.image || itemData.imageUrl || (postImages && postImages[0]),
+    images: postImages && postImages.length > 0 ? postImages : itemData.images,
+    author: resolvedAuthorName,
+    authorName: resolvedAuthorName,
+    authorId,
+    authorRole,
+    authorAvatar,
+    organizer: target.type === 'event' ? resolvedAuthorName : itemData.organizer,
+    partner: target.type === 'deal' ? resolvedAuthorName : itemData.partner,
+    tags: itemData.tags,
+    embedCode: itemData.embedCode,
+    isExternalEmbed: (itemData as any).isExternalEmbed,
+    externalUrl: (itemData as any).externalUrl,
+    sourceName: (itemData as any).sourceName,
+    sourceDomain: (itemData as any).sourceDomain,
+    sourceFavicon: (itemData as any).sourceFavicon,
+    readTime: itemData.readTime,
+    photoCount: itemData.photoCount,
+  };
 
   const rawItemViews = typeof itemData.viewsCount === 'number' 
     ? itemData.viewsCount 

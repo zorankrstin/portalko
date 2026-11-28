@@ -149,13 +149,26 @@ function MaliOglasiFeedAdCard({
                 data={{
                   id: ad.id,
                   type: 'ad',
+                  category: 'ads',
+                  categoryName: ad.categoryName || ad.category,
+                  subcategory: ad.subcategory,
+                  subcategoryName: ad.subcategoryName,
                   title: cleanTitle,
                   description: cleanDescription,
-                  category: ad.categoryName || ad.category,
                   location: ad.location || ad.region,
                   price: displayPrice,
+                  image: displayImage || undefined,
                   imageUrl: displayImage || undefined,
                   author: ad.authorName,
+                  authorName: ad.authorName,
+                  authorId: ad.authorId,
+                  authorAvatar: ad.authorAvatar,
+                  authorRole: ad.authorRole,
+                  externalUrl: effectiveExternalUrl,
+                  isExternalEmbed: effectiveIsExternal,
+                  sourceName: effectiveSourceName,
+                  sourceDomain: effectiveSourceDomain,
+                  sourceFavicon: effectiveSourceFavicon,
                 }}
               />
               <ShareMenu

@@ -1017,7 +1017,10 @@ export function UserProfile({
 
         {/* Built-in Saved */}
         {currentTab?.type === 'builtIn' && currentTab.builtInTab === 'saved' && (
-          <SavedPostsTab />
+          <SavedPostsTab
+            onNavigatePost={onNavigatePost}
+            onAuthorClick={onAuthorClick}
+          />
         )}
 
         {/* Built-in Social Network Graph (D3.js) */}

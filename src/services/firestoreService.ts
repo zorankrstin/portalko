@@ -812,31 +812,48 @@ export async function syncUserProfile(user: User): Promise<void> {
 }
 
 export async function fetchUserProfile(userId: string): Promise<User | null> {
+  if (!userId) return null;
   const path = `users/${userId}`;
+  const mapSnapToUser = (docId: string, data: Record<string, any>): User => ({
+    id: data.id || docId,
+    name: data.name || '',
+    email: data.email || '',
+    role: (data.role || 'registered') as Role,
+    status: (data.status || 'active') as 'active' | 'banned',
+    avatar: data.avatar,
+    bio: data.bio,
+    username: data.username,
+    googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
+    socialLinks: data.socialLinks,
+    profileMenu: data.profileMenu,
+    verificationRequested: data.verificationRequested,
+    verificationRequestedAt: data.verificationRequestedAt,
+    verificationNote: data.verificationNote,
+    emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+    verificationToken: data.verificationToken || undefined,
+    verificationSentAt: data.verificationSentAt || undefined,
+  });
+
   try {
     const userRef = doc(db, 'users', userId);
     const snap = await getDoc(userRef);
     if (snap.exists()) {
-      const data = snap.data();
-      return {
-        id: data.id || userId,
-        name: data.name,
-        email: data.email,
-        role: (data.role || 'registered') as Role,
-        status: (data.status || 'active') as 'active' | 'banned',
-        avatar: data.avatar,
-        bio: data.bio,
-        username: data.username,
-        socialLinks: data.socialLinks,
-        profileMenu: data.profileMenu,
-        verificationRequested: data.verificationRequested,
-        verificationRequestedAt: data.verificationRequestedAt,
-        verificationNote: data.verificationNote,
-        emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
-        verificationToken: data.verificationToken || undefined,
-        verificationSentAt: data.verificationSentAt || undefined,
-      };
+      return mapSnapToUser(snap.id, snap.data());
     }
+
+    // Fallback when authorId stores user.id (e.g. "u_...") or googleId while doc ID is Firebase UID
+    const byIdSnap = await getDocs(query(collection(db, 'users'), where('id', '==', userId), limit(1)));
+    if (!byIdSnap.empty) {
+      const matched = byIdSnap.docs[0];
+      return mapSnapToUser(matched.id, matched.data());
+    }
+
+    const byGoogleIdSnap = await getDocs(query(collection(db, 'users'), where('googleId', '==', userId), limit(1)));
+    if (!byGoogleIdSnap.empty) {
+      const matched = byGoogleIdSnap.docs[0];
+      return mapSnapToUser(matched.id, matched.data());
+    }
+
     return null;
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
@@ -1163,7 +1180,7 @@ export async function fetchUsersList(): Promise<User[]> {
   const path = 'users';
   try {
     await syncDeletedUsersFromFirestore().catch(() => {});
-    const q = query(collection(db, path), limit(100));
+    const q = query(collection(db, path), limit(500));
     const snap = await getDocs(q);
     const users: User[] = [];
     for (const d of snap.docs) {
@@ -1187,6 +1204,7 @@ export async function fetchUsersList(): Promise<User[]> {
         avatar: data.avatar,
         bio: data.bio,
         username: data.username,
+        googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
         socialLinks: data.socialLinks,
         profileMenu: data.profileMenu,
         verificationRequested: data.verificationRequested,
@@ -1222,7 +1240,7 @@ function rawSubscribeToUsers(onUsers: (users: User[]) => void): () => void {
   const path = 'users';
   try {
     syncDeletedUsersFromFirestore().catch(() => {});
-    const q = query(collection(db, path), limit(100));
+    const q = query(collection(db, path), limit(500));
     return onSnapshot(q, (snapshot) => {
       const users: User[] = [];
       snapshot.docs.forEach(d => {
@@ -1247,6 +1265,7 @@ function rawSubscribeToUsers(onUsers: (users: User[]) => void): () => void {
           bio: data.bio,
           username: data.username,
           password: data.password,
+          googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
           socialLinks: data.socialLinks,
           profileMenu: data.profileMenu,
           verificationRequested: data.verificationRequested,

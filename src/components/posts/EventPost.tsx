@@ -32,6 +32,7 @@ export interface EventPostProps {
   title?: string;
   subtitle?: string;
   organizer?: string;
+  author?: string;
   authorName?: string;
   authorId?: string;
   authorAvatar?: string;
@@ -43,6 +44,7 @@ export interface EventPostProps {
   location?: string;
   region?: string;
   date?: string;
+  eventDate?: string;
   time?: string;
   eventTime?: string;
   eventDates?: string[];
@@ -73,29 +75,31 @@ export interface EventPostProps {
 
 export const EventPost: React.FC<EventPostProps> = ({ 
   id = "event",
-  title = "Literarni večer z domačimi avtorji in akustični koncert Dua Sever",
+  title: rawTitle,
   subtitle,
-  organizer = "Mestna knjižnica Kranj",
+  organizer,
+  author,
   authorName,
   authorId,
   authorAvatar,
-  authorRole = "Organizator",
-  categoryName = "Kultura & Umetnost • Kranj",
+  authorRole: rawAuthorRole,
+  categoryName: rawCategoryName,
   category = "dogodki",
   subcategory,
   subcategoryName,
-  location = "Kranj, Glavni trg 12",
+  location: rawLocation,
   region,
-  date = "Četrtek, 20. marec ob 19:00",
+  date: rawDate,
+  eventDate,
   time,
   eventTime,
   eventDates,
   eventSchedule,
-  month = "MAR",
-  day = "20",
+  month: rawMonth,
+  day: rawDay,
   price,
   ticketUrl,
-  description = "Vabljeni v dvorano Mestna knjižnice Kranj na predstavitev novih pesniških zbirk gorenjskih avtorjev.",
+  description: rawDescription,
   image,
   images,
   interestedCount = 86,
@@ -114,21 +118,52 @@ export const EventPost: React.FC<EventPostProps> = ({
   onCategoryClick,
   onLocationClick,
 }) => {
+  const isDemoEvent = !id || id === 'event';
+  const title = rawTitle ?? (isDemoEvent ? "Literarni večer z domačimi avtorji in akustični koncert Dua Sever" : "Dogodek");
+  const categoryName = rawCategoryName ?? (isDemoEvent ? "Kultura & Umetnost • Kranj" : "Dogodek");
+  const location = rawLocation ?? (isDemoEvent ? "Kranj, Glavni trg 12" : (region || "Slovenija"));
+  const date = rawDate ?? eventDate ?? (isDemoEvent ? "Četrtek, 20. marec ob 19:00" : "");
+  const month = rawMonth ?? (isDemoEvent ? "MAR" : "DOG");
+  const day = rawDay ?? (isDemoEvent ? "20" : "★");
+  const description = rawDescription ?? (isDemoEvent ? "Vabljeni v dvorano Mestna knjižnice Kranj na predstavitev novih pesniških zbirk gorenjskih avtorjev." : "");
+
   const normalizedTags = parseTags(tags);
   const { filterByEventLocation } = useEventFilter();
   const { users, currentUser } = useAuth();
 
-  const effectiveAuthorDisplayName = authorName || organizer;
+  const rawAuthorCandidate = authorName?.trim() || organizer?.trim() || author?.trim() || '';
+  const matchedAuthorUser = useMemo(() => {
+    if (!users || users.length === 0) return undefined;
+    if (authorId) {
+      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      if (byId) return byId;
+    }
+    if (!rawAuthorCandidate) return undefined;
+    return users.find(
+      (u) =>
+        u.name &&
+        (u.name.trim().toLowerCase() === rawAuthorCandidate.toLowerCase() ||
+          slugify(u.name) === slugify(rawAuthorCandidate))
+    );
+  }, [users, authorId, rawAuthorCandidate]);
+
+  const effectiveAuthorId = matchedAuthorUser?.id || authorId;
+  const effectiveAuthorRole = matchedAuthorUser?.role || rawAuthorRole || 'Organizator';
+  const effectiveAuthorDisplayName =
+    (authorId && matchedAuthorUser?.name?.trim()) ||
+    rawAuthorCandidate ||
+    matchedAuthorUser?.name?.trim() ||
+    (isDemoEvent ? 'Mestna knjižnica Kranj' : 'Organizator');
 
   const effectiveAuthorAvatar = useMemo(() => {
     return resolveUserUploadedAvatar(
-      authorAvatar,
-      authorId,
+      authorAvatar || matchedAuthorUser?.avatar,
+      effectiveAuthorId,
       effectiveAuthorDisplayName,
       users,
       currentUser
     );
-  }, [authorAvatar, authorId, effectiveAuthorDisplayName, users, currentUser]);
+  }, [authorAvatar, matchedAuthorUser?.avatar, effectiveAuthorId, effectiveAuthorDisplayName, users, currentUser]);
 
   const handleLocationClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -154,7 +189,7 @@ export const EventPost: React.FC<EventPostProps> = ({
     subcategoryName,
   });
 
-  const authorUrl = `/avtor/${slugify(organizer)}`;
+  const authorUrl = `/avtor/${slugify(effectiveAuthorDisplayName)}`;
 
   const effectiveTime = eventTime || time;
 
@@ -168,14 +203,14 @@ export const EventPost: React.FC<EventPostProps> = ({
   // Dynamically resolve next earliest upcoming date if multiple dates or schedule exist
   const resolvedDate = useMemo(() => {
     return resolveEventDisplayDate({
-      eventDate: (eventDates && eventDates[0]) || date,
+      eventDate: eventDate || (eventDates && eventDates[0]) || date,
       date,
       eventDates,
       eventSchedule,
       eventTime: effectiveTime,
       location,
     });
-  }, [date, eventDates, eventSchedule, effectiveTime, location]);
+  }, [eventDate, date, eventDates, eventSchedule, effectiveTime, location]);
 
   const displayDate = resolvedDate.dateInfo.fullDate || date;
   const displayMonth = resolvedDate.dateInfo.month || month || 'DOG';
@@ -200,10 +235,12 @@ export const EventPost: React.FC<EventPostProps> = ({
           categoryName,
           subcategory,
           subcategoryName,
-          author: organizer,
-          authorId,
+          author: effectiveAuthorDisplayName,
+          authorName: effectiveAuthorDisplayName,
+          organizer: effectiveAuthorDisplayName,
+          authorId: effectiveAuthorId,
           authorAvatar: effectiveAuthorAvatar,
-          authorRole,
+          authorRole: effectiveAuthorRole,
           image: imgSrc || image || '',
           images: (images && images.length > 0) ? images : (image ? [image] : (imgSrc ? [imgSrc] : [])),
           location: displayLocation,
@@ -297,20 +334,38 @@ export const EventPost: React.FC<EventPostProps> = ({
     type: 'event',
     category: 'events',
     title,
-    organizer,
+    organizer: effectiveAuthorDisplayName,
+    author: effectiveAuthorDisplayName,
+    authorName: effectiveAuthorDisplayName,
+    authorId: effectiveAuthorId,
+    authorAvatar: effectiveAuthorAvatar,
+    authorRole: effectiveAuthorRole,
     categoryName,
+    subcategory,
+    subcategoryName,
     location: displayLocation,
+    region,
     date: displayDate,
+    eventDate: resolvedDate.dateYmd || eventDate,
+    eventTime: displayTime,
+    eventDates,
+    eventSchedule,
     month: displayMonth,
     day: displayDay,
     price: displayPrice,
+    ticketUrl,
     description: cleanDescription,
     image: hasVisibleImage ? imgSrc : undefined,
+    images: realStoredImages.length > 0 ? realStoredImages : undefined,
+    tags: normalizedTags.length > 0 ? normalizedTags : undefined,
+    embedCode,
+    externalUrl: sourceEmbedUrl || externalUrl,
+    isExternalEmbed: Boolean(isExternalEmbed || sourceEmbedUrl || externalUrl),
   };
 
   const isAuthorVerified = isUserVerified({
-    role: authorRole,
-    userId: authorId,
+    role: effectiveAuthorRole,
+    userId: effectiveAuthorId,
     name: effectiveAuthorDisplayName,
     users,
   });
@@ -379,9 +434,9 @@ export const EventPost: React.FC<EventPostProps> = ({
                       e.preventDefault();
                       onAuthorClick({
                         name: effectiveAuthorDisplayName,
-                        id: authorId,
+                        id: effectiveAuthorId,
                         avatar: effectiveAuthorAvatar,
-                        role: authorRole,
+                        role: effectiveAuthorRole,
                         fromPostTarget: {
                           type: 'event',
                           id,
@@ -396,9 +451,9 @@ export const EventPost: React.FC<EventPostProps> = ({
                     }
                   }}
                   data-author-name={effectiveAuthorDisplayName}
-                  data-author-id={authorId}
+                  data-author-id={effectiveAuthorId}
                   data-author-avatar={effectiveAuthorAvatar || ''}
-                  data-author-role={authorRole}
+                  data-author-role={effectiveAuthorRole}
                   data-post-id={id}
                   data-post-type="event"
                   data-post-title={title}
@@ -411,8 +466,8 @@ export const EventPost: React.FC<EventPostProps> = ({
                   <UserAvatar
                     src={effectiveAuthorAvatar}
                     name={effectiveAuthorDisplayName}
-                    userId={authorId}
-                    role={authorRole}
+                    userId={effectiveAuthorId}
+                    role={effectiveAuthorRole}
                     size="sm"
                     className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 ring-1.5 ring-surface-container-high group-hover/author:ring-primary shadow-xs transition-all"
                   />
@@ -436,7 +491,7 @@ export const EventPost: React.FC<EventPostProps> = ({
                 url={`${window.location.origin}${postUrl}`}
                 imageUrl={hasVisibleImage ? imgSrc : image}
                 category={categoryName || category}
-                author={organizer || authorName}
+                author={effectiveAuthorDisplayName}
                 date={date}
                 location={location}
                 price={price}
@@ -445,7 +500,7 @@ export const EventPost: React.FC<EventPostProps> = ({
                 targetId={id} 
                 targetType="event" 
                 targetTitle={title} 
-                targetAuthor={organizer} 
+                targetAuthor={effectiveAuthorDisplayName} 
               />
             </div>
           </div>
@@ -564,7 +619,7 @@ export const EventPost: React.FC<EventPostProps> = ({
               initialLikesCount={likesCount} 
               variant="pill" 
               itemTitle={title} 
-              authorId={authorId}
+              authorId={effectiveAuthorId}
               showLabel={false}
               className="px-2.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-surface-container" 
             />
@@ -590,7 +645,7 @@ export const EventPost: React.FC<EventPostProps> = ({
               url={`${window.location.origin}${postUrl}`}
               imageUrl={hasVisibleImage ? imgSrc : image}
               category={categoryName || category}
-              author={organizer || authorName}
+              author={effectiveAuthorDisplayName}
               date={date}
               location={location}
               price={price}
