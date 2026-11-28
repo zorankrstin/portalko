@@ -504,6 +504,10 @@ export function UserProfile({
   const [avatarUploadSuccess, setAvatarUploadSuccess] = useState('');
   const [avatarImgFailed, setAvatarImgFailed] = useState(false);
 
+  useEffect(() => {
+    setAvatarImgFailed(false);
+  }, [currentUser?.avatar]);
+
   const hasUploadedAvatar = Boolean(
     currentUser.avatar && 
     isUserUploadedAvatar(currentUser.avatar) && 

@@ -16,6 +16,7 @@ export interface AvatarUser {
   role?: string;
   email?: string;
   googleId?: string;
+  alternateIds?: string[];
   username?: string;
 }
 
@@ -139,60 +140,46 @@ export function resolveUserUploadedAvatar(
   usersList?: AvatarUser[] | null,
   activeCurrentUser?: AvatarUser | null
 ): string | undefined {
-  // 1. Direct explicit avatar if provided and uploaded by user
-  if (explicitAvatar && isCustomUploadedAvatar(explicitAvatar)) {
-    return explicitAvatar;
-  }
-
-  // 2. If active logged-in user matches by unique ID or email, their current session avatar applies
-  if (activeCurrentUser && userId) {
-    const isCurrentUserMatch =
-      activeCurrentUser.id === userId ||
-      (activeCurrentUser.googleId && activeCurrentUser.googleId === userId) ||
-      (activeCurrentUser.email && activeCurrentUser.email.toLowerCase() === userId.toLowerCase());
-
-    if (isCurrentUserMatch) {
-      if (activeCurrentUser.avatar && isUserUploadedAvatar(activeCurrentUser.avatar)) {
-        return activeCurrentUser.avatar;
-      }
-      // If active user is the target but has no custom avatar, return undefined (use initials)
-      return undefined;
-    }
-  }
-
-  // 3. Look up strictly by unique userId / email in usersList
-  if (userId && usersList && usersList.length > 0) {
-    const cleanUserId = userId.replace(/^(user|author|organizer|partner)-/, '');
-    const matched = usersList.find(u =>
+  const cleanUserId = userId ? userId.replace(/^(user|author|organizer|partner)-/, '') : '';
+  const matchesUserRecord = (u: AvatarUser) => {
+    if (!userId) return false;
+    return (
       u.id === userId ||
       u.id === cleanUserId ||
-      (u.googleId && u.googleId === userId) ||
+      (u.googleId && (u.googleId === userId || u.googleId === cleanUserId)) ||
+      (u.alternateIds && (u.alternateIds.includes(userId) || u.alternateIds.includes(cleanUserId))) ||
       (u.email && u.email.toLowerCase() === userId.toLowerCase())
     );
+  };
 
+  // 1. If active logged-in user matches by unique ID/alias or email, their current live session avatar always wins
+  if (activeCurrentUser && userId && matchesUserRecord(activeCurrentUser)) {
+    if (activeCurrentUser.avatar && isUserUploadedAvatar(activeCurrentUser.avatar)) {
+      return activeCurrentUser.avatar;
+    }
+    return undefined;
+  }
+
+  // 2. Look up live user record strictly by unique userId / googleId / alternateIds / email in usersList
+  if (userId && usersList && usersList.length > 0) {
+    const matched = usersList.find(matchesUserRecord);
     if (matched) {
       if (matched.avatar && isUserUploadedAvatar(matched.avatar)) {
         return matched.avatar;
       }
-      // User found in list but has no avatar: do not cross-match another user with same name!
+      // User found in live directory without an uploaded avatar: return undefined (use initials, never stale/dummy photo)
       return undefined;
     }
   }
 
-  // 4. Look up strictly in localStorage portal_users by userId / email
+  // 3. Look up strictly in localStorage portal_users by userId / alternateIds / email
   if (userId && typeof window !== 'undefined') {
     try {
       const rawUsers = localStorage.getItem('portal_users');
       if (rawUsers) {
         const parsed = JSON.parse(rawUsers);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleanUserId = userId.replace(/^(user|author|organizer|partner)-/, '');
-          const matched = parsed.find((u: any) =>
-            u.id === userId ||
-            u.id === cleanUserId ||
-            (u.googleId && u.googleId === userId) ||
-            (u.email && u.email.toLowerCase() === userId.toLowerCase())
-          );
+          const matched = parsed.find((u: any) => matchesUserRecord(u));
           if (matched) {
             if (matched.avatar && isUserUploadedAvatar(matched.avatar)) {
               return matched.avatar;
@@ -206,12 +193,15 @@ export function resolveUserUploadedAvatar(
     }
   }
 
-  // 5. Fallback to explicit non-dummy avatar if available
+  // 4. Fallback to explicit non-dummy avatar when user record isn't in directory yet
+  if (explicitAvatar && isCustomUploadedAvatar(explicitAvatar)) {
+    return explicitAvatar;
+  }
   if (explicitAvatar && isUserUploadedAvatar(explicitAvatar)) {
     return explicitAvatar;
   }
 
-  // 6. Known official editorial fallback only
+  // 5. Known official editorial fallback only
   if (authorName) {
     const lower = authorName.toLowerCase();
     if (lower.includes('portalko') || lower.includes('uredništvo')) {

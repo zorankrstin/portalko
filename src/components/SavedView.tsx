@@ -3,6 +3,7 @@ import { SavedPostsTab } from './SavedPostsTab';
 import { useAuth, User } from '../contexts/AuthContext';
 import { useBookmarks } from '../contexts/BookmarkContext';
 import { fetchUserProfile, fetchUsersList } from '../services/firestoreService';
+import { isDummyAvatar } from '../utils/avatarUtils';
 import type { PostDetailTarget } from '../types';
 
 export function SavedView({
@@ -56,7 +57,13 @@ export function SavedView({
             u.googleId,
           ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
         );
-        map.set(u.id, { ...existing, ...u, name: u.name || existing.name, alternateIds: mergedAltIds });
+        map.set(u.id, {
+          ...existing,
+          ...u,
+          name: u.name || existing.name,
+          avatar: (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : existing.avatar,
+          alternateIds: mergedAltIds,
+        });
       } else {
         map.set(u.id, u);
       }

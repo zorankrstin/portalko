@@ -11,7 +11,7 @@ import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
 import { parseTags } from "../../utils/tagUtils";
 import { UserAvatar } from "../common/UserAvatar";
-import { isUserUploadedAvatar } from "../../utils/avatarUtils";
+import { isUserUploadedAvatar, resolveUserUploadedAvatar } from "../../utils/avatarUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
@@ -146,7 +146,13 @@ export const DealPost: React.FC<DealPostProps> = ({
     rawAuthorCandidate ||
     "Partner";
   const authorRole = matchedAuthorUser?.role || rawAuthorRole || "Preverjen partner";
-  const authorAvatar = matchedAuthorUser?.avatar || rawAuthorAvatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);
+  const authorAvatar = resolveUserUploadedAvatar(
+    matchedAuthorUser ? matchedAuthorUser.avatar : rawAuthorAvatar,
+    effectiveAuthorId,
+    author,
+    users,
+    currentUser
+  );
 
   const normalizedTags = parseTags(tags);
   const [copied, setCopied] = useState(false);

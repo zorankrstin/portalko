@@ -176,13 +176,13 @@ export const EventPost: React.FC<EventPostProps> = ({
 
   const effectiveAuthorAvatar = useMemo(() => {
     return resolveUserUploadedAvatar(
-      authorAvatar || matchedAuthorUser?.avatar,
+      matchedAuthorUser ? matchedAuthorUser.avatar : authorAvatar,
       effectiveAuthorId,
       effectiveAuthorDisplayName,
       users,
       currentUser
     );
-  }, [authorAvatar, matchedAuthorUser?.avatar, effectiveAuthorId, effectiveAuthorDisplayName, users, currentUser]);
+  }, [authorAvatar, matchedAuthorUser, effectiveAuthorId, effectiveAuthorDisplayName, users, currentUser]);
 
   const handleLocationClick = (e: React.MouseEvent) => {
     e.preventDefault();

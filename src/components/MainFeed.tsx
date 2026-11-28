@@ -18,6 +18,7 @@ import { isItemActivelyPromoted } from '../services/promotionService';
 import { parseEventDateInfo, resolveEventDisplayDate, resolveItemEntryTimestamp, formatSlovenianDate } from '../utils/dateUtils';
 import { slugify } from '../utils/urlUtils';
 import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
+import { UserAvatar } from './common/UserAvatar';
 import { usePageSeo } from '../services/seoSettingsService';
 import { getFeedCardAnimationClass } from '../utils/animationUtils';
 
@@ -251,7 +252,6 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTag
   }, [filteredItems, currentLimit]);
   const hasMore = currentLimit < filteredItems.length;
 
-  const userAvatar = currentUser?.avatar || "https://lh3.googleusercontent.com/aida/AEtjO1WzgwshpYtUlUT6B6hzTtlscXMkpKFYIjPiStIYfRrhCOV_MJeKV53x2D-tigu5SbHyESMyvILulBOUHZNfXTh6f8BRNGoWAkmZGhTeSWRB6n0Yw7IQRI0B91gU_U5KeEaSv6GZGH_W05qE5EOybPtK8yTXIY8KRAN88q_810UgS5RUyRmLSTI-zFjGHDUBCI7ELn7zCVDuy5Hy1SYdchdHKbBPfokQqaaMmc3liYXq_mNFC7yqQPYrfuA";
   const firstName = currentUser ? currentUser.name.split(' ')[0] : 'obiskovalec';
 
   return (
@@ -274,7 +274,22 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTag
       {/* Hitro ustvarjanje objave (Composer Widget) */}
       <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-sm border border-surface-container/50 flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <img alt={`Avatar ${firstName}`} className="w-10 h-10 rounded-full object-cover ring-1 ring-black/5" src={userAvatar} />
+          {currentUser ? (
+            <UserAvatar
+              src={currentUser.avatar}
+              name={currentUser.name}
+              userId={currentUser.id}
+              role={currentUser.role}
+              size="md"
+              className="w-10 h-10 ring-1 ring-black/5 shrink-0"
+            />
+          ) : (
+            <UserAvatar
+              name="Portalko"
+              size="md"
+              className="w-10 h-10 ring-1 ring-black/5 shrink-0"
+            />
+          )}
           <div 
             onClick={() => openCompose(currentUser?.role === 'registered' ? 'ad' : 'post')}
             className="flex-1 bg-surface-container-low hover:bg-surface-container rounded-xl px-4 py-2.5 text-outline text-body-md font-body-md cursor-pointer transition-colors flex items-center justify-between"

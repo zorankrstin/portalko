@@ -155,10 +155,22 @@ export function PublicAuthorProfile({ targetAuthor, onBack, onNavigatePost, onVi
     const authorSlug = slugify(targetAuthor.name);
     const cleanAuthorSlug = authorSlug.replace(/-/g, '');
 
-    // 1. If targetAuthor has an id, find the exact matching user
+    // 1. If targetAuthor has an id, find the exact matching user (including alternateIds / googleId)
     if (targetAuthor.id) {
-      if (currentUser && currentUser.id === targetAuthor.id) return currentUser;
-      const exactUser = users.find(u => u.id === targetAuthor.id);
+      if (
+        currentUser &&
+        (currentUser.id === targetAuthor.id ||
+          currentUser.googleId === targetAuthor.id ||
+          currentUser.alternateIds?.includes(targetAuthor.id))
+      ) {
+        return currentUser;
+      }
+      const exactUser = users.find(
+        (u) =>
+          u.id === targetAuthor.id ||
+          u.googleId === targetAuthor.id ||
+          (u.alternateIds && u.alternateIds.includes(targetAuthor.id!))
+      );
       if (exactUser) return exactUser;
     }
 

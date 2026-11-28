@@ -2283,16 +2283,13 @@ export function PostDetailPage({
     matchedAuthorUser?.name?.trim() ||
     (!isPlaceholderAuthor ? rawAuthorText : '') ||
     (target.type === 'event' ? 'Organizator' : target.type === 'deal' ? 'Portalko partner' : 'Avtor');
-  const authorAvatar =
-    resolveUserUploadedAvatar(
-      itemData.partnerAvatar || itemData.authorAvatar,
-      authorId,
-      resolvedAuthorName,
-      users,
-      currentUser
-    ) ||
-    itemData.partnerAvatar ||
-    itemData.authorAvatar;
+  const authorAvatar = resolveUserUploadedAvatar(
+    matchedAuthorUser ? matchedAuthorUser.avatar : (itemData.partnerAvatar || itemData.authorAvatar),
+    authorId,
+    resolvedAuthorName,
+    users,
+    currentUser
+  );
   const authorRole = itemData.partnerRole || itemData.authorRole || matchedAuthorUser?.role;
 
   const isAuthorVerified = isUserVerified({

@@ -3,6 +3,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { subscribeToBookmarks, saveBookmarkInFirestore, removeBookmarkInFirestore } from '../services/firestoreService';
+import { isDummyAvatar } from '../utils/avatarUtils';
 
 export type BookmarkCategory = 'all' | 'news' | 'ads' | 'events' | 'blog' | 'deals';
 
@@ -26,10 +27,19 @@ export function isDummyBookmarkAuthor(name?: string | null): boolean {
 function sanitizeSavedItemAuthorFields(id: string, item: SavedItemData): SavedItemData {
   if (!item || DEFAULT_KNOWN_ITEMS[id]) return item;
   const copy: SavedItemData = { ...item };
+  const hadDummyAuthorName =
+    isDummyBookmarkAuthor(copy.author) ||
+    isDummyBookmarkAuthor(copy.authorName) ||
+    isDummyBookmarkAuthor(copy.organizer) ||
+    isDummyBookmarkAuthor(copy.partner);
+
   if (isDummyBookmarkAuthor(copy.author)) delete copy.author;
   if (isDummyBookmarkAuthor(copy.authorName)) delete copy.authorName;
   if (isDummyBookmarkAuthor(copy.organizer)) delete copy.organizer;
   if (isDummyBookmarkAuthor(copy.partner)) delete copy.partner;
+  if (hadDummyAuthorName || (copy.authorAvatar && isDummyAvatar(copy.authorAvatar))) {
+    delete copy.authorAvatar;
+  }
   return copy;
 }
 
@@ -402,15 +412,19 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
     setSavedItems(prev => {
       const existing = prev[id];
       if (!existing) return prev;
-      const merged = sanitizeSavedItemAuthorFields(id, { ...existing, ...patch, id });
+      const nextRaw: SavedItemData = { ...existing, ...patch, id };
+      if ('authorAvatar' in patch && !patch.authorAvatar) {
+        delete nextRaw.authorAvatar;
+      }
+      const merged = sanitizeSavedItemAuthorFields(id, nextRaw);
       const changed = (
         merged.authorId !== existing.authorId ||
         merged.authorName !== existing.authorName ||
         merged.author !== existing.author ||
         merged.organizer !== existing.organizer ||
         merged.partner !== existing.partner ||
-        merged.authorAvatar !== existing.authorAvatar ||
-        merged.authorRole !== existing.authorRole
+        (merged.authorAvatar || '') !== (existing.authorAvatar || '') ||
+        (merged.authorRole || '') !== (existing.authorRole || '')
       );
       if (!changed) return prev;
       return { ...prev, [id]: merged };

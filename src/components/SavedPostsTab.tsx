@@ -24,7 +24,7 @@ import { matchesSearchAndCategory } from '../utils/searchUtils';
 import { usePageSeo } from '../services/seoSettingsService';
 import { getFeedCardAnimationClass } from '../utils/animationUtils';
 import { resolveEventDisplayDate, formatSlovenianDate } from '../utils/dateUtils';
-import { resolveUserUploadedAvatar } from '../utils/avatarUtils';
+import { resolveUserUploadedAvatar, isDummyAvatar } from '../utils/avatarUtils';
 import { slugify } from '../utils/urlUtils';
 import type { PostDetailTarget } from '../types';
 
@@ -156,7 +156,13 @@ export function SavedPostsTab({
             u.googleId,
           ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
         );
-        map.set(u.id, { ...existing, ...u, name: u.name || existing.name, alternateIds: mergedAltIds });
+        map.set(u.id, {
+          ...existing,
+          ...u,
+          name: u.name || existing.name,
+          avatar: (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : existing.avatar,
+          alternateIds: mergedAltIds,
+        });
       } else {
         map.set(u.id, u);
       }
@@ -522,6 +528,12 @@ export function SavedPostsTab({
       }
 
       // Discard stale/dummy fallback authors on non-demo items so real user mapping takes over cleanly
+      const hasDummyAuthorName =
+        !DEMO_ITEM_IDS.has(id) &&
+        (isDummyPlaceholderAuthor(hydrated.authorName) ||
+          isDummyPlaceholderAuthor(hydrated.author) ||
+          isDummyPlaceholderAuthor(hydrated.organizer) ||
+          isDummyPlaceholderAuthor(hydrated.partner));
       const sanitizeAuthorString = (val?: string) =>
         !DEMO_ITEM_IDS.has(id) && isDummyPlaceholderAuthor(val) ? undefined : val;
 
@@ -529,6 +541,9 @@ export function SavedPostsTab({
       hydrated.author = sanitizeAuthorString(hydrated.author);
       hydrated.organizer = sanitizeAuthorString(hydrated.organizer);
       hydrated.partner = sanitizeAuthorString(hydrated.partner);
+      if (!DEMO_ITEM_IDS.has(id) && (hasDummyAuthorName || isDummyAvatar(hydrated.authorAvatar))) {
+        delete hydrated.authorAvatar;
+      }
 
       // Strictly map post authorId to the global user list first
       const authorIdKey = hydrated.authorId ? String(hydrated.authorId).trim() : '';
@@ -569,14 +584,13 @@ export function SavedPostsTab({
 
       const resolvedAuthorId = matchedUser?.id || hydrated.authorId;
       const resolvedAuthorRole = matchedUser?.role || hydrated.authorRole;
-      const resolvedAuthorAvatar =
-        resolveUserUploadedAvatar(
-          matchedUser?.avatar || hydrated.authorAvatar,
-          resolvedAuthorId,
-          resolvedAuthorName,
-          mergedUsers,
-          currentUser
-        ) || matchedUser?.avatar || hydrated.authorAvatar;
+      const resolvedAuthorAvatar = resolveUserUploadedAvatar(
+        matchedUser ? matchedUser.avatar : hydrated.authorAvatar,
+        resolvedAuthorId,
+        resolvedAuthorName,
+        mergedUsers,
+        currentUser
+      );
 
       if (resolvedAuthorName) {
         hydrated.authorName = resolvedAuthorName;
@@ -590,7 +604,11 @@ export function SavedPostsTab({
       }
       if (resolvedAuthorId) hydrated.authorId = resolvedAuthorId;
       if (resolvedAuthorRole) hydrated.authorRole = resolvedAuthorRole;
-      if (resolvedAuthorAvatar) hydrated.authorAvatar = resolvedAuthorAvatar;
+      if (resolvedAuthorAvatar) {
+        hydrated.authorAvatar = resolvedAuthorAvatar;
+      } else if (matchedUser || hasDummyAuthorName || isDummyAvatar(hydrated.authorAvatar)) {
+        delete hydrated.authorAvatar;
+      }
 
       return hydrated;
     });
@@ -606,7 +624,9 @@ export function SavedPostsTab({
         (item.authorId && item.authorId !== stored.authorId) ||
         (item.authorName && !isDummyPlaceholderAuthor(item.authorName) && item.authorName !== stored.authorName) ||
         (item.author && !isDummyPlaceholderAuthor(item.author) && item.author !== stored.author) ||
-        (item.organizer && !isDummyPlaceholderAuthor(item.organizer) && item.organizer !== stored.organizer);
+        (item.organizer && !isDummyPlaceholderAuthor(item.organizer) && item.organizer !== stored.organizer) ||
+        (item.authorAvatar || '') !== (stored.authorAvatar || '') ||
+        (item.authorRole || '') !== (stored.authorRole || '');
 
       if (needsHeal) {
         updateSavedItemMetadata(item.id, {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { auth, googleProvider } from '../lib/firebase';
 import { 
   signInWithPopup, 
@@ -14,6 +14,7 @@ import {
   updateUserInFirestore, 
   fetchUserProfile, 
   subscribeToUsers, 
+  subscribeToUserProfile,
   deleteUserFromFirestore, 
   findUserForVerification, 
   verifyUserEmailInFirestore,
@@ -95,9 +96,10 @@ export interface User {
   verificationToken?: string;
   verificationSentAt?: string;
   verificationConfirmedAt?: string;
-  createdAt?: string;
   passwordResetToken?: string;
   passwordResetSentAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   firstLogin?: boolean;
   welcomeNotificationSent?: boolean;
 }
@@ -217,6 +219,63 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function stripUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T> {
+  const result: Partial<T> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      (result as any)[k] = v;
+    }
+  }
+  return result;
+}
+
+function doesUserMatchRecord(a?: User | null, b?: User | null): boolean {
+  if (!a || !b) return false;
+  const aIds = new Set(
+    [a.id, a.googleId, ...(a.alternateIds || [])].filter(
+      (v): v is string => typeof v === 'string' && v.trim().length > 0
+    )
+  );
+  const bIds = [b.id, b.googleId, ...(b.alternateIds || [])].filter(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0
+  );
+  if (bIds.some((id) => aIds.has(id))) return true;
+  const aEmail = (a.email || '').toLowerCase().trim();
+  const bEmail = (b.email || '').toLowerCase().trim();
+  return Boolean(aEmail && bEmail && aEmail === bEmail);
+}
+
+function findMatchingUser(list: User[], target?: User | null): User | undefined {
+  if (!target || !list || list.length === 0) return undefined;
+  return list.find((u) => doesUserMatchRecord(u, target));
+}
+
+function hasUserProfileChanged(current: User, next: User): boolean {
+  if (
+    current.id !== next.id ||
+    (current.avatar || '') !== (next.avatar || '') ||
+    (current.name || '') !== (next.name || '') ||
+    current.role !== next.role ||
+    current.status !== next.status ||
+    (current.bio || '') !== (next.bio || '') ||
+    (current.username || '') !== (next.username || '') ||
+    current.emailVerified !== next.emailVerified ||
+    Boolean(current.verificationRequested) !== Boolean(next.verificationRequested) ||
+    (current.verificationNote || '') !== (next.verificationNote || '') ||
+    (current.updatedAt || '') !== (next.updatedAt || '') ||
+    (current.alternateIds?.length || 0) !== (next.alternateIds?.length || 0)
+  ) {
+    return true;
+  }
+  if (JSON.stringify(current.socialLinks || []) !== JSON.stringify(next.socialLinks || [])) {
+    return true;
+  }
+  if (JSON.stringify(current.profileMenu || []) !== JSON.stringify(next.profileMenu || [])) {
+    return true;
+  }
+  return false;
+}
+
 export function deduplicateUsers(userList: (User | null | undefined)[]): User[] {
   const byId = new Map<string, User>();
   const byEmail = new Map<string, User>();
@@ -236,8 +295,11 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
 
     const emailNorm = (u.email || '').toLowerCase().trim();
 
-    // Check if we already have this user by id or by email
-    const existingById = byId.get(u.id);
+    // Check if we already have this user by id, alternateIds, or email
+    const existingById =
+      byId.get(u.id) ||
+      (u.googleId ? byId.get(u.googleId) : undefined) ||
+      (u.alternateIds || []).map((alt) => byId.get(alt)).find(Boolean);
     const existingByEmail = emailNorm ? byEmail.get(emailNorm) : undefined;
     const existing = existingById || existingByEmail;
 
@@ -256,20 +318,43 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
           ].filter((val): val is string => typeof val === 'string' && val.trim().length > 0)
         )
       );
-      
-      const cleanAvatar = (u.avatar && !isDummyAvatar(u.avatar)) 
-        ? u.avatar 
-        : ((existing.avatar && !isDummyAvatar(existing.avatar)) ? existing.avatar : undefined);
+
+      const existingTs = existing.updatedAt ? Date.parse(existing.updatedAt) : 0;
+      const incomingTs = u.updatedAt ? Date.parse(u.updatedAt) : 0;
+      const uIsOlder = existingTs > 0 && incomingTs > 0 && incomingTs < existingTs;
+      const uHasExplicitEmptyAvatar = 'avatar' in u && typeof u.avatar === 'string' && u.avatar.trim() === '';
+
+      let cleanAvatar: string | undefined;
+      if (!uIsOlder) {
+        if (uHasExplicitEmptyAvatar) {
+          cleanAvatar = undefined;
+        } else if (u.avatar && !isDummyAvatar(u.avatar)) {
+          cleanAvatar = u.avatar;
+        } else if (existing.avatar && !isDummyAvatar(existing.avatar)) {
+          cleanAvatar = existing.avatar;
+        }
+      } else {
+        cleanAvatar =
+          (existing.avatar && !isDummyAvatar(existing.avatar))
+            ? existing.avatar
+            : ((u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : undefined);
+      }
+
+      const cleanExisting = stripUndefinedFields(existing);
+      const cleanIncoming = stripUndefinedFields(u);
+      const mergedBase = uIsOlder
+        ? { ...cleanIncoming, ...cleanExisting }
+        : { ...cleanExisting, ...cleanIncoming };
 
       const isVerified = existing.emailVerified === true || u.emailVerified === true;
       const merged: User = {
-        ...existing,
-        ...u,
+        ...(mergedBase as User),
         id: canonicalId,
         googleId: u.googleId || existing.googleId,
         alternateIds,
         avatar: cleanAvatar,
-        role: (u.role === 'superadmin' || existing.role === 'superadmin') ? 'superadmin' : (u.role || existing.role),
+        updatedAt: (!uIsOlder && u.updatedAt) ? u.updatedAt : existing.updatedAt,
+        role: (u.role === 'superadmin' || existing.role === 'superadmin') ? 'superadmin' : (mergedBase.role || existing.role),
         emailVerified: isVerified ? true : (u.emailVerified === false || existing.emailVerified === false ? false : true),
         verificationToken: isVerified ? undefined : (u.verificationToken || existing.verificationToken),
         verificationConfirmedAt: existing.verificationConfirmedAt || u.verificationConfirmedAt,
@@ -295,7 +380,12 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
           )
         )
       );
-      const normalizedUser: User = initialAltIds.length > 0 ? { ...u, alternateIds: initialAltIds } : u;
+      const cleanInitialAvatar = (u.avatar && !isDummyAvatar(u.avatar)) ? u.avatar : undefined;
+      const normalizedUser: User = {
+        ...u,
+        avatar: cleanInitialAvatar,
+        ...(initialAltIds.length > 0 ? { alternateIds: initialAltIds } : {}),
+      };
       byId.set(u.id, normalizedUser);
       if (emailNorm) {
         byEmail.set(emailNorm, normalizedUser);
@@ -359,8 +449,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubUsers = subscribeToUsers((firestoreUsers) => {
       if (firestoreUsers && firestoreUsers.length > 0) {
         setUsers(prev => {
-          const merged = deduplicateUsers([...prev, ...DEFAULT_USERS, ...firestoreUsers]);
-          localStorage.setItem('portal_users', JSON.stringify(merged));
+          const merged = deduplicateUsers([...DEFAULT_USERS, ...prev, ...firestoreUsers]);
+          try {
+            localStorage.setItem('portal_users', JSON.stringify(merged));
+          } catch {}
           return merged;
         });
       }
@@ -548,47 +640,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return loginById(idOrEmail);
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setCurrentUser(null);
     localStorage.removeItem('portal_current_user_id');
     fbSignOut(auth).catch(console.error);
-  };
+  }, []);
+
+  // Automatically push live Firestore updates from the global users list into currentUser
+  useEffect(() => {
+    if (!currentUser || users.length === 0) return;
+    const matchedLiveUser = findMatchingUser(users, currentUser);
+    if (!matchedLiveUser) return;
+
+    if (matchedLiveUser.status === 'banned') {
+      logout();
+      return;
+    }
+
+    if (hasUserProfileChanged(currentUser, matchedLiveUser)) {
+      setCurrentUser({ ...matchedLiveUser });
+      try {
+        localStorage.setItem('portal_current_user_id', matchedLiveUser.id);
+      } catch {}
+    }
+  }, [users, currentUser, logout]);
+
+  // Dedicated real-time document listener for the active currentUser so direct Firestore updates push immediately
+  useEffect(() => {
+    const activeIds = Array.from(
+      new Set(
+        [currentUser?.id, currentUser?.googleId].filter(
+          (v): v is string => typeof v === 'string' && v.trim().length > 0
+        )
+      )
+    );
+    if (activeIds.length === 0) return;
+
+    const unsubs = activeIds.map((docId) =>
+      subscribeToUserProfile(docId, (dbProfile) => {
+        if (!dbProfile) return;
+        setUsers((prev) => {
+          const merged = deduplicateUsers([...DEFAULT_USERS, ...prev, dbProfile]);
+          try {
+            localStorage.setItem('portal_users', JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
+      })
+    );
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [currentUser?.id, currentUser?.googleId]);
 
   const updateUser = async (id: string, data: Partial<User>) => {
-    const targetUser = users.find(u => u.id === id) || DEFAULT_USERS.find(u => u.id === id);
+    const targetUser =
+      users.find(
+        (u) =>
+          u.id === id ||
+          u.googleId === id ||
+          (u.alternateIds && u.alternateIds.includes(id))
+      ) || DEFAULT_USERS.find((u) => u.id === id);
     const targetEmail = (targetUser?.email || data.email || '').toLowerCase().trim();
+    const nowIso = new Date().toISOString();
+    const patchedData: Partial<User> = {
+      ...data,
+      updatedAt: data.updatedAt || nowIso,
+    };
 
-    setUsers(prev => {
-      const newUsers = prev.map(u => {
-        const matchesId = u.id === id;
-        const matchesEmail = Boolean(targetEmail && (u.email || '').toLowerCase().trim() === targetEmail);
-        if (matchesId || matchesEmail) {
-          const isVerified = data.emailVerified !== undefined ? data.emailVerified : u.emailVerified;
-          return {
-            ...u,
-            ...data,
-            emailVerified: isVerified,
-            verificationToken: isVerified ? undefined : (data.verificationToken !== undefined ? data.verificationToken : u.verificationToken),
-            verificationConfirmedAt: isVerified ? (data.verificationConfirmedAt || u.verificationConfirmedAt || new Date().toISOString()) : u.verificationConfirmedAt,
-          };
-        }
-        return u;
-      });
-      localStorage.setItem('portal_users', JSON.stringify(newUsers));
-      if (currentUser?.id === id || (targetEmail && currentUser?.email?.toLowerCase().trim() === targetEmail)) {
-        const updated = newUsers.find(u => u.id === id || (targetEmail && u.email.toLowerCase().trim() === targetEmail));
-        if (updated) {
-          if (updated.status === 'banned') {
-            logout();
-          } else {
-            setCurrentUser(updated);
-          }
-        }
-      }
+    const applyPatchToUser = (u: User): User => {
+      const isVerified = patchedData.emailVerified !== undefined ? patchedData.emailVerified : u.emailVerified;
+      const nextAvatar =
+        patchedData.avatar !== undefined
+          ? (patchedData.avatar && !isDummyAvatar(patchedData.avatar) ? patchedData.avatar : undefined)
+          : u.avatar;
+      return {
+        ...u,
+        ...patchedData,
+        avatar: nextAvatar,
+        emailVerified: isVerified,
+        verificationToken: isVerified
+          ? undefined
+          : (patchedData.verificationToken !== undefined ? patchedData.verificationToken : u.verificationToken),
+        verificationConfirmedAt: isVerified
+          ? (patchedData.verificationConfirmedAt || u.verificationConfirmedAt || nowIso)
+          : u.verificationConfirmedAt,
+      };
+    };
+
+    const matchesTargetUser = (u: User) => {
+      const matchesId =
+        u.id === id ||
+        u.googleId === id ||
+        Boolean(u.alternateIds && u.alternateIds.includes(id));
+      const matchesEmail = Boolean(targetEmail && (u.email || '').toLowerCase().trim() === targetEmail);
+      return matchesId || matchesEmail;
+    };
+
+    setUsers((prev) => {
+      const newUsers = prev.map((u) => (matchesTargetUser(u) ? applyPatchToUser(u) : u));
+      try {
+        localStorage.setItem('portal_users', JSON.stringify(newUsers));
+      } catch {}
       return newUsers;
     });
 
-    await updateUserInFirestore(id, data, targetUser).catch(console.error);
+    if (currentUser && matchesTargetUser(currentUser)) {
+      const updatedActive = applyPatchToUser(currentUser);
+      if (updatedActive.status === 'banned') {
+        logout();
+      } else {
+        setCurrentUser(updatedActive);
+      }
+    }
+
+    await updateUserInFirestore(id, patchedData, targetUser).catch(console.error);
 
     if (data.emailVerified === true) {
       await verifyUserEmailInFirestore(id, targetEmail).catch(console.error);
@@ -1111,8 +1278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await syncUserProfile(userToSave);
 
       setUsers(prev => {
-        const filtered = prev.filter(u => u.email.toLowerCase() !== email);
-        const updated = [...filtered, userToSave];
+        const updated = deduplicateUsers([...prev, userToSave]);
         localStorage.setItem('portal_users', JSON.stringify(updated));
         return updated;
       });

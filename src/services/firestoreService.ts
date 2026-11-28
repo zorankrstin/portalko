@@ -838,6 +838,8 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
       emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
       verificationToken: data.verificationToken || undefined,
       verificationSentAt: data.verificationSentAt || undefined,
+      createdAt: data.createdAt || undefined,
+      updatedAt: data.updatedAt || undefined,
     };
   };
 
@@ -1226,6 +1228,7 @@ export async function fetchUsersList(): Promise<User[]> {
         verificationToken: data.verificationToken || undefined,
         verificationSentAt: data.verificationSentAt || undefined,
         createdAt: data.createdAt || undefined,
+        updatedAt: data.updatedAt || undefined,
         passwordResetToken: data.passwordResetToken || undefined,
         passwordResetSentAt: data.passwordResetSentAt || undefined,
       });
@@ -1292,6 +1295,7 @@ function rawSubscribeToUsers(onUsers: (users: User[]) => void): () => void {
           verificationToken: data.verificationToken || undefined,
           verificationSentAt: data.verificationSentAt || undefined,
           createdAt: data.createdAt || undefined,
+          updatedAt: data.updatedAt || undefined,
           passwordResetToken: data.passwordResetToken || undefined,
           passwordResetSentAt: data.passwordResetSentAt || undefined,
         });
@@ -1318,6 +1322,67 @@ function rawSubscribeToUsers(onUsers: (users: User[]) => void): () => void {
 }
 
 export const subscribeToUsers = createSharedSubscription(rawSubscribeToUsers, getCachedUsers);
+
+export function subscribeToUserProfile(userId: string, onProfile: (profile: User | null) => void): () => void {
+  if (!userId || isLikelyBot()) {
+    return () => {};
+  }
+  const path = `users/${userId}`;
+  try {
+    const userRef = doc(db, 'users', userId);
+    return onSnapshot(
+      userRef,
+      (snap) => {
+        if (!snap.exists()) {
+          onProfile(null);
+          return;
+        }
+        const data = snap.data();
+        const email = (data.email || '').toLowerCase().trim();
+        const docId = snap.id;
+        const effectiveId = data.id || docId;
+        if (isDummyUserEmail(email, effectiveId) || isUserDeletedSync(effectiveId, email) || isUserDeletedSync(docId, email)) {
+          onProfile(null);
+          return;
+        }
+        const altIds = Array.from(
+          new Set([docId, effectiveId, data.googleId].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
+        );
+        onProfile({
+          id: effectiveId,
+          name: data.name || '',
+          email: data.email || '',
+          role: (data.role || 'registered') as Role,
+          status: (data.status || 'active') as 'active' | 'banned',
+          avatar: data.avatar,
+          bio: data.bio,
+          username: data.username,
+          password: data.password,
+          googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
+          alternateIds: altIds,
+          socialLinks: data.socialLinks,
+          profileMenu: data.profileMenu,
+          verificationRequested: data.verificationRequested,
+          verificationRequestedAt: data.verificationRequestedAt,
+          verificationNote: data.verificationNote,
+          emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+          verificationToken: data.verificationToken || undefined,
+          verificationSentAt: data.verificationSentAt || undefined,
+          createdAt: data.createdAt || undefined,
+          updatedAt: data.updatedAt || undefined,
+          passwordResetToken: data.passwordResetToken || undefined,
+          passwordResetSentAt: data.passwordResetSentAt || undefined,
+        });
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return () => {};
+  }
+}
 
 export async function updateUserInFirestore(userId: string, data: Partial<User>, fallbackUser?: User): Promise<void> {
   const path = `users/${userId}`;
@@ -1384,7 +1449,15 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
     }
 
     if (data.avatar !== undefined) {
-      syncUserAvatarToAuthorContent(userId, data.avatar, fallbackUser?.name || data.name).catch(() => {});
+      const aliasIds = Array.from(
+        new Set([
+          userId,
+          fallbackUser?.id,
+          fallbackUser?.googleId,
+          ...(fallbackUser?.alternateIds || []),
+        ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
+      );
+      syncUserAvatarToAuthorContent(userId, data.avatar, fallbackUser?.name || data.name, aliasIds).catch(() => {});
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -1394,41 +1467,48 @@ export async function updateUserInFirestore(userId: string, data: Partial<User>,
 /**
  * Propagates updated user avatar across the user's events, posts and ads in Firestore
  */
-export async function syncUserAvatarToAuthorContent(userId: string, newAvatar: string, authorName?: string): Promise<void> {
+export async function syncUserAvatarToAuthorContent(
+  userId: string,
+  newAvatar: string,
+  _authorName?: string,
+  alternateIds?: string[]
+): Promise<void> {
   if (!userId) return;
   const cleanAvatar = (newAvatar && !isDummyAvatar(newAvatar)) ? newAvatar : '';
+  const targetIds = new Set<string>([userId, ...(alternateIds || [])].filter(Boolean));
 
   try {
-    // 1. Update events authored by this specific user ID
+    // 1. Update events authored by this specific user ID (or known alias IDs)
     const eventsSnap = await getDocs(collection(db, 'events'));
     const eventPromises: Promise<any>[] = [];
     eventsSnap.forEach((d) => {
       const ev = d.data();
-      const matchesUser = ev.authorId === userId;
+      const evAuthorId = ev.authorId || ev.organizerId;
+      const matchesUser = Boolean(evAuthorId && targetIds.has(String(evAuthorId).trim()));
       if (matchesUser && ev.authorAvatar !== cleanAvatar) {
         eventPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
       }
     });
     await Promise.all(eventPromises);
 
-    // 2. Update posts authored by this specific user ID
+    // 2. Update posts authored by this specific user ID (or known alias IDs)
     const postsSnap = await getDocs(collection(db, 'posts'));
     const postPromises: Promise<any>[] = [];
     postsSnap.forEach((d) => {
       const p = d.data();
-      const matchesUser = p.authorId === userId;
+      const matchesUser = Boolean(p.authorId && targetIds.has(String(p.authorId).trim()));
       if (matchesUser && p.authorAvatar !== cleanAvatar) {
         postPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
       }
     });
     await Promise.all(postPromises);
 
-    // 3. Update ads authored by this specific user ID
+    // 3. Update ads authored by this specific user ID (or known alias IDs)
     const adsSnap = await getDocs(collection(db, 'ads'));
     const adPromises: Promise<any>[] = [];
     adsSnap.forEach((d) => {
       const a = d.data();
-      const matchesUser = a.authorId === userId;
+      const matchesUser = Boolean(a.authorId && targetIds.has(String(a.authorId).trim()));
       if (matchesUser && a.authorAvatar !== cleanAvatar) {
         adPromises.push(updateDoc(d.ref, { authorAvatar: cleanAvatar, updatedAt: new Date().toISOString() }).catch(() => {}));
       }

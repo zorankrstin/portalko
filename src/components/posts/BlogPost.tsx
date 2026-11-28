@@ -11,6 +11,7 @@ import { handleImageFallbackError, getActiveFallbackImage } from "../../services
 import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
 import { parseTags } from "../../utils/tagUtils";
 import { UserAvatar } from "../common/UserAvatar";
+import { resolveUserUploadedAvatar } from "../../utils/avatarUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
@@ -138,7 +139,13 @@ export const BlogPost: React.FC<BlogPostProps> = ({
     rawAuthorCandidate ||
     (isDemoBlog ? "Uredništvo Portalko.net" : "Avtor");
   const authorRole = matchedAuthorUser?.role || rawAuthorRole || (isDemoBlog ? "admin" : "Član skupnosti");
-  const authorAvatar = matchedAuthorUser?.avatar || rawAuthorAvatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);
+  const authorAvatar = resolveUserUploadedAvatar(
+    matchedAuthorUser ? matchedAuthorUser.avatar : rawAuthorAvatar,
+    effectiveAuthorId,
+    author,
+    users,
+    currentUser
+  );
 
   const normalizedTags = parseTags(tags);
   const finalDesc = excerpt || description;

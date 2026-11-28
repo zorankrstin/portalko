@@ -11,7 +11,7 @@ import { getActiveFallbackImage } from "../../services/portalSettingsService";
 import { buildPostUrl, buildTagUrl, navigateApp, slugify } from "../../utils/urlUtils";
 import { parseTags } from "../../utils/tagUtils";
 import { UserAvatar } from "../common/UserAvatar";
-import { isUserUploadedAvatar } from "../../utils/avatarUtils";
+import { isUserUploadedAvatar, resolveUserUploadedAvatar } from "../../utils/avatarUtils";
 import { VerifiedBadge } from "../common/VerifiedBadge";
 import { isUserVerified } from "../../utils/userVerificationUtils";
 import { useAuth } from "../../contexts/AuthContext";
@@ -142,7 +142,13 @@ export const AdPost: React.FC<AdPostProps> = ({
     rawAuthorCandidate ||
     (isDemoAd ? "Marko K." : "Uporabnik");
   const authorRole = rawAuthorRole || matchedAuthorUser?.role || "Uporabnik";
-  const authorAvatar = rawAuthorAvatar || matchedAuthorUser?.avatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);
+  const authorAvatar = resolveUserUploadedAvatar(
+    matchedAuthorUser ? matchedAuthorUser.avatar : rawAuthorAvatar,
+    effectiveAuthorId,
+    author,
+    users,
+    currentUser
+  );
 
   const normalizedTags = parseTags(tags);
   const postUrl = buildPostUrl({
