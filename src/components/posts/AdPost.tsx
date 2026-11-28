@@ -110,11 +110,20 @@ export const AdPost: React.FC<AdPostProps> = ({
   const categoryName = rawCategoryName ?? (isDemoAd ? "Telefonija" : "Mali oglas");
 
   const { users, currentUser } = useAuth();
-  const rawAuthorCandidate = authorName?.trim() || rawAuthor?.trim() || '';
+  const rawAuthorCandidateRaw = authorName?.trim() || rawAuthor?.trim() || '';
+  const dummyAdAuthors = new Set(['marko k.', 'organizator', 'avtor', 'uporabnik', 'neznan avtor']);
+  const rawAuthorCandidate =
+    !isDemoAd && dummyAdAuthors.has(rawAuthorCandidateRaw.toLowerCase()) ? '' : rawAuthorCandidateRaw;
+
   const matchedAuthorUser = React.useMemo(() => {
     if (!users || users.length === 0) return undefined;
     if (authorId) {
-      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      const byId = users.find(
+        (u) =>
+          u.id === authorId ||
+          u.googleId === authorId ||
+          (u.alternateIds && u.alternateIds.includes(authorId))
+      );
       if (byId) return byId;
     }
     if (!rawAuthorCandidate) return undefined;
@@ -129,8 +138,8 @@ export const AdPost: React.FC<AdPostProps> = ({
   const effectiveAuthorId = matchedAuthorUser?.id || authorId;
   const author =
     (authorId && matchedAuthorUser?.name?.trim()) ||
-    rawAuthorCandidate ||
     matchedAuthorUser?.name?.trim() ||
+    rawAuthorCandidate ||
     (isDemoAd ? "Marko K." : "Uporabnik");
   const authorRole = rawAuthorRole || matchedAuthorUser?.role || "Uporabnik";
   const authorAvatar = rawAuthorAvatar || matchedAuthorUser?.avatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);

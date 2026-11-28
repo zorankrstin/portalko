@@ -114,11 +114,20 @@ export const DealPost: React.FC<DealPostProps> = ({
   onTagClick,
 }) => {
   const { users, currentUser } = useAuth();
-  const rawAuthorCandidate = authorName?.trim() || rawAuthor?.trim() || partner?.trim() || '';
+  const rawAuthorCandidateRaw = authorName?.trim() || rawAuthor?.trim() || partner?.trim() || '';
+  const dummyDealAuthors = new Set(['gregor h.', 'partner', 'portalko partner', 'avtor', 'uporabnik', 'neznan avtor']);
+  const rawAuthorCandidate =
+    id !== 'deal' && dummyDealAuthors.has(rawAuthorCandidateRaw.toLowerCase()) ? '' : rawAuthorCandidateRaw;
+
   const matchedAuthorUser = React.useMemo(() => {
     if (!users || users.length === 0) return undefined;
     if (authorId) {
-      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      const byId = users.find(
+        (u) =>
+          u.id === authorId ||
+          u.googleId === authorId ||
+          (u.alternateIds && u.alternateIds.includes(authorId))
+      );
       if (byId) return byId;
     }
     if (!rawAuthorCandidate) return undefined;
@@ -133,8 +142,8 @@ export const DealPost: React.FC<DealPostProps> = ({
   const effectiveAuthorId = matchedAuthorUser?.id || authorId;
   const author =
     (authorId && matchedAuthorUser?.name?.trim()) ||
-    rawAuthorCandidate ||
     matchedAuthorUser?.name?.trim() ||
+    rawAuthorCandidate ||
     "Partner";
   const authorRole = matchedAuthorUser?.role || rawAuthorRole || "Preverjen partner";
   const authorAvatar = matchedAuthorUser?.avatar || rawAuthorAvatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);

@@ -1,942 +1,1267 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
         http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
   <url>
     <loc>https://portalko.net/</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/imenik</loc>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/slovenija</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/svet</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/gospodarstvo</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/sport</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/kultura</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/tehnologija</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/zanimivosti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/zdravje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/okolje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/novice/lokalno</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/avto-moto</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/avto-moto/osebna-vozila</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/avto-moto/motorna-kolesa-skuterji</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/avto-moto/gospodarska-tovorna-vozila</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/avto-moto/rezervni-deli-oprema</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/avto-moto/pnevmatike-platisca</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/avto-moto/prikolice-bivalniki-navtika</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine/stanovanja-prodaja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine/stanovanja-oddaja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine/hise-prodaja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine/hise-oddaja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine/posesti-parcele</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine/poslovni-prostori</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/nepremicnine/pocitniski-objekti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/tehnika-elektronika</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/tehnika-elektronika/pametni-telefoni-tablice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/tehnika-elektronika/racunalniki-prenosniki</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/tehnika-elektronika/tv-avdio-hi-fi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/tehnika-elektronika/fotoaparati-kamere</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/tehnika-elektronika/gaming-konzole</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/tehnika-elektronika/bela-tehnika-aparati</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/dom-in-vrt</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/dom-in-vrt/pohistvo-notranja-oprema</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/dom-in-vrt/orodje-delovni-stroji</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/dom-in-vrt/vrt-urejanje-okolice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/dom-in-vrt/gradbeni-material</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/dom-in-vrt/ogrevanje-klima</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/sport-prosti-cas</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/sport-prosti-cas/kolesarstvo</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/sport-prosti-cas/zimski-sporti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/sport-prosti-cas/fitnes-vadba</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/sport-prosti-cas/pohodnistvo-kampiranje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/sport-prosti-cas/vodni-sporti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/storitve-zaposlitev</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/storitve-zaposlitev/ponujam-delo</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/storitve-zaposlitev/iscem-delo</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/storitve-zaposlitev/obrt-gradbena-dela</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/storitve-zaposlitev/servis-tehnicna-pomoc</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/mali-oglasi/storitve-zaposlitev/instrukcije-ucenje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/glasba-koncerti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/glasba-koncerti/rock-pop</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/glasba-koncerti/elektronska-glasba-klubi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/glasba-koncerti/klasika-jazz-blues</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/glasba-koncerti/narodnozabavna-veselice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/glasba-koncerti/akusticni-kantavtorski-veceri</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/kultura-gledalisce</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/kultura-gledalisce/gledaliske-predstave</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/kultura-gledalisce/razstave-muzeji</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/kultura-gledalisce/kino-filmski-festivali</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/kultura-gledalisce/stand-up-komedija</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/kultura-gledalisce/literarni-veceri-poezija</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/sport-rekreacija</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/sport-rekreacija/teki-maratoni</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/sport-rekreacija/kolesarska-tekmovanja-izleti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/sport-rekreacija/organizirani-pohodi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/sport-rekreacija/turnirji-prvenstva</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/sport-rekreacija/joga-vadbe-na-prostem</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/festivali-sejmi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/festivali-sejmi/kulinaricni-festivali-ulicna-hrana</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/festivali-sejmi/mestni-festivali-karnevali</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/festivali-sejmi/sejmi-domaca-obrt</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/festivali-sejmi/srednjeveski-etno-dnevi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/druzina-otroci</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/druzina-otroci/lutkovne-otroske-predstave</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/druzina-otroci/ustvarjalne-naravoslovne-delavnice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/druzina-otroci/druzinski-dnevi-animacija</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/posel-delavnice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/posel-delavnice/konference-strokovni-forumi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/posel-delavnice/tecaji-prakticne-delavnice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/posel-delavnice/poslovno-mrezenje-startupi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/turizem-izleti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/turizem-izleti/slovenski-biseri-narava</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/turizem-izleti/enodnevni-druzinski-izleti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/turizem-izleti/hribi-planinske-poti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/turizem-izleti/vikend-oddih-wellness</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/turizem-izleti/manj-znani-skriti-koticki</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/kulinarika-recepti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/kulinarika-recepti/tradicionalne-slovenske-jedi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/kulinarika-recepti/hitra-sodobna-kuhinja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/kulinarika-recepti/vinska-kultura-domaci-napitki</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/kulinarika-recepti/zdravi-sezonski-recepti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/kulinarika-recepti/kulinaricne-poti-domace-gostilne</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/tehnologija-inovacije</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/tehnologija-inovacije/umetna-inteligenca-orodja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/tehnologija-inovacije/pametni-pripomocki-gadgeti</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/tehnologija-inovacije/spletna-varnost-varovanje-podatkov</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/tehnologija-inovacije/pametni-dom-iot</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/dom-vrt-gradnja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/dom-vrt-gradnja/urejanje-prenova-doma</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/dom-vrt-gradnja/naredi-sam-diy-vodici</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/dom-vrt-gradnja/sezonsko-vrtnarjenje-rastline</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/dom-vrt-gradnja/energetska-sanacija-soncne-elektrarne</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/finance-podjetnistvo</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/finance-podjetnistvo/osebne-finance-varcevanje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/finance-podjetnistvo/zgodbe-slovenskih-podjetnikov</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/finance-podjetnistvo/nepremicninski-trg-nakup-stanovanja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/finance-podjetnistvo/investiranje-plemenitenje-premozenja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/zdravje-dobro-pocutje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/zdravje-dobro-pocutje/zdrav-zivljenjski-slog-gibanje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/zdravje-dobro-pocutje/premagovanje-stresa-dusevni-mir</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/blog/zdravje-dobro-pocutje/domaca-lekarna-zelisca</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/tehnika-elektronika</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/tehnika-elektronika/pametni-telefoni-dodatki</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/tehnika-elektronika/prenosniki-monitorji</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/tehnika-elektronika/tv-sprejemniki-zvocniki</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/tehnika-elektronika/bela-tehnika-kuhinjski-aparati</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/trgovine-hrana</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/trgovine-hrana/supermarketi-zivilske-akcije</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/trgovine-hrana/restavracije-dostava-hrane</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/trgovine-hrana/eko-pridelki-lokalne-kmetije</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/moda-lepota</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/moda-lepota/sezonska-znizanja-oblacil</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/moda-lepota/sportna-obutev-superge</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/moda-lepota/kozmetika-parfumi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/dom-bivanje</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/dom-bivanje/pohistvo-lezisca</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/dom-bivanje/vrtno-pohistvo-oprema</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/dom-bivanje/dekoracija-posoda</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/potovanja-wellness</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/potovanja-wellness/terme-bazenske-vstopnice</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/potovanja-wellness/nocitve-vikend-paketi</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/potovanja-wellness/vstopnice-za-dozivetja-parke</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/storitve-avto</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/storitve-avto/pnevmatike-avtoservis</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/storitve-avto/zavarovanja-telekomunikacije</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/storitve-avto/izobrazevanje-vozniski-izpit</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://portalko.net/o-nas</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://portalko.net/pogoji-uporabe</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://portalko.net/zasebnost</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://portalko.net/kontakt</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://portalko.net/pravila-objavljanja</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://portalko.net/blog/avto-moto</loc>
+    <lastmod>2026-09-20</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://portalko.net/dogodki/druzinski-dnevi-animacija/noc-carovnic-za-otroke-v-kranjski-gori</loc>
-    <lastmod>2026-11-02</lastmod>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/gledaliske-predstave/pridi-gola-spas-teater</loc>
-    <lastmod>2026-11-01</lastmod>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://portalko.net/dogodki/tecaji-prakticne-delavnice/miklavzeva-delavnica</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://firebasestorage.googleapis.com/v0/b/thinking-asset-2lcf1.firebasestorage.app/o/events%2Fu_1795854947513%2Fimages%2F1795856231695_9meldw-Medeno_srce_Miklavzeva_delavnica.jpg?alt=media&amp;token=1623dfd7-d1b6-4594-bdf3-a8bef2838a04</image:loc>
+      <image:title>Miklavževa delavnica</image:title>
+    </image:image>
+  </url>
+  <url>
     <loc>https://portalko.net/dogodki/stand-up-komedija/lepo-je-biti-zenska-hmm-pa-je-to-res</loc>
-    <lastmod>2026-11-02</lastmod>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/gledaliske-predstave/razocarana-gospodinja-pri-seksologu</loc>
-    <lastmod>2026-11-02</lastmod>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/gledaliske-predstave/moski-so-z-marsa-zenske-so-z-venere-2</loc>
-    <lastmod>2026-11-01</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <lastmod>2026-11-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://portalko.net/dogodki/stand-up-komedija/slovenka-avtorski-stand-up-s-salom</loc>
-    <lastmod>2026-11-02</lastmod>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/nocitve-vikend-paketi/znizane-cene-v-egiptu</loc>
-    <lastmod>2026-11-02</lastmod>
+    <lastmod>2026-11-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://portalko.net/akcije/nocitve-vikend-paketi/gran-canaria-iz-ljubljane</loc>
-    <lastmod>2026-11-02</lastmod>
+    <lastmod>2026-11-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/blog/slovenski-biseri-narava/sledite-poti-stare-trte-odkrijte-maribor-sproscen-kulturni-biser-slovenije</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://firebasestorage.googleapis.com/v0/b/thinking-asset-2lcf1.firebasestorage.app/o/posts%2FyFmHYW77jvfluQJ290E7doOhdP22%2Fimages%2F1794566675959_n7lg1g-Stara_trta.jpg?alt=media&amp;token=4ec789f9-8210-4ac2-8bfc-b2fe946f5b86</image:loc>
+      <image:title>Sledite poti stare trte: Odkrijte Maribor, sproščen kulturni biser Slovenije</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://firebasestorage.googleapis.com/v0/b/thinking-asset-2lcf1.firebasestorage.app/o/posts%2FyFmHYW77jvfluQJ290E7doOhdP22%2Fimages%2F1794574776153_veqaip-Stara_trta_2.jpg?alt=media&amp;token=fc02f00b-6d51-4006-bc38-1ef86fa1ce72</image:loc>
+      <image:title>Sledite poti stare trte: Odkrijte Maribor, sproščen kulturni biser Slovenije</image:title>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://portalko.net/imenik/vb-oblacilni-inzeniring-d-o-o-vb-fashion</loc>
+    <lastmod>2026-11-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/imenik/24ur-com</loc>
+    <lastmod>2026-11-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/imenik/vestnik-si</loc>
+    <lastmod>2026-11-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/imenik/rtv-slo</loc>
+    <lastmod>2026-11-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/kranjska-gora</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/noc-carovnic</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/roman-krajncan</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/turizem-kranjska-gora</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/pridi-gola</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/spas-teater</loc>
+    <lastmod>2026-11-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/komedija</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/medeno-srce</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/kulinarika</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/medenjaki</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/delavnica</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/miklavz</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/parkelj</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/skofja-loka</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/gorenjska</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/miklavz-in-parkelj</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/odtisnjeni-medenjaki</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/poslikava-medenjakov</loc>
+    <lastmod>2026-11-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/stand-up</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/mihaela-grzin</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/jasa-jamnik</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/king-kong-teater</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/komedija-stand-up</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/razocarana-gospodinja-pri-seksologu</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/roman-vodeb</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/vesna-andelkovic</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/gledalisce</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/moski</loc>
+    <lastmod>2026-11-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/zenske</loc>
+    <lastmod>2026-11-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/mars</loc>
+    <lastmod>2026-11-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/venera</loc>
+    <lastmod>2026-11-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/slovenka</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/salom</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/egipt</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/hurgada</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/sharm-el-sheikh</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/palma</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/pocitnice</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/krizarjenje</loc>
+    <lastmod>2026-11-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/maribor</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/lent</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/stara-trta</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/pohorje</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://portalko.net/oznaka/stajerska</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
   </url>
 </urlset>

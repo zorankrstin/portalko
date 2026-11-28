@@ -77,6 +77,7 @@ function isDealFirestorePost(p: FirestorePost): boolean {
 const DUMMY_AUTHOR_PLACEHOLDERS = new Set([
   'mestna knjižnica kranj',
   'marko k.',
+  'gregor h.',
   'organizator',
   'avtor',
   'uporabnik',
@@ -105,7 +106,7 @@ export function SavedPostsTab({
   onNavigatePost,
   onAuthorClick,
 }: SavedPostsTabProps) {
-  const { savedIds, savedItems, getItemData } = useBookmarks();
+  const { savedIds, savedItems, getItemData, updateSavedItemMetadata } = useBookmarks();
   const { users: authUsers, currentUser } = useAuth();
   const { currentSeo } = usePageSeo('saved');
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('all');
@@ -117,8 +118,16 @@ export function SavedPostsTab({
   const [fetchedMissingAds, setFetchedMissingAds] = useState<Record<string, FirestoreAd>>({});
   const [fetchedMissingPosts, setFetchedMissingPosts] = useState<Record<string, FirestorePost>>({});
   const [extraAuthorsById, setExtraAuthorsById] = useState<Record<string, User>>({});
+  const isMountedRef = useRef(true);
   const attemptedDocFetchIdsRef = useRef<Set<string>>(new Set());
   const attemptedAuthorFetchIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const unsubPosts = subscribeToPosts(setFirestorePosts);
@@ -136,7 +145,21 @@ export function SavedPostsTab({
     const addUser = (u?: User | null) => {
       if (!u || !u.id) return;
       const existing = map.get(u.id);
-      map.set(u.id, existing ? { ...existing, ...u, name: u.name || existing.name } : u);
+      if (existing) {
+        const mergedAltIds = Array.from(
+          new Set([
+            ...(existing.alternateIds || []),
+            ...(u.alternateIds || []),
+            existing.id,
+            existing.googleId,
+            u.id,
+            u.googleId,
+          ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
+        );
+        map.set(u.id, { ...existing, ...u, name: u.name || existing.name, alternateIds: mergedAltIds });
+      } else {
+        map.set(u.id, u);
+      }
     };
     authUsers.forEach(addUser);
     providedUsers?.forEach(addUser);
@@ -151,6 +174,11 @@ export function SavedPostsTab({
     mergedUsers.forEach((u) => {
       if (u.id) map.set(u.id, u);
       if (u.googleId) map.set(u.googleId, u);
+      if (u.alternateIds) {
+        u.alternateIds.forEach((altId) => {
+          if (altId) map.set(altId, u);
+        });
+      }
     });
     if (providedAuthorsById) {
       Object.entries(providedAuthorsById).forEach(([k, u]) => {
@@ -232,7 +260,6 @@ export function SavedPostsTab({
     if (missingIds.length === 0) return;
     missingIds.forEach((id) => attemptedDocFetchIdsRef.current.add(id));
 
-    let cancelled = false;
     Promise.all(
       missingIds.map(async (id) => {
         const base = getItemData(id) || savedItems[id];
@@ -254,7 +281,7 @@ export function SavedPostsTab({
         return null;
       })
     ).then((results) => {
-      if (cancelled) return;
+      if (!isMountedRef.current) return;
       const newEvents: Record<string, FirestoreEvent> = {};
       const newAds: Record<string, FirestoreAd> = {};
       const newPosts: Record<string, FirestorePost> = {};
@@ -268,10 +295,6 @@ export function SavedPostsTab({
       if (Object.keys(newAds).length > 0) setFetchedMissingAds((prev) => ({ ...prev, ...newAds }));
       if (Object.keys(newPosts).length > 0) setFetchedMissingPosts((prev) => ({ ...prev, ...newPosts }));
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, [savedIds, savedItems, getItemData, liveLookups]);
 
   // Collect all saved items, re-hydrating from live Firestore records and registered user profiles
@@ -511,7 +534,12 @@ export function SavedPostsTab({
       const authorIdKey = hydrated.authorId ? String(hydrated.authorId).trim() : '';
       const matchedUserById = authorIdKey
         ? usersByIdMap.get(authorIdKey) ||
-          mergedUsers.find((u) => u.id === authorIdKey || u.googleId === authorIdKey)
+          mergedUsers.find(
+            (u) =>
+              u.id === authorIdKey ||
+              u.googleId === authorIdKey ||
+              (u.alternateIds && u.alternateIds.includes(authorIdKey))
+          )
         : undefined;
 
       const rawAuthorText =
@@ -568,6 +596,32 @@ export function SavedPostsTab({
     });
   }, [savedIds, savedItems, getItemData, liveLookups, allEvents, allAds, allPosts, mergedUsers, usersByIdMap, currentUser]);
 
+  // Self-heal any stale/legacy bookmark author metadata cached in localStorage once Firestore author resolves
+  useEffect(() => {
+    allSavedItems.forEach((item) => {
+      if (DEMO_ITEM_IDS.has(item.id) || item.id.startsWith('rss')) return;
+      const stored = savedItems[item.id];
+      if (!stored) return;
+      const needsHeal =
+        (item.authorId && item.authorId !== stored.authorId) ||
+        (item.authorName && !isDummyPlaceholderAuthor(item.authorName) && item.authorName !== stored.authorName) ||
+        (item.author && !isDummyPlaceholderAuthor(item.author) && item.author !== stored.author) ||
+        (item.organizer && !isDummyPlaceholderAuthor(item.organizer) && item.organizer !== stored.organizer);
+
+      if (needsHeal) {
+        updateSavedItemMetadata(item.id, {
+          authorId: item.authorId,
+          authorName: item.authorName,
+          author: item.author,
+          organizer: item.organizer,
+          partner: item.partner,
+          authorAvatar: item.authorAvatar,
+          authorRole: item.authorRole,
+        });
+      }
+    });
+  }, [allSavedItems, savedItems, updateSavedItemMetadata]);
+
   // Fetch any missing author profiles referenced by hydrated saved items (not yet in global users list)
   useEffect(() => {
     const missingAuthorIds = new Set<string>();
@@ -588,30 +642,30 @@ export function SavedPostsTab({
     if (missingAuthorIds.size === 0) return;
     missingAuthorIds.forEach((aid) => attemptedAuthorFetchIdsRef.current.add(aid));
 
-    let cancelled = false;
     Promise.all(
       Array.from(missingAuthorIds).map(async (aid) => {
         const profile = await fetchUserProfile(aid).catch(() => null);
         return { aid, profile };
       })
     ).then((results) => {
-      if (cancelled) return;
+      if (!isMountedRef.current) return;
       const additions: Record<string, User> = {};
       results.forEach(({ aid, profile }) => {
         if (profile) {
           additions[aid] = profile;
           if (profile.id) additions[profile.id] = profile;
           if (profile.googleId) additions[profile.googleId] = profile;
+          if (profile.alternateIds) {
+            profile.alternateIds.forEach((altId) => {
+              if (altId) additions[altId] = profile;
+            });
+          }
         }
       });
       if (Object.keys(additions).length > 0) {
         setExtraAuthorsById((prev) => ({ ...prev, ...additions }));
       }
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, [allSavedItems, usersByIdMap]);
 
   // Calculate category counts

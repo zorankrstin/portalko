@@ -452,12 +452,12 @@ export function DogodkiFeed({ onViewChange, searchQuery = '', onNavigatePost, on
             const badgeType = event.promotionBadgeType || event.promotion?.badgeType || 'PROMO';
             const resolvedDate = resolveEventDisplayDate(event);
 
-            const eventAuthorName = event.authorName || (event as any).organizer || 'Organizator';
+            const rawEventAuthorName = (event.authorName || (event as any).organizer || '').trim();
             const authorUser = users.find(u => 
-              (event.authorId && u.id === event.authorId) ||
-              (u.name && u.name.trim().toLowerCase() === eventAuthorName.trim().toLowerCase()) ||
-              (u.name && slugify(u.name) === slugify(eventAuthorName))
+              (event.authorId && (u.id === event.authorId || u.googleId === event.authorId || u.alternateIds?.includes(event.authorId))) ||
+              (rawEventAuthorName && u.name && (u.name.trim().toLowerCase() === rawEventAuthorName.toLowerCase() || slugify(u.name) === slugify(rawEventAuthorName)))
             );
+            const eventAuthorName = authorUser?.name?.trim() || rawEventAuthorName || 'Organizator';
             const resolvedAvatar = resolveUserUploadedAvatar(
               event.authorAvatar,
               event.authorId,

@@ -131,11 +131,30 @@ export const EventPost: React.FC<EventPostProps> = ({
   const { filterByEventLocation } = useEventFilter();
   const { users, currentUser } = useAuth();
 
-  const rawAuthorCandidate = authorName?.trim() || organizer?.trim() || author?.trim() || '';
+  const rawAuthorCandidateRaw = authorName?.trim() || organizer?.trim() || author?.trim() || '';
+  const dummyEventAuthorNames = new Set([
+    'mestna knjižnica kranj',
+    'organizator',
+    'avtor',
+    'uporabnik',
+    'partner',
+    'portalko partner',
+    'neznan avtor',
+  ]);
+  const rawAuthorCandidate =
+    !isDemoEvent && dummyEventAuthorNames.has(rawAuthorCandidateRaw.toLowerCase())
+      ? ''
+      : rawAuthorCandidateRaw;
+
   const matchedAuthorUser = useMemo(() => {
     if (!users || users.length === 0) return undefined;
     if (authorId) {
-      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      const byId = users.find(
+        (u) =>
+          u.id === authorId ||
+          u.googleId === authorId ||
+          (u.alternateIds && u.alternateIds.includes(authorId))
+      );
       if (byId) return byId;
     }
     if (!rawAuthorCandidate) return undefined;
@@ -151,8 +170,8 @@ export const EventPost: React.FC<EventPostProps> = ({
   const effectiveAuthorRole = matchedAuthorUser?.role || rawAuthorRole || 'Organizator';
   const effectiveAuthorDisplayName =
     (authorId && matchedAuthorUser?.name?.trim()) ||
-    rawAuthorCandidate ||
     matchedAuthorUser?.name?.trim() ||
+    rawAuthorCandidate ||
     (isDemoEvent ? 'Mestna knjižnica Kranj' : 'Organizator');
 
   const effectiveAuthorAvatar = useMemo(() => {

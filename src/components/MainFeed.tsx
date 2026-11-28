@@ -472,12 +472,12 @@ export function MainFeed({ searchQuery = '', onViewChange, onNavigatePost, onTag
                   : (ev.isPromoted && (!ev.promotedUntil || new Date(ev.promotedUntil).getTime() > Date.now()))
               );
               const resolvedDate = resolveEventDisplayDate(ev);
-              const eventAuthorName = ev.authorName || (ev as any).organizer || 'Organizator';
+              const rawEventAuthorName = (ev.authorName || (ev as any).organizer || '').trim();
               const authorUser = users.find(u => 
-                (ev.authorId && u.id === ev.authorId) ||
-                (u.name && u.name.trim().toLowerCase() === eventAuthorName.trim().toLowerCase()) ||
-                (u.name && slugify(u.name) === slugify(eventAuthorName))
+                (ev.authorId && (u.id === ev.authorId || u.googleId === ev.authorId || u.alternateIds?.includes(ev.authorId))) ||
+                (rawEventAuthorName && u.name && (u.name.trim().toLowerCase() === rawEventAuthorName.toLowerCase() || slugify(u.name) === slugify(rawEventAuthorName)))
               );
+              const eventAuthorName = authorUser?.name?.trim() || rawEventAuthorName || 'Organizator';
               const resolvedAvatar = resolveUserUploadedAvatar(ev.authorAvatar, ev.authorId, eventAuthorName, users, currentUser);
 
               return wrapCard(

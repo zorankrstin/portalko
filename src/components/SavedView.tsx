@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SavedPostsTab } from './SavedPostsTab';
 import { useAuth, User } from '../contexts/AuthContext';
 import { useBookmarks } from '../contexts/BookmarkContext';
@@ -15,23 +15,28 @@ export function SavedView({
   onAuthorClick?: (author: { name: string; id?: string; avatar?: string; role?: string; fromPostTarget?: PostDetailTarget }) => void;
 }) {
   const { users: authUsers, currentUser } = useAuth();
-  const { savedIds, savedItems, getItemData } = useBookmarks();
+  const { savedIds, savedItems } = useBookmarks();
   const [fetchedGlobalUsers, setFetchedGlobalUsers] = useState<User[]>([]);
   const [resolvedAuthorsById, setResolvedAuthorsById] = useState<Record<string, User>>({});
+  const isMountedRef = useRef(true);
+  const fetchedOrInFlightAuthorIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Ensure the full global user directory is loaded from Firestore
   useEffect(() => {
-    let cancelled = false;
     fetchUsersList()
       .then((list) => {
-        if (!cancelled && list.length > 0) {
+        if (isMountedRef.current && list.length > 0) {
           setFetchedGlobalUsers(list);
         }
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Merge live AuthContext users, fetched Firestore users, currentUser, and any on-demand profiles
@@ -40,7 +45,21 @@ export function SavedView({
     const addUser = (u?: User | null) => {
       if (!u || !u.id) return;
       const existing = map.get(u.id);
-      map.set(u.id, existing ? { ...existing, ...u, name: u.name || existing.name } : u);
+      if (existing) {
+        const mergedAltIds = Array.from(
+          new Set([
+            ...(existing.alternateIds || []),
+            ...(u.alternateIds || []),
+            existing.id,
+            existing.googleId,
+            u.id,
+            u.googleId,
+          ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
+        );
+        map.set(u.id, { ...existing, ...u, name: u.name || existing.name, alternateIds: mergedAltIds });
+      } else {
+        map.set(u.id, u);
+      }
     };
 
     authUsers.forEach(addUser);
@@ -51,12 +70,17 @@ export function SavedView({
     return Array.from(map.values());
   }, [authUsers, fetchedGlobalUsers, resolvedAuthorsById, currentUser]);
 
-  // Build lookup index by both canonical user.id and googleId / Firebase UID
+  // Build lookup index by canonical user.id, googleId / Firebase UID, and any alternateIds
   const usersById = useMemo(() => {
     const index: Record<string, User> = {};
     globalUsers.forEach((u) => {
       if (u.id) index[u.id] = u;
       if (u.googleId) index[u.googleId] = u;
+      if (u.alternateIds) {
+        u.alternateIds.forEach((altId) => {
+          if (altId) index[altId] = u;
+        });
+      }
     });
     return index;
   }, [globalUsers]);
@@ -65,46 +89,48 @@ export function SavedView({
   useEffect(() => {
     const candidateIds = new Set<string>();
     savedIds.forEach((id) => {
-      const data = getItemData(id) || savedItems[id];
+      const data = savedItems[id];
       const authorId = data?.authorId ? String(data.authorId).trim() : '';
       if (
         authorId &&
         !authorId.startsWith('author-') &&
         !authorId.startsWith('partner-') &&
         !authorId.startsWith('organizer-') &&
-        !usersById[authorId]
+        !usersById[authorId] &&
+        !fetchedOrInFlightAuthorIdsRef.current.has(authorId)
       ) {
         candidateIds.add(authorId);
       }
     });
 
     if (candidateIds.size === 0) return;
+    candidateIds.forEach((id) => fetchedOrInFlightAuthorIdsRef.current.add(id));
 
-    let cancelled = false;
     Promise.all(
       Array.from(candidateIds).map(async (authorId) => {
         const profile = await fetchUserProfile(authorId).catch(() => null);
         return { authorId, profile };
       })
     ).then((results) => {
-      if (cancelled) return;
+      if (!isMountedRef.current) return;
       const additions: Record<string, User> = {};
       results.forEach(({ authorId, profile }) => {
         if (profile) {
           additions[authorId] = profile;
           if (profile.id) additions[profile.id] = profile;
           if (profile.googleId) additions[profile.googleId] = profile;
+          if (profile.alternateIds) {
+            profile.alternateIds.forEach((altId) => {
+              if (altId) additions[altId] = profile;
+            });
+          }
         }
       });
       if (Object.keys(additions).length > 0) {
         setResolvedAuthorsById((prev) => ({ ...prev, ...additions }));
       }
     });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [savedIds, savedItems, getItemData, usersById]);
+  }, [savedIds, savedItems, usersById]);
 
   return (
     <div className="flex flex-col gap-space-md">

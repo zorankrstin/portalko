@@ -426,8 +426,8 @@ export function PostDetailPage({
         month: resolvedDate.dateInfo.month,
         day: resolvedDate.dateInfo.day,
         price: fs.price || 'Vstop prost',
-        organizer: fs.authorName || fs.organizer || 'Organizator',
-        authorName: fs.authorName || fs.organizer || 'Organizator',
+        organizer: fs.authorName || fs.organizer || '',
+        authorName: fs.authorName || fs.organizer || '',
         authorId: fs.authorId,
         authorAvatar: fs.authorAvatar,
         authorRole: fs.authorRole || 'Organizator',
@@ -2258,29 +2258,31 @@ export function PostDetailPage({
     authorAvatar: itemData.partnerAvatar || itemData.authorAvatar,
   };
 
-  const authorDisplayName =
+  const rawAuthorText = (
     itemData.author ||
     itemData.authorName ||
     itemData.partner ||
     itemData.organizer ||
-    'Avtor';
+    ''
+  ).trim();
+  const isPlaceholderAuthor = ['avtor', 'organizator', 'portalko partner', 'partner', 'uporabnik', 'neznan avtor'].includes(
+    rawAuthorText.toLowerCase()
+  );
+  const authorDisplayName = (!isPlaceholderAuthor && rawAuthorText) || 'Avtor';
   const rawAuthorId = itemData.authorId || itemData.partnerId || itemData.organizerId;
   const matchedAuthorUser = users.find(
     u =>
-      (rawAuthorId && u.id === rawAuthorId) ||
-      (authorDisplayName &&
-        authorDisplayName !== 'Avtor' &&
-        (u.name.trim().toLowerCase() === authorDisplayName.trim().toLowerCase() ||
-          slugify(u.name) === slugify(authorDisplayName)))
+      (rawAuthorId && (u.id === rawAuthorId || u.googleId === rawAuthorId || u.alternateIds?.includes(rawAuthorId))) ||
+      (rawAuthorText &&
+        !isPlaceholderAuthor &&
+        (u.name.trim().toLowerCase() === rawAuthorText.toLowerCase() ||
+          slugify(u.name) === slugify(rawAuthorText)))
   );
-  const authorId = rawAuthorId || matchedAuthorUser?.id;
+  const authorId = matchedAuthorUser?.id || rawAuthorId;
   const resolvedAuthorName =
-    itemData.author ||
-    itemData.authorName ||
-    itemData.partner ||
-    itemData.organizer ||
-    matchedAuthorUser?.name ||
-    'Avtor';
+    matchedAuthorUser?.name?.trim() ||
+    (!isPlaceholderAuthor ? rawAuthorText : '') ||
+    (target.type === 'event' ? 'Organizator' : target.type === 'deal' ? 'Portalko partner' : 'Avtor');
   const authorAvatar =
     resolveUserUploadedAvatar(
       itemData.partnerAvatar || itemData.authorAvatar,

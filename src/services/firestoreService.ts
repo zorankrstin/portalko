@@ -814,25 +814,32 @@ export async function syncUserProfile(user: User): Promise<void> {
 export async function fetchUserProfile(userId: string): Promise<User | null> {
   if (!userId) return null;
   const path = `users/${userId}`;
-  const mapSnapToUser = (docId: string, data: Record<string, any>): User => ({
-    id: data.id || docId,
-    name: data.name || '',
-    email: data.email || '',
-    role: (data.role || 'registered') as Role,
-    status: (data.status || 'active') as 'active' | 'banned',
-    avatar: data.avatar,
-    bio: data.bio,
-    username: data.username,
-    googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
-    socialLinks: data.socialLinks,
-    profileMenu: data.profileMenu,
-    verificationRequested: data.verificationRequested,
-    verificationRequestedAt: data.verificationRequestedAt,
-    verificationNote: data.verificationNote,
-    emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
-    verificationToken: data.verificationToken || undefined,
-    verificationSentAt: data.verificationSentAt || undefined,
-  });
+  const mapSnapToUser = (docId: string, data: Record<string, any>): User => {
+    const effectiveId = data.id || docId;
+    const altIds = Array.from(
+      new Set([docId, effectiveId, data.googleId].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
+    );
+    return {
+      id: effectiveId,
+      name: data.name || '',
+      email: data.email || '',
+      role: (data.role || 'registered') as Role,
+      status: (data.status || 'active') as 'active' | 'banned',
+      avatar: data.avatar,
+      bio: data.bio,
+      username: data.username,
+      googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
+      alternateIds: altIds,
+      socialLinks: data.socialLinks,
+      profileMenu: data.profileMenu,
+      verificationRequested: data.verificationRequested,
+      verificationRequestedAt: data.verificationRequestedAt,
+      verificationNote: data.verificationNote,
+      emailVerified: data.emailVerified !== undefined ? data.emailVerified : true,
+      verificationToken: data.verificationToken || undefined,
+      verificationSentAt: data.verificationSentAt || undefined,
+    };
+  };
 
   try {
     const userRef = doc(db, 'users', userId);
@@ -1195,6 +1202,10 @@ export async function fetchUsersList(): Promise<User[]> {
         continue;
       }
 
+      const altIds = Array.from(
+        new Set([docId, effectiveId, data.googleId].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
+      );
+
       users.push({
         id: effectiveId,
         name: data.name || '',
@@ -1205,6 +1216,7 @@ export async function fetchUsersList(): Promise<User[]> {
         bio: data.bio,
         username: data.username,
         googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
+        alternateIds: altIds,
         socialLinks: data.socialLinks,
         profileMenu: data.profileMenu,
         verificationRequested: data.verificationRequested,
@@ -1255,6 +1267,10 @@ function rawSubscribeToUsers(onUsers: (users: User[]) => void): () => void {
           return;
         }
 
+        const altIds = Array.from(
+          new Set([docId, effectiveId, data.googleId].filter((v): v is string => typeof v === 'string' && v.trim().length > 0))
+        );
+
         users.push({
           id: effectiveId,
           name: data.name || '',
@@ -1266,6 +1282,7 @@ function rawSubscribeToUsers(onUsers: (users: User[]) => void): () => void {
           username: data.username,
           password: data.password,
           googleId: data.googleId || (data.id && data.id !== docId ? docId : undefined),
+          alternateIds: altIds,
           socialLinks: data.socialLinks,
           profileMenu: data.profileMenu,
           verificationRequested: data.verificationRequested,

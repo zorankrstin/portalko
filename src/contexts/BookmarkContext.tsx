@@ -1,10 +1,37 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { subscribeToBookmarks, saveBookmarkInFirestore, removeBookmarkInFirestore } from '../services/firestoreService';
 
 export type BookmarkCategory = 'all' | 'news' | 'ads' | 'events' | 'blog' | 'deals';
+
+export const DUMMY_BOOKMARK_AUTHOR_PLACEHOLDERS = new Set([
+  'mestna knjižnica kranj',
+  'marko k.',
+  'gregor h.',
+  'organizator',
+  'avtor',
+  'uporabnik',
+  'partner',
+  'portalko partner',
+  'neznan avtor',
+]);
+
+export function isDummyBookmarkAuthor(name?: string | null): boolean {
+  if (!name || typeof name !== 'string') return false;
+  return DUMMY_BOOKMARK_AUTHOR_PLACEHOLDERS.has(name.trim().toLowerCase());
+}
+
+function sanitizeSavedItemAuthorFields(id: string, item: SavedItemData): SavedItemData {
+  if (!item || DEFAULT_KNOWN_ITEMS[id]) return item;
+  const copy: SavedItemData = { ...item };
+  if (isDummyBookmarkAuthor(copy.author)) delete copy.author;
+  if (isDummyBookmarkAuthor(copy.authorName)) delete copy.authorName;
+  if (isDummyBookmarkAuthor(copy.organizer)) delete copy.organizer;
+  if (isDummyBookmarkAuthor(copy.partner)) delete copy.partner;
+  return copy;
+}
 
 export interface SavedItemData {
   id: string;
@@ -224,6 +251,7 @@ type BookmarkContextType = {
   toggleBookmark: (id: string, data?: any) => void;
   isBookmarked: (id: string) => boolean;
   getItemData: (id: string) => SavedItemData | null;
+  updateSavedItemMetadata: (id: string, patch: Partial<SavedItemData>) => void;
 };
 
 const BookmarkContext = createContext<BookmarkContextType | undefined>(undefined);
@@ -252,7 +280,15 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem(STORAGE_ITEMS_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed && typeof parsed === 'object') return parsed;
+        if (parsed && typeof parsed === 'object') {
+          const sanitized: Record<string, SavedItemData> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (v && typeof v === 'object') {
+              sanitized[k] = sanitizeSavedItemAuthorFields(k, v as SavedItemData);
+            }
+          }
+          return sanitized;
+        }
       }
     } catch (e) {
       console.error('Failed to parse saved bookmark items from storage', e);
@@ -278,12 +314,12 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
               const next = { ...prev };
               firestoreBookmarks.forEach(b => {
                 const bId = b.targetId || b.id;
-                next[bId] = {
+                next[bId] = sanitizeSavedItemAuthorFields(bId, {
                   ...(b.data || {}),
                   id: bId,
                   category: b.targetCategory || b.data?.category || 'all',
                   title: b.targetTitle || b.data?.title || `Objava #${bId}`,
-                };
+                });
               });
               return next;
             });
@@ -335,11 +371,11 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
         const defaultData: Partial<SavedItemData> = DEFAULT_KNOWN_ITEMS[id] || {};
         const combined = { ...defaultData, ...(data || {}), id };
         const category = inferItemCategory(id, combined);
-        const resolvedData: SavedItemData = {
+        const resolvedData: SavedItemData = sanitizeSavedItemAuthorFields(id, {
           ...combined,
           category,
           title: combined.title || defaultData.title || `Objava #${id}`,
-        };
+        });
 
         // Save bookmark to Firestore only if active Firebase Auth user exists
         if (auth.currentUser) {
@@ -355,14 +391,34 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const isBookmarked = (id: string) => savedIds.includes(id);
+  const isBookmarked = useCallback((id: string) => savedIds.includes(id), [savedIds]);
 
-  const getItemData = (id: string): SavedItemData | null => {
+  const getItemData = useCallback((id: string): SavedItemData | null => {
     return savedItems[id] || DEFAULT_KNOWN_ITEMS[id] || null;
-  };
+  }, [savedItems]);
+
+  const updateSavedItemMetadata = useCallback((id: string, patch: Partial<SavedItemData>) => {
+    if (!id || !patch) return;
+    setSavedItems(prev => {
+      const existing = prev[id];
+      if (!existing) return prev;
+      const merged = sanitizeSavedItemAuthorFields(id, { ...existing, ...patch, id });
+      const changed = (
+        merged.authorId !== existing.authorId ||
+        merged.authorName !== existing.authorName ||
+        merged.author !== existing.author ||
+        merged.organizer !== existing.organizer ||
+        merged.partner !== existing.partner ||
+        merged.authorAvatar !== existing.authorAvatar ||
+        merged.authorRole !== existing.authorRole
+      );
+      if (!changed) return prev;
+      return { ...prev, [id]: merged };
+    });
+  }, []);
 
   return (
-    <BookmarkContext.Provider value={{ savedIds, savedItems, toggleBookmark, isBookmarked, getItemData }}>
+    <BookmarkContext.Provider value={{ savedIds, savedItems, toggleBookmark, isBookmarked, getItemData, updateSavedItemMetadata }}>
       {children}
     </BookmarkContext.Provider>
   );

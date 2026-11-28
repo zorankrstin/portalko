@@ -106,11 +106,20 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   const image = rawImage ?? (isDemoBlog ? "https://lh3.googleusercontent.com/aida-public/AB6AXuDmfcqLkX6EpehopwShblWWWTErEk6fiZmrLuObihcFhQPTTdN1UP0HwAJWNxbpewO7AD8rNtHki7D2UQxR3ruAprxzai0oCSFiLO7Ucc2eM__0HctsIVOGVfYNHax9soqlpthUdhwDbTst0e68dCdSFOM0wasuTUnvpZCJ__StsF3T8Qey5cE-RGiZXa7sEzk59Ev8spqvVpe-6CJ-6XR19xlIiJd9yyxqk2aRczUvHRHR4HUWu0Zv" : undefined);
 
   const { users, currentUser } = useAuth();
-  const rawAuthorCandidate = authorName?.trim() || rawAuthor?.trim() || '';
+  const rawAuthorCandidateRaw = authorName?.trim() || rawAuthor?.trim() || '';
+  const dummyBlogAuthors = new Set(['avtor', 'uporabnik', 'neznan avtor']);
+  const rawAuthorCandidate =
+    !isDemoBlog && dummyBlogAuthors.has(rawAuthorCandidateRaw.toLowerCase()) ? '' : rawAuthorCandidateRaw;
+
   const matchedAuthorUser = React.useMemo(() => {
     if (!users || users.length === 0) return undefined;
     if (authorId) {
-      const byId = users.find((u) => u.id === authorId || u.googleId === authorId);
+      const byId = users.find(
+        (u) =>
+          u.id === authorId ||
+          u.googleId === authorId ||
+          (u.alternateIds && u.alternateIds.includes(authorId))
+      );
       if (byId) return byId;
     }
     if (!rawAuthorCandidate) return undefined;
@@ -125,8 +134,8 @@ export const BlogPost: React.FC<BlogPostProps> = ({
   const effectiveAuthorId = matchedAuthorUser?.id || authorId;
   const author =
     (authorId && matchedAuthorUser?.name?.trim()) ||
-    rawAuthorCandidate ||
     matchedAuthorUser?.name?.trim() ||
+    rawAuthorCandidate ||
     (isDemoBlog ? "Uredništvo Portalko.net" : "Avtor");
   const authorRole = matchedAuthorUser?.role || rawAuthorRole || (isDemoBlog ? "admin" : "Član skupnosti");
   const authorAvatar = matchedAuthorUser?.avatar || rawAuthorAvatar || (currentUser?.id && effectiveAuthorId === currentUser.id ? currentUser.avatar : undefined);

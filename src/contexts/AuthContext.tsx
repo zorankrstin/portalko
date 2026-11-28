@@ -85,6 +85,7 @@ export interface User {
   password?: string;
   authProvider?: 'credentials' | 'google';
   googleId?: string;
+  alternateIds?: string[];
   socialLinks?: SocialLink[];
   profileMenu?: ProfileMenuItem[];
   verificationRequested?: boolean;
@@ -243,6 +244,18 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
     if (existing) {
       // Pick the canonical ID (prefer the longer ID like Firebase UID over placeholder 'u1')
       const canonicalId = (u.id.length > existing.id.length) ? u.id : existing.id;
+      const alternateIds = Array.from(
+        new Set(
+          [
+            existing.id,
+            existing.googleId,
+            ...(existing.alternateIds || []),
+            u.id,
+            u.googleId,
+            ...(u.alternateIds || []),
+          ].filter((val): val is string => typeof val === 'string' && val.trim().length > 0)
+        )
+      );
       
       const cleanAvatar = (u.avatar && !isDummyAvatar(u.avatar)) 
         ? u.avatar 
@@ -253,6 +266,8 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
         ...existing,
         ...u,
         id: canonicalId,
+        googleId: u.googleId || existing.googleId,
+        alternateIds,
         avatar: cleanAvatar,
         role: (u.role === 'superadmin' || existing.role === 'superadmin') ? 'superadmin' : (u.role || existing.role),
         emailVerified: isVerified ? true : (u.emailVerified === false || existing.emailVerified === false ? false : true),
@@ -273,9 +288,17 @@ export function deduplicateUsers(userList: (User | null | undefined)[]): User[] 
         byEmail.set(existingEmailNorm, merged);
       }
     } else {
-      byId.set(u.id, u);
+      const initialAltIds = Array.from(
+        new Set(
+          [u.id, u.googleId, ...(u.alternateIds || [])].filter(
+            (val): val is string => typeof val === 'string' && val.trim().length > 0
+          )
+        )
+      );
+      const normalizedUser: User = initialAltIds.length > 0 ? { ...u, alternateIds: initialAltIds } : u;
+      byId.set(u.id, normalizedUser);
       if (emailNorm) {
-        byEmail.set(emailNorm, u);
+        byEmail.set(emailNorm, normalizedUser);
       }
     }
   }
