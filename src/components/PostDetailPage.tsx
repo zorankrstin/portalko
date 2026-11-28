@@ -50,6 +50,13 @@ import { parseSocialEmbed } from '../utils/embedUtils';
 import { getActiveFallbackImage, handleImageFallbackError } from '../services/portalSettingsService';
 import { buildSearchQuery, SearchCategory } from '../utils/searchUtils';
 import { updatePageSeo } from '../utils/seoUtils';
+import {
+  OgCollectionName,
+  cleanServerHtmlText,
+  guessImageMimeTypeFromUrl,
+  normalizeHttpOrOriginImageUrl,
+  resolveBestOgImageUrl,
+} from '../services/ogMetaGeneratorService';
 import { buildPostUrl, buildTagUrl, navigateApp, slugify, isCurrentPathValidForPost } from '../utils/urlUtils';
 import { parseTags } from '../utils/tagUtils';
 import { useEventFilter } from '../contexts/EventFilterContext';
@@ -1049,22 +1056,22 @@ export function PostDetailPage({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isLightboxOpen, postImages.length]);
 
-  // Sync state when itemData changes
+  // Reset interactive post state only when switching to a different post target
   useEffect(() => {
-    if (!itemData) return;
-    setVotes(itemData.votes || itemData.votesCount || 24);
+    if (!rawItemData) return;
+    setVotes(rawItemData.votes || rawItemData.votesCount || 24);
     setHasVoted(false);
     setShowPhone(false);
 
-    const initialRsvp = typeof itemData.interestedCount === 'number' 
-      ? itemData.interestedCount 
-      : parseInt(String(itemData.interestedCount)) || 35;
+    const initialRsvp = typeof rawItemData.interestedCount === 'number'
+      ? rawItemData.interestedCount
+      : parseInt(String(rawItemData.interestedCount)) || 35;
     setRsvpCount(initialRsvp);
     setIsRsvpActive(false);
 
-    const initialBlogLikes = typeof itemData.likesCount === 'number'
-      ? itemData.likesCount
-      : parseInt(String(itemData.likesCount)) || 0;
+    const initialBlogLikes = typeof rawItemData.likesCount === 'number'
+      ? rawItemData.likesCount
+      : parseInt(String(rawItemData.likesCount)) || 0;
     setBlogLikes(initialBlogLikes);
     setHasBlogLiked(false);
 
@@ -1084,186 +1091,315 @@ export function PostDetailPage({
     } catch {
       setComments([]);
     }
+  }, [rawItemData?.id, target.id, target.type]);
 
-    if (itemData) {
-      const typeLabel = target.type === 'ad' ? 'Mali oglas' :
-                        target.type === 'event' ? 'Dogodek' :
-                        target.type === 'deal' ? 'Ugodnost' : 'Blog & Zgodba';
+  // Dynamically compute OpenGraph, Twitter Card, and Schema.org metadata for this post
+  const postOgMetadata = useMemo(() => {
+    if (!itemData) return null;
 
-      const postAuthorName = itemData.author || itemData.authorName || itemData.partner || itemData.organizer || 'Avtor';
-      
-      const resolvedType = itemData.type || target.type;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://portalko.net';
+    const resolvedType = (itemData.type || target.type || 'blog') as PostDetailType;
+    const ogColName: OgCollectionName =
+      resolvedType === 'ad' ? 'ads' : resolvedType === 'event' ? 'events' : 'posts';
 
-      // Clean SEO URL structure: /category/subcategory/title
-      const cleanPath = buildPostUrl({
-        type: resolvedType,
-        id: itemData.id || target.id,
-        title: itemData.title,
-        category: itemData.category,
-        categoryName: itemData.categoryName,
-        subcategory: itemData.subcategory,
-        subcategoryName: itemData.subcategoryName,
-      });
+    const typeLabel =
+      resolvedType === 'ad'
+        ? 'Mali oglas'
+        : resolvedType === 'event'
+        ? 'Dogodek'
+        : resolvedType === 'deal'
+        ? 'Ugodnost'
+        : 'Blog & Zgodba';
 
-      // Check if current URL is already valid for this item (e.g. /akcije/trgovine-hrana/subway-italian-bmt)
-      // If so, keep user's URL intact and do not arbitrarily rewrite or overwrite it!
-      const isAlreadyValid = isCurrentPathValidForPost(window.location.pathname, itemData, resolvedType);
-      const effectivePath = isAlreadyValid ? window.location.pathname : cleanPath;
-      const fullUrl = `${window.location.origin}${effectivePath}`;
+    const postAuthorName =
+      cleanServerHtmlText(
+        itemData.author || itemData.authorName || itemData.partner || itemData.organizer || '',
+        80
+      ) || 'Avtor';
 
-      // Update URL cleanly without hash if not already valid
-      if ((!isAlreadyValid && window.location.pathname !== cleanPath) || window.location.hash) {
-        window.history.replaceState({ type: resolvedType, id: itemData.id || target.id }, '', cleanPath);
+    const cleanPath = buildPostUrl({
+      type: resolvedType,
+      id: itemData.id || target.id,
+      title: itemData.title,
+      category: itemData.category,
+      categoryName: itemData.categoryName,
+      subcategory: itemData.subcategory,
+      subcategoryName: itemData.subcategoryName,
+    });
+
+    const currentPathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+    const isAlreadyValid = isCurrentPathValidForPost(currentPathname, itemData, resolvedType);
+    const effectivePath = isAlreadyValid ? currentPathname : cleanPath;
+    const fullUrl = `${origin}${effectivePath}`;
+
+    const rawItemTitle = cleanServerHtmlText(itemData.title || 'Objava', 120) || 'Objava';
+    const catLabel = cleanServerHtmlText(itemData.categoryName || typeLabel, 40);
+    const ogTitle = itemData.seoTitle?.trim()
+      ? cleanServerHtmlText(itemData.seoTitle, 120)
+      : catLabel && !rawItemTitle.toLowerCase().includes(catLabel.toLowerCase())
+      ? `${rawItemTitle} – ${catLabel} | Portalko`
+      : `${rawItemTitle} | Portalko`;
+
+    const highlightParts: string[] = [];
+    if (itemData.price) highlightParts.push(`Cena: ${itemData.price}`);
+    if (itemData.discount) highlightParts.push(`Popust: ${itemData.discount}`);
+    if (itemData.location || itemData.region || itemData.city) {
+      highlightParts.push(String(itemData.location || itemData.region || itemData.city));
+    }
+
+    const explicitMetaDesc = itemData.metaDescription || itemData.seoMetaDescription;
+    let ogDescription = cleanServerHtmlText(
+      explicitMetaDesc ||
+        itemData.subtitle ||
+        itemData.description ||
+        itemData.content ||
+        itemData.richContent ||
+        resolvedExternalMeta?.description ||
+        '',
+      180
+    );
+
+    if (!explicitMetaDesc && highlightParts.length > 0) {
+      const prefix = highlightParts.join(' • ');
+      if (!ogDescription || ogDescription.length < 90) {
+        ogDescription = ogDescription
+          ? cleanServerHtmlText(`${prefix} — ${ogDescription}`, 185)
+          : prefix;
       }
+    }
 
-      onTitleLoaded?.(itemData.title, {
-        categoryName: itemData.categoryName || itemData.category,
-        subcategoryName: itemData.subcategoryName || itemData.subcategory,
-        cleanUrl: effectivePath,
-      });
-
-      let jsonLd: Record<string, any> | undefined;
-      
-      // Clean HTML tags and decode spaces from description/content
-      let rawText = (itemData.description || itemData.content || itemData.title || '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      // Ensure unique, informative 120-160 character description
-      let cleanDesc = rawText;
-      if (cleanDesc.length < 90) {
-        if (target.type === 'event') {
-          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Oglejte si podrobnosti dogodka ${itemData.title}, datum (${itemData.eventDate || itemData.date || 'kmalu'}), lokacijo (${itemData.location || 'Slovenija'}) in vstopnice na portalu Portalko.`;
-        } else if (target.type === 'deal') {
-          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Preverite ugodnost in popust za ${itemData.title}${itemData.partner ? ` v trgovini ${itemData.partner}` : ''}. Oglejte si pogoje in prihranite na portalu Portalko.`;
-        } else if (target.type === 'ad') {
-          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Preverite mali oglas ${itemData.title}, ceno (${itemData.price || 'po dogovoru'}), fotografije in kontakt prodajalca (${itemData.location || 'Slovenija'}) na Portalko.`;
-        } else {
-          cleanDesc = `${cleanDesc ? `${cleanDesc}. ` : ''}Preberite blog članek ${itemData.title}, izkušnje in praktične nasvete slovenske spletne skupnosti na portalu Portalko.`;
-        }
+    if (ogDescription.length < 90) {
+      if (resolvedType === 'event') {
+        ogDescription = `${ogDescription ? `${ogDescription}. ` : ''}Oglejte si podrobnosti dogodka ${rawItemTitle}, datum (${itemData.eventDate || itemData.date || 'kmalu'}), lokacijo (${itemData.location || 'Slovenija'}) in vstopnice na portalu Portalko.`;
+      } else if (resolvedType === 'deal') {
+        ogDescription = `${ogDescription ? `${ogDescription}. ` : ''}Preverite ugodnost in popust za ${rawItemTitle}${itemData.partner ? ` v trgovini ${itemData.partner}` : ''}. Oglejte si pogoje in prihranite na portalu Portalko.`;
+      } else if (resolvedType === 'ad') {
+        ogDescription = `${ogDescription ? `${ogDescription}. ` : ''}Preverite mali oglas ${rawItemTitle}, ceno (${itemData.price || 'po dogovoru'}), fotografije in kontakt prodajalca (${itemData.location || 'Slovenija'}) na Portalko.`;
+      } else {
+        ogDescription = `${ogDescription ? `${ogDescription}. ` : ''}Preberite blog članek ${rawItemTitle}, izkušnje in praktične nasvete slovenske spletne skupnosti na portalu Portalko.`;
       }
-      if (cleanDesc.length > 160) {
-        cleanDesc = cleanDesc.slice(0, 157).trim() + '...';
-      }
+    }
 
-      if (target.type === 'event') {
-        jsonLd = {
-          '@context': 'https://schema.org',
-          '@type': 'Event',
-          '@id': fullUrl,
-          url: fullUrl,
-          name: itemData.title,
-          description: cleanDesc,
-          image: itemData.image ? [itemData.image] : [],
-          startDate: itemData.eventDate || itemData.date,
-          eventStatus: 'https://schema.org/EventScheduled',
-          eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
-          location: {
-            '@type': 'Place',
-            name: itemData.location || 'Slovenija',
-            address: {
-              '@type': 'PostalAddress',
-              addressCountry: 'SI',
-              addressLocality: itemData.location || 'Slovenija',
-            },
+    if (ogDescription.length > 180) {
+      ogDescription = cleanServerHtmlText(ogDescription, 180);
+    }
+
+    // Resolve best OpenGraph featured image (never falls back to site logo unless all real sources fail)
+    const docIdStr = String(itemData.id || target.id || '');
+    const candidateData = {
+      ...itemData,
+      image: itemData.image || postImages[0],
+      images: postImages.length > 0 ? postImages : itemData.images,
+    };
+
+    let resolvedImage = resolveBestOgImageUrl(ogColName, docIdStr, candidateData, origin);
+    if (!resolvedImage && (resolvedExternalMeta?.imageUrl || resolvedExternalMeta?.images?.[0])) {
+      const extCand = resolvedExternalMeta.imageUrl || resolvedExternalMeta.images?.[0] || '';
+      resolvedImage = normalizeHttpOrOriginImageUrl(extCand, origin);
+    }
+    if (!resolvedImage) {
+      const videoThumb = getDirectVideoThumbnailUrl(
+        candidateExternalUrl || itemData.embedCode || itemData.videoUrl
+      );
+      if (videoThumb) {
+        resolvedImage = normalizeHttpOrOriginImageUrl(videoThumb, origin);
+      }
+    }
+    if (!resolvedImage) {
+      const portalFallback = getActiveFallbackImage(true, resolvedType as any);
+      if (portalFallback && !isDummyOrFallbackImageUrl(portalFallback)) {
+        resolvedImage = normalizeHttpOrOriginImageUrl(portalFallback, origin);
+      }
+    }
+
+    const finalOgImage = resolvedImage || `${origin}/favicon.png`;
+    const isFeaturedImage = Boolean(resolvedImage) && !finalOgImage.toLowerCase().endsWith('/favicon.png');
+    const inferredMime =
+      guessImageMimeTypeFromUrl(finalOgImage) ||
+      (finalOgImage.includes('/api/og-image/') ? 'image/jpeg' : isFeaturedImage ? undefined : 'image/png');
+
+    const toIso = (val: any): string | undefined => {
+      if (!val) return undefined;
+      const d = typeof val?.toDate === 'function' ? val.toDate() : new Date(val);
+      return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+    };
+
+    let jsonLd: Record<string, any>;
+    if (resolvedType === 'event') {
+      jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Event',
+        '@id': fullUrl,
+        url: fullUrl,
+        name: rawItemTitle,
+        description: ogDescription,
+        image: [finalOgImage],
+        startDate: itemData.eventDate || itemData.date,
+        eventStatus: 'https://schema.org/EventScheduled',
+        eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+        location: {
+          '@type': 'Place',
+          name: itemData.location || 'Slovenija',
+          address: {
+            '@type': 'PostalAddress',
+            addressCountry: 'SI',
+            addressLocality: itemData.location || 'Slovenija',
           },
-          offers: {
-            '@type': 'Offer',
-            price: itemData.price ? itemData.price.replace(/[^0-9.,]/g, '') || '0' : '0',
-            priceCurrency: 'EUR',
-            availability: 'https://schema.org/InStock',
-          },
-          organizer: {
-            '@type': 'Organization',
-            name: itemData.organizer || postAuthorName || 'Portalko Dogodki',
-          },
-        };
-      } else if (target.type === 'deal') {
-        jsonLd = {
-          '@context': 'https://schema.org',
+        },
+        offers: {
           '@type': 'Offer',
-          '@id': fullUrl,
-          url: fullUrl,
-          name: itemData.title,
-          description: cleanDesc,
-          image: itemData.image,
-          price: itemData.price ? itemData.price.replace(/[^0-9.,]/g, '') || '0' : '0',
+          price: itemData.price ? String(itemData.price).replace(/[^0-9.,]/g, '') || '0' : '0',
           priceCurrency: 'EUR',
           availability: 'https://schema.org/InStock',
-          seller: {
-            '@type': 'Organization',
-            name: itemData.partner || 'Portalko Partner',
-          },
-        };
-      } else if (target.type === 'ad') {
-        jsonLd = {
-          '@context': 'https://schema.org',
-          '@type': 'Product',
-          '@id': fullUrl,
-          url: fullUrl,
-          name: itemData.title,
-          description: cleanDesc,
-          image: itemData.image ? [itemData.image] : [],
-          offers: {
-            '@type': 'Offer',
-            price: itemData.price ? itemData.price.replace(/[^0-9.,]/g, '') || '0' : '0',
-            priceCurrency: 'EUR',
-            itemCondition: 'https://schema.org/UsedCondition',
-            availability: 'https://schema.org/InStock',
-          },
-        };
-      } else {
-        jsonLd = {
-          '@context': 'https://schema.org',
-          '@type': 'BlogPosting',
-          '@id': fullUrl,
-          mainEntityOfPage: fullUrl,
-          url: fullUrl,
-          headline: itemData.title,
-          description: cleanDesc,
-          image: itemData.image ? [itemData.image] : [],
-          inLanguage: 'sl-SI',
-          author: {
-            '@type': 'Person',
-            name: postAuthorName || 'Avtor Portalko',
-          },
-          publisher: {
-            '@type': 'Organization',
-            name: 'Portalko',
-            logo: {
-              '@type': 'ImageObject',
-              url: `${window.location.origin}/favicon.png`,
-            },
-          },
-        };
-      }
-
-      const isArticleForAmp = target.type === 'news' || target.type === 'blog' || target.type === 'post';
-      const ampHtmlUrl = isArticleForAmp ? buildAmpUrl({
-        id: itemData.id,
-        type: target.type,
-        title: itemData.title,
-        category: itemData.category,
-        categoryName: itemData.categoryName,
-        subcategory: itemData.subcategory,
-        subcategoryName: itemData.subcategoryName,
-      }) : undefined;
-
-      updatePageSeo({
-        title: `${itemData.title} – ${itemData.categoryName || typeLabel} | Portalko`,
-        description: cleanDesc,
-        image: itemData.image,
-        location: itemData.location || itemData.region,
+        },
+        organizer: {
+          '@type': 'Organization',
+          name: itemData.organizer || postAuthorName || 'Portalko Dogodki',
+        },
+      };
+    } else if (resolvedType === 'deal') {
+      jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Offer',
+        '@id': fullUrl,
         url: fullUrl,
-        canonicalUrl: fullUrl,
-        ampHtmlUrl,
-        type: target.type === 'event' ? 'event' : target.type === 'deal' || target.type === 'ad' ? 'product' : 'article',
-        jsonLd,
-      });
+        name: rawItemTitle,
+        description: ogDescription,
+        image: finalOgImage,
+        price: itemData.price ? String(itemData.price).replace(/[^0-9.,]/g, '') || '0' : '0',
+        priceCurrency: 'EUR',
+        availability: 'https://schema.org/InStock',
+        seller: {
+          '@type': 'Organization',
+          name: itemData.partner || 'Portalko Partner',
+        },
+      };
+    } else if (resolvedType === 'ad') {
+      jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        '@id': fullUrl,
+        url: fullUrl,
+        name: rawItemTitle,
+        description: ogDescription,
+        image: [finalOgImage],
+        offers: {
+          '@type': 'Offer',
+          price: itemData.price ? String(itemData.price).replace(/[^0-9.,]/g, '') || '0' : '0',
+          priceCurrency: 'EUR',
+          itemCondition: 'https://schema.org/UsedCondition',
+          availability: 'https://schema.org/InStock',
+        },
+      };
+    } else {
+      jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        '@id': fullUrl,
+        mainEntityOfPage: fullUrl,
+        url: fullUrl,
+        headline: rawItemTitle,
+        description: ogDescription,
+        image: [finalOgImage],
+        inLanguage: 'sl-SI',
+        author: {
+          '@type': 'Person',
+          name: postAuthorName || 'Avtor Portalko',
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'Portalko',
+          logo: {
+            '@type': 'ImageObject',
+            url: `${origin}/favicon.png`,
+          },
+        },
+      };
     }
-  }, [itemData, target]);
+
+    const isArticleForAmp = resolvedType === 'news' || resolvedType === 'blog' || resolvedType === 'post';
+    const ampHtmlUrl = isArticleForAmp
+      ? buildAmpUrl({
+          id: itemData.id,
+          type: resolvedType,
+          title: itemData.title,
+          category: itemData.category,
+          categoryName: itemData.categoryName,
+          subcategory: itemData.subcategory,
+          subcategoryName: itemData.subcategoryName,
+        })
+      : undefined;
+
+    return {
+      resolvedType,
+      isAlreadyValid,
+      cleanPath,
+      effectivePath,
+      fullUrl,
+      ogTitle,
+      rawItemTitle,
+      ogDescription,
+      image: finalOgImage,
+      imageAlt: rawItemTitle,
+      imageWidth: isFeaturedImage ? 1200 : undefined,
+      imageHeight: isFeaturedImage ? 630 : undefined,
+      imageType: inferredMime,
+      author: postAuthorName !== 'Avtor' ? postAuthorName : undefined,
+      publishedTime: toIso(itemData.publishedAt || itemData.createdAt),
+      modifiedTime: toIso(itemData.updatedAt),
+      section: catLabel || undefined,
+      ampHtmlUrl,
+      jsonLd,
+    };
+  }, [itemData, postImages, resolvedExternalMeta, candidateExternalUrl, target.id, target.type]);
+
+  // Apply dynamic OpenGraph tags, canonical URL, and JSON-LD to document head
+  useEffect(() => {
+    if (!itemData || !postOgMetadata) return;
+
+    if (
+      (!postOgMetadata.isAlreadyValid && window.location.pathname !== postOgMetadata.cleanPath) ||
+      window.location.hash
+    ) {
+      window.history.replaceState(
+        { type: postOgMetadata.resolvedType, id: itemData.id || target.id },
+        '',
+        postOgMetadata.cleanPath
+      );
+    }
+
+    onTitleLoaded?.(itemData.title, {
+      categoryName: itemData.categoryName || itemData.category,
+      subcategoryName: itemData.subcategoryName || itemData.subcategory,
+      cleanUrl: postOgMetadata.effectivePath,
+    });
+
+    updatePageSeo({
+      title: postOgMetadata.ogTitle,
+      description: postOgMetadata.ogDescription,
+      image: postOgMetadata.image,
+      imageAlt: postOgMetadata.imageAlt,
+      imageWidth: postOgMetadata.imageWidth,
+      imageHeight: postOgMetadata.imageHeight,
+      imageType: postOgMetadata.imageType,
+      ogType: 'article',
+      author: postOgMetadata.author,
+      publishedTime: postOgMetadata.publishedTime,
+      modifiedTime: postOgMetadata.modifiedTime,
+      section: postOgMetadata.section,
+      location: itemData.location || itemData.region,
+      url: postOgMetadata.fullUrl,
+      canonicalUrl: postOgMetadata.fullUrl,
+      ampHtmlUrl: postOgMetadata.ampHtmlUrl,
+      type:
+        postOgMetadata.resolvedType === 'event'
+          ? 'event'
+          : postOgMetadata.resolvedType === 'deal' || postOgMetadata.resolvedType === 'ad'
+          ? 'product'
+          : 'article',
+      jsonLd: postOgMetadata.jsonLd,
+    });
+  }, [itemData, postOgMetadata, target.id]);
 
   // Real-time comments subscription from Firestore (with local fallback)
   useEffect(() => {
@@ -3856,9 +3992,9 @@ export function PostDetailPage({
           onClose={() => setIsShareModalOpen(false)}
           id={itemData.id}
           type={target.type}
-          title={itemData.title}
-          description={itemData.description || itemData.content}
-          imageUrl={itemData.image || (postImages && postImages[0])}
+          title={postOgMetadata?.rawItemTitle || itemData.title}
+          description={postOgMetadata?.ogDescription || itemData.description || itemData.content}
+          imageUrl={postOgMetadata?.image || itemData.image || (postImages && postImages[0])}
           category={itemData.categoryName || feedCategoryName}
           author={authorDisplayName}
           price={itemData.price || itemData.discount}

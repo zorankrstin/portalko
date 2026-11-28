@@ -37,7 +37,7 @@ export interface OgLookupDeps {
 }
 
 const SOCIAL_PREVIEW_CRAWLER_REGEX =
-  /(facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|linkedinbot|whatsapp|viber|telegrambot|discordbot|slackbot|pinterest|skypeuripreview|redditbot|snapchat|applebot)/i;
+  /(facebookexternalhit|facebot|facebookcatalog|meta-externalagent|meta-externalfetcher|twitterbot|linkedinbot|whatsapp|viber|telegrambot|discordbot|slackbot|pinterest|skypeuripreview|redditbot|snapchat|applebot|embedly|vkshare)/i;
 
 /**
  * Detects social media preview scrapers (Facebook, Meta, X, WhatsApp, LinkedIn, etc.)
@@ -301,7 +301,7 @@ export function extractExternalUrlCandidateFromDoc(
     }
   };
 
-  const explicit = [data.externalUrl, data.dealLink, data.link, data.ticketUrl]
+  const explicit = [data.externalUrl, data.dealLink, data.link, data.ticketUrl, data.sourceUrl, data.originalUrl]
     .map((v) => isPublicNonPortalUrl(v))
     .find(Boolean);
   if (explicit) return explicit;
@@ -613,11 +613,16 @@ export async function resolveOgMetadataFromLookup(
             return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
           };
 
+          const resolvedCanonical =
+            queryIdTarget && pathname === '/'
+              ? `${origin}/?post=${encodeURIComponent(queryIdTarget)}`
+              : canonicalUrl;
+
           return {
             title: fullTitle,
             description: fullDesc,
             ogType: 'article',
-            canonicalUrl,
+            canonicalUrl: resolvedCanonical,
             image: featuredImg || portalFallback,
             imageAlt: rawItemTitle,
             imageWidth: featuredImg ? 1200 : undefined,

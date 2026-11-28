@@ -2,9 +2,14 @@
   publish = "dist"
   command = "npm run build"
   functions = "netlify/functions"
+  edge_functions = "netlify/edge-functions"
 
 [functions]
   directory = "netlify/functions"
+
+[[edge_functions]]
+  function = "og-prerender-proxy"
+  path = "/*"
 
 # ==============================================================================
 # API Endpoints & Proxies
@@ -78,6 +83,12 @@
 [[redirects]]
   from = "/api/embed/fetch-url"
   to = "/.netlify/functions/fetch-embed"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/embed/image-proxy"
+  to = "/.netlify/functions/embed-image-proxy"
   status = 200
   force = true
 
@@ -339,6 +350,7 @@
     X-Content-Type-Options = "nosniff"
     X-XSS-Protection = "1; mode=block"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Vary = "User-Agent"
 
 [build.environment]
   # Firebase browser keys are public client identifiers (not secrets).

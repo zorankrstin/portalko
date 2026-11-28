@@ -249,8 +249,9 @@ async function getServerCollectionDocs(colName: OgCollectionName): Promise<Cache
     const db = await getServerFirestoreDb();
     if (!db) return slot.docs;
     const { collection, getDocs } = await import("firebase/firestore");
+    const firestoreCollection = colName === "directory" ? "directory_entries" : colName;
     const docs = await withServerTimeout(
-      getDocs(collection(db, colName)).then((snap) =>
+      getDocs(collection(db, firestoreCollection)).then((snap) =>
         snap.docs.map((d) => ({ id: d.id, data: d.data() }))
       ),
       2500,
@@ -500,7 +501,8 @@ async function startServer() {
         const db = await getServerFirestoreDb();
         if (db) {
           const { doc: fsDoc, getDoc } = await import("firebase/firestore");
-          const snap = await withServerTimeout(getDoc(fsDoc(db, colName, docId)), 2000, null as any);
+          const firestoreCollection = colName === "directory" ? "directory_entries" : colName;
+          const snap = await withServerTimeout(getDoc(fsDoc(db, firestoreCollection, docId)), 2000, null as any);
           if (snap?.exists?.()) {
             data = snap.data();
           }

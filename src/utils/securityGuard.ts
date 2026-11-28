@@ -150,6 +150,7 @@ const SUSPICIOUS_BOT_UA_PATTERNS: (string | RegExp)[] = [
 const ALLOWED_CRAWLER_UA_PATTERNS: (string | RegExp)[] = [
   /facebookexternalhit/i,
   /facebot/i,
+  /facebookcatalog/i,
   /meta-externalagent/i,
   /meta-externalfetcher/i,
   /twitterbot/i,
@@ -164,6 +165,8 @@ const ALLOWED_CRAWLER_UA_PATTERNS: (string | RegExp)[] = [
   /skypeuripreview/i,
   /snapchat/i,
   /applebot/i,
+  /embedly/i,
+  /vkshare/i,
   /googlebot/i,
   /adsbot-google/i,
   /mediapartners-google/i,

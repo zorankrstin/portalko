@@ -16,7 +16,16 @@ export interface SeoMetadataOptions {
   canonicalUrl?: string;
   ampHtmlUrl?: string;
   image?: string;
+  imageAlt?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageType?: string;
+  ogType?: 'website' | 'article';
   type?: 'website' | 'article' | 'product' | 'event' | 'profile';
+  author?: string;
+  publishedTime?: string;
+  modifiedTime?: string;
+  section?: string;
   location?: string;
   geoPosition?: string; // e.g. "46.1512;14.9955"
   jsonLd?: Record<string, any>;
@@ -45,9 +54,8 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
     canonicalUrl = canonicalUrl.split('#')[0];
   }
 
-  const ogType = options.type === 'article' || options.type === 'product' || options.type === 'event' || options.type === 'profile' 
-    ? (options.type === 'article' ? 'article' : 'website') 
-    : 'website';
+  const ogType: 'website' | 'article' =
+    options.ogType || (options.type === 'article' ? 'article' : 'website');
   const placename = options.location ? `${options.location}, Slovenija` : DEFAULT_GEO_PLACENAME;
   const geoPosition = options.geoPosition || DEFAULT_GEO_POSITION;
 
@@ -67,10 +75,17 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
     element.setAttribute('content', content);
   };
 
+  const removeMetaTag = (attributeName: string, attributeValue: string) => {
+    const element = document.querySelector(`meta[${attributeName}="${attributeValue}"]`);
+    if (element) {
+      element.remove();
+    }
+  };
+
   // 2. Standard Meta Tags
   setMetaTag('name', 'description', description);
   setMetaTag('name', 'keywords', 'Portalko, mali oglasi, novice Slovenija, dogodki Slovenija, kuponi, popusti, ugodnosti, Ljubljana, Maribor, Celje, Kranj, Koper, Novo mesto, slovenski portal');
-  setMetaTag('name', 'author', 'Portalko Skupnost');
+  setMetaTag('name', 'author', options.author || 'Portalko Skupnost');
   setMetaTag('name', 'robots', 'index, follow');
 
   // 3. GEO Meta Tags (Slovenia & local city/region targeting)
@@ -84,14 +99,30 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   const resolvedOgImage = (() => {
     const raw = (image || '').trim();
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://portalko.net';
-    if (!raw || raw.startsWith('data:')) {
+    if (!raw || raw.startsWith('data:') || raw.startsWith('blob:')) {
       return `${origin}/favicon.png`;
     }
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
       return raw;
     }
+    if (raw.startsWith('//')) {
+      return `https:${raw}`;
+    }
     return `${origin}${raw.startsWith('/') ? raw : `/${raw}`}`;
   })();
+
+  const isFeaturedOgImage = !resolvedOgImage.toLowerCase().endsWith('/favicon.png');
+  const resolvedImageAlt = (options.imageAlt || title).trim();
+  const inferredImageType =
+    options.imageType ||
+    (() => {
+      const lower = resolvedOgImage.split('?')[0].toLowerCase();
+      if (lower.endsWith('.png')) return 'image/png';
+      if (lower.endsWith('.webp')) return 'image/webp';
+      if (lower.endsWith('.gif')) return 'image/gif';
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+      return isFeaturedOgImage ? undefined : 'image/png';
+    })();
 
   setMetaTag('property', 'og:title', title);
   setMetaTag('property', 'og:description', description);
@@ -100,6 +131,51 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   setMetaTag('property', 'og:site_name', 'Portalko');
   setMetaTag('property', 'og:locale', 'sl_SI');
   setMetaTag('property', 'og:image', resolvedOgImage);
+  setMetaTag('property', 'og:image:alt', resolvedImageAlt);
+
+  if (resolvedOgImage.startsWith('https://')) {
+    setMetaTag('property', 'og:image:secure_url', resolvedOgImage);
+  } else {
+    removeMetaTag('property', 'og:image:secure_url');
+  }
+
+  if (inferredImageType) {
+    setMetaTag('property', 'og:image:type', inferredImageType);
+  } else {
+    removeMetaTag('property', 'og:image:type');
+  }
+
+  if (isFeaturedOgImage && options.imageWidth && options.imageHeight) {
+    setMetaTag('property', 'og:image:width', String(options.imageWidth));
+    setMetaTag('property', 'og:image:height', String(options.imageHeight));
+  } else {
+    removeMetaTag('property', 'og:image:width');
+    removeMetaTag('property', 'og:image:height');
+  }
+
+  if (ogType === 'article' && options.author) {
+    setMetaTag('property', 'article:author', options.author);
+  } else {
+    removeMetaTag('property', 'article:author');
+  }
+
+  if (ogType === 'article' && options.publishedTime) {
+    setMetaTag('property', 'article:published_time', options.publishedTime);
+  } else {
+    removeMetaTag('property', 'article:published_time');
+  }
+
+  if (ogType === 'article' && options.modifiedTime) {
+    setMetaTag('property', 'article:modified_time', options.modifiedTime);
+  } else {
+    removeMetaTag('property', 'article:modified_time');
+  }
+
+  if (ogType === 'article' && options.section) {
+    setMetaTag('property', 'article:section', options.section);
+  } else {
+    removeMetaTag('property', 'article:section');
+  }
 
   // 5. Twitter Cards
   setMetaTag('name', 'twitter:card', 'summary_large_image');
@@ -107,6 +183,7 @@ export function updatePageSeo(options: SeoMetadataOptions = {}) {
   setMetaTag('name', 'twitter:description', description);
   setMetaTag('name', 'twitter:url', canonicalUrl);
   setMetaTag('name', 'twitter:image', resolvedOgImage);
+  setMetaTag('name', 'twitter:image:alt', resolvedImageAlt);
 
   // 6. Canonical Link
   let canonicalLink = document.querySelector('link[rel="canonical"]');

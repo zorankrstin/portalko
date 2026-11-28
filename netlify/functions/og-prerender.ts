@@ -47,17 +47,22 @@ function decodeFirestoreFields(fields: Record<string, any> | undefined): Record<
 
 const API_KEY = firebaseConfig.apiKey;
 
+function toFirestoreCollectionId(colName: OgCollectionName | string): string {
+  return colName === "directory" ? "directory_entries" : colName;
+}
+
 async function fetchCollectionDocsRest(colName: OgCollectionName): Promise<CachedOgDoc[]> {
   try {
+    const firestoreCollection = toFirestoreCollectionId(colName);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
+    const timer = setTimeout(() => controller.abort(), 4500);
     const res = await fetch(`${FIRESTORE_REST_BASE}:runQuery?key=${encodeURIComponent(API_KEY)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         structuredQuery: {
-          from: [{ collectionId: colName }],
-          limit: 200,
+          from: [{ collectionId: firestoreCollection }],
+          limit: 1000,
         },
       }),
       signal: controller.signal,
@@ -81,12 +86,13 @@ async function fetchCollectionDocsRest(colName: OgCollectionName): Promise<Cache
   }
 }
 
-async function fetchSingleDocRest(colName: OgCollectionName, docId: string): Promise<Record<string, any> | null> {
+async function fetchSingleDocRest(colName: OgCollectionName | string, docId: string): Promise<Record<string, any> | null> {
   try {
+    const firestoreCollection = toFirestoreCollectionId(colName);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
+    const timer = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(
-      `${FIRESTORE_REST_BASE}/${encodeURIComponent(colName)}/${encodeURIComponent(docId)}?key=${encodeURIComponent(API_KEY)}`,
+      `${FIRESTORE_REST_BASE}/${encodeURIComponent(firestoreCollection)}/${encodeURIComponent(docId)}?key=${encodeURIComponent(API_KEY)}`,
       { signal: controller.signal }
     );
     clearTimeout(timer);
@@ -105,10 +111,11 @@ async function rehydrateShardedDocRest(
 ): Promise<Record<string, any>> {
   if (!data?.hasChunkedContent || colName === "directory") return data;
   try {
+    const firestoreCollection = toFirestoreCollectionId(colName);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2000);
+    const timer = setTimeout(() => controller.abort(), 2500);
     const res = await fetch(
-      `${FIRESTORE_REST_BASE}/${encodeURIComponent(colName)}/${encodeURIComponent(docId)}:runQuery?key=${encodeURIComponent(API_KEY)}`,
+      `${FIRESTORE_REST_BASE}/${encodeURIComponent(firestoreCollection)}/${encodeURIComponent(docId)}:runQuery?key=${encodeURIComponent(API_KEY)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -139,7 +146,7 @@ async function rehydrateShardedDocRest(
 }
 
 async function getPortalFallbackImageRest(): Promise<string> {
-  const settings = await fetchSingleDocRest("settings" as any, "portal");
+  const settings = await fetchSingleDocRest("settings", "portal");
   if (settings?.useFallbackForMissingImages && typeof settings?.fallbackImageUrl === "string") {
     return settings.fallbackImageUrl.trim();
   }
@@ -156,6 +163,7 @@ function resolveNetlifyOrigin(event: HandlerEvent): string {
 export const handler: Handler = async (event) => {
   const origin = resolveNetlifyOrigin(event);
   const pathLower = (event.path || "").toLowerCase();
+  const isHead = event.httpMethod?.toUpperCase() === "HEAD";
 
   // Dynamic OG image serving for data-URI cover/inline images
   const ogImgMatch = pathLower.match(/\/api\/og-image\/(posts|ads|events|directory)\/([^/?#]+)/i);
@@ -172,13 +180,13 @@ export const handler: Handler = async (event) => {
       if (m) {
         return {
           statusCode: 200,
-          isBase64Encoded: true,
+          isBase64Encoded: !isHead,
           headers: {
             "Content-Type": m[1],
             "Cache-Control": "public, max-age=3600",
             "Access-Control-Allow-Origin": "*",
           },
-          body: m[2],
+          body: isHead ? "" : m[2],
         };
       }
     }
@@ -197,9 +205,19 @@ export const handler: Handler = async (event) => {
     };
   }
 
+  const rawHeaderPath = event.headers["x-nf-original-path"] || "";
+  const fallbackEventPath =
+    pathLower && !pathLower.includes("/.netlify/functions/") && !pathLower.includes("/api/meta/")
+      ? `${event.path}${event.rawQuery ? `?${event.rawQuery}` : ""}`
+      : "/";
   const targetUrl = String(
-    event.queryStringParameters?.url || event.queryStringParameters?.path || "/"
+    event.queryStringParameters?.url ||
+      event.queryStringParameters?.path ||
+      rawHeaderPath ||
+      fallbackEventPath ||
+      "/"
   ).trim();
+
   const portalFallbackImage = await getPortalFallbackImageRest();
 
   const meta = await resolveOgMetadataFromLookup(targetUrl, origin, {
@@ -211,7 +229,7 @@ export const handler: Handler = async (event) => {
       try {
         const fetched = await Promise.race([
           fetchExternalEmbedMetadata(extUrl).catch(() => null),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 7500)),
         ]);
         return fetched?.imageUrl || null;
       } catch {
@@ -228,7 +246,7 @@ export const handler: Handler = async (event) => {
         "Cache-Control": "public, max-age=300",
         "Access-Control-Allow-Origin": "*",
       },
-      body: JSON.stringify({ ok: true, meta }),
+      body: isHead ? "" : JSON.stringify({ ok: true, meta }),
     };
   }
 
@@ -241,6 +259,6 @@ export const handler: Handler = async (event) => {
       "Vary": "User-Agent",
       "X-OG-Prerender": "1",
     },
-    body: html,
+    body: isHead ? "" : html,
   };
 };
